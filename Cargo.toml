@@ -1,0 +1,19 @@
+[package]
+name = "opai-rust"
+version = "0.0.1"
+authors = ["Kurnevsky Evgeny <kurnevsky@gmail.com>"]
+license = "GPL-3.0"
+
+[dependencies]
+rand = "0.3.7"
+time = "0.1.24"
+
+[profile.dev]
+opt-level = 0
+lto = false
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = true
+debug = false
