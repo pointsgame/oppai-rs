@@ -2,6 +2,8 @@ pub type Coord = u8;
 
 pub type CoordDiff = i16;
 
+pub type CoordSum = u16;
+
 pub type CoordSquare = i32;
 
 pub type Score = i32;
