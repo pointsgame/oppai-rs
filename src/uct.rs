@@ -56,6 +56,9 @@ impl UctRoot {
     for &start_pos in field.points_seq() {
       wave(width, start_pos, |pos| {
         if self.moves_field[pos] != start_pos && field.is_putting_allowed(pos) && manhattan(width, start_pos, pos) <= UCT_RADIUS {
+          if self.moves_field[pos] == 0 {
+            self.moves.push(pos);
+          }
           self.moves_field[pos] = start_pos;
           true
         } else {
