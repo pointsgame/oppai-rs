@@ -71,6 +71,9 @@ impl UctRoot {
     self.player = player;
   }
 
+  fn expand_node(node: &UctNode, moves: &Vec<Pos>) {
+  }
+
   fn update(&mut self, field: &Field, player: Player) {
     if !self.node.is_none() && field.hash_at(self.moves_count) != Some(self.hash) {
       self.clear();
@@ -98,7 +101,11 @@ impl UctRoot {
           Some(node) => {
             node.sibling = None;
           },
-          None => { }
+          None => {
+            self.clear();
+            self.init(field, player);
+            break;
+          }
         }
         self.node = next;
         let moves_field = &mut self.moves_field;
@@ -110,7 +117,22 @@ impl UctRoot {
             false
           }
         });
-        
+        let mut added_moves = Vec::new();
+        let width = field.width();
+        wave(width, next_pos, |pos| {
+          if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && manhattan(width, next_pos, pos) <= UCT_RADIUS {
+            if moves_field[pos] == 0 {
+              added_moves.push(pos);
+            }
+            moves_field[pos] = next_pos;
+            true
+          } else {
+            false
+          }
+        });
+        UctRoot::expand_node(self.node.as_ref().unwrap(), &added_moves);
+        self.moves_count += 1;
+        self.player = self.player.next();
       }
     }
   }
