@@ -15,6 +15,8 @@ struct UctNode {
   sibling: Option<Box<UctNode>>
 }
 
+unsafe impl Send for UctNode { }
+
 impl UctNode {
   pub fn new() -> UctNode {
     UctNode {
