@@ -32,7 +32,7 @@ pub struct UctRoot {
   node: Option<Box<UctNode>>,
   moves: Vec<Pos>,
   moves_field: Vec<Pos>,
-  player: Option<Player>,
+  player: Player,
   moves_count: usize,
   hash: u64
 }
@@ -44,14 +44,14 @@ impl UctRoot {
     for i in self.moves_field.iter_mut() {
       *i = 0;
     }
-    self.player = None;
+    self.player = Player::Red;
     self.moves_count = 0;
     self.hash = 0;
   }
 
-  fn init(&mut self, field: &Field) {
+  fn init(&mut self, field: &Field, player: Player) {
     self.node = Some(Box::new(UctNode::new()));
-    self.player = None;
+    self.player = Player::Red;
     let width = field.width();
     for &start_pos in field.points_seq() {
       wave(width, start_pos, |pos| {
@@ -66,14 +66,50 @@ impl UctRoot {
         }
       });
     }
+    self.player = player;
   }
 
   fn update(&mut self, field: &Field, player: Player) {
     if !self.node.is_none() && field.hash_at(self.moves_count) != Some(self.hash) {
       self.clear();
     }
-    loop {
-      
+    if self.node.is_none() {
+      self.init(field, player);
+    } else {
+      let points_seq = field.points_seq();
+      let moves_count = field.moves_count();
+      loop {
+        if self.moves_count == moves_count {
+          break;
+        }
+        let next_pos = points_seq[self.moves_count];
+        if !field.is_players_point(next_pos, self.player) {
+          self.clear();
+          self.init(field, player);
+          break;
+        }
+        let mut next = self.node.as_ref().unwrap().child.take(Ordering::Relaxed);
+        while next.is_some() && next.as_ref().unwrap().pos != next_pos {
+          next = next.unwrap().sibling;
+        }
+        match next.as_mut() {
+          Some(node) => {
+            node.sibling = None;
+          },
+          None => { }
+        }
+        self.node = next;
+        let moves_field = &mut self.moves_field;
+        self.moves.retain(|&pos| {
+          if field.is_putting_allowed(pos) {
+            true
+          } else {
+            moves_field[pos] = 0;
+            false
+          }
+        });
+        
+      }
     }
   }
 
@@ -82,13 +118,14 @@ impl UctRoot {
       node: None,
       moves: Vec::new(),
       moves_field: repeat(0).take(length).collect(),
-      player: None,
+      player: Player::Red,
       moves_count: 0,
       hash: 0
     }
   }
 
-  pub fn best_move(&mut self) -> Pos {
+  pub fn best_move(&mut self, field: &Field, player: Player) -> Pos {
+    self.update(field, player);
     0
   }
 

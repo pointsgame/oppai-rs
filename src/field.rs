@@ -342,6 +342,14 @@ impl Field {
     self.points[pos].is_players_point(player)
   }
 
+  pub fn get_live_players_point(&self, pos: Pos) -> Option<Player> {
+    self.points[pos].get_live_players_point()
+  }
+
+  pub fn is_live_players_point(&self, pos: Pos, player: Player) -> bool {
+    self.points[pos].is_live_players_point(player)
+  }
+
   pub fn get_empty_base_player(&self, pos: Pos) -> Option<Player> {
     self.points[pos].get_empty_base_player()
   }
@@ -363,35 +371,35 @@ impl Field {
   }
 
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
-    self.is_players_point(self.n(center_pos), player)  ||
-    self.is_players_point(self.s(center_pos), player)  ||
-    self.is_players_point(self.w(center_pos), player)  ||
-    self.is_players_point(self.e(center_pos), player)  ||
-    self.is_players_point(self.nw(center_pos), player) ||
-    self.is_players_point(self.ne(center_pos), player) ||
-    self.is_players_point(self.sw(center_pos), player) ||
-    self.is_players_point(self.se(center_pos), player)
+    self.is_live_players_point(self.n(center_pos), player)  ||
+    self.is_live_players_point(self.s(center_pos), player)  ||
+    self.is_live_players_point(self.w(center_pos), player)  ||
+    self.is_live_players_point(self.e(center_pos), player)  ||
+    self.is_live_players_point(self.nw(center_pos), player) ||
+    self.is_live_players_point(self.ne(center_pos), player) ||
+    self.is_live_players_point(self.sw(center_pos), player) ||
+    self.is_live_players_point(self.se(center_pos), player)
   }
 
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u8 {
     let mut result = 0u8;
-    if self.is_players_point(self.n(center_pos), player) { result += 1; }
-    if self.is_players_point(self.s(center_pos), player) { result += 1; }
-    if self.is_players_point(self.w(center_pos), player) { result += 1; }
-    if self.is_players_point(self.e(center_pos), player) { result += 1; }
-    if self.is_players_point(self.nw(center_pos), player) { result += 1; }
-    if self.is_players_point(self.ne(center_pos), player) { result += 1; }
-    if self.is_players_point(self.sw(center_pos), player) { result += 1; }
-    if self.is_players_point(self.se(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.n(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.s(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.w(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.e(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.nw(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.ne(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.sw(center_pos), player) { result += 1; }
+    if self.is_live_players_point(self.se(center_pos), player) { result += 1; }
     result
   }
 
   pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u8 {
     let mut result = 0u8;
-    if !self.is_players_point(self.w(center_pos), player) && (self.is_players_point(self.nw(center_pos), player) || self.is_players_point(self.n(center_pos), player)) { result += 1; }
-    if !self.is_players_point(self.s(center_pos), player) && (self.is_players_point(self.sw(center_pos), player) || self.is_players_point(self.w(center_pos), player)) { result += 1; }
-    if !self.is_players_point(self.e(center_pos), player) && (self.is_players_point(self.se(center_pos), player) || self.is_players_point(self.s(center_pos), player)) { result += 1; }
-    if !self.is_players_point(self.n(center_pos), player) && (self.is_players_point(self.ne(center_pos), player) || self.is_players_point(self.e(center_pos), player)) { result += 1; }
+    if !self.is_live_players_point(self.w(center_pos), player) && (self.is_live_players_point(self.nw(center_pos), player) || self.is_live_players_point(self.n(center_pos), player)) { result += 1; }
+    if !self.is_live_players_point(self.s(center_pos), player) && (self.is_live_players_point(self.sw(center_pos), player) || self.is_live_players_point(self.w(center_pos), player)) { result += 1; }
+    if !self.is_live_players_point(self.e(center_pos), player) && (self.is_live_players_point(self.se(center_pos), player) || self.is_live_players_point(self.s(center_pos), player)) { result += 1; }
+    if !self.is_live_players_point(self.n(center_pos), player) && (self.is_live_players_point(self.ne(center_pos), player) || self.is_live_players_point(self.e(center_pos), player)) { result += 1; }
     result
   }
 
@@ -427,31 +435,31 @@ impl Field {
 
   fn get_input_points(&self, center_pos: Pos, player: Player) -> Vec<(Pos, Pos)> {
     let mut inp_points = Vec::with_capacity(4);
-    if !self.is_players_point(self.w(center_pos), player) {
-      if self.is_players_point(self.nw(center_pos), player) {
+    if !self.is_live_players_point(self.w(center_pos), player) {
+      if self.is_live_players_point(self.nw(center_pos), player) {
         inp_points.push((self.nw(center_pos), self.w(center_pos)));
-      } else if self.is_players_point(self.n(center_pos), player) {
+      } else if self.is_live_players_point(self.n(center_pos), player) {
         inp_points.push((self.n(center_pos), self.w(center_pos)));
       }
     }
-    if !self.is_players_point(self.s(center_pos), player) {
-      if self.is_players_point(self.sw(center_pos), player) {
+    if !self.is_live_players_point(self.s(center_pos), player) {
+      if self.is_live_players_point(self.sw(center_pos), player) {
         inp_points.push((self.sw(center_pos), self.s(center_pos)));
-      } else if self.is_players_point(self.w(center_pos), player) {
+      } else if self.is_live_players_point(self.w(center_pos), player) {
         inp_points.push((self.w(center_pos), self.s(center_pos)));
       }
     }
-    if !self.is_players_point(self.e(center_pos), player) {
-      if self.is_players_point(self.se(center_pos), player) {
+    if !self.is_live_players_point(self.e(center_pos), player) {
+      if self.is_live_players_point(self.se(center_pos), player) {
         inp_points.push((self.se(center_pos), self.e(center_pos)));
-      } else if self.is_players_point(self.s(center_pos), player) {
+      } else if self.is_live_players_point(self.s(center_pos), player) {
         inp_points.push((self.s(center_pos), self.e(center_pos)));
       }
     }
-    if !self.is_players_point(self.n(center_pos), player) {
-      if self.is_players_point(self.ne(center_pos), player) {
+    if !self.is_live_players_point(self.n(center_pos), player) {
+      if self.is_live_players_point(self.ne(center_pos), player) {
         inp_points.push((self.ne(center_pos), self.n(center_pos)));
-      } else if self.is_players_point(self.e(center_pos), player) {
+      } else if self.is_live_players_point(self.e(center_pos), player) {
         inp_points.push((self.e(center_pos), self.n(center_pos)));
       }
     }
@@ -520,7 +528,7 @@ impl Field {
       }
       swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
-      while !self.is_players_point(pos, player) {
+      while !self.is_live_players_point(pos, player) {
         pos = self.get_next_pos(center_pos, pos);
       }
       base_square += self.square(center_pos, pos);

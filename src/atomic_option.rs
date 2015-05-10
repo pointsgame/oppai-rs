@@ -26,10 +26,19 @@ impl<T> AtomicOption<T> {
     }
   }
 
-  pub fn load<'a>(&'a self, order: Ordering) -> Option<&'a T> {
+  pub unsafe fn load<'a>(&'a self, order: Ordering) -> Option<&'a T> {
     let ptr = self.atomic_ptr.load(order);
     if !ptr.is_null() {
-      Some(unsafe { &*ptr })
+      Some(&*ptr)
+    } else {
+      None
+    }
+  }
+
+  pub fn take(&self, order: Ordering) -> Option<Box<T>> {
+    let ptr = self.atomic_ptr.swap(null_mut(), order);
+    if !ptr.is_null() {
+      Some(unsafe { Box::from_raw(ptr) })
     } else {
       None
     }
@@ -55,6 +64,16 @@ impl<T> AtomicOption<T> {
     match b_option {
       Some(b) => self.store(b, order),
       None => self.clear(order)
+    }
+  }
+
+  pub fn fill(&self, b: Box<T>, order: Ordering) -> Option<Box<T>> {
+    let ptr = unsafe { into_raw(b) };
+    let old = self.atomic_ptr.compare_and_swap(null_mut(), ptr, order);
+    if !old.is_null() {
+      Some(unsafe { Box::from_raw(ptr) })
+    } else {
+      None
     }
   }
 

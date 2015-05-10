@@ -128,7 +128,7 @@ impl Cell {
   }
 
   pub fn get_players_point(self) -> Option<Player> {
-    if self.is_putted() && !self.is_captured() {
+    if self.is_putted() {
       Some(self.get_player())
     } else {
       None
@@ -136,6 +136,18 @@ impl Cell {
   }
 
   pub fn is_players_point(self, player: Player) -> bool {
+    self.is_putted() && self.get_player() == player
+  }
+
+  pub fn get_live_players_point(self) -> Option<Player> {
+    if self.is_putted() && !self.is_captured() {
+      Some(self.get_player())
+    } else {
+      None
+    }
+  }
+
+  pub fn is_live_players_point(self, player: Player) -> bool {
     self.is_putted() && !self.is_captured() && self.get_player() == player
   }
 
