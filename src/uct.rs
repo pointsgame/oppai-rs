@@ -52,6 +52,10 @@ impl UctNode {
     self.sibling.as_ref().map(|b| &**b)
   }
 
+  pub fn get_sibling_mut<'a>(&'a mut self) -> Option<&'a mut UctNode> {
+    self.sibling.as_mut().map(|b| &mut **b)
+  }
+
   pub fn clear_sibling(&mut self) {
     self.sibling = None;
   }
@@ -73,6 +77,15 @@ impl UctNode {
     let ptr = self.child.load(Ordering::Relaxed);
     if !ptr.is_null() {
       Some(unsafe { &*ptr })
+    } else {
+      None
+    }
+  }
+
+  pub fn get_child_mut<'a>(&'a mut self) -> Option<&'a mut UctNode> {
+    let ptr = self.child.load(Ordering::Relaxed);
+    if !ptr.is_null() {
+      Some(unsafe { &mut *ptr })
     } else {
       None
     }
@@ -100,6 +113,18 @@ impl UctNode {
     }
   }
 
+  pub fn get_visits(&self) -> usize {
+    self.visits.load(Ordering::Relaxed)
+  }
+
+  pub fn get_wins(&self) -> usize {
+    self.wins.load(Ordering::Relaxed)
+  }
+
+  pub fn get_draws(&self) -> usize {
+    self.draws.load(Ordering::Relaxed)
+  }
+
   pub fn add_win(&self) {
     self.visits.fetch_add(1, Ordering::Relaxed);
     self.wins.fetch_add(1, Ordering::Relaxed);
@@ -112,6 +137,12 @@ impl UctNode {
 
   pub fn add_loose(&self) {
     self.visits.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn clear_stats(&self) {
+    self.wins.store(0, Ordering::Relaxed);
+    self.draws.store(0, Ordering::Relaxed);
+    self.visits.store(0, Ordering::Relaxed);
   }
 }
 
@@ -155,12 +186,27 @@ impl UctRoot {
     }
   }
 
-  fn expand_node(node: &UctNode, moves: &Vec<Pos>) {
-    
+  fn expand_node(node: &mut UctNode, moves: &Vec<Pos>) {
+    if node.get_child_ref().is_none() {
+      if node.get_visits() == usize::max_value() {
+        node.clear_stats();
+      }
+    } else {
+      let mut next = node.get_child_mut();
+      while next.as_ref().unwrap().get_sibling_ref().is_some() {
+        UctRoot::expand_node(*next.as_mut().unwrap(), moves);
+        next = next.unwrap().get_sibling_mut();
+      }
+      UctRoot::expand_node(*next.as_mut().unwrap(), moves);
+      for &pos in moves {
+        next.as_mut().unwrap().set_sibling(Box::new(UctNode::new(pos)));
+        next = next.unwrap().get_sibling_mut();
+      }
+    }
   }
 
   fn update(&mut self, field: &Field, player: Player) {
-    if !self.node.is_none() && field.hash_at(self.moves_count) != Some(self.hash) {
+    if self.node.is_some() && field.hash_at(self.moves_count) != Some(self.hash) {
       self.clear();
     }
     if self.node.is_none() {
@@ -215,7 +261,7 @@ impl UctRoot {
             false
           }
         });
-        UctRoot::expand_node(self.node.as_ref().unwrap(), &added_moves);
+        UctRoot::expand_node(self.node.as_mut().unwrap(), &added_moves);
         self.moves_count += 1;
         self.player = self.player.next();
       }
