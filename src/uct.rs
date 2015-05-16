@@ -1,32 +1,117 @@
+use std::*;
 use std::iter::*;
 use std::sync::atomic::*;
-use atomic_option::*;
 use types::*;
 use config::*;
 use player::*;
 use field::*;
 
+#[unsafe_no_drop_flag]
 struct UctNode {
   wins: AtomicUsize,
   draws: AtomicUsize,
   visits: AtomicUsize,
   pos: Pos,
-  child: AtomicOption<UctNode>,
+  child: AtomicPtr<UctNode>,
   sibling: Option<Box<UctNode>>
 }
 
 unsafe impl Send for UctNode { }
 
+impl Drop for UctNode {
+  fn drop(&mut self) {
+    self.clear_child();
+  }
+}
+
 impl UctNode {
-  pub fn new() -> UctNode {
+  pub fn new(pos: Pos) -> UctNode {
     UctNode {
       wins: AtomicUsize::new(0),
       draws: AtomicUsize::new(0),
       visits: AtomicUsize::new(0),
-      pos: 0,
-      child: AtomicOption::empty(),
+      pos: pos,
+      child: AtomicPtr::new(ptr::null_mut()),
       sibling: None
     }
+  }
+
+  pub fn get_pos(&self) -> Pos {
+    self.pos
+  }
+
+  pub fn set_pos(&mut self, pos: Pos) {
+    self.pos = pos;
+  }
+
+  pub fn get_sibling(&mut self) -> Option<Box<UctNode>> {
+    mem::replace(&mut self.sibling, None)
+  }
+
+  pub fn get_sibling_ref<'a>(&'a self) -> Option<&'a UctNode> {
+    self.sibling.as_ref().map(|b| &**b)
+  }
+
+  pub fn clear_sibling(&mut self) {
+    self.sibling = None;
+  }
+
+  pub fn set_sibling(&mut self, sibling: Box<UctNode>) {
+    self.sibling = Some(sibling);
+  }
+
+  pub fn get_child(&self) -> Option<Box<UctNode>> {
+    let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
+    if !ptr.is_null() {
+      Some(unsafe { mem::transmute(ptr) })
+    } else {
+      None
+    }
+  }
+
+  pub fn get_child_ref<'a>(&'a self) -> Option<&'a UctNode> {
+    let ptr = self.child.load(Ordering::Relaxed);
+    if !ptr.is_null() {
+      Some(unsafe { &*ptr })
+    } else {
+      None
+    }
+  }
+
+  pub fn clear_child(&self) {
+    let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
+    if !ptr.is_null() {
+      drop::<Box<UctNode>>(unsafe { mem::transmute(ptr) });
+    }
+  }
+
+  pub fn set_child(&self, child: Box<UctNode>) {
+    let ptr = self.child.swap(unsafe { mem::transmute(child) }, Ordering::Relaxed);
+    if !ptr.is_null() {
+      drop::<Box<UctNode>>(unsafe { mem::transmute(ptr) });
+    }
+  }
+
+  pub fn set_child_if_empty(&self, child: Box<UctNode>) {
+    let child_ptr = unsafe { mem::transmute(child) };
+    let ptr = self.child.compare_and_swap(ptr::null_mut(), child_ptr, Ordering::Relaxed);
+    if !ptr.is_null() {
+      drop::<Box<UctNode>>(unsafe { mem::transmute(child_ptr) });
+    }
+  }
+
+  pub fn add_win(&self) {
+    self.visits.fetch_add(1, Ordering::Relaxed);
+    self.wins.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn add_draw(&self) {
+    self.visits.fetch_add(1, Ordering::Relaxed);
+    self.draws.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn add_loose(&self) {
+    self.visits.fetch_add(1, Ordering::Relaxed);
   }
 }
 
@@ -52,8 +137,8 @@ impl UctRoot {
   }
 
   fn init(&mut self, field: &Field, player: Player) {
-    self.node = Some(Box::new(UctNode::new()));
-    self.player = Player::Red;
+    self.node = Some(Box::new(UctNode::new(0)));
+    self.player = player;
     let width = field.width();
     for &start_pos in field.points_seq() {
       wave(width, start_pos, |pos| {
@@ -68,10 +153,10 @@ impl UctRoot {
         }
       });
     }
-    self.player = player;
   }
 
   fn expand_node(node: &UctNode, moves: &Vec<Pos>) {
+    
   }
 
   fn update(&mut self, field: &Field, player: Player) {
@@ -93,13 +178,13 @@ impl UctRoot {
           self.init(field, player);
           break;
         }
-        let mut next = self.node.as_ref().unwrap().child.take(Ordering::Relaxed);
+        let mut next = self.node.as_ref().unwrap().get_child();
         while next.is_some() && next.as_ref().unwrap().pos != next_pos {
-          next = next.unwrap().sibling;
+          next = next.unwrap().get_sibling();
         }
         match next.as_mut() {
           Some(node) => {
-            node.sibling = None;
+            node.clear_sibling();
           },
           None => {
             self.clear();
