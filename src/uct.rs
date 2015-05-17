@@ -286,17 +286,14 @@ impl UctRoot {
     let visits = node.get_visits() as f32;
     let parent_visits = parent.get_visits() as f32;
     let win_rate = (wins + draws * UCT_DRAW_WEIGHT) / visits;
-    match UCB_TYPE {
-      UcbType::Ucb1 => {
-        let uct = UCTK * f32::sqrt(2.0 * f32::ln(parent_visits) / visits);
-        win_rate + uct
-      },
+    let uct = match UCB_TYPE {
+      UcbType::Ucb1 => UCTK * f32::sqrt(2.0 * f32::ln(parent_visits) / visits),
       UcbType::Ucb1Tuned => {
         let v = (wins + draws * UCT_DRAW_WEIGHT * UCT_DRAW_WEIGHT) / visits - win_rate * win_rate + f32::sqrt(2.0 * f32::ln(parent_visits) / visits);
-        let uct = UCTK * f32::sqrt(v.min(0.25) * f32::ln(parent_visits) / visits);
-        win_rate + uct
+        UCTK * f32::sqrt(v.min(0.25) * f32::ln(parent_visits) / visits)
       }
-    }
+    };
+    win_rate + uct
   }
 
   fn play_simulation<T: Rng>(field: &mut Field, rng: &mut T) {
