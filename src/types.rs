@@ -11,3 +11,5 @@ pub type Score = i32;
 pub type Pos = usize;
 
 pub type CellValue = u8;
+
+pub type Time = u32;

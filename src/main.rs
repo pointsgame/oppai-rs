@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![feature(unsafe_no_drop_flag)]
+#![feature(scoped)]
 
 extern crate rand;
 

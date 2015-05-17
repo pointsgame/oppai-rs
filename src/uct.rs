@@ -1,6 +1,7 @@
 use std::*;
 use std::iter::*;
 use std::sync::atomic::*;
+use rand::{Rng, XorShiftRng};
 use types::*;
 use config::*;
 use player::*;
@@ -271,7 +272,7 @@ impl UctRoot {
   pub fn new(length: Pos) -> UctRoot {
     UctRoot {
       node: None,
-      moves: Vec::new(),
+      moves: Vec::with_capacity(length),
       moves_field: repeat(0).take(length).collect(),
       player: Player::Red,
       moves_count: 0,
@@ -279,9 +280,34 @@ impl UctRoot {
     }
   }
 
-  pub fn best_move(&mut self, field: &Field, player: Player) -> Pos {
+  fn play_simulation<T: Rng>(field: &mut Field, rng: &mut T) {
+  }
+
+  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Pos {
     self.update(field, player);
+    let mut guards = Vec::with_capacity(4);
+    for i in 0 .. 4 {
+      let xor_shift_rng = rng.gen::<XorShiftRng>();
+      guards.push(thread::scoped(|| {
+        let mut local_field = field.clone();
+        let mut local_rng = xor_shift_rng;
+        while !should_stop.load(Ordering::Relaxed) {
+          UctRoot::play_simulation(&mut local_field, &mut local_rng);
+        }
+      }));
+    }
     0
+  }
+
+  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time) -> Pos {
+    let should_stop = AtomicBool::new(false);
+    let guard = thread::scoped(|| {
+      thread::sleep_ms(time);
+      should_stop.store(true, Ordering::Relaxed);
+    });
+    let result = self.best_move_generic(field, player, rng, &should_stop);
+    drop(guard);
+    result
   }
 
   //pub fn estimates

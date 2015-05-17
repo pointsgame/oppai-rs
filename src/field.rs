@@ -6,6 +6,7 @@ use player::*;
 use cell::*;
 use zobrist::*;
 
+#[derive(Clone)]
 struct FieldChange {
   score_red: Score,
   score_black: Score,
@@ -21,6 +22,7 @@ enum IntersectionState {
   Down
 }
 
+#[derive(Clone)]
 pub struct Field {
   width: Coord,
   height: Coord,
