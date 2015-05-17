@@ -773,4 +773,22 @@ impl Field {
   pub fn height(&self) -> Coord {
     self.height
   }
+
+  pub fn cur_player(&self) -> Player {
+    self.last_player().unwrap_or(Player::Black).next()
+  }
+
+  pub fn captured_count(&self, player: Player) -> Score {
+    match player {
+      Player::Red => self.score_red,
+      Player::Black => self.score_black
+    }
+  }
+
+  pub fn score(&self, player: Player) -> Score {
+    match player {
+      Player::Red => self.score_red - self.score_black,
+      Player::Black => self.score_black - self.score_red
+    }
+  }
 }

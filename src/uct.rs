@@ -280,6 +280,30 @@ impl UctRoot {
     }
   }
 
+  fn play_random_game<T: Rng>(field: &mut Field, mut player: Player, rng: &mut T, possible_moves: &mut Vec<Pos>) -> Option<Player> {
+    rng.shuffle(possible_moves);
+    let mut putted: CoordProd = 0;
+    for &pos in possible_moves.iter() {
+      if field.is_putting_allowed(pos) && !field.is_empty_base(pos) {
+        field.put_point(pos, player);
+        player = player.next();
+        putted += 1;
+      }
+    }
+    let red_score = field.score(Player::Red);
+    let result = if red_score > 0 {
+      Some(Player::Red)
+    } else if red_score < 0 {
+      Some(Player::Black)
+    } else {
+      None
+    };
+    for i in 0 .. putted {
+      field.undo();
+    }
+    result
+  }
+
   fn ucb(parent: &UctNode, node: &UctNode) -> f32 {
     let wins = node.get_wins() as f32;
     let draws = node.get_draws() as f32;
@@ -324,7 +348,12 @@ impl UctRoot {
     result
   }
 
+  fn play_simulation_rec<T: Rng>(field: &mut Field, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, depth: Depth) {
+    
+  }
+
   fn play_simulation<T: Rng>(field: &mut Field, rng: &mut T) {
+    
   }
 
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
