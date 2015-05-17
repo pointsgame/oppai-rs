@@ -280,10 +280,14 @@ impl UctRoot {
     }
   }
 
+  fn ucb(parent: &UctNode, node: &UctNode) -> f32 {
+    0.0
+  }
+
   fn play_simulation<T: Rng>(field: &mut Field, rng: &mut T) {
   }
 
-  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Pos {
+  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
     self.update(field, player);
     let mut guards = Vec::with_capacity(4);
     for i in 0 .. 4 {
@@ -296,10 +300,24 @@ impl UctRoot {
         }
       }));
     }
-    0
+    drop(guards);
+    let mut best_uct = 0f32;
+    let mut result = None;
+    let mut next = self.node.as_ref().unwrap().get_child_ref();
+    while next.is_some() {
+      if next.unwrap().get_visits() != 0 {
+        let uct_value = UctRoot::ucb(self.node.as_ref().unwrap(), next.unwrap());
+        if uct_value > best_uct {
+          best_uct = uct_value;
+          result = Some(next.unwrap().get_pos());
+        }
+      }
+      next = next.unwrap().get_sibling_ref();
+    }
+    result
   }
 
-  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time) -> Pos {
+  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
     let guard = thread::scoped(|| {
       thread::sleep_ms(time);
