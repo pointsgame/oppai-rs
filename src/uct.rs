@@ -65,6 +65,10 @@ impl UctNode {
     self.sibling = Some(sibling);
   }
 
+  pub fn set_sibling_option(&mut self, sibling: Option<Box<UctNode>>) {
+    self.sibling = sibling;
+  }
+
   pub fn get_child(&self) -> Option<Box<UctNode>> {
     let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
     if !ptr.is_null() {
@@ -298,7 +302,7 @@ impl UctRoot {
     } else {
       None
     };
-    for i in 0 .. putted {
+    for _ in 0 .. putted {
       field.undo();
     }
     result
@@ -318,6 +322,21 @@ impl UctRoot {
       }
     };
     win_rate + uct
+  }
+
+  fn create_children(field: &Field, possible_moves: &Vec<Pos>, node: &UctNode) {
+    let mut children = None;
+    for &pos in possible_moves {
+      if field.is_putting_allowed(pos) {
+        let mut cur_child = Box::new(UctNode::new(pos));
+        cur_child.set_sibling_option(children);
+        children = Some(cur_child);
+      }
+    }
+    match children {
+      Some(child) => node.set_child_if_empty(child),
+      None => { }
+    }
   }
 
   fn uct_select<'a, T: Rng>(node: &'a UctNode, rng: &mut T) -> Option<&'a UctNode> {
@@ -359,7 +378,7 @@ impl UctRoot {
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
     self.update(field, player);
     let mut guards = Vec::with_capacity(4);
-    for i in 0 .. 4 {
+    for _ in 0 .. 4 {
       let xor_shift_rng = rng.gen::<XorShiftRng>();
       guards.push(thread::scoped(|| {
         let mut local_field = field.clone();

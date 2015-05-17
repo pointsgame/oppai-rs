@@ -115,7 +115,7 @@ fn get_intersection_state(width: Coord, pos: Pos, next_pos: Pos) -> Intersection
 pub fn is_point_inside_ring(width: Coord, pos: Pos, ring: &LinkedList<Pos>) -> bool {
   let mut intersections = 0u8;
   let mut state = IntersectionState::None;
-  for &next_pos in ring.iter() {
+  for &next_pos in ring {
     match get_intersection_state(width, pos, next_pos) {
       IntersectionState::None => {
         state = IntersectionState::None;
@@ -562,7 +562,7 @@ impl Field {
     let mut captured_count: Score = 0;
     let mut freed_count: Score = 0;
     let mut captured_points = LinkedList::new();
-    for &pos in chain.iter() {
+    for &pos in chain {
       self.set_tag(pos);
     }
     wave(self.width, inside_pos, |pos| {
