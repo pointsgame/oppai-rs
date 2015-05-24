@@ -333,9 +333,8 @@ impl UctRoot {
         children = Some(cur_child);
       }
     }
-    match children {
-      Some(child) => node.set_child_if_empty(child),
-      None => { }
+    for child in children {
+      node.set_child_if_empty(child)
     }
   }
 
@@ -391,24 +390,21 @@ impl UctRoot {
     drop(guards);
     let mut best_uct = 0f32;
     let mut result = None;
-    match self.node.as_ref() {
-      Some(root) => {
-        let mut next = root.get_child_ref();
-        loop {
-          match next {
-            Some(next_node) => {
-              let uct_value = UctRoot::ucb(root, next_node);
-              if uct_value > best_uct {
-                best_uct = uct_value;
-                result = Some(next_node.get_pos());
-              }
-              next = next_node.get_sibling_ref();
-            },
-            None => break
-          }
+    for root in self.node.as_ref() {
+      let mut next = root.get_child_ref();
+      loop {
+        match next {
+          Some(next_node) => {
+            let uct_value = UctRoot::ucb(root, next_node);
+            if uct_value > best_uct {
+              best_uct = uct_value;
+              result = Some(next_node.get_pos());
+            }
+            next = next_node.get_sibling_ref();
+          },
+          None => break
         }
-      },
-      None => { }
+      }
     }
     result
   }
