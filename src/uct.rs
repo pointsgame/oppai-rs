@@ -342,26 +342,30 @@ impl UctRoot {
     let mut best_uct = 0f32;
     let mut result = None;
     let mut next = node.get_child_ref();
-    while next.is_some() {
-      let next_node = next.unwrap();
-      let visits = next_node.get_visits();
-      let wins = next_node.get_wins();
-      let uct_value = if visits == usize::max_value() {
-        if wins == usize::max_value() {
-          100000.0
-        } else {
-          -1.0
-        }
-      } else if visits > 0 {
-        UctRoot::ucb(node, next_node)
-      } else {
-        10000.0 + (rng.gen::<u16>() % 1000) as f32
-      };
-      if uct_value > best_uct {
-        best_uct = uct_value;
-        result = Some(next_node);
+    loop {
+      match next {
+        Some(next_node) => {
+          let visits = next_node.get_visits();
+          let wins = next_node.get_wins();
+          let uct_value = if visits == usize::max_value() {
+            if wins == usize::max_value() {
+              100000.0
+            } else {
+              -1.0
+            }
+          } else if visits > 0 {
+            UctRoot::ucb(node, next_node)
+          } else {
+            10000.0 + (rng.gen::<u16>() % 1000) as f32
+          };
+          if uct_value > best_uct {
+            best_uct = uct_value;
+            result = Some(next_node);
+          }
+          next = next_node.get_sibling_ref();
+        },
+        None => break
       }
-      next = next_node.get_sibling_ref();
     }
     result
   }
