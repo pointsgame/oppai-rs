@@ -391,16 +391,24 @@ impl UctRoot {
     drop(guards);
     let mut best_uct = 0f32;
     let mut result = None;
-    let mut next = self.node.as_ref().unwrap().get_child_ref();
-    while next.is_some() {
-      if next.unwrap().get_visits() != 0 {
-        let uct_value = UctRoot::ucb(self.node.as_ref().unwrap(), next.unwrap());
-        if uct_value > best_uct {
-          best_uct = uct_value;
-          result = Some(next.unwrap().get_pos());
+    match self.node.as_ref() {
+      Some(root) => {
+        let mut next = root.get_child_ref();
+        loop {
+          match next {
+            Some(next_node) => {
+              let uct_value = UctRoot::ucb(root, next_node);
+              if uct_value > best_uct {
+                best_uct = uct_value;
+                result = Some(next_node.get_pos());
+              }
+              next = next_node.get_sibling_ref();
+            },
+            None => break
+          }
         }
-      }
-      next = next.unwrap().get_sibling_ref();
+      },
+      None => { }
     }
     result
   }

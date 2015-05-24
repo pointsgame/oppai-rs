@@ -1,3 +1,4 @@
+use types::*;
 use rand::*;
 
 #[derive(Clone)]
@@ -6,7 +7,7 @@ pub struct Zobrist {
 }
 
 impl Zobrist {
-  pub fn new<T: Rng>(length: usize, rng: &mut T) -> Zobrist {
+  pub fn new<T: Rng>(length: Pos, rng: &mut T) -> Zobrist {
     let mut zobrist = Zobrist {
       hashes: Vec::with_capacity(length)
     };
@@ -16,7 +17,7 @@ impl Zobrist {
     zobrist
   }
 
-  pub fn get_hash(&self, pos: usize) -> u64 {
+  pub fn get_hash(&self, pos: Pos) -> u64 {
     self.hashes[pos]
   }
 }
