@@ -342,30 +342,25 @@ impl UctRoot {
     let mut best_uct = 0f32;
     let mut result = None;
     let mut next = node.get_child_ref();
-    loop {
-      match next {
-        Some(next_node) => {
-          let visits = next_node.get_visits();
-          let wins = next_node.get_wins();
-          let uct_value = if visits == usize::max_value() {
-            if wins == usize::max_value() {
-              100000.0
-            } else {
-              -1.0
-            }
-          } else if visits > 0 {
-            UctRoot::ucb(node, next_node)
-          } else {
-            10000.0 + (rng.gen::<u16>() % 1000) as f32
-          };
-          if uct_value > best_uct {
-            best_uct = uct_value;
-            result = Some(next_node);
-          }
-          next = next_node.get_sibling_ref();
-        },
-        None => break
+    while let Some(next_node) = next {
+      let visits = next_node.get_visits();
+      let wins = next_node.get_wins();
+      let uct_value = if visits == usize::max_value() {
+        if wins == usize::max_value() {
+          100000.0
+        } else {
+          -1.0
+        }
+      } else if visits > 0 {
+        UctRoot::ucb(node, next_node)
+      } else {
+        10000.0 + (rng.gen::<u16>() % 1000) as f32
+      };
+      if uct_value > best_uct {
+        best_uct = uct_value;
+        result = Some(next_node);
       }
+      next = next_node.get_sibling_ref();
     }
     result
   }
@@ -396,18 +391,13 @@ impl UctRoot {
     let mut result = None;
     for root in self.node.as_ref() {
       let mut next = root.get_child_ref();
-      loop {
-        match next {
-          Some(next_node) => {
-            let uct_value = UctRoot::ucb(root, next_node);
-            if uct_value > best_uct {
-              best_uct = uct_value;
-              result = Some(next_node.get_pos());
-            }
-            next = next_node.get_sibling_ref();
-          },
-          None => break
+      while let Some(next_node) = next {
+        let uct_value = UctRoot::ucb(root, next_node);
+        if uct_value > best_uct {
+          best_uct = uct_value;
+          result = Some(next_node.get_pos());
         }
+        next = next_node.get_sibling_ref();
       }
     }
     result
