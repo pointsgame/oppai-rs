@@ -233,15 +233,12 @@ impl UctRoot {
         while next.is_some() && next.as_ref().unwrap().pos != next_pos {
           next = next.unwrap().get_sibling();
         }
-        match next.as_mut() {
-          Some(node) => {
-            node.clear_sibling();
-          },
-          None => {
-            self.clear();
-            self.init(field, player);
-            break;
-          }
+        if let Some(ref mut node) = next {
+          node.clear_sibling();
+        } else {
+          self.clear();
+          self.init(field, player);
+          break;
         }
         self.node = next;
         let moves_field = &mut self.moves_field;
