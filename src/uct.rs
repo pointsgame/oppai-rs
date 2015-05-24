@@ -47,11 +47,11 @@ impl UctNode {
     mem::replace(&mut self.sibling, None)
   }
 
-  pub fn get_sibling_ref<'a>(&'a self) -> Option<&'a UctNode> {
+  pub fn get_sibling_ref(&self) -> Option<&UctNode> {
     self.sibling.as_ref().map(|b| &**b)
   }
 
-  pub fn get_sibling_mut<'a>(&'a mut self) -> Option<&'a mut UctNode> {
+  pub fn get_sibling_mut(&mut self) -> Option<&mut UctNode> {
     self.sibling.as_mut().map(|b| &mut **b)
   }
 
@@ -76,7 +76,7 @@ impl UctNode {
     }
   }
 
-  pub fn get_child_ref<'a>(&'a self) -> Option<&'a UctNode> {
+  pub fn get_child_ref(&self) -> Option<&UctNode> {
     let ptr = self.child.load(Ordering::Relaxed);
     if !ptr.is_null() {
       Some(unsafe { &*ptr })
@@ -85,7 +85,7 @@ impl UctNode {
     }
   }
 
-  pub fn get_child_mut<'a>(&'a mut self) -> Option<&'a mut UctNode> {
+  pub fn get_child_mut(&mut self) -> Option<&mut UctNode> {
     let ptr = self.child.load(Ordering::Relaxed);
     if !ptr.is_null() {
       Some(unsafe { &mut *ptr })
