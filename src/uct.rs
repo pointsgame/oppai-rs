@@ -17,8 +17,6 @@ struct UctNode {
   sibling: Option<Box<UctNode>>
 }
 
-unsafe impl Send for UctNode { }
-
 impl Drop for UctNode {
   fn drop(&mut self) {
     self.clear_child();
@@ -330,7 +328,7 @@ impl UctRoot {
         children = Some(cur_child);
       }
     }
-    for child in children {
+    if let Some(child) = children {
       node.set_child_if_empty(child)
     }
   }
@@ -386,7 +384,7 @@ impl UctRoot {
     drop(guards);
     let mut best_uct = 0f32;
     let mut result = None;
-    for root in self.node.as_ref() {
+    if let Some(ref root) = self.node {
       let mut next = root.get_child_ref();
       while let Some(next_node) = next {
         let uct_value = UctRoot::ucb(root, next_node);
