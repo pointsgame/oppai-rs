@@ -142,6 +142,12 @@ impl UctNode {
     self.visits.fetch_add(1, Ordering::Relaxed);
   }
 
+  pub fn loose_node(&self) {
+    self.wins.store(0, Ordering::Relaxed);
+    self.draws.store(0, Ordering::Relaxed);
+    self.visits.store(usize::max_value(), Ordering::Relaxed);
+  }
+
   pub fn clear_stats(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
@@ -333,24 +339,23 @@ impl UctRoot {
     }
   }
 
-  fn uct_select<'a, T: Rng>(node: &'a UctNode, rng: &mut T) -> Option<&'a UctNode> {
+  fn uct_select(node: &UctNode) -> Option<&UctNode> {
     let mut best_uct = 0f32;
     let mut result = None;
     let mut next = node.get_child_ref();
     while let Some(next_node) = next {
       let visits = next_node.get_visits();
       let wins = next_node.get_wins();
-      let uct_value = if visits == usize::max_value() {
+      if visits == usize::max_value() {
         if wins == usize::max_value() {
-          100000.0
+          return Some(next_node);
         } else {
-          -1.0
+          continue;
         }
-      } else if visits > 0 {
-        UctRoot::ucb(node, next_node)
-      } else {
-        10000.0 + (rng.gen::<u16>() % 1000) as f32
-      };
+      } else if visits == 0 {
+        return Some(next_node);
+      }
+      let uct_value = UctRoot::ucb(node, next_node);
       if uct_value > best_uct {
         best_uct = uct_value;
         result = Some(next_node);
@@ -360,12 +365,48 @@ impl UctRoot {
     result
   }
 
-  fn play_simulation_rec<T: Rng>(field: &mut Field, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, depth: Depth) {
-    
+  fn play_simulation_rec<T: Rng>(field: &mut Field, player: Player, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, depth: Depth) -> Option<Player> {
+    let mut random_result;
+    if node.get_visits() < UCT_WHEN_CREATE_CHILDREN || depth == UCT_DEPTH {
+      random_result = UctRoot::play_random_game(field, player, rng, possible_moves);
+    } else {
+      if node.get_child_ref().is_none() {
+        UctRoot::create_children(field, possible_moves, node);
+      }
+      if let Some(next) = UctRoot::uct_select(node) {
+        field.put_point(next.get_pos(), player);
+        if field.get_delta_score(player) < 0 {
+          field.undo();
+          next.loose_node();
+          return UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, depth);
+        }
+        random_result = UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, depth + 1);
+        field.undo();
+      } else {
+        let red_score = field.score(Player::Red);
+        random_result = if red_score > 0 {
+          Some(Player::Red)
+        } else if red_score < 0 {
+          Some(Player::Black)
+        } else {
+          None
+        };
+      }
+    }
+    if let Some(player_random_result) = random_result {
+      if player_random_result == player {
+        node.add_win();
+      } else {
+        node.add_loose();
+      }
+    } else {
+      node.add_draw();
+    }
+    random_result
   }
 
-  fn play_simulation<T: Rng>(field: &mut Field, rng: &mut T) {
-    
+  fn play_simulation<T: Rng>(field: &mut Field, player: Player, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T) {
+    UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, 0);
   }
 
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
@@ -376,8 +417,9 @@ impl UctRoot {
       guards.push(thread::scoped(|| {
         let mut local_field = field.clone();
         let mut local_rng = xor_shift_rng;
+        let mut possible_moves = self.moves.clone();
         while !should_stop.load(Ordering::Relaxed) {
-          UctRoot::play_simulation(&mut local_field, &mut local_rng);
+          UctRoot::play_simulation(&mut local_field, player, self.node.as_ref().unwrap(), &mut possible_moves, &mut local_rng);
         }
       }));
     }

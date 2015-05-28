@@ -791,4 +791,13 @@ impl Field {
       Player::Black => self.score_black - self.score_red
     }
   }
+
+  pub fn get_delta_score(&self, player: Player) -> Score {
+    self.score(player) - self.changes.last().map_or(0, |change| {
+      match player {
+        Player::Red => change.score_red - change.score_black,
+        Player::Black => change.score_black - change.score_red
+      }
+    })
+  }
 }
