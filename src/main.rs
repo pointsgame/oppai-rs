@@ -11,6 +11,7 @@ mod zobrist;
 mod cell;
 mod field;
 mod uct;
+mod bot;
 
 fn main() {
   println!("Hello, world!");

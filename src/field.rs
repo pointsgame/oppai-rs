@@ -1,6 +1,7 @@
 use std::collections::*;
 use std::iter::*;
 use std::mem::*;
+use std::sync::*;
 use types::*;
 use player::*;
 use cell::*;
@@ -32,7 +33,7 @@ pub struct Field {
   points_seq: Vec<Pos>,
   points: Vec<Cell>,
   changes: Vec<FieldChange>,
-  zobrist: Zobrist,
+  zobrist: Arc<Zobrist>,
   hash: u64
 }
 
@@ -405,7 +406,7 @@ impl Field {
     result
   }
 
-  pub fn new(width: Coord, height: Coord, zobrist: Zobrist) -> Field {
+  pub fn new(width: Coord, height: Coord, zobrist: Arc<Zobrist>) -> Field {
     let length = length(width, height);
     let mut field = Field {
       width: width,
