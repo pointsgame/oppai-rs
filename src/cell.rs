@@ -35,15 +35,15 @@ impl Cell {
     self.value = self.value & !PLAYER_BIT | player.to_bool() as CellValue
   }
 
-  pub fn is_putted(self) -> bool {
+  pub fn is_put(self) -> bool {
     self.value & PUTTED_BIT != 0
   }
 
-  pub fn set_putted(&mut self) {
+  pub fn set_put(&mut self) {
     self.value |= PUTTED_BIT
   }
 
-  pub fn clear_putted(&mut self) {
+  pub fn clear_put(&mut self) {
     self.value &= !PUTTED_BIT
   }
 
@@ -109,13 +109,13 @@ impl Cell {
 
   pub fn get_owner(self) -> Option<Player> {
     if self.is_captured() {
-      if self.is_putted() {
+      if self.is_put() {
         Some(self.get_player().next())
       } else {
         Some(self.get_player())
       }
     } else {
-      if self.is_putted() {
+      if self.is_put() {
         Some(self.get_player())
       } else {
         None
@@ -128,7 +128,7 @@ impl Cell {
   }
 
   pub fn get_players_point(self) -> Option<Player> {
-    if self.is_putted() {
+    if self.is_put() {
       Some(self.get_player())
     } else {
       None
@@ -136,11 +136,11 @@ impl Cell {
   }
 
   pub fn is_players_point(self, player: Player) -> bool {
-    self.is_putted() && self.get_player() == player
+    self.is_put() && self.get_player() == player
   }
 
   pub fn get_live_players_point(self) -> Option<Player> {
-    if self.is_putted() && !self.is_captured() {
+    if self.is_put() && !self.is_captured() {
       Some(self.get_player())
     } else {
       None
@@ -148,7 +148,7 @@ impl Cell {
   }
 
   pub fn is_live_players_point(self, player: Player) -> bool {
-    self.is_putted() && !self.is_captured() && self.get_player() == player
+    self.is_put() && !self.is_captured() && self.get_player() == player
   }
 
   pub fn get_empty_base_player(self) -> Option<Player> {
@@ -169,6 +169,6 @@ impl Cell {
   }
 
   pub fn is_putting_allowed(self) -> bool {
-    !self.is_putted() && !self.is_captured() && !self.is_bad()
+    !self.is_put() && !self.is_captured() && !self.is_bad()
   }
 }

@@ -1,11 +1,11 @@
-use std::collections::*;
-use std::iter::*;
-use std::mem::*;
-use std::sync::*;
-use types::*;
-use player::*;
-use cell::*;
-use zobrist::*;
+use std::collections::LinkedList;
+use std::iter;
+use std::mem;
+use std::sync::Arc;
+use types::{Pos, Coord, CoordDiff, CoordSquare, CoordSum, Score};
+use player::Player;
+use cell::Cell;
+use zobrist::Zobrist;
 
 #[derive(Clone)]
 struct FieldChange {
@@ -257,16 +257,16 @@ impl Field {
     self.points[pos].set_player(player)
   }
 
-  pub fn is_putted(&self, pos: Pos) -> bool {
-    self.points[pos].is_putted()
+  pub fn is_put(&self, pos: Pos) -> bool {
+    self.points[pos].is_put()
   }
 
-  fn set_putted(&mut self, pos: Pos) {
-    self.points[pos].set_putted()
+  fn set_put(&mut self, pos: Pos) {
+    self.points[pos].set_put()
   }
 
-  fn clear_putted(&mut self, pos: Pos) {
-    self.points[pos].clear_putted()
+  fn clear_put(&mut self, pos: Pos) {
+    self.points[pos].clear_put()
   }
 
   pub fn is_captured(&self, pos: Pos) -> bool {
@@ -415,7 +415,7 @@ impl Field {
       score_red: 0,
       score_black: 0,
       points_seq: Vec::with_capacity(length),
-      points: repeat(Cell::new(false)).take(length).collect(),
+      points: iter::repeat(Cell::new(false)).take(length).collect(),
       changes: Vec::with_capacity(length),
       zobrist: zobrist,
       hash: 0
@@ -529,7 +529,7 @@ impl Field {
         self.set_tag(pos);
         chain.push_back(pos);
       }
-      swap(&mut pos, &mut center_pos);
+      mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
       while !self.is_live_players_point(pos, player) {
         pos = self.get_next_pos(center_pos, pos);
@@ -570,7 +570,7 @@ impl Field {
       if !self.is_tagged(pos) && !self.is_bound_player(pos, player) {
         self.set_tag(pos);
         captured_points.push_back(pos);
-        if self.is_putted(pos) {
+        if self.is_put(pos) {
           if self.get_player(pos) != player {
             captured_count += 1;
           } else if self.is_captured(pos) {
@@ -601,7 +601,7 @@ impl Field {
       for &pos in captured_points.iter() {
         self.clear_tag(pos);
         self.save_pos_value(pos);
-        if !self.is_putted(pos) {
+        if !self.is_put(pos) {
           if !self.is_captured(pos) {
             self.set_captured(pos);
           } else {
@@ -629,7 +629,7 @@ impl Field {
       }
       for &pos in captured_points.iter() {
         self.clear_tag(pos);
-        if !self.is_putted(pos) {
+        if !self.is_put(pos) {
           self.save_pos_value(pos);
           self.set_empty_base_player(pos, player);
         }
