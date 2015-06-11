@@ -25,7 +25,7 @@ fn main() {
   let mut s = String::new();
   loop {
     input.read_to_string(&mut s);
-    let mut split = s.split(' ');
+    let mut split = s.split(' ').fuse();
     if let Some(id) = split.next() {
       match split.next() {
         Some("init") => {
