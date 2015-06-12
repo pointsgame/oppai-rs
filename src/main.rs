@@ -27,7 +27,7 @@ fn write_author<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_author_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? \n".as_bytes()).ok();
+  output.write_all("? ".as_bytes()).ok();
   output.write_all(id.to_string().as_bytes()).ok();
   output.write_all(" author\n".as_bytes()).ok();
 }
@@ -39,13 +39,13 @@ fn write_init<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_init_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? \n".as_bytes()).ok();
+  output.write_all("? ".as_bytes()).ok();
   output.write_all(id.to_string().as_bytes()).ok();
   output.write_all(" init\n".as_bytes()).ok();
 }
 
 fn write_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? \n".as_bytes()).ok();
+  output.write_all("? ".as_bytes()).ok();
   output.write_all(id.to_string().as_bytes()).ok();
   output.write_all(" input_error\n".as_bytes()).ok();
 }
