@@ -63,6 +63,24 @@ fn write_gen_move_error<T: Write>(output: &mut T, id: u32) {
   output.write_all(" gen_move\n".as_bytes()).ok();
 }
 
+fn write_gen_move_with_complexity<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
+  output.write_all("= ".as_bytes()).ok();
+  output.write_all(id.to_string().as_bytes()).ok();
+  output.write_all(" gen_move_with_complexity ".as_bytes()).ok();
+  output.write_all(x.to_string().as_bytes()).ok();
+  output.write_all(" ".as_bytes()).ok();
+  output.write_all(y.to_string().as_bytes()).ok();
+  output.write_all(" ".as_bytes()).ok();
+  output.write_all((player.to_bool() as u8).to_string().as_bytes()).ok();
+  output.write_all("\n".as_bytes()).ok();
+}
+
+fn write_gen_move_with_complexity_error<T: Write>(output: &mut T, id: u32) {
+  output.write_all("? ".as_bytes()).ok();
+  output.write_all(id.to_string().as_bytes()).ok();
+  output.write_all(" gen_move_with_complexity\n".as_bytes()).ok();
+}
+
 fn write_error<T: Write>(output: &mut T, id: u32) {
   output.write_all("? ".as_bytes()).ok();
   output.write_all(id.to_string().as_bytes()).ok();
@@ -92,7 +110,7 @@ fn main() {
           let seed_option = split.next();
           if split.next().is_some() {
             write_init_error(&mut output, id);
-          } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
+          } else if let (Some(x), Some(y), Some(_)) = (x_option, y_option, seed_option) {
             bot_option = Some(Bot::new(x, y));
             write_init(&mut output, id);
           } else {
@@ -115,6 +133,25 @@ fn main() {
             }
           } else {
             write_gen_move_error(&mut output, id);
+          }
+        },
+        Some("gen_move_with_complexity") => {
+          let player_option = split.next().and_then(|player_str| u8::from_str(player_str).ok()).and_then(|player_u8| match player_u8 { //TODO: from_number method
+            0 => Some(Player::Red),
+            1 => Some(Player::Black),
+            _ => None
+          });
+          let complexity_option = split.next().and_then(|complexity_str| u8::from_str(complexity_str).ok() );
+          if split.next().is_some() {
+            write_gen_move_with_complexity_error(&mut output, id);
+          } else if let (Some(player), Some(_), Some(bot)) = (player_option, complexity_option, bot_option.as_mut()) {
+            if let Some((x, y)) = bot.best_move(player, 10000) {
+              write_gen_move_with_complexity(&mut output, id, x, y, player);
+            } else {
+              write_gen_move_with_complexity_error(&mut output, id);
+            }
+          } else {
+            write_gen_move_with_complexity_error(&mut output, id);
           }
         },
         _ => {
