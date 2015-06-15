@@ -27,7 +27,7 @@ impl Bot {
     }
   }
 
-  pub fn best_move(&mut self, player: Player, time: Time) -> Option<Pos> {
-    self.uct.best_move(&self.field, player, &mut self.rng, time)
+  pub fn best_move(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
+    self.uct.best_move(&self.field, player, &mut self.rng, time).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 }
