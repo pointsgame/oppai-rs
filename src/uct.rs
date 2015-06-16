@@ -246,7 +246,8 @@ impl UctRoot {
         }
         self.node = next;
         let moves_field = &mut self.moves_field;
-        self.moves.retain(|&pos| {
+        let moves = &mut self.moves;
+        moves.retain(|&pos| {
           if field.is_putting_allowed(pos) {
             true
           } else {
@@ -259,6 +260,7 @@ impl UctRoot {
         wave(width, next_pos, |pos| {
           if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && manhattan(width, next_pos, pos) <= UCT_RADIUS {
             if moves_field[pos] == 0 {
+              moves.push(pos);
               added_moves.push(pos);
             }
             moves_field[pos] = next_pos;
