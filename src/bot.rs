@@ -30,4 +30,13 @@ impl Bot {
   pub fn best_move(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
     self.uct.best_move(&self.field, player, &mut self.rng, time).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
+
+  pub fn put_point(&mut self, x: Coord, y: Coord, player: Player) -> bool {
+    let pos = self.field.to_pos(x, y);
+    self.field.put_point(pos, player)
+  }
+
+  pub fn undo(&mut self) -> bool {
+    self.field.undo()
+  }
 }
