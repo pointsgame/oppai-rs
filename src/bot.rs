@@ -17,7 +17,7 @@ impl Bot {
   pub fn new(width: Coord, height: Coord) -> Bot {
     let length = length(width, height);
     let mut rng = XorShiftRng::new_unseeded();
-    let zobrist = Arc::new(Zobrist::new(length, &mut rng));
+    let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
     let field_zobrist = zobrist.clone();
     Bot {
       rng: rng,
