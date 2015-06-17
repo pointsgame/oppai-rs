@@ -182,7 +182,10 @@ impl UctRoot {
     let width = field.width();
     for &start_pos in field.points_seq() {
       wave(width, start_pos, |pos| {
-        if self.moves_field[pos] != start_pos && field.is_putting_allowed(pos) && manhattan(width, start_pos, pos) <= UCT_RADIUS {
+        if pos == start_pos && self.moves_field[pos] == 0 {
+          self.moves_field[pos] = 1;
+          true
+        } else if self.moves_field[pos] != start_pos && field.is_putting_allowed(pos) && manhattan(width, start_pos, pos) <= UCT_RADIUS {
           if self.moves_field[pos] == 0 {
             self.moves.push(pos);
           }
@@ -192,6 +195,7 @@ impl UctRoot {
           false
         }
       });
+      self.moves_field[start_pos] = 0;
     }
   }
 
@@ -258,8 +262,11 @@ impl UctRoot {
         let mut added_moves = Vec::new();
         let width = field.width();
         wave(width, next_pos, |pos| {
-          if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && manhattan(width, next_pos, pos) <= UCT_RADIUS {
-            if moves_field[pos] == 0 {
+          if pos == next_pos && moves_field[pos] == 0 {
+            moves_field[pos] = 1;
+            true
+          } else if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && manhattan(width, next_pos, pos) <= UCT_RADIUS {
+            if moves_field[pos] == 0 && pos != next_pos {
               moves.push(pos);
               added_moves.push(pos);
             }
@@ -269,6 +276,7 @@ impl UctRoot {
             false
           }
         });
+        moves_field[next_pos] = 0;
         UctRoot::expand_node(self.node.as_mut().unwrap(), &added_moves);
         self.moves_count += 1;
         self.player = self.player.next();

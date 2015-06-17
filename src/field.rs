@@ -719,6 +719,7 @@ impl Field {
           self.find_captures(pos, player);
         }
       }
+      self.points_seq.push(pos);
       true
     } else {
       false
@@ -728,6 +729,7 @@ impl Field {
   pub fn undo(&mut self) -> bool {
     match self.changes.pop() {
       Some(change) => {
+        self.points_seq.pop();
         self.score_red = change.score_red;
         self.score_black = change.score_black;
         self.hash = change.hash;
