@@ -54,7 +54,7 @@ pub fn to_y(width: Coord, pos: Pos) -> Coord {
 }
 
 pub fn n(width: Coord, pos: Pos) -> Pos {
-  pos - width as Pos + 2
+  pos - width as Pos - 2
 }
 
 pub fn s(width: Coord, pos: Pos) -> Pos {
