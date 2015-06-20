@@ -700,7 +700,7 @@ impl Field {
                 }
                 let input_points = self.get_input_points(bound_pos, next_player);
                 for (chain_pos, captured_pos) in input_points {
-                  match self.build_chain(bound_pos, player, chain_pos) {
+                  match self.build_chain(bound_pos, next_player, chain_pos) {
                     Some(chain) => {
                       if self.is_point_inside_ring(pos, &chain) {
                         self.capture(&chain, captured_pos, next_player);
