@@ -373,7 +373,8 @@ fn main() {
     if let Some(bot) = bot_option.as_mut() {
       for uct_log in bot.uct_log() {
         match uct_log {
-          &UctLog::BestMove(pos, uct) => info!(target: uct_str, "Best move is {0}, uct is {1}.", pos, uct)
+          &UctLog::BestMove(pos, uct) => info!(target: uct_str, "Best move is {0}, uct is {1}.", pos, uct),
+          &UctLog::Estimation(pos, uct, wins, draws, visits) => info!(target: uct_str, "Uct for move {0} is {1}, {2} wins, {3} draws, {4} visits.", pos, uct, wins, draws, visits)
         }
       }
       bot.clear_logs();
