@@ -1,3 +1,8 @@
+[appender.all]
+kind = "file"
+path = "log/all.log"
+pattern = "%d [%t] %m"
+
 [appender.uct]
 kind = "file"
 path = "log/uct.log"
@@ -6,4 +11,4 @@ pattern = "%d [%t] %m"
 [[logger]]
 name = "uct"
 level = "info"
-appenders = ["uct"]
+appenders = ["uct", "all"]

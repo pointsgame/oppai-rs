@@ -369,10 +369,11 @@ fn main() {
     } else {
       write_error(&mut output, 0);
     }
+    let uct_str = "uct";
     if let Some(bot) = bot_option.as_mut() {
       for uct_log in bot.uct_log() {
         match uct_log {
-          &UctLog::BestMove(pos, uct) => info!(target: "uct", "Best move is {0}, uct is {1}.", pos, uct)
+          &UctLog::BestMove(pos, uct) => info!(target: uct_str, "Best move is {0}, uct is {1}.", pos, uct)
         }
       }
       bot.clear_logs();
