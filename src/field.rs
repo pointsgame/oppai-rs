@@ -695,7 +695,7 @@ impl Field {
               let mut bound_pos = pos;
               'outer: loop {
                 bound_pos = self.w(bound_pos);
-                while !self.is_players_point(pos, next_player) {
+                while !self.is_players_point(bound_pos, next_player) {
                   bound_pos = self.w(bound_pos);
                 }
                 let input_points = self.get_input_points(bound_pos, next_player);
