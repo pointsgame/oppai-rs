@@ -426,8 +426,8 @@ impl Field {
       field.set_bad(max_pos + 1 + x);
     }
     for y in 1 .. height as Pos + 1 {
-      field.set_bad(y * width as Pos);
-      field.set_bad(y * (width as Pos + 1) - 1);
+      field.set_bad(y * (width as Pos + 2));
+      field.set_bad((y + 1) * (width as Pos + 2) - 1);
     }
     field
   }
