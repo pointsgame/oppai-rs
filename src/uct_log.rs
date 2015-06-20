@@ -1,6 +1,6 @@
-use types::Pos;
+use types::Coord;
 
 pub enum UctLog {
-  BestMove(Pos, f32),
-  Estimation(Pos, f32, usize, usize, usize)
+  BestMove(Coord, Coord, f32),
+  Estimation(Coord, Coord, f32, usize, usize, usize)
 }

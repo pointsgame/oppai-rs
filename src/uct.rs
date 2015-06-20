@@ -441,16 +441,17 @@ impl UctRoot {
       let mut next = root.get_child_ref();
       while let Some(next_node) = next {
         let uct_value = UctRoot::ucb(root, next_node);
-        logs.push(UctLog::Estimation(next_node.get_pos(), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits()));
+        let pos = next_node.get_pos();
+        logs.push(UctLog::Estimation(field.to_x(pos), field.to_y(pos), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits()));
         if uct_value > best_uct {
           best_uct = uct_value;
-          result = Some(next_node.get_pos());
+          result = Some(pos);
         }
         next = next_node.get_sibling_ref();
       }
     }
     if let Some(pos) = result {
-      logs.push(UctLog::BestMove(pos, best_uct));
+      logs.push(UctLog::BestMove(field.to_x(pos), field.to_y(pos), best_uct));
     }
     result
   }
