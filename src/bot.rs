@@ -5,12 +5,14 @@ use player::*;
 use zobrist::*;
 use field::*;
 use uct::*;
+use uct_log::UctLog;
 
 pub struct Bot {
   rng: XorShiftRng,
   zobrist: Arc<Zobrist>,
   field: Field,
-  uct: UctRoot
+  uct: UctRoot,
+  uct_logs: Vec<UctLog>
 }
 
 impl Bot {
@@ -23,12 +25,13 @@ impl Bot {
       rng: rng,
       zobrist: zobrist,
       field: Field::new(width, height, field_zobrist),
-      uct: UctRoot::new(length)
+      uct: UctRoot::new(length),
+      uct_logs: Vec::new()
     }
   }
 
   pub fn best_move(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
-    self.uct.best_move(&self.field, player, &mut self.rng, time).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+    self.uct.best_move(&self.field, player, &mut self.rng, time, &mut self.uct_logs).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn put_point(&mut self, x: Coord, y: Coord, player: Player) -> bool {
@@ -38,5 +41,13 @@ impl Bot {
 
   pub fn undo(&mut self) -> bool {
     self.field.undo()
+  }
+
+  pub fn uct_log(&self) -> &Vec<UctLog> {
+    &self.uct_logs
+  }
+
+  pub fn clear_logs(&mut self) {
+    self.uct_logs.clear();
   }
 }

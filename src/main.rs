@@ -4,6 +4,11 @@
 
 extern crate rand;
 
+#[macro_use]
+extern crate log;
+
+extern crate log4rs;
+
 mod types;
 mod config;
 mod player;
@@ -11,15 +16,19 @@ mod zobrist;
 mod cell;
 mod field;
 mod uct;
+mod uct_log;
 mod bot;
 
 use std::io;
 use std::io::{Write, BufReader, BufRead};
 use std::str::FromStr;
 use std::string::ToString;
+use std::path::Path;
+use log4rs::toml::Creator;
 use types::{Coord, Time};
 use player::Player;
 use bot::Bot;
+use uct_log::UctLog;
 
 fn write_author<T: Write>(output: &mut T, id: u32) {
   output.write_all("= ".as_bytes()).ok();
@@ -196,6 +205,7 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn main() {
+  log4rs::init_file(Path::new("config/log.toml"), Creator::default()).ok();
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();
   let mut bot_option = None;
@@ -358,6 +368,14 @@ fn main() {
       }
     } else {
       write_error(&mut output, 0);
+    }
+    if let Some(bot) = bot_option.as_mut() {
+      for uct_log in bot.uct_log() {
+        match uct_log {
+          &UctLog::BestMove(pos, uct) => info!(target: "uct", "Best move is {0}, uct is {1}.", pos, uct)
+        }
+      }
+      bot.clear_logs();
     }
   }
 }

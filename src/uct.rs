@@ -6,6 +6,7 @@ use types::*;
 use config::*;
 use player::*;
 use field::*;
+use uct_log::UctLog;
 
 #[unsafe_no_drop_flag]
 struct UctNode {
@@ -419,7 +420,7 @@ impl UctRoot {
     UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, 0);
   }
 
-  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
+  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, logs: &mut Vec<UctLog>) -> Option<Pos> {
     self.update(field, player);
     let mut guards = Vec::with_capacity(4);
     for _ in 0 .. 4 {
@@ -447,16 +448,19 @@ impl UctRoot {
         next = next_node.get_sibling_ref();
       }
     }
+    if let Some(pos) = result {
+      logs.push(UctLog::BestMove(pos, best_uct));
+    }
     result
   }
 
-  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time) -> Option<Pos> {
+  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time, logs: &mut Vec<UctLog>) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
     let guard = thread::scoped(|| {
       thread::sleep_ms(time);
       should_stop.store(true, Ordering::Relaxed);
     });
-    let result = self.best_move_generic(field, player, rng, &should_stop);
+    let result = self.best_move_generic(field, player, rng, &should_stop, logs);
     drop(guard);
     result
   }
