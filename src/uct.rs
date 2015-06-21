@@ -6,7 +6,8 @@ use types::*;
 use config::*;
 use player::*;
 use field::*;
-use uct_log::UctLog;
+
+static UCT_STR: &'static str = "uct";
 
 #[unsafe_no_drop_flag]
 struct UctNode {
@@ -178,8 +179,11 @@ impl UctRoot {
   }
 
   fn init(&mut self, field: &Field, player: Player) {
+    info!(target: UCT_STR, "Initialization.");
     self.node = Some(Box::new(UctNode::new(0)));
     self.player = player;
+    self.moves_count = field.moves_count();
+    self.hash = field.hash();
     let width = field.width();
     for &start_pos in field.points_seq() {
       wave(width, start_pos, |pos| {
@@ -226,6 +230,7 @@ impl UctRoot {
     if self.node.is_none() {
       self.init(field, player);
     } else {
+      info!(target: UCT_STR, "Updation.");
       let points_seq = field.points_seq();
       let moves_count = field.moves_count();
       loop {
@@ -233,6 +238,7 @@ impl UctRoot {
           break;
         }
         let next_pos = points_seq[self.moves_count];
+        info!(target: UCT_STR, "Next move is ({0}, {1}), player {2}.", field.to_x(next_pos), field.to_y(next_pos), self.player);
         if !field.is_players_point(next_pos, self.player) {
           self.clear();
           self.init(field, player);
@@ -243,6 +249,8 @@ impl UctRoot {
           next = next.unwrap().get_sibling();
         }
         if let Some(ref mut node) = next {
+          let pos = node.get_pos();
+          info!(target: UCT_STR, "Node found for move ({0}, {1}).", field.to_x(pos), field.to_y(pos));
           node.clear_sibling();
         } else {
           self.clear();
@@ -420,7 +428,7 @@ impl UctRoot {
     UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, 0);
   }
 
-  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, logs: &mut Vec<UctLog>) -> Option<Pos> {
+  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
     self.update(field, player);
     let mut guards = Vec::with_capacity(4);
     for _ in 0 .. 4 {
@@ -442,7 +450,7 @@ impl UctRoot {
       while let Some(next_node) = next {
         let uct_value = UctRoot::ucb(root, next_node);
         let pos = next_node.get_pos();
-        logs.push(UctLog::Estimation(field.to_x(pos), field.to_y(pos), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits()));
+        info!(target: UCT_STR, "Uct for move ({0}, {1}) is {2}, {3} wins, {4} draws, {5} visits.", field.to_x(pos), field.to_y(pos), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits());
         if uct_value > best_uct {
           best_uct = uct_value;
           result = Some(pos);
@@ -451,18 +459,18 @@ impl UctRoot {
       }
     }
     if let Some(pos) = result {
-      logs.push(UctLog::BestMove(field.to_x(pos), field.to_y(pos), best_uct));
+      info!(target: UCT_STR, "Best move is ({0}, {1}), uct is {2}.", field.to_x(pos), field.to_y(pos), best_uct);
     }
     result
   }
 
-  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time, logs: &mut Vec<UctLog>) -> Option<Pos> {
+  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
     let guard = thread::scoped(|| {
       thread::sleep_ms(time);
       should_stop.store(true, Ordering::Relaxed);
     });
-    let result = self.best_move_generic(field, player, rng, &should_stop, logs);
+    let result = self.best_move_generic(field, player, rng, &should_stop);
     drop(guard);
     result
   }

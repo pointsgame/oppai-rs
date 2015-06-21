@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result};
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum Player {
   Red,
@@ -18,5 +20,14 @@ impl Player {
 
   pub fn to_bool(self) -> bool {
     self == Player::Black
+  }
+}
+
+impl Display for Player {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    match self {
+      &Player::Red => write!(f, "Red"),
+      &Player::Black => write!(f, "Black")
+    }
   }
 }

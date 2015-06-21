@@ -16,7 +16,6 @@ mod zobrist;
 mod cell;
 mod field;
 mod uct;
-mod uct_log;
 mod bot;
 
 use std::io;
@@ -28,7 +27,6 @@ use log4rs::toml::Creator;
 use types::{Coord, Time};
 use player::Player;
 use bot::Bot;
-use uct_log::UctLog;
 
 fn write_author<T: Write>(output: &mut T, id: u32) {
   output.write_all("= ".as_bytes()).ok();
@@ -368,16 +366,6 @@ fn main() {
       }
     } else {
       write_error(&mut output, 0);
-    }
-    let uct_str = "uct";
-    if let Some(bot) = bot_option.as_mut() {
-      for uct_log in bot.uct_log() {
-        match uct_log {
-          &UctLog::BestMove(x, y, uct) => info!(target: uct_str, "Best move is ({0}, {1}), uct is {2}.", x, y, uct),
-          &UctLog::Estimation(x, y, uct, wins, draws, visits) => info!(target: uct_str, "Uct for move ({0}, {1}) is {2}, {3} wins, {4} draws, {5} visits.", x, y, uct, wins, draws, visits)
-        }
-      }
-      bot.clear_logs();
     }
   }
 }
