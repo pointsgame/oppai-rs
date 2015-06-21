@@ -21,7 +21,6 @@ mod bot;
 use std::io;
 use std::io::{Write, BufReader, BufRead};
 use std::str::FromStr;
-use std::string::ToString;
 use std::path::Path;
 use log4rs::toml::Creator;
 use types::{Coord, Time};
@@ -29,177 +28,103 @@ use player::Player;
 use bot::Bot;
 
 fn write_author<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" author kurnevsky_evgeny\n".as_bytes()).ok();
+  writeln!(output, "= {0} author kurnevsky_evgeny", id).ok();
 }
 
 fn write_author_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" author\n".as_bytes()).ok();
+  writeln!(output, "? {0} author", id).ok();
 }
 
 fn write_init<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" init\n".as_bytes()).ok();
+  writeln!(output, "= {0} init", id).ok();
 }
 
 fn write_init_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" init\n".as_bytes()).ok();
+  writeln!(output, "? {0} init", id).ok();
 }
 
 fn write_gen_move<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" gen_move ".as_bytes()).ok();
-  output.write_all(x.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all(y.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all((player.to_bool() as u8).to_string().as_bytes()).ok();
-  output.write_all("\n".as_bytes()).ok();
+  writeln!(output, "= {0} gen_move {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
 }
 
 fn write_gen_move_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" gen_move\n".as_bytes()).ok();
+  writeln!(output, "? {0} gen_move", id).ok();
 }
 
 fn write_gen_move_with_complexity<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" gen_move_with_complexity ".as_bytes()).ok();
-  output.write_all(x.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all(y.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all((player.to_bool() as u8).to_string().as_bytes()).ok();
-  output.write_all("\n".as_bytes()).ok();
+  writeln!(output, "= {0} gen_move_with_complexity {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
 }
 
 fn write_gen_move_with_complexity_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" gen_move_with_complexity\n".as_bytes()).ok();
+  writeln!(output, "? {0} gen_move_with_complexity", id).ok();
 }
 
 fn write_gen_move_with_time<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" gen_move_with_time ".as_bytes()).ok();
-  output.write_all(x.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all(y.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all((player.to_bool() as u8).to_string().as_bytes()).ok();
-  output.write_all("\n".as_bytes()).ok();
+  writeln!(output, "= {0} gen_move_with_time {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
 }
 
 fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" gen_move_with_time\n".as_bytes()).ok();
+  writeln!(output, "? {0} gen_move_with_time", id).ok();
 }
 
 fn write_license<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" license GPL3\n".as_bytes()).ok();
+  writeln!(output, "= {0} license GPL3", id).ok();
 }
 
 fn write_license_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" license\n".as_bytes()).ok();
+  writeln!(output, "? {0} license", id).ok();
 }
 
 fn write_list_commands<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" list_commands gen_move gen_move_with_complexity gen_move_with_time init list_commands name play quit undo version\n".as_bytes()).ok();
+  writeln!(output, "= {0} list_commands gen_move gen_move_with_complexity gen_move_with_time init list_commands name play quit undo version", id).ok();
 }
 
 fn write_list_commands_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" list_commands\n".as_bytes()).ok();
+  writeln!(output, "? {0} list_commands", id).ok();
 }
 
 fn write_name<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" name opai-rust\n".as_bytes()).ok();
+  writeln!(output, "= {0} name opai-rust", id).ok();
 }
 
 fn write_name_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" name\n".as_bytes()).ok();
+  writeln!(output, "? {0} name", id).ok();
 }
 
 fn write_play<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" play ".as_bytes()).ok();
-  output.write_all(x.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all(y.to_string().as_bytes()).ok();
-  output.write_all(" ".as_bytes()).ok();
-  output.write_all((player.to_bool() as u8).to_string().as_bytes()).ok();
-  output.write_all("\n".as_bytes()).ok();
+  writeln!(output, "= {0} play {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
 }
 
 fn write_play_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" play\n".as_bytes()).ok();
+  writeln!(output, "? {0} play", id).ok();
 }
 
 fn write_quit<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" quit\n".as_bytes()).ok();
+  writeln!(output, "= {0} quit", id).ok();
 }
 
 fn write_quit_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" quit\n".as_bytes()).ok();
+  writeln!(output, "? {0} quit", id).ok();
 }
 
 fn write_undo<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" undo\n".as_bytes()).ok();
+  writeln!(output, "= {0} undo", id).ok();
 }
 
 fn write_undo_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" undo\n".as_bytes()).ok();
+  writeln!(output, "? {0} undo", id).ok();
 }
 
 fn write_version<T: Write>(output: &mut T, id: u32) {
-  output.write_all("= ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" version 4.0.0\n".as_bytes()).ok();
+  writeln!(output, "= {0} version 4.0.0", id).ok();
 }
 
 fn write_version_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" version\n".as_bytes()).ok();
+  writeln!(output, "? {0} version", id).ok();
 }
 
 fn write_error<T: Write>(output: &mut T, id: u32) {
-  output.write_all("? ".as_bytes()).ok();
-  output.write_all(id.to_string().as_bytes()).ok();
-  output.write_all(" input_error\n".as_bytes()).ok();
+  writeln!(output, "? {0} input_error", id).ok();
 }
 
 fn main() {
@@ -337,6 +262,7 @@ fn main() {
             write_quit_error(&mut output, id);
           } else {
             write_quit(&mut output, id);
+            output.flush().ok();
             break;
           }
         },
@@ -367,5 +293,6 @@ fn main() {
     } else {
       write_error(&mut output, 0);
     }
+    output.flush().ok();
   }
 }
