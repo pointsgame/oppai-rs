@@ -17,7 +17,7 @@ static TAG_BIT: CellValue = 64;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Cell { 
-  value: CellValue
+  pub value: CellValue
 }
 
 impl Cell {

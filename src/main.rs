@@ -18,6 +18,9 @@ mod field;
 mod uct;
 mod bot;
 
+#[cfg(test)]
+mod field_test;
+
 use std::io;
 use std::io::{Write, BufReader, BufRead};
 use std::str::FromStr;
