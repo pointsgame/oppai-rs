@@ -415,9 +415,9 @@ impl UctRoot {
     }
     if let Some(player_random_result) = random_result {
       if player_random_result == player {
-        node.add_win();
-      } else {
         node.add_loose();
+      } else {
+        node.add_win();
       }
     } else {
       node.add_draw();
