@@ -369,6 +369,7 @@ impl UctRoot {
         if wins == usize::max_value() {
           return Some(next_node);
         } else {
+          next = next_node.get_sibling_ref();
           continue;
         }
       } else if visits == 0 {

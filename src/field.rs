@@ -727,18 +727,17 @@ impl Field {
   }
 
   pub fn undo(&mut self) -> bool {
-    match self.changes.pop() {
-      Some(change) => {
-        self.points_seq.pop();
-        self.score_red = change.score_red;
-        self.score_black = change.score_black;
-        self.hash = change.hash;
-        for (pos, cell) in change.points_changes.into_iter().rev() {
-          self.points[pos] = cell;
-        }
-        true
-      },
-      None => false
+    if let Some(change) = self.changes.pop() {
+      self.points_seq.pop();
+      self.score_red = change.score_red;
+      self.score_black = change.score_black;
+      self.hash = change.hash;
+      for (pos, cell) in change.points_changes.into_iter().rev() {
+        self.points[pos] = cell;
+      }
+      true
+    } else {
+      false
     }
   }
 
