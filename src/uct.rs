@@ -180,7 +180,7 @@ impl UctRoot {
   }
 
   fn init(&mut self, field: &Field, player: Player) {
-    info!(target: UCT_STR, "Initialization.");
+    debug!(target: UCT_STR, "Initialization.");
     self.node = Some(Box::new(UctNode::new(0)));
     self.player = player;
     self.moves_count = field.moves_count();
@@ -231,7 +231,7 @@ impl UctRoot {
     if self.node.is_none() {
       self.init(field, player);
     } else {
-      info!(target: UCT_STR, "Updation.");
+      debug!(target: UCT_STR, "Updation.");
       let points_seq = field.points_seq();
       let moves_count = field.moves_count();
       loop {
@@ -239,7 +239,7 @@ impl UctRoot {
           break;
         }
         let next_pos = points_seq[self.moves_count];
-        info!(target: UCT_STR, "Next move is ({0}, {1}), player {2}.", field.to_x(next_pos), field.to_y(next_pos), self.player);
+        debug!(target: UCT_STR, "Next move is ({0}, {1}), player {2}.", field.to_x(next_pos), field.to_y(next_pos), self.player);
         if !field.is_players_point(next_pos, self.player) {
           self.clear();
           self.init(field, player);
@@ -251,7 +251,7 @@ impl UctRoot {
         }
         if let Some(ref mut node) = next {
           let pos = node.get_pos();
-          info!(target: UCT_STR, "Node found for move ({0}, {1}).", field.to_x(pos), field.to_y(pos));
+          debug!(target: UCT_STR, "Node found for move ({0}, {1}).", field.to_x(pos), field.to_y(pos));
           node.clear_sibling();
         } else {
           self.clear();
@@ -504,6 +504,4 @@ impl UctRoot {
     drop(guard);
     result
   }
-
-  //pub fn estimates
 }
