@@ -36,50 +36,62 @@ pub struct Field {
   hash: u64
 }
 
+#[inline]
 pub fn length(width: Coord, height: Coord) -> Pos {
   (width as Pos + 2) * (height as Pos + 2)
 }
 
+#[inline]
 pub fn to_pos(width: Coord, x: Coord, y: Coord) -> Pos {
   (y as Pos + 1) * (width as Pos + 2) + x as Pos + 1
 }
 
+#[inline]
 pub fn to_x(width: Coord, pos: Pos) -> Coord {
   (pos % (width as Pos + 2) - 1) as Coord
 }
 
+#[inline]
 pub fn to_y(width: Coord, pos: Pos) -> Coord {
   (pos / (width as Pos + 2) - 1) as Coord
 }
 
+#[inline]
 pub fn n(width: Coord, pos: Pos) -> Pos {
   pos - width as Pos - 2
 }
 
+#[inline]
 pub fn s(width: Coord, pos: Pos) -> Pos {
   pos + width as Pos + 2
 }
 
+#[inline]
 pub fn w(pos: Pos) -> Pos {
   pos - 1
 }
 
+#[inline]
 pub fn e(pos: Pos) -> Pos {
   pos + 1
 }
 
+#[inline]
 pub fn nw(width: Coord, pos: Pos) -> Pos {
   n(width, w(pos))
 }
 
+#[inline]
 pub fn ne(width: Coord, pos: Pos) -> Pos {
   n(width, e(pos))
 }
 
+#[inline]
 pub fn sw(width: Coord, pos: Pos) -> Pos {
   s(width, w(pos))
 }
 
+#[inline]
 pub fn se(width: Coord, pos: Pos) -> Pos {
   s(width, e(pos))
 }
@@ -148,6 +160,7 @@ pub fn is_point_inside_ring(width: Coord, pos: Pos, ring: &LinkedList<Pos>) -> b
   intersections % 2 == 1
 }
 
+#[inline]
 pub fn square(width: Coord, pos1: Pos, pos2: Pos) -> CoordSquare {
   to_x(width, pos1) as CoordSquare * to_y(width, pos2) as CoordSquare - to_y(width, pos1) as CoordSquare * to_x(width, pos2) as CoordSquare
 }
@@ -183,191 +196,238 @@ pub fn wave<F: FnMut(Pos) -> bool>(width: Coord, start_pos: Pos, mut cond: F) {
   }
 }
 
+#[inline]
 pub fn manhattan(width: Coord, pos1: Pos, pos2: Pos) -> CoordSum {
   (CoordDiff::abs(to_x(width, pos1) as CoordDiff - to_x(width, pos2) as CoordDiff) + CoordDiff::abs(to_y(width, pos1) as CoordDiff - to_y(width, pos2) as CoordDiff)) as CoordSum
 }
 
 impl Field {
+  #[inline]
   pub fn length(&self) -> Pos {
     self.length
   }
 
+  #[inline]
   pub fn to_pos(&self, x: Coord, y: Coord) -> Pos {
     to_pos(self.width, x, y)
   }
 
+  #[inline]
   pub fn to_x(&self, pos: Pos) -> Coord {
     to_x(self.width, pos)
   }
 
+  #[inline]
   pub fn to_y(&self, pos: Pos) -> Coord {
     to_y(self.width, pos)
   }
 
+  #[inline]
   pub fn n(&self, pos: Pos) -> Pos {
     n(self.width, pos)
   }
 
+  #[inline]
   pub fn s(&self, pos: Pos) -> Pos {
     s(self.width, pos)
   }
 
+  #[inline]
   pub fn w(&self, pos: Pos) -> Pos {
     w(pos)
   }
 
+  #[inline]
   pub fn e(&self, pos: Pos) -> Pos {
     e(pos)
   }
 
+  #[inline]
   pub fn nw(&self, pos: Pos) -> Pos {
     nw(self.width, pos)
   }
 
+  #[inline]
   pub fn ne(&self, pos: Pos) -> Pos {
     ne(self.width, pos)
   }
 
+  #[inline]
   pub fn sw(&self, pos: Pos) -> Pos {
     sw(self.width, pos)
   }
 
+  #[inline]
   pub fn se(&self, pos: Pos) -> Pos {
     se(self.width, pos)
   }
 
-  pub fn min_pos(&self) -> Pos {
+  #[inline]
+  pub fn min_pos(&self) -> Pos { //TODO: make static.
     self.to_pos(0, 0)
   }
 
-  pub fn max_pos(&self) -> Pos {
+  #[inline]
+  pub fn max_pos(&self) -> Pos { //TODO: make static.
     self.to_pos(self.width - 1, self.height - 1)
   }
 
+  #[inline]
   pub fn is_near(&self, pos1: Pos, pos2: Pos) -> bool {
     is_near(self.width, pos1, pos2)
   }
 
+  #[inline]
   fn get_player(&self, pos: Pos) -> Player {
     self.points[pos].get_player()
   }
 
+  #[inline]
   fn set_player(&mut self, pos: Pos, player: Player) {
     self.points[pos].set_player(player)
   }
 
+  #[inline]
   pub fn is_put(&self, pos: Pos) -> bool {
     self.points[pos].is_put()
   }
 
+  #[inline]
   fn set_put(&mut self, pos: Pos) {
     self.points[pos].set_put()
   }
 
+  #[inline]
   fn clear_put(&mut self, pos: Pos) {
     self.points[pos].clear_put()
   }
 
+  #[inline]
   pub fn is_captured(&self, pos: Pos) -> bool {
     self.points[pos].is_captured()
   }
 
+  #[inline]
   fn set_captured(&mut self, pos: Pos) {
     self.points[pos].set_captured()
   }
 
+  #[inline]
   fn clear_captured(&mut self, pos: Pos) {
     self.points[pos].clear_captured()
   }
 
+  #[inline]
   pub fn is_bound(&self, pos: Pos) -> bool {
     self.points[pos].is_bound()
   }
 
+  #[inline]
   fn set_bound(&mut self, pos: Pos) {
     self.points[pos].set_bound()
   }
 
+  #[inline]
   fn clear_bound(&mut self, pos: Pos) {
     self.points[pos].clear_bound()
   }
 
+  #[inline]
   pub fn is_empty_base(&self, pos: Pos) -> bool {
     self.points[pos].is_empty_base()
   }
 
+  #[inline]
   fn set_empty_base(&mut self, pos: Pos) {
     self.points[pos].set_empty_base()
   }
 
+  #[inline]
   fn clear_empty_base(&mut self, pos: Pos) {
     self.points[pos].clear_empty_base()
   }
 
+  #[inline]
   pub fn is_bad(&self, pos: Pos) -> bool {
     self.points[pos].is_bad()
   }
 
+  #[inline]
   pub fn set_bad(&mut self, pos: Pos) {
     self.points[pos].set_bad()
   }
 
+  #[inline]
   pub fn clear_bad(&mut self, pos: Pos) {
     self.points[pos].clear_bad()
   }
 
+  #[inline]
   pub fn is_tagged(&self, pos: Pos) -> bool {
     self.points[pos].is_tagged()
   }
 
+  #[inline]
   pub fn set_tag(&mut self, pos: Pos) {
     self.points[pos].set_tag()
   }
 
+  #[inline]
   pub fn clear_tag(&mut self, pos: Pos) {
     self.points[pos].clear_tag()
   }
 
+  #[inline]
   pub fn get_owner(&self, pos: Pos) -> Option<Player> {
     self.points[pos].get_owner()
   }
 
+  #[inline]
   pub fn is_owner(&self, pos: Pos, player: Player) -> bool {
     self.points[pos].is_owner(player)
   }
 
+  #[inline]
   pub fn get_players_point(&self, pos: Pos) -> Option<Player> {
     self.points[pos].get_players_point()
   }
 
+  #[inline]
   pub fn is_players_point(&self, pos: Pos, player: Player) -> bool {
     self.points[pos].is_players_point(player)
   }
 
+  #[inline]
   pub fn get_live_players_point(&self, pos: Pos) -> Option<Player> {
     self.points[pos].get_live_players_point()
   }
 
+  #[inline]
   pub fn is_live_players_point(&self, pos: Pos, player: Player) -> bool {
     self.points[pos].is_live_players_point(player)
   }
 
+  #[inline]
   pub fn get_empty_base_player(&self, pos: Pos) -> Option<Player> {
     self.points[pos].get_empty_base_player()
   }
 
+  #[inline]
   fn just_put_point(&mut self, pos: Pos, player: Player) {
     self.points[pos].put_point(player)
   }
 
+  #[inline]
   fn set_empty_base_player(&mut self, pos: Pos, player: Player) {
     self.points[pos].set_empty_base_player(player)
   }
 
+  #[inline]
   pub fn is_bound_player(&self, pos: Pos, player: Player) -> bool {
     self.points[pos].is_bound_player(player)
   }
 
+  #[inline]
   pub fn is_putting_allowed(&self, pos: Pos) -> bool {
     pos < self.length && self.points[pos].is_putting_allowed()
   }
@@ -431,6 +491,7 @@ impl Field {
     field
   }
 
+  #[inline]
   fn save_pos_value(&mut self, pos: Pos) {
     self.changes.last_mut().unwrap().points_changes.push((pos, self.points[pos]))
   }
@@ -468,10 +529,17 @@ impl Field {
     inp_points
   }
 
+  #[inline]
   fn square(&self, pos1: Pos, pos2: Pos) -> CoordSquare {
     square(self.width, pos1, pos2)
   }
 
+  //  * . .   x . *   . x x   . . .
+  //  . o .   x o .   . o .   . o x
+  //  x x .   . . .   . . *   * . x
+  //  o - center pos
+  //  x - pos
+  //  * - result
   fn get_first_next_pos(&self, center_pos: Pos, pos: Pos) -> Pos {
     if pos < center_pos {
       if pos == self.nw(center_pos) || pos == self.w(center_pos) {
@@ -488,6 +556,12 @@ impl Field {
     }
   }
 
+  //  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
+  //  * o .   x o .   . o .   . o .   . o *   . o x   . o .   . o .
+  //  x . .   . . .   . . .   . . .   . . .   . . *   . * x   * x .
+  //  o - center pos
+  //  x - pos
+  //  * - result
   fn get_next_pos(&self, center_pos: Pos, pos: Pos) -> Pos {
     if pos < center_pos {
       if pos == self.nw(center_pos) {
@@ -546,10 +620,12 @@ impl Field {
     }
   }
 
+  #[inline]
   pub fn is_point_inside_ring(&self, pos: Pos, ring: &LinkedList<Pos>) -> bool {
     is_point_inside_ring(self.width, pos, ring)
   }
 
+  #[inline]
   fn update_hash(&mut self, pos: Pos, player: Player) {
     if player == Player::Red {
       self.hash ^= self.zobrist.get_hash(pos);
@@ -658,6 +734,7 @@ impl Field {
     }
   }
 
+  #[inline]
   fn remove_empty_base(&mut self, start_pos: Pos) {
     wave(self.width, start_pos, |pos| {
       if self.is_empty_base(pos) {
@@ -740,18 +817,22 @@ impl Field {
     }
   }
 
+  #[inline]
   pub fn moves_count(&self) -> usize {
     self.points_seq.len()
   }
 
+  #[inline]
   pub fn points_seq(&self) -> &Vec<Pos> {
     &self.points_seq
   }
 
+  #[inline]
   pub fn hash(&self) -> u64 {
     self.hash
   }
 
+  #[inline]
   pub fn hash_at(&self, move_number: usize) -> Option<u64> {
     let moves_count = self.moves_count();
     if move_number < moves_count {
@@ -763,22 +844,27 @@ impl Field {
     }
   }
 
+  #[inline]
   pub fn last_player(&self) -> Option<Player> {
     self.points_seq.last().map(|&pos| self.get_player(pos))
   }
 
+  #[inline]
   pub fn width(&self) -> Coord {
     self.width
   }
 
+  #[inline]
   pub fn height(&self) -> Coord {
     self.height
   }
 
+  #[inline]
   pub fn cur_player(&self) -> Player {
     self.last_player().unwrap_or(Player::Black).next()
   }
 
+  #[inline]
   pub fn captured_count(&self, player: Player) -> Score {
     match player {
       Player::Red => self.score_red,
@@ -786,6 +872,7 @@ impl Field {
     }
   }
 
+  #[inline]
   pub fn score(&self, player: Player) -> Score {
     match player {
       Player::Red => self.score_red - self.score_black,
@@ -793,6 +880,7 @@ impl Field {
     }
   }
 
+  #[inline]
   pub fn get_delta_score(&self, player: Player) -> Score {
     self.score(player) - self.changes.last().map_or(0, |change| {
       match player {
