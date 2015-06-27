@@ -289,6 +289,7 @@ impl UctRoot {
         UctRoot::expand_node(self.node.as_mut().unwrap(), &added_moves);
         self.moves_count += 1;
         self.player = self.player.next();
+        self.hash = field.hash();
       }
     }
   }
