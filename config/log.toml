@@ -8,7 +8,17 @@ kind = "file"
 path = "log/uct.log"
 pattern = "%d [%t] %m"
 
+[appender.bot]
+kind = "file"
+path = "log/bot.log"
+pattern = "%d [%t] %m"
+
 [[logger]]
 name = "uct"
-level = "info"
+level = "debug"
 appenders = ["uct", "all"]
+
+[[logger]]
+name = "bot"
+level = "debug"
+appenders = ["bot", "all"]

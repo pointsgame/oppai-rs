@@ -7,6 +7,8 @@ use field;
 use field::Field;
 use uct::UctRoot;
 
+static BOT_STR: &'static str = "bot";
+
 static MIN_COMPLEXITY: u8 = 0;
 
 static MAX_COMPLEXITY: u8 = 100;
@@ -24,6 +26,7 @@ pub struct Bot {
 
 impl Bot {
   pub fn new(width: Coord, height: Coord, seed: u64) -> Bot {
+    info!(target: BOT_STR, "Initialization with width {0}, height {1}, seed {2}.", width, height, seed);
     let length = field::length(width, height);
     let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
     let mut rng = XorShiftRng::from_seed(seed_array);
