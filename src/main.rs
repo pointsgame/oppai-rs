@@ -175,7 +175,7 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_error(&mut output, id);
           } else if let (Some(player), Some(bot)) = (player_option, bot_option.as_mut()) {
-            if let Some((x, y)) = bot.best_move_with_time(player, 15000) {
+            if let Some((x, y)) = bot.best_move(player) {
               write_gen_move(&mut output, id, x, y, player);
             } else {
               write_gen_move_error(&mut output, id);

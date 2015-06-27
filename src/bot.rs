@@ -7,6 +7,14 @@ use field;
 use field::Field;
 use uct::UctRoot;
 
+static MIN_COMPLEXITY: u8 = 0;
+
+static MAX_COMPLEXITY: u8 = 100;
+
+static MIN_UCT_ITERATIONS: usize = 0;
+
+static MAX_UCT_ITERATIONS: usize = 500000;
+
 pub struct Bot {
   rng: XorShiftRng,
   zobrist: Arc<Zobrist>,
@@ -28,12 +36,17 @@ impl Bot {
     }
   }
 
+  pub fn best_move(&mut self, player: Player) -> Option<(Coord, Coord)> {
+    self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
+  }
+
   pub fn best_move_with_time(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
     self.uct.best_move_with_time(&self.field, player, &mut self.rng, time).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u8) -> Option<(Coord, Coord)> {
-    self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, 250000).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+    let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS) / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize + MIN_UCT_ITERATIONS;
+    self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn put_point(&mut self, x: Coord, y: Coord, player: Player) -> bool {
