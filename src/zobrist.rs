@@ -1,5 +1,5 @@
-use types::*;
-use rand::*;
+use types::Pos;
+use rand::Rng;
 
 #[derive(Clone)]
 pub struct Zobrist {

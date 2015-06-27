@@ -1,11 +1,12 @@
-use std::*;
-use std::iter::*;
+use std::{ptr, thread, mem, iter};
 use std::sync::atomic::*;
 use rand::{Rng, XorShiftRng};
-use types::*;
-use config::*;
-use player::*;
-use field::*;
+use types::{Pos, CoordProd, Time, Depth};
+use config;
+use config::UcbType;
+use player::Player;
+use field;
+use field::Field;
 
 static UCT_STR: &'static str = "uct";
 
@@ -186,11 +187,11 @@ impl UctRoot {
     self.hash = field.hash();
     let width = field.width();
     for &start_pos in field.points_seq() {
-      wave(width, start_pos, |pos| {
+      field::wave(width, start_pos, |pos| {
         if pos == start_pos && self.moves_field[pos] == 0 {
           self.moves_field[pos] = 1;
           true
-        } else if self.moves_field[pos] != start_pos && field.is_putting_allowed(pos) && manhattan(width, start_pos, pos) <= UCT_RADIUS {
+        } else if self.moves_field[pos] != start_pos && field.is_putting_allowed(pos) && field::manhattan(width, start_pos, pos) <= config::uct_radius() {
           if self.moves_field[pos] == 0 {
             self.moves.push(pos);
           }
@@ -270,11 +271,11 @@ impl UctRoot {
         });
         let mut added_moves = Vec::new();
         let width = field.width();
-        wave(width, next_pos, |pos| {
+        field::wave(width, next_pos, |pos| {
           if pos == next_pos && moves_field[pos] == 0 {
             moves_field[pos] = 1;
             true
-          } else if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && manhattan(width, next_pos, pos) <= UCT_RADIUS {
+          } else if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && field::manhattan(width, next_pos, pos) <= config::uct_radius() {
             if moves_field[pos] == 0 && pos != next_pos {
               moves.push(pos);
               added_moves.push(pos);
@@ -298,7 +299,7 @@ impl UctRoot {
     UctRoot {
       node: None,
       moves: Vec::with_capacity(length),
-      moves_field: repeat(0).take(length).collect(),
+      moves_field: iter::repeat(0).take(length).collect(),
       player: Player::Red,
       moves_count: 0,
       hash: 0
@@ -334,12 +335,14 @@ impl UctRoot {
     let draws = node.get_draws() as f32;
     let visits = node.get_visits() as f32;
     let parent_visits = parent.get_visits() as f32;
-    let win_rate = (wins + draws * UCT_DRAW_WEIGHT) / visits;
-    let uct = match UCB_TYPE {
-      UcbType::Ucb1 => UCTK * f32::sqrt(2.0 * f32::ln(parent_visits) / visits),
+    let uct_draw_weight = config::uct_draw_weight();
+    let uctk = config::uctk();
+    let win_rate = (wins + draws * uct_draw_weight) / visits;
+    let uct = match config::ucb_type() {
+      UcbType::Ucb1 => uctk * f32::sqrt(2.0 * f32::ln(parent_visits) / visits),
       UcbType::Ucb1Tuned => {
-        let v = (wins + draws * UCT_DRAW_WEIGHT * UCT_DRAW_WEIGHT) / visits - win_rate * win_rate + f32::sqrt(2.0 * f32::ln(parent_visits) / visits);
-        UCTK * f32::sqrt(v.min(0.25) * f32::ln(parent_visits) / visits)
+        let v = (wins + draws * uct_draw_weight * uct_draw_weight) / visits - win_rate * win_rate + f32::sqrt(2.0 * f32::ln(parent_visits) / visits);
+        uctk * f32::sqrt(v.min(0.25) * f32::ln(parent_visits) / visits)
       }
     };
     win_rate + uct
@@ -388,7 +391,7 @@ impl UctRoot {
 
   fn play_simulation_rec<T: Rng>(field: &mut Field, player: Player, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, depth: Depth) -> Option<Player> {
     let mut random_result;
-    if node.get_visits() < UCT_WHEN_CREATE_CHILDREN || depth == UCT_DEPTH {
+    if node.get_visits() < config::uct_when_create_children() || depth == config::uct_depth() {
       random_result = UctRoot::play_random_game(field, player, rng, possible_moves);
     } else {
       if node.get_child_ref().is_none() {
@@ -432,8 +435,9 @@ impl UctRoot {
 
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
     self.update(field, player);
-    let mut guards = Vec::with_capacity(4);
-    for _ in 0 .. 4 {
+    let threads_count = config::threads_count();
+    let mut guards = Vec::with_capacity(threads_count);
+    for _ in 0 .. threads_count {
       let xor_shift_rng = rng.gen::<XorShiftRng>();
       guards.push(thread::scoped(|| {
         let mut local_field = field.clone();

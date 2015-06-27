@@ -9,6 +9,8 @@ extern crate log;
 
 extern crate log4rs;
 
+extern crate num_cpus;
+
 mod types;
 mod config;
 mod player;
@@ -132,6 +134,7 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 
 fn main() {
   log4rs::init_file(Path::new("config/log.toml"), Creator::default()).ok();
+  config::init();
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();
   let mut bot_option = None;

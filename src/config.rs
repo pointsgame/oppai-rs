@@ -1,18 +1,63 @@
-use types::*;
+use num_cpus;
+use types::{CoordSum, Depth};
 
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum UcbType {
   Ucb1,
   Ucb1Tuned
 }
 
-pub static UCT_RADIUS: CoordSum = 3;
+static UCT_RADIUS: CoordSum = 3;
 
-pub static UCB_TYPE: UcbType = UcbType::Ucb1Tuned;
+static UCB_TYPE: UcbType = UcbType::Ucb1Tuned;
 
-pub static UCT_DRAW_WEIGHT: f32 = 0.4;
+static UCT_DRAW_WEIGHT: f32 = 0.4;
 
-pub static UCTK: f32 = 1.0;
+static UCTK: f32 = 1.0;
 
-pub static UCT_WHEN_CREATE_CHILDREN: usize = 2;
+static UCT_WHEN_CREATE_CHILDREN: usize = 2;
 
-pub static UCT_DEPTH: Depth = 8;
+static UCT_DEPTH: Depth = 8;
+
+static mut THREADS_COUNT: usize = 4;
+
+pub fn init() {
+  unsafe {
+    THREADS_COUNT = num_cpus::get();
+  }
+}
+
+#[inline]
+pub fn uct_radius() -> CoordSum {
+  UCT_RADIUS
+}
+
+#[inline]
+pub fn ucb_type() -> UcbType {
+  UCB_TYPE
+}
+
+#[inline]
+pub fn uct_draw_weight() -> f32 {
+  UCT_DRAW_WEIGHT
+}
+
+#[inline]
+pub fn uctk() -> f32 {
+  UCTK
+}
+
+#[inline]
+pub fn uct_when_create_children() -> usize {
+  UCT_WHEN_CREATE_CHILDREN
+}
+
+#[inline]
+pub fn uct_depth() -> Depth {
+  UCT_DEPTH
+}
+
+#[inline]
+pub fn threads_count() -> usize {
+  unsafe { THREADS_COUNT }
+}

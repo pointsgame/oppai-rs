@@ -1,6 +1,5 @@
+use std::{mem, iter};
 use std::collections::LinkedList;
-use std::iter;
-use std::mem;
 use std::sync::Arc;
 use types::{Pos, Coord, CoordDiff, CoordSquare, CoordSum, Score};
 use player::Player;

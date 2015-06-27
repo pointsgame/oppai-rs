@@ -9,6 +9,7 @@ rand = "0.3.8"
 time = "0.1.26"
 log = "0.3.1"
 log4rs = "0.3.3"
+num_cpus = "0.2.6"
 
 [profile.dev]
 opt-level = 0

@@ -1,5 +1,5 @@
-use types::*;
-use player::*;
+use types::CellValue;
+use player::Player;
 
 static PLAYER_BIT: CellValue = 1;
 
