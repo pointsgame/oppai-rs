@@ -389,6 +389,29 @@ impl UctRoot {
     result
   }
 
+  fn is_last_move_stupid(field: &Field, pos: Pos, player: Player) -> bool {
+    let delta_score = field.get_delta_score(player);
+    delta_score < 0 || delta_score == 0 && {
+      let enemy = player.next();
+      let mut enemies_around = 0u8;
+      if field.is_players_point(field.n(pos), enemy) {
+        enemies_around += 1;
+      }
+      if field.is_players_point(field.s(pos), enemy) {
+        enemies_around += 1;
+      }
+      if field.is_players_point(field.w(pos), enemy) {
+        enemies_around += 1;
+      }
+      if field.is_players_point(field.e(pos), enemy) {
+        enemies_around += 1;
+      }
+      enemies_around == 3
+    } && {
+      !field.is_bad(field.n(pos)) && !field.is_bad(field.s(pos)) && !field.is_bad(field.w(pos)) && !field.is_bad(field.e(pos))
+    }
+  }
+
   fn play_simulation_rec<T: Rng>(field: &mut Field, player: Player, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, depth: Depth) -> Option<Player> {
     let mut random_result;
     if node.get_visits() < config::uct_when_create_children() || depth == config::uct_depth() {
@@ -398,8 +421,9 @@ impl UctRoot {
         UctRoot::create_children(field, possible_moves, node);
       }
       if let Some(next) = UctRoot::uct_select(node) {
-        field.put_point(next.get_pos(), player);
-        if field.get_delta_score(player) < 0 {
+        let pos = next.get_pos();
+        field.put_point(pos, player);
+        if UctRoot::is_last_move_stupid(field, pos, player) {
           field.undo();
           next.loose_node();
           return UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, depth);

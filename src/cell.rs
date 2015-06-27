@@ -3,7 +3,7 @@ use player::Player;
 
 static PLAYER_BIT: CellValue = 1;
 
-static PUTTED_BIT: CellValue = 2;
+static PUT_BIT: CellValue = 2;
 
 static CAPTURED_BIT: CellValue = 4;
 
@@ -36,15 +36,15 @@ impl Cell {
   }
 
   pub fn is_put(self) -> bool {
-    self.value & PUTTED_BIT != 0
+    self.value & PUT_BIT != 0
   }
 
   pub fn set_put(&mut self) {
-    self.value |= PUTTED_BIT
+    self.value |= PUT_BIT
   }
 
   pub fn clear_put(&mut self) {
-    self.value &= !PUTTED_BIT
+    self.value &= !PUT_BIT
   }
 
   pub fn is_captured(self) -> bool {
@@ -157,7 +157,7 @@ impl Cell {
 
   pub fn put_point(&mut self, player: Player) {
     self.set_player(player);
-    self.value |= PUTTED_BIT
+    self.value |= PUT_BIT
   }
 
   pub fn set_empty_base_player(&mut self, player: Player) {
