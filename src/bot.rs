@@ -28,8 +28,12 @@ impl Bot {
     }
   }
 
-  pub fn best_move(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
-    self.uct.best_move(&self.field, player, &mut self.rng, time).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+  pub fn best_move_with_time(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
+    self.uct.best_move_with_time(&self.field, player, &mut self.rng, time).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+  }
+
+  pub fn best_move_with_complexity(&mut self, player: Player, complexity: u8) -> Option<(Coord, Coord)> {
+    self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, 250000).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn put_point(&mut self, x: Coord, y: Coord, player: Player) -> bool {

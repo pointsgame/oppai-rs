@@ -457,9 +457,10 @@ impl UctRoot {
     UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, 0);
   }
 
-  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool) -> Option<Pos> {
+  fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, max_iterations_count: usize) -> Option<Pos> {
     self.update(field, player);
     let threads_count = config::threads_count();
+    let iterations = AtomicUsize::new(0);
     let mut guards = Vec::with_capacity(threads_count);
     for _ in 0 .. threads_count {
       let xor_shift_rng = rng.gen::<XorShiftRng>();
@@ -467,12 +468,14 @@ impl UctRoot {
         let mut local_field = field.clone();
         let mut local_rng = xor_shift_rng;
         let mut possible_moves = self.moves.clone();
-        while !should_stop.load(Ordering::Relaxed) {
+        while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
           UctRoot::play_simulation(&mut local_field, player, self.node.as_ref().unwrap(), &mut possible_moves, &mut local_rng);
+          iterations.fetch_add(1, Ordering::Relaxed);
         }
       }));
     }
     drop(guards);
+    info!(target: UCT_STR, "Iterations count: {0}.", iterations.load(Ordering::Relaxed));
     let mut best_uct = 0f32;
     let mut result = None;
     if let Some(ref root) = self.node {
@@ -494,14 +497,19 @@ impl UctRoot {
     result
   }
 
-  pub fn best_move<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time) -> Option<Pos> {
+  pub fn best_move_with_time<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: Time) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
     let guard = thread::scoped(|| {
       thread::sleep_ms(time);
       should_stop.store(true, Ordering::Relaxed);
     });
-    let result = self.best_move_generic(field, player, rng, &should_stop);
+    let result = self.best_move_generic(field, player, rng, &should_stop, usize::max_value());
     drop(guard);
     result
+  }
+
+  pub fn best_move_with_iterations_count<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, iterations: usize) -> Option<Pos> {
+    let should_stop = AtomicBool::new(false);
+    self.best_move_generic(field, player, rng, &should_stop, iterations)
   }
 }

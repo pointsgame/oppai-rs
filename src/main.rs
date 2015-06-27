@@ -175,7 +175,7 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_error(&mut output, id);
           } else if let (Some(player), Some(bot)) = (player_option, bot_option.as_mut()) {
-            if let Some((x, y)) = bot.best_move(player, 10000) {
+            if let Some((x, y)) = bot.best_move_with_time(player, 15000) {
               write_gen_move(&mut output, id, x, y, player);
             } else {
               write_gen_move_error(&mut output, id);
@@ -193,8 +193,8 @@ fn main() {
           let complexity_option = split.next().and_then(|complexity_str| u8::from_str(complexity_str).ok() );
           if split.next().is_some() {
             write_gen_move_with_complexity_error(&mut output, id);
-          } else if let (Some(player), Some(_), Some(bot)) = (player_option, complexity_option, bot_option.as_mut()) {
-            if let Some((x, y)) = bot.best_move(player, 10000) {
+          } else if let (Some(player), Some(complexity), Some(bot)) = (player_option, complexity_option, bot_option.as_mut()) {
+            if let Some((x, y)) = bot.best_move_with_complexity(player, complexity) {
               write_gen_move_with_complexity(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_complexity_error(&mut output, id);
@@ -213,7 +213,7 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
           } else if let (Some(player), Some(time), Some(bot)) = (player_option, time_option, bot_option.as_mut()) {
-            if let Some((x, y)) = bot.best_move(player, time) {
+            if let Some((x, y)) = bot.best_move_with_time(player, time) {
               write_gen_move_with_time(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_time_error(&mut output, id);
