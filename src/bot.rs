@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use rand::XorShiftRng;
+use rand::{XorShiftRng, SeedableRng};
 use types::{Coord, Time};
 use player::Player;
 use zobrist::Zobrist;
@@ -23,9 +23,10 @@ pub struct Bot {
 }
 
 impl Bot {
-  pub fn new(width: Coord, height: Coord) -> Bot {
+  pub fn new(width: Coord, height: Coord, seed: u64) -> Bot {
     let length = field::length(width, height);
-    let mut rng = XorShiftRng::new_unseeded();
+    let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
+    let mut rng = XorShiftRng::from_seed(seed_array);
     let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
     let field_zobrist = zobrist.clone();
     Bot {

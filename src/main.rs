@@ -156,11 +156,11 @@ fn main() {
         Some("init") => {
           let x_option = split.next().and_then(|x_str| Coord::from_str(x_str).ok());
           let y_option = split.next().and_then(|y_str| Coord::from_str(y_str).ok());
-          let seed_option = split.next();
+          let seed_option = split.next().and_then(|seed_str| u64::from_str(seed_str).ok());
           if split.next().is_some() {
             write_init_error(&mut output, id);
-          } else if let (Some(x), Some(y), Some(_)) = (x_option, y_option, seed_option) {
-            bot_option = Some(Bot::new(x, y));
+          } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
+            bot_option = Some(Bot::new(x, y, seed));
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);
