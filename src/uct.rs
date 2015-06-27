@@ -408,7 +408,7 @@ impl UctRoot {
       }
       enemies_around == 3
     } && {
-      !field.is_bad(field.n(pos)) && !field.is_bad(field.s(pos)) && !field.is_bad(field.w(pos)) && !field.is_bad(field.e(pos))
+      field.is_putting_allowed(field.n(pos)) || field.is_putting_allowed(field.s(pos)) || field.is_putting_allowed(field.w(pos)) || field.is_putting_allowed(field.e(pos))
     }
   }
 
