@@ -21,6 +21,18 @@ static UCT_DEPTH: Depth = 8;
 
 static mut THREADS_COUNT: usize = 4;
 
+static KOMI: bool = false;
+
+static DYNAMIC_KOMI: bool = false;
+
+static UCT_RED: f32 = 0.45;
+
+static UCT_GREEN: f32 = 0.5;
+
+static UCT_KOMI_INTERVAL: usize = 10;
+
+static UCT_KOMI_MIN_ITERATIONS: usize = 1000;
+
 pub fn init() {
   unsafe {
     THREADS_COUNT = num_cpus::get();
@@ -60,4 +72,34 @@ pub fn uct_depth() -> Depth {
 #[inline]
 pub fn threads_count() -> usize {
   unsafe { THREADS_COUNT }
+}
+
+#[inline]
+pub fn komi() -> bool {
+  KOMI
+}
+
+#[inline]
+pub fn dynamic_komi() -> bool {
+  DYNAMIC_KOMI
+}
+
+#[inline]
+pub fn uct_red() -> f32 {
+  UCT_RED
+}
+
+#[inline]
+pub fn uct_green() -> f32 {
+  UCT_GREEN
+}
+
+#[inline]
+pub fn uct_komi_interval() -> usize {
+  UCT_KOMI_INTERVAL
+}
+
+#[inline]
+pub fn uct_komi_min_iterations() -> usize {
+  UCT_KOMI_MIN_ITERATIONS
 }
