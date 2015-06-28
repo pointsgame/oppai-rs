@@ -480,8 +480,10 @@ impl UctRoot {
                 ratched.store(komi, Ordering::Relaxed);
               }
               self.komi.fetch_sub(1, Ordering::Relaxed);
+              info!(target: UCT_STR, "Komi decreased: {0}.", komi - 1);
             } else {
               self.komi.fetch_add(1, Ordering::Relaxed);
+              info!(target: UCT_STR, "Komi increased: {0}.", komi + 1);
             }
           }
         }
@@ -494,6 +496,7 @@ impl UctRoot {
     debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.get_players_point(pos))).collect::<Vec<(Coord, Coord, Option<Player>)>>()); //TODO: remove Option.
     debug!(target: UCT_STR, "Next random u64: {0}.", rng.gen::<u64>());
     self.update(field, player);
+    info!(target: UCT_STR, "Dynamic komi is {0}, {1}.", self.komi.load(Ordering::Relaxed), if config::dynamic_komi() { "enabled" } else { "disabled" });
     let threads_count = config::threads_count();
     let iterations = AtomicUsize::new(0);
     let ratched = AtomicIsize::new(isize::max_value());
