@@ -297,7 +297,9 @@ impl UctRoot {
         self.player = self.player.next();
         self.hash = field.hash();
         self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
-        self.komi_iteration = AtomicUsize::new(self.node.as_ref().unwrap().get_visits());
+      }
+      if let Some(node) = self.node.as_ref() {
+        self.komi_iteration = AtomicUsize::new(node.get_visits());
       }
     }
   }
@@ -462,7 +464,7 @@ impl UctRoot {
 
   fn play_simulation<T: Rng>(&self, field: &mut Field, player: Player, possible_moves: &mut Vec<Pos>, rng: &mut T, ratched: &AtomicIsize) {
     if let Some(node) = self.node.as_ref() {
-      UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, if config::komi() { self.komi.load(Ordering::Relaxed) as Score } else { 0 }, 0);
+      UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, if config::dynamic_komi() { self.komi.load(Ordering::Relaxed) as Score } else { 0 }, 0);
       if config::dynamic_komi() {
         let visits = node.get_visits();
         let win_rate = 1f32 - (node.get_wins() as f32 + node.get_draws() as f32 * config::uct_draw_weight()) / visits as f32;

@@ -21,8 +21,6 @@ static UCT_DEPTH: Depth = 8;
 
 static mut THREADS_COUNT: usize = 4;
 
-static KOMI: bool = false;
-
 static DYNAMIC_KOMI: bool = false;
 
 static UCT_RED: f32 = 0.45;
@@ -72,11 +70,6 @@ pub fn uct_depth() -> Depth {
 #[inline]
 pub fn threads_count() -> usize {
   unsafe { THREADS_COUNT }
-}
-
-#[inline]
-pub fn komi() -> bool {
-  KOMI
 }
 
 #[inline]
