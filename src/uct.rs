@@ -459,7 +459,7 @@ impl UctRoot {
 
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, max_iterations_count: usize) -> Option<Pos> {
     info!(target: UCT_STR, "Generating best move for player {0}.", player);
-    debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos))).collect::<Vec<(Coord, Coord)>>());
+    debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.get_players_point(pos))).collect::<Vec<(Coord, Coord, Option<Player>)>>()); //TODO: remove Option.
     self.update(field, player);
     let threads_count = config::threads_count();
     let iterations = AtomicUsize::new(0);
