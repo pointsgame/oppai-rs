@@ -39,7 +39,7 @@ static UCT_DEPTH: Depth = 8;
 
 static mut THREADS_COUNT: usize = 4;
 
-static UCT_KOMI_TYPE: UctKomiType = UctKomiType::None;
+static UCT_KOMI_TYPE: UctKomiType = UctKomiType::Static;
 
 static UCT_RED: f32 = 0.45;
 
