@@ -3,7 +3,7 @@ use std::sync::atomic::*;
 use rand::{Rng, XorShiftRng};
 use types::{Pos, Coord, CoordProd, Time, Depth, Score};
 use config;
-use config::UcbType;
+use config::{UcbType, UctKomiType};
 use player::Player;
 use field;
 use field::Field;
@@ -189,7 +189,9 @@ impl UctRoot {
     self.player = player;
     self.moves_count = field.moves_count();
     self.hash = field.hash();
-    self.komi = AtomicIsize::new(field.score(player) as isize);
+    if config::uct_komi_type() != UctKomiType::None {
+      self.komi = AtomicIsize::new(field.score(player) as isize);
+    }
     let width = field.width();
     for &start_pos in field.points_seq() {
       field::wave(width, start_pos, |pos| {
@@ -241,6 +243,16 @@ impl UctRoot {
       let moves_count = field.moves_count();
       loop {
         if self.moves_count == moves_count {
+          if self.player != player {
+            self.clear();
+            self.init(field, player);
+          } else if let Some(node) = self.node.as_ref() {
+            match config::uct_komi_type() {
+              UctKomiType::Static => self.komi = AtomicIsize::new(field.score(self.player) as isize),
+              UctKomiType::Dynamic => self.komi_iteration = AtomicUsize::new(node.get_visits()),
+              UctKomiType::None => { }
+            }
+          }
           break;
         }
         let next_pos = points_seq[self.moves_count];
@@ -296,10 +308,9 @@ impl UctRoot {
         self.moves_count += 1;
         self.player = self.player.next();
         self.hash = field.hash();
-        self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
-      }
-      if let Some(node) = self.node.as_ref() {
-        self.komi_iteration = AtomicUsize::new(node.get_visits());
+        if config::uct_komi_type() == UctKomiType::Dynamic {
+          self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
+        }
       }
     }
   }
@@ -465,8 +476,8 @@ impl UctRoot {
 
   fn play_simulation<T: Rng>(&self, field: &mut Field, player: Player, possible_moves: &mut Vec<Pos>, rng: &mut T, ratched: &AtomicIsize) {
     if let Some(node) = self.node.as_ref() {
-      UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, if config::dynamic_komi() { self.komi.load(Ordering::Relaxed) as Score } else { 0 }, 0);
-      if config::dynamic_komi() {
+      UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, self.komi.load(Ordering::Relaxed) as Score, 0);
+      if config::uct_komi_type() == UctKomiType::Dynamic {
         let visits = node.get_visits();
         let win_rate = 1f32 - (node.get_wins() as f32 + node.get_draws() as f32 * config::uct_draw_weight()) / visits as f32;
         let komi_iteration = self.komi_iteration.load(Ordering::Relaxed);
@@ -497,7 +508,7 @@ impl UctRoot {
     debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.get_players_point(pos))).collect::<Vec<(Coord, Coord, Option<Player>)>>()); //TODO: remove Option.
     debug!(target: UCT_STR, "Next random u64: {0}.", rng.gen::<u64>());
     self.update(field, player);
-    info!(target: UCT_STR, "Dynamic komi is {0}, {1}.", self.komi.load(Ordering::Relaxed), if config::dynamic_komi() { "enabled" } else { "disabled" });
+    info!(target: UCT_STR, "Komi is {0}, type is {1}.", self.komi.load(Ordering::Relaxed), config::uct_komi_type());
     let threads_count = config::threads_count();
     let iterations = AtomicUsize::new(0);
     let ratched = AtomicIsize::new(isize::max_value());

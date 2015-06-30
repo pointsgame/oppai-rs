@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter, Result};
 use num_cpus;
 use types::{CoordSum, Depth};
 
@@ -5,6 +6,23 @@ use types::{CoordSum, Depth};
 pub enum UcbType {
   Ucb1,
   Ucb1Tuned
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum UctKomiType {
+  None,
+  Static,
+  Dynamic
+}
+
+impl Display for UctKomiType {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    match self {
+      &UctKomiType::None => write!(f, "None"),
+      &UctKomiType::Static => write!(f, "Static"),
+      &UctKomiType::Dynamic => write!(f, "Dynamic")
+    }
+  }
 }
 
 static UCT_RADIUS: CoordSum = 3;
@@ -21,7 +39,7 @@ static UCT_DEPTH: Depth = 8;
 
 static mut THREADS_COUNT: usize = 4;
 
-static DYNAMIC_KOMI: bool = false;
+static UCT_KOMI_TYPE: UctKomiType = UctKomiType::None;
 
 static UCT_RED: f32 = 0.45;
 
@@ -73,8 +91,8 @@ pub fn threads_count() -> usize {
 }
 
 #[inline]
-pub fn dynamic_komi() -> bool {
-  DYNAMIC_KOMI
+pub fn uct_komi_type() -> UctKomiType {
+  UCT_KOMI_TYPE
 }
 
 #[inline]
