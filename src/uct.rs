@@ -480,10 +480,10 @@ impl UctRoot {
                 ratched.store(komi, Ordering::Relaxed);
               }
               self.komi.fetch_sub(1, Ordering::Relaxed);
-              info!(target: UCT_STR, "Komi decreased after {1} visits: {0}.", komi - 1, visits);
+              info!(target: UCT_STR, "Komi decreased after {1} visits: {0}. Winrate is {2}.", komi - 1, visits, win_rate);
             } else {
               self.komi.fetch_add(1, Ordering::Relaxed);
-              info!(target: UCT_STR, "Komi increased after {1} visits: {0}.", komi + 1, visits);
+              info!(target: UCT_STR, "Komi increased after {1} visits: {0}. Winrate is {2}.", komi + 1, visits, win_rate);
             }
           }
         }
