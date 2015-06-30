@@ -329,13 +329,14 @@ impl UctRoot {
     }
   }
 
-  fn play_random_game<T: Rng>(field: &mut Field, mut player: Player, rng: &mut T, possible_moves: &mut Vec<Pos>, komi: Score) -> Option<Player> {
+  fn play_random_game<T: Rng>(field: &mut Field, player: Player, rng: &mut T, possible_moves: &mut Vec<Pos>, komi: Score) -> Option<Player> {
     rng.shuffle(possible_moves);
     let mut putted: CoordProd = 0;
+    let mut cur_player = player;
     for &pos in possible_moves.iter() {
       if field.is_putting_allowed(pos) && !field.is_empty_base(pos) {
-        field.put_point(pos, player);
-        player = player.next();
+        field.put_point(pos, cur_player);
+        cur_player = cur_player.next();
         putted += 1;
       }
     }
