@@ -45,8 +45,6 @@ static UCT_RED: f32 = 0.45;
 
 static UCT_GREEN: f32 = 0.5;
 
-static UCT_KOMI_INTERVAL: usize = 10;
-
 static UCT_KOMI_MIN_ITERATIONS: usize = 1000;
 
 pub fn init() {
@@ -103,11 +101,6 @@ pub fn uct_red() -> f32 {
 #[inline]
 pub fn uct_green() -> f32 {
   UCT_GREEN
-}
-
-#[inline]
-pub fn uct_komi_interval() -> usize {
-  UCT_KOMI_INTERVAL
 }
 
 #[inline]

@@ -166,7 +166,9 @@ pub struct UctRoot {
   moves_count: usize,
   hash: u64,
   komi: AtomicIsize,
-  komi_iteration: AtomicUsize
+  komi_visits: AtomicUsize,
+  komi_wins: AtomicUsize,
+  komi_draws: AtomicUsize
 }
 
 impl UctRoot {
@@ -180,7 +182,9 @@ impl UctRoot {
     self.moves_count = 0;
     self.hash = 0;
     self.komi = AtomicIsize::new(0);
-    self.komi_iteration = AtomicUsize::new(0);
+    self.komi_visits = AtomicUsize::new(0);
+    self.komi_wins = AtomicUsize::new(0);
+    self.komi_draws = AtomicUsize::new(0);
   }
 
   fn init(&mut self, field: &Field, player: Player) {
@@ -249,7 +253,11 @@ impl UctRoot {
           } else if let Some(node) = self.node.as_ref() {
             match config::uct_komi_type() {
               UctKomiType::Static => self.komi = AtomicIsize::new(field.score(self.player) as isize),
-              UctKomiType::Dynamic => self.komi_iteration = AtomicUsize::new(node.get_visits()),
+              UctKomiType::Dynamic => {
+                self.komi_visits = AtomicUsize::new(node.get_visits());
+                self.komi_wins = AtomicUsize::new(node.get_wins());
+                self.komi_draws = AtomicUsize::new(node.get_draws());
+              },
               UctKomiType::None => { }
             }
           }
@@ -324,7 +332,9 @@ impl UctRoot {
       moves_count: 0,
       hash: 0,
       komi: AtomicIsize::new(0),
-      komi_iteration: AtomicUsize::new(0)
+      komi_visits: AtomicUsize::new(0),
+      komi_wins: AtomicUsize::new(0),
+      komi_draws: AtomicUsize::new(0)
     }
   }
 
@@ -479,23 +489,31 @@ impl UctRoot {
       UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, self.komi.load(Ordering::Relaxed) as Score, 0);
       if config::uct_komi_type() == UctKomiType::Dynamic {
         let visits = node.get_visits();
-        let win_rate = 1f32 - (node.get_wins() as f32 + node.get_draws() as f32 * config::uct_draw_weight()) / visits as f32;
-        let komi_iteration = self.komi_iteration.load(Ordering::Relaxed);
-        let komi = self.komi.load(Ordering::Relaxed);
-        let red = config::uct_red();
-        let green = config::uct_green();
-        if (win_rate < red || win_rate > green && komi < ratched.load(Ordering::Relaxed)) && visits - komi_iteration > komi_iteration / config::uct_komi_interval() && visits > config::uct_komi_min_iterations() {
-          let old_komi_iteration = self.komi_iteration.compare_and_swap(komi_iteration, visits, Ordering::Relaxed);
-          if old_komi_iteration == komi_iteration {
-            if win_rate < red {
-              if komi > 0 {
-                ratched.store(komi - 1, Ordering::Relaxed);
+        let komi_visits = self.komi_visits.load(Ordering::Relaxed);
+        let delta_visits = visits - komi_visits;
+        if delta_visits > config::uct_komi_min_iterations() {
+          let wins = node.get_wins();
+          let delta_wins = wins - self.komi_wins.load(Ordering::Relaxed);
+          let draws = node.get_draws();
+          let delta_draws = draws - self.komi_draws.load(Ordering::Relaxed);
+          let win_rate = 1f32 - (delta_wins as f32 + delta_draws as f32 * config::uct_draw_weight()) / delta_visits as f32;
+          let komi = self.komi.load(Ordering::Relaxed);
+          let red = config::uct_red();
+          if win_rate < red || win_rate > config::uct_green() && komi < ratched.load(Ordering::Relaxed) {
+            let old_komi_visits = self.komi_visits.compare_and_swap(komi_visits, visits, Ordering::Relaxed);
+            if old_komi_visits == komi_visits {
+              self.komi_wins.store(wins, Ordering::Relaxed);
+              self.komi_draws.store(draws, Ordering::Relaxed);
+              if win_rate < red {
+                if komi > 0 {
+                  ratched.store(komi - 1, Ordering::Relaxed);
+                }
+                self.komi.fetch_sub(1, Ordering::Relaxed);
+                info!(target: UCT_STR, "Komi decreased after {1} visits: {0}. Winrate is {2}.", komi - 1, visits, win_rate);
+              } else {
+                self.komi.fetch_add(1, Ordering::Relaxed);
+                info!(target: UCT_STR, "Komi increased after {1} visits: {0}. Winrate is {2}.", komi + 1, visits, win_rate);
               }
-              self.komi.fetch_sub(1, Ordering::Relaxed);
-              info!(target: UCT_STR, "Komi decreased after {1} visits: {0}. Winrate is {2}.", komi - 1, visits, win_rate);
-            } else {
-              self.komi.fetch_add(1, Ordering::Relaxed);
-              info!(target: UCT_STR, "Komi increased after {1} visits: {0}. Winrate is {2}.", komi + 1, visits, win_rate);
             }
           }
         }
