@@ -523,7 +523,7 @@ impl UctRoot {
 
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, max_iterations_count: usize) -> Option<Pos> {
     info!(target: UCT_STR, "Generating best move for player {0}.", player);
-    debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.get_players_point(pos))).collect::<Vec<(Coord, Coord, Option<Player>)>>()); //TODO: remove Option.
+    debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.get_player(pos))).collect::<Vec<(Coord, Coord, Player)>>());
     debug!(target: UCT_STR, "Next random u64: {0}.", rng.gen::<u64>());
     self.update(field, player);
     info!(target: UCT_STR, "Komi is {0}, type is {1}.", self.komi.load(Ordering::Relaxed), config::uct_komi_type());

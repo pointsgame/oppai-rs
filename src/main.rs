@@ -18,6 +18,7 @@ mod zobrist;
 mod cell;
 mod field;
 mod uct;
+mod heuristic;
 mod bot;
 
 #[cfg(test)]

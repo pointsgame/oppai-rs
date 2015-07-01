@@ -278,7 +278,7 @@ impl Field {
   }
 
   #[inline]
-  fn get_player(&self, pos: Pos) -> Player {
+  pub fn get_player(&self, pos: Pos) -> Player {
     self.points[pos].get_player()
   }
 

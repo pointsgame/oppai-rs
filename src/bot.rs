@@ -6,6 +6,7 @@ use zobrist::Zobrist;
 use field;
 use field::Field;
 use uct::UctRoot;
+use heuristic;
 
 static BOT_STR: &'static str = "bot";
 
@@ -45,12 +46,20 @@ impl Bot {
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
-    self.uct.best_move_with_time(&self.field, player, &mut self.rng, time).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+    let mut result = self.uct.best_move_with_time(&self.field, player, &mut self.rng, time);
+    if result.is_none() {
+      result = heuristic::heuristic(&self.field, player);
+    }
+    result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u8) -> Option<(Coord, Coord)> {
     let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS) / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize + MIN_UCT_ITERATIONS;
-    self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+    let mut result = self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count);
+    if result.is_none() {
+      result = heuristic::heuristic(&self.field, player);
+    }
+    result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn put_point(&mut self, x: Coord, y: Coord, player: Player) -> bool {
