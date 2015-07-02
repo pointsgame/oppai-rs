@@ -11,7 +11,8 @@ struct FieldChange {
   score_red: Score,
   score_black: Score,
   hash: u64,
-  points_changes: Vec<(Pos, Cell)>
+  points_changes: Vec<(Pos, Cell)>,
+  dsu_changes: Vec<(Pos, Pos)>
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -31,6 +32,7 @@ pub struct Field {
   score_black: Score,
   points_seq: Vec<Pos>,
   points: Vec<Cell>,
+  dsu: Vec<Pos>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   hash: u64
@@ -475,6 +477,7 @@ impl Field {
       score_black: 0,
       points_seq: Vec::with_capacity(length),
       points: iter::repeat(Cell::new(false)).take(length).collect(),
+      dsu: iter::repeat(0).take(length).collect(),
       changes: Vec::with_capacity(length),
       zobrist: zobrist,
       hash: 0
@@ -494,6 +497,11 @@ impl Field {
   #[inline]
   fn save_pos_value(&mut self, pos: Pos) {
     self.changes.last_mut().unwrap().points_changes.push((pos, self.points[pos]))
+  }
+
+  #[inline]
+  fn save_dsu_value(&mut self, pos: Pos) {
+    self.changes.last_mut().unwrap().dsu_changes.push((pos, self.dsu[pos]))
   }
 
   fn get_input_points(&self, center_pos: Pos, player: Player) -> Vec<(Pos, Pos)> {
@@ -713,6 +721,14 @@ impl Field {
     }
   }
 
+  fn find_dsu_set(&self, pos: Pos) -> Pos {
+    if self.dsu[pos] == pos {
+      pos
+    } else {
+      self.find_dsu_set(self.dsu[pos])
+    }
+  }
+
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len() as u8;
@@ -730,6 +746,12 @@ impl Field {
       }
       chains_count > 0
     } else {
+      self.save_dsu_value(pos);
+      if let Some(&(parent, _)) = input_points.first() {
+        self.dsu[pos] = parent;
+      } else {
+        self.dsu[pos] = pos;
+      }
       false
     }
   }
@@ -753,14 +775,15 @@ impl Field {
         score_red: self.score_red,
         score_black: self.score_black,
         hash: self.hash,
-        points_changes: Vec::new()
+        points_changes: Vec::new(),
+        dsu_changes: Vec::new()
       };
       self.changes.push(change);
       self.save_pos_value(pos);
       self.update_hash(pos, player);
+      self.just_put_point(pos, player);
       match self.get_empty_base_player(pos) {
         Some(empty_base_player) => {
-          self.just_put_point(pos, player);
           if empty_base_player == player {
             self.clear_empty_base(pos);
           } else {
@@ -791,7 +814,6 @@ impl Field {
           }
         },
         None => {
-          self.just_put_point(pos, player);
           self.find_captures(pos, player);
         }
       }
@@ -810,6 +832,9 @@ impl Field {
       self.hash = change.hash;
       for (pos, cell) in change.points_changes.into_iter().rev() {
         self.points[pos] = cell;
+      }
+      for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
+        self.dsu[pos] = dsu_value;
       }
       true
     } else {
