@@ -758,9 +758,9 @@ impl Field {
       self.changes.push(change);
       self.save_pos_value(pos);
       self.update_hash(pos, player);
-      self.just_put_point(pos, player);
       match self.get_empty_base_player(pos) {
         Some(empty_base_player) => {
+          self.just_put_point(pos, player);
           if empty_base_player == player {
             self.clear_empty_base(pos);
           } else {
@@ -791,6 +791,7 @@ impl Field {
           }
         },
         None => {
+          self.just_put_point(pos, player);
           self.find_captures(pos, player);
         }
       }
