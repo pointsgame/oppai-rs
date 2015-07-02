@@ -1,0 +1,9 @@
+Test performance of UCT without undo, with field copying.
+RAVE.
+Negascout.
+MTD(f).
+DSU for field.
+Effective parallelization of minimax.
+Hashing for minimax.
+Config in file.
+Logs.
