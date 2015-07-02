@@ -8,6 +8,15 @@ pub enum UcbType {
   Ucb1Tuned
 }
 
+impl Display for UcbType {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    match self {
+      &UcbType::Ucb1 => write!(f, "Ucb1"),
+      &UcbType::Ucb1Tuned => write!(f, "Ucb1Tuned")
+    }
+  }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum UctKomiType {
   None,
@@ -21,6 +30,21 @@ impl Display for UctKomiType {
       &UctKomiType::None => write!(f, "None"),
       &UctKomiType::Static => write!(f, "Static"),
       &UctKomiType::Dynamic => write!(f, "Dynamic")
+    }
+  }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Solver {
+  Uct,
+  Heuristic
+}
+
+impl Display for Solver {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    match self {
+      &Solver::Uct => write!(f, "Uct"),
+      &Solver::Heuristic => write!(f, "Heuristic")
     }
   }
 }
