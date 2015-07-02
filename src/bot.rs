@@ -2,6 +2,7 @@ use std::sync::Arc;
 use rand::{XorShiftRng, SeedableRng};
 use types::{Coord, Time};
 use player::Player;
+use config;
 use zobrist::Zobrist;
 use field;
 use field::Field;
@@ -46,7 +47,7 @@ impl Bot {
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
-    let mut result = self.uct.best_move_with_time(&self.field, player, &mut self.rng, time);
+    let mut result = self.uct.best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap());
     if result.is_none() {
       result = heuristic::heuristic(&self.field, player);
     }

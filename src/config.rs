@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 use num_cpus;
-use types::{CoordSum, Depth};
+use types::{CoordSum, Depth, Time};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum UcbType {
@@ -71,6 +71,8 @@ static UCT_GREEN: f32 = 0.5;
 
 static UCT_KOMI_MIN_ITERATIONS: usize = 1000;
 
+static TIME_GAP: Time = 100;
+
 pub fn init() {
   unsafe {
     THREADS_COUNT = num_cpus::get();
@@ -130,4 +132,9 @@ pub fn uct_green() -> f32 {
 #[inline]
 pub fn uct_komi_min_iterations() -> usize {
   UCT_KOMI_MIN_ITERATIONS
+}
+
+#[inline]
+pub fn time_gap() -> Time {
+  TIME_GAP
 }

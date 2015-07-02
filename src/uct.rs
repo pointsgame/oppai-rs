@@ -1,5 +1,5 @@
 use std::{ptr, thread, mem, iter};
-use std::sync::atomic::*;
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, AtomicPtr, Ordering};
 use rand::{Rng, XorShiftRng};
 use types::{Pos, Coord, CoordProd, Time, Depth, Score};
 use config;
