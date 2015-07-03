@@ -747,25 +747,27 @@ impl Field {
         group.clear();
         for j in i .. input_points_count {
           if sets[j] == set {
-            group.push(input_points[i]);
+            group.push(input_points[j]);
           }
         }
         let group_points_count = group.len() as u8;
-        let mut chains_count = 0u8;
-        for &(chain_pos, captured_pos) in group.iter() {
-          if let Some(chain) = self.build_chain(pos, player, chain_pos) {
-            self.capture(&chain, captured_pos, player);
-            chains_count += 1;
-            if chains_count == group_points_count - 1 {
-              break;
+        if group_points_count > 1 {
+          let mut chains_count = 0u8;
+          for &(chain_pos, captured_pos) in group.iter() {
+            if let Some(chain) = self.build_chain(pos, player, chain_pos) {
+              self.capture(&chain, captured_pos, player);
+              chains_count += 1;
+              if chains_count == group_points_count - 1 {
+                break;
+              }
+            }
+            if chains_count > 0 {
+              result = true;
             }
           }
-          if chains_count > 0 {
-            result = true;
+          if group_points_count >= 3 {
+            break;
           }
-        }
-        if group.len() >= 3 {
-          break;
         }
       }
       for set in sets { //TODO: optimize
