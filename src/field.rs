@@ -761,9 +761,9 @@ impl Field {
                 break;
               }
             }
-            if chains_count > 0 {
-              result = true;
-            }
+          }
+          if chains_count > 0 {
+            result = true;
           }
           if group_points_count >= 3 {
             break;
