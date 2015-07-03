@@ -721,30 +721,58 @@ impl Field {
     }
   }
 
-  fn find_dsu_set(&self, pos: Pos) -> Pos {
-    if self.dsu[pos] == pos {
+  fn find_dsu_set(&mut self, pos: Pos) -> Pos {
+    let dsu_value = self.dsu[pos];
+    if dsu_value == pos {
       pos
     } else {
-      self.find_dsu_set(self.dsu[pos])
+      let result = self.find_dsu_set(dsu_value);
+      if result != dsu_value {
+        self.save_dsu_value(pos);
+        self.dsu[pos] = result;
+      }
+      result
     }
   }
 
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
-    let input_points_count = input_points.len() as u8;
+    let input_points_count = input_points.len();
     if input_points_count > 1 {
-      let mut chains_count = 0u8;
-      for (chain_pos, captured_pos) in input_points {
-        match self.build_chain(pos, player, chain_pos) {
-          Some(chain) => {
+      let sets = input_points.iter().map(|&(chain_pos, _)| self.find_dsu_set(chain_pos)).collect::<Vec<Pos>>();
+      let mut group = Vec::with_capacity(4);
+      let mut result = false;
+      for i in 0 .. input_points_count {
+        let set = sets[i];
+        group.clear();
+        for j in i .. input_points_count {
+          if sets[j] == set {
+            group.push(input_points[i]);
+          }
+        }
+        let group_points_count = group.len() as u8;
+        let mut chains_count = 0u8;
+        for &(chain_pos, captured_pos) in group.iter() {
+          if let Some(chain) = self.build_chain(pos, player, chain_pos) {
             self.capture(&chain, captured_pos, player);
             chains_count += 1;
-            if chains_count == input_points_count - 1 { break }
-          },
-          None => { }
+            if chains_count == group_points_count - 1 {
+              break;
+            }
+          }
+          if chains_count > 0 {
+            result = true;
+          }
+        }
+        if group.len() >= 3 {
+          break;
         }
       }
-      chains_count > 0
+      for set in sets { //TODO: optimize
+        self.dsu[set] = pos;
+      }
+      self.dsu[pos] = pos;
+      result
     } else {
       self.save_dsu_value(pos);
       if let Some(&(parent, _)) = input_points.first() {
