@@ -1,7 +1,7 @@
 use std::{mem, iter};
 use std::collections::LinkedList;
 use std::sync::Arc;
-use types::{Pos, Coord, CoordDiff, CoordSquare, CoordSum, Score};
+use types::{Pos, Coord, CoordDiff, CoordSquare, CoordSum, CoordProd, Score};
 use player::Player;
 use cell::Cell;
 use zobrist::Zobrist;
@@ -12,7 +12,8 @@ struct FieldChange {
   score_black: Score,
   hash: u64,
   points_changes: Vec<(Pos, Cell)>,
-  dsu_changes: Vec<(Pos, Pos)>
+  dsu_changes: Vec<(Pos, Pos)>,
+  dsu_size_changes: Vec<(Pos, CoordProd)>
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -33,6 +34,7 @@ pub struct Field {
   points_seq: Vec<Pos>,
   points: Vec<Cell>,
   dsu: Vec<Pos>,
+  dsu_size: Vec<CoordProd>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   hash: u64
@@ -478,6 +480,7 @@ impl Field {
       points_seq: Vec::with_capacity(length),
       points: iter::repeat(Cell::new(false)).take(length).collect(),
       dsu: iter::repeat(0).take(length).collect(),
+      dsu_size: iter::repeat(0).take(length).collect(),
       changes: Vec::with_capacity(length),
       zobrist: zobrist,
       hash: 0
@@ -496,12 +499,17 @@ impl Field {
 
   #[inline]
   fn save_pos_value(&mut self, pos: Pos) {
-    self.changes.last_mut().unwrap().points_changes.push((pos, self.points[pos]))
+    self.changes.last_mut().unwrap().points_changes.push((pos, self.points[pos]));
   }
 
   #[inline]
   fn save_dsu_value(&mut self, pos: Pos) {
-    self.changes.last_mut().unwrap().dsu_changes.push((pos, self.dsu[pos]))
+    self.changes.last_mut().unwrap().dsu_changes.push((pos, self.dsu[pos]));
+  }
+
+  #[inline]
+  fn save_dsu_size_value(&mut self, pos: Pos) {
+    self.changes.last_mut().unwrap().dsu_size_changes.push((pos, self.dsu_size[pos]));
   }
 
   fn get_input_points(&self, center_pos: Pos, player: Player) -> Vec<(Pos, Pos)> {
@@ -770,17 +778,36 @@ impl Field {
           }
         }
       }
-      for set in sets { //TODO: optimize
-        self.dsu[set] = pos;
+      let mut max_dsu_size = 0;
+      let mut parent = pos;
+      for &set in sets.iter() {
+        if self.dsu_size[set] > max_dsu_size {
+          max_dsu_size = self.dsu_size[set];
+          parent = set;
+        }
       }
-      self.dsu[pos] = pos;
+      self.save_dsu_size_value(parent);
+      for set in sets {
+        if self.dsu[set] != parent {
+          self.save_dsu_value(set);
+          self.dsu[set] = parent;
+          self.dsu_size[parent] += self.dsu_size[set];
+        }
+      }
+      self.save_dsu_value(pos);
+      self.dsu[pos] = parent;
+      self.dsu_size[parent] += 1;
       result
     } else {
       self.save_dsu_value(pos);
-      if let Some(&(parent, _)) = input_points.first() {
+      if let Some(&(chain_pos, _)) = input_points.first() {
+        let parent = self.find_dsu_set(chain_pos);
         self.dsu[pos] = parent;
+        self.save_dsu_size_value(parent);
+        self.dsu_size[parent] += 1;
       } else {
         self.dsu[pos] = pos;
+        self.dsu_size[pos] = 1;
       }
       false
     }
@@ -806,7 +833,8 @@ impl Field {
         score_black: self.score_black,
         hash: self.hash,
         points_changes: Vec::new(),
-        dsu_changes: Vec::new()
+        dsu_changes: Vec::new(),
+        dsu_size_changes: Vec::new()
       };
       self.changes.push(change);
       self.save_pos_value(pos);
@@ -866,6 +894,9 @@ impl Field {
       }
       for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
         self.dsu[pos] = dsu_value;
+      }
+      for (pos, dsu_size) in change.dsu_size_changes.into_iter().rev() {
+        self.dsu_size[pos] = dsu_size;
       }
       true
     } else {
