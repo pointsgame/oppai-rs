@@ -479,8 +479,8 @@ impl Field {
       score_black: 0,
       points_seq: Vec::with_capacity(length),
       points: iter::repeat(Cell::new(false)).take(length).collect(),
-      dsu: iter::repeat(0).take(length).collect(),
-      dsu_size: iter::repeat(0).take(length).collect(),
+      dsu: (0 .. length).collect(),
+      dsu_size: iter::repeat(1).take(length).collect(),
       changes: Vec::with_capacity(length),
       zobrist: zobrist,
       hash: 0
@@ -743,6 +743,26 @@ impl Field {
     }
   }
 
+  fn union_dsu_sets(&mut self, sets: &Vec<Pos>) -> Pos {
+    let mut max_dsu_size = 0;
+    let mut parent = 0;
+    for &set in sets.iter() {
+      if self.dsu_size[set] > max_dsu_size {
+        max_dsu_size = self.dsu_size[set];
+        parent = set;
+      }
+    }
+    self.save_dsu_size_value(parent);
+    for &set in sets {
+      if self.dsu[set] != parent {
+        self.save_dsu_value(set);
+        self.dsu[set] = parent;
+        self.dsu_size[parent] += self.dsu_size[set];
+      }
+    }
+    parent
+  }
+
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len();
@@ -778,36 +798,18 @@ impl Field {
           }
         }
       }
-      let mut max_dsu_size = 0;
-      let mut parent = pos;
-      for &set in sets.iter() {
-        if self.dsu_size[set] > max_dsu_size {
-          max_dsu_size = self.dsu_size[set];
-          parent = set;
-        }
-      }
-      self.save_dsu_size_value(parent);
-      for set in sets {
-        if self.dsu[set] != parent {
-          self.save_dsu_value(set);
-          self.dsu[set] = parent;
-          self.dsu_size[parent] += self.dsu_size[set];
-        }
-      }
+      let parent = self.union_dsu_sets(&sets);
       self.save_dsu_value(pos);
       self.dsu[pos] = parent;
       self.dsu_size[parent] += 1;
       result
     } else {
-      self.save_dsu_value(pos);
       if let Some(&(chain_pos, _)) = input_points.first() {
         let parent = self.find_dsu_set(chain_pos);
+        self.save_dsu_value(pos);
         self.dsu[pos] = parent;
         self.save_dsu_size_value(parent);
         self.dsu_size[parent] += 1;
-      } else {
-        self.dsu[pos] = pos;
-        self.dsu_size[pos] = 1;
       }
       false
     }
