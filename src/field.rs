@@ -13,7 +13,7 @@ struct FieldChange {
   hash: u64,
   points_changes: Vec<(Pos, Cell)>,
   dsu_changes: Vec<(Pos, Pos)>,
-  dsu_size_changes: Vec<(Pos, CoordProd)>
+  dsu_size_change: Option<(Pos, CoordProd)>
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -509,7 +509,7 @@ impl Field {
 
   #[inline]
   fn save_dsu_size_value(&mut self, pos: Pos) {
-    self.changes.last_mut().unwrap().dsu_size_changes.push((pos, self.dsu_size[pos]));
+    self.changes.last_mut().unwrap().dsu_size_change = Some((pos, self.dsu_size[pos]));
   }
 
   fn get_input_points(&self, center_pos: Pos, player: Player) -> Vec<(Pos, Pos)> {
@@ -836,7 +836,7 @@ impl Field {
         hash: self.hash,
         points_changes: Vec::new(),
         dsu_changes: Vec::new(),
-        dsu_size_changes: Vec::new()
+        dsu_size_change: None
       };
       self.changes.push(change);
       self.save_pos_value(pos);
@@ -897,7 +897,7 @@ impl Field {
       for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
         self.dsu[pos] = dsu_value;
       }
-      for (pos, dsu_size) in change.dsu_size_changes.into_iter().rev() {
+      if let Some((pos, dsu_size)) = change.dsu_size_change {
         self.dsu_size[pos] = dsu_size;
       }
       true
