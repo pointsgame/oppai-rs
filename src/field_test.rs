@@ -302,11 +302,11 @@ fn undo_check() {
         player = player.next();
         let field_before = field.clone();
         field.put_point(pos, player);
-        let mut field_after = field.clone();
-        field_after.undo();
-        if field_before != field_after {
+        field.undo();
+        if field_before != field {
           return TestResult::failed();
         }
+        field.put_point(pos, player);
       }
     }
     TestResult::passed()
