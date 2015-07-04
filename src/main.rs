@@ -11,6 +11,9 @@ extern crate log4rs;
 
 extern crate num_cpus;
 
+#[cfg(test)]
+extern crate quickcheck;
+
 mod types;
 mod config;
 mod player;

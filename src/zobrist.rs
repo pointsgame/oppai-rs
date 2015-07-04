@@ -1,7 +1,7 @@
 use types::Pos;
 use rand::Rng;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Zobrist {
   hashes: Vec<u64>
 }

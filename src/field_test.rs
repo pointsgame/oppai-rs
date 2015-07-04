@@ -1,7 +1,9 @@
 use std::ascii::AsciiExt;
 use std::sync::Arc;
-use rand::XorShiftRng;
-use types::Coord;
+use rand::{Rng, XorShiftRng, SeedableRng};
+use quickcheck;
+use quickcheck::TestResult;
+use types::{Coord, Pos};
 use player::Player;
 use zobrist::Zobrist;
 use field;
@@ -278,4 +280,36 @@ fn three_surroundings_with_common_borders() {
   );
   assert_eq!(field.captured_count(Player::Red), 3);
   assert_eq!(field.captured_count(Player::Black), 0);
+}
+
+#[test]
+fn undo_check() {
+  fn prop(width_seed: Coord, height_seed: Coord, seed: u64) -> TestResult {
+    let width = width_seed % 30;
+    let height = height_seed % 30;
+    if width < 3 || height < 3 {
+      return TestResult::discard();
+    }
+    let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
+    let mut rng = XorShiftRng::from_seed(seed_array);
+    let mut moves = (field::min_pos(width) .. field::max_pos(width, height)).collect::<Vec<Pos>>();
+    rng.shuffle(&mut moves);
+    let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
+    let mut field = Field::new(width, height, zobrist);
+    let mut player = Player::Red;
+    for pos in moves {
+      if field.is_putting_allowed(pos) {
+        player = player.next();
+        let field_before = field.clone();
+        field.put_point(pos, player);
+        let mut field_after = field.clone();
+        field_after.undo();
+        if field_before != field_after {
+          return TestResult::failed();
+        }
+      }
+    }
+    TestResult::passed()
+  }
+  quickcheck::quickcheck(prop as fn(Coord, Coord, u64) -> TestResult);
 }

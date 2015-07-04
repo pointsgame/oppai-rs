@@ -6,7 +6,7 @@ use player::Player;
 use cell::Cell;
 use zobrist::Zobrist;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct FieldChange {
   score_red: Score,
   score_black: Score,
@@ -24,7 +24,7 @@ enum IntersectionState {
   Down
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Field {
   width: Coord,
   height: Coord,
@@ -98,6 +98,16 @@ pub fn sw(width: Coord, pos: Pos) -> Pos {
 #[inline]
 pub fn se(width: Coord, pos: Pos) -> Pos {
   s(width, e(pos))
+}
+
+#[inline]
+pub fn min_pos(width: Coord) -> Pos {
+  to_pos(width, 0, 0)
+}
+
+#[inline]
+pub fn max_pos(width: Coord, height: Coord) -> Pos {
+  to_pos(width, width - 1, height - 1)
 }
 
 pub fn is_near(width: Coord, pos1: Pos, pos2: Pos) -> bool {
@@ -267,13 +277,13 @@ impl Field {
   }
 
   #[inline]
-  pub fn min_pos(&self) -> Pos { //TODO: make static.
-    self.to_pos(0, 0)
+  pub fn min_pos(&self) -> Pos {
+    min_pos(self.width)
   }
 
   #[inline]
-  pub fn max_pos(&self) -> Pos { //TODO: make static.
-    self.to_pos(self.width - 1, self.height - 1)
+  pub fn max_pos(&self) -> Pos {
+    max_pos(self.width, self.height)
   }
 
   #[inline]

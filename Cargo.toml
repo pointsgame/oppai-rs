@@ -11,6 +11,9 @@ log = "0.3.1"
 log4rs = "0.3.3"
 num_cpus = "0.2.6"
 
+[dev-dependencies]
+quickcheck = "0.2.20"
+
 [profile.dev]
 opt-level = 0
 lto = false
