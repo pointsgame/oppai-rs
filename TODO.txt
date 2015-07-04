@@ -6,3 +6,5 @@ Effective parallelization of minimax.
 Hashing for minimax.
 Config in file.
 Logs.
+Debuts.
+Solver chosing.
