@@ -352,20 +352,14 @@ impl UctRoot {
 
   fn play_random_game<T: Rng>(field: &mut Field, player: Player, rng: &mut T, possible_moves: &mut Vec<Pos>, komi: Score) -> Option<Player> {
     rng.shuffle(possible_moves);
-    let mut putted: CoordProd = 0;
     let mut cur_player = player;
     for &pos in possible_moves.iter() {
       if field.is_putting_allowed(pos) && !field.is_empty_base(pos) {
         field.put_point(pos, cur_player);
         cur_player = cur_player.next();
-        putted += 1;
       }
     }
-    let result = UctRoot::random_result(field, player, komi);
-    for _ in 0 .. putted {
-      field.undo();
-    }
-    result
+    UctRoot::random_result(field, player, komi)
   }
 
   fn ucb(parent: &UctNode, node: &UctNode) -> f32 {
@@ -451,12 +445,11 @@ impl UctRoot {
   }
 
   fn play_simulation_rec<T: Rng>(field: &mut Field, player: Player, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, komi: Score, depth: Depth) -> Option<Player> {
-    let mut random_result;
-    if node.get_visits() < config::uct_when_create_children() || depth == config::uct_depth() {
-      random_result = UctRoot::play_random_game(field, player, rng, possible_moves, komi);
+    let random_result = if node.get_visits() < config::uct_when_create_children() || depth == config::uct_depth() {
+      UctRoot::play_random_game(field, player, rng, possible_moves, komi)
     } else {
       if node.get_child_ref().is_none() {
-        UctRoot::create_children(field, possible_moves, node);
+        UctRoot::create_children(field, possible_moves, node)
       }
       if let Some(next) = UctRoot::uct_select(node) {
         let pos = next.get_pos();
@@ -466,12 +459,11 @@ impl UctRoot {
           next.loose_node();
           return UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);
         }
-        random_result = UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1);
-        field.undo();
+        UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
       } else {
-        random_result = UctRoot::random_result(field, player, komi);
+        UctRoot::random_result(field, player, komi)
       }
-    }
+    };
     if let Some(player_random_result) = random_result {
       if player_random_result == player {
         node.add_loose();
@@ -539,6 +531,9 @@ impl UctRoot {
         let mut possible_moves = self.moves.clone();
         while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
           self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
+          for _ in 0 .. local_field.moves_count() - self.moves_count {
+            local_field.undo();
+          }
           iterations.fetch_add(1, Ordering::Relaxed);
         }
       }));
