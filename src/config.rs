@@ -4,6 +4,7 @@ use types::{CoordSum, Depth, Time};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum UcbType {
+  Winrate,
   Ucb1,
   Ucb1Tuned
 }
@@ -11,6 +12,7 @@ pub enum UcbType {
 impl Display for UcbType {
   fn fmt(&self, f: &mut Formatter) -> Result {
     match self {
+      &UcbType::Winrate => write!(f, "Winrate"),
       &UcbType::Ucb1 => write!(f, "Ucb1"),
       &UcbType::Ucb1Tuned => write!(f, "Ucb1Tuned")
     }
@@ -53,6 +55,8 @@ static UCT_RADIUS: CoordSum = 3;
 
 static UCB_TYPE: UcbType = UcbType::Ucb1Tuned;
 
+static FINAL_UCB_TYPE: UcbType = UcbType::Winrate;
+
 static UCT_DRAW_WEIGHT: f32 = 0.4;
 
 static UCTK: f32 = 1.0;
@@ -87,6 +91,11 @@ pub fn uct_radius() -> CoordSum {
 #[inline]
 pub fn ucb_type() -> UcbType {
   UCB_TYPE
+}
+
+#[inline]
+pub fn final_ucb_type() -> UcbType {
+  FINAL_UCB_TYPE
 }
 
 #[inline]
