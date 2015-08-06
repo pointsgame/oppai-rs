@@ -1,5 +1,3 @@
-Test performance of UCT without undo, with field copying.
-RAVE.
 Negascout.
 MTD(f).
 Effective parallelization of minimax.
