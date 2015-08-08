@@ -177,7 +177,8 @@ struct UctConfig {
 #[derive(Clone, RustcDecodable, RustcEncodable)]
 struct BotConfig {
   threads_count: Option<usize>,
-  time_gap: Time
+  time_gap: Time,
+  solver: Solver
 }
 
 const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
@@ -196,7 +197,8 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
 
 const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
   threads_count: None,
-  time_gap: 100
+  time_gap: 100,
+  solver: Solver::Uct
 };
 
 const DEFAULT_CONFIG: Config = Config {
@@ -302,4 +304,9 @@ pub fn uct_komi_min_iterations() -> usize {
 #[inline]
 pub fn time_gap() -> Time {
   config().bot.time_gap
+}
+
+#[inline]
+pub fn solver() -> Solver {
+  config().bot.solver
 }

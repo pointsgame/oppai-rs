@@ -3,6 +3,7 @@ use rand::{XorShiftRng, SeedableRng};
 use types::{Coord, Time};
 use player::Player;
 use config;
+use config::Solver;
 use zobrist::Zobrist;
 use field;
 use field::Field;
@@ -47,20 +48,34 @@ impl Bot {
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
-    let mut result = self.uct.best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap());
-    if result.is_none() {
-      result = heuristic::heuristic(&self.field, player);
+    match config::solver() {
+      Solver::Uct => {
+        let mut result = self.uct.best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap());
+        if result.is_none() {
+          result = heuristic::heuristic(&self.field, player);
+        }
+        result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      },
+      Solver::Heuristic => {
+        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      }
     }
-    result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u8) -> Option<(Coord, Coord)> {
-    let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS) / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize + MIN_UCT_ITERATIONS;
-    let mut result = self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count);
-    if result.is_none() {
-      result = heuristic::heuristic(&self.field, player);
+    match config::solver() {
+      Solver::Uct => {
+        let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS) / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize + MIN_UCT_ITERATIONS;
+        let mut result = self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count);
+        if result.is_none() {
+          result = heuristic::heuristic(&self.field, player);
+        }
+        result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      },
+      Solver::Heuristic => {
+        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      }
     }
-    result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
   }
 
   pub fn put_point(&mut self, x: Coord, y: Coord, player: Player) -> bool {

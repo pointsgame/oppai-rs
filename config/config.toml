@@ -1,4 +1,5 @@
 [bot]
+solver = "Uct"
 time_gap = 100
 
 [uct]
