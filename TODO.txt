@@ -2,7 +2,9 @@ Negascout.
 MTD(f).
 Effective parallelization of minimax.
 Hashing for minimax.
-Config in file.
+Fractional komi.
 Logs.
 Debuts.
 Solver chosing.
+Readme.
+Comments.
