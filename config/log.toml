@@ -13,6 +13,11 @@ kind = "file"
 path = "log/bot.log"
 pattern = "%d [%t] %m"
 
+[appender.config]
+kind = "file"
+path = "log/config.log"
+pattern = "%d [%t] %m"
+
 [[logger]]
 name = "uct"
 level = "debug"
@@ -22,3 +27,8 @@ appenders = ["uct", "all"]
 name = "bot"
 level = "debug"
 appenders = ["bot", "all"]
+
+[[logger]]
+name = "config"
+level = "debug"
+appenders = ["config", "all"]

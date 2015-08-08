@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![feature(unsafe_no_drop_flag)]
 #![feature(scoped)]
+#![feature(convert)]
 
 extern crate rand;
 
@@ -10,6 +11,10 @@ extern crate log;
 extern crate log4rs;
 
 extern crate num_cpus;
+
+extern crate rustc_serialize;
+
+extern crate toml;
 
 #[cfg(test)]
 extern crate quickcheck;
@@ -31,10 +36,15 @@ use std::io;
 use std::io::{Write, BufReader, BufRead};
 use std::str::FromStr;
 use std::path::Path;
+use std::fs::File;
 use log4rs::toml::Creator;
 use types::{Coord, Time};
 use player::Player;
 use bot::Bot;
+
+const CONFIG_PATH: &'static str = "config/config.toml";
+
+const LOG_CONFIG_PATH: &'static str = "config/log.toml";
 
 fn write_author<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "= {0} author kurnevsky_evgeny", id).ok();
@@ -137,8 +147,13 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn main() {
-  log4rs::init_file(Path::new("config/log.toml"), Creator::default()).ok();
+  log4rs::init_file(Path::new(LOG_CONFIG_PATH), Creator::default()).ok();
   config::init();
+  if let Some(mut config_file) = File::open(CONFIG_PATH).ok() {
+    config::read(&mut config_file);
+  } else if let Some(mut config_file) = File::create(CONFIG_PATH).ok() {
+    config::write(&mut config_file);
+  }
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();
   let mut bot_option = None;

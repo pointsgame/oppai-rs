@@ -1,14 +1,14 @@
 use std::{ptr, thread, mem, iter};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, AtomicPtr, Ordering};
 use rand::{Rng, XorShiftRng};
-use types::{Pos, Coord, CoordProd, Time, Depth, Score};
+use types::{Pos, Coord, Time, Depth, Score};
 use config;
 use config::{UcbType, UctKomiType};
 use player::Player;
 use field;
 use field::Field;
 
-static UCT_STR: &'static str = "uct";
+const UCT_STR: &'static str = "uct";
 
 #[unsafe_no_drop_flag]
 struct UctNode {

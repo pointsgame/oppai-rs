@@ -5,11 +5,13 @@ authors = ["Kurnevsky Evgeny <kurnevsky@gmail.com>"]
 license = "GPL-3.0"
 
 [dependencies]
-rand = "0.3.8"
-time = "0.1.26"
+rand = "0.3.9"
+time = "0.1.32"
 log = "0.3.1"
 log4rs = "0.3.3"
 num_cpus = "0.2.6"
+rustc-serialize = "0.3.15"
+toml = "0.1.21"
 
 [dev-dependencies]
 quickcheck = "0.2.20"

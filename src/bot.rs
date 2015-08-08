@@ -9,15 +9,15 @@ use field::Field;
 use uct::UctRoot;
 use heuristic;
 
-static BOT_STR: &'static str = "bot";
+const BOT_STR: &'static str = "bot";
 
-static MIN_COMPLEXITY: u8 = 0;
+const MIN_COMPLEXITY: u8 = 0;
 
-static MAX_COMPLEXITY: u8 = 100;
+const MAX_COMPLEXITY: u8 = 100;
 
-static MIN_UCT_ITERATIONS: usize = 0;
+const MIN_UCT_ITERATIONS: usize = 0;
 
-static MAX_UCT_ITERATIONS: usize = 500000;
+const MAX_UCT_ITERATIONS: usize = 500000;
 
 pub struct Bot {
   rng: XorShiftRng,

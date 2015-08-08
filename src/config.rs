@@ -1,6 +1,12 @@
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter};
+use std::fmt::Result as FmtResult;
+use std::io::{Write, Read};
 use num_cpus;
+use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
+use toml;
 use types::{CoordSum, Depth, Time};
+
+const CONFIG_STR: &'static str = "config";
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum UcbType {
@@ -9,13 +15,46 @@ pub enum UcbType {
   Ucb1Tuned
 }
 
-impl Display for UcbType {
-  fn fmt(&self, f: &mut Formatter) -> Result {
+const WINRATE_STR: &'static str = "Winrate";
+
+const UCB1_STR: &'static str = "Ucb1";
+
+const UCB1_TUNED_STR: &'static str = "Ucb1Tuned";
+
+impl UcbType {
+  pub fn as_str(&self) -> &'static str {
     match self {
-      &UcbType::Winrate => write!(f, "Winrate"),
-      &UcbType::Ucb1 => write!(f, "Ucb1"),
-      &UcbType::Ucb1Tuned => write!(f, "Ucb1Tuned")
+      &UcbType::Winrate => WINRATE_STR,
+      &UcbType::Ucb1 => UCB1_STR,
+      &UcbType::Ucb1Tuned => UCB1_TUNED_STR
     }
+  }
+
+  pub fn from_str(s: &str) -> Option<UcbType> {
+    match s {
+      WINRATE_STR => Some(UcbType::Winrate),
+      UCB1_STR => Some(UcbType::Ucb1),
+      UCB1_TUNED_STR => Some(UcbType::Ucb1Tuned),
+      _ => None
+    }
+  }
+}
+
+impl Display for UcbType {
+  fn fmt(&self, f: &mut Formatter) -> FmtResult {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl Encodable for UcbType {
+  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+    s.emit_str(self.as_str())
+  }
+}
+
+impl Decodable for UcbType {
+  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+    d.read_str().and_then(|s| UcbType::from_str(s.as_str()).ok_or(d.error("Invalid string!")))
   }
 }
 
@@ -26,13 +65,46 @@ pub enum UctKomiType {
   Dynamic
 }
 
-impl Display for UctKomiType {
-  fn fmt(&self, f: &mut Formatter) -> Result {
+const NONE_STR: &'static str = "None";
+
+const STATIC_STR: &'static str = "Static";
+
+const DYNAMIC_STR: &'static str = "Dynamic";
+
+impl UctKomiType {
+  pub fn as_str(&self) -> &'static str {
     match self {
-      &UctKomiType::None => write!(f, "None"),
-      &UctKomiType::Static => write!(f, "Static"),
-      &UctKomiType::Dynamic => write!(f, "Dynamic")
+      &UctKomiType::None => NONE_STR,
+      &UctKomiType::Static => STATIC_STR,
+      &UctKomiType::Dynamic => DYNAMIC_STR
     }
+  }
+
+  pub fn from_str(s: &str) -> Option<UctKomiType> {
+    match s {
+      NONE_STR => Some(UctKomiType::None),
+      STATIC_STR => Some(UctKomiType::Static),
+      DYNAMIC_STR => Some(UctKomiType::Dynamic),
+      _ => None
+    }
+  }
+}
+
+impl Display for UctKomiType {
+  fn fmt(&self, f: &mut Formatter) -> FmtResult {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl Encodable for UctKomiType {
+  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+    s.emit_str(self.as_str())
+  }
+}
+
+impl Decodable for UctKomiType {
+  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+    d.read_str().and_then(|s| UctKomiType::from_str(s.as_str()).ok_or(d.error("Invalid string!")))
   }
 }
 
@@ -42,108 +114,192 @@ pub enum Solver {
   Heuristic
 }
 
-impl Display for Solver {
-  fn fmt(&self, f: &mut Formatter) -> Result {
+const UCT_STR: &'static str = "Uct";
+
+const HEURISTIC_STR: &'static str = "Heuristic";
+
+impl Solver {
+  pub fn as_str(&self) -> &'static str {
     match self {
-      &Solver::Uct => write!(f, "Uct"),
-      &Solver::Heuristic => write!(f, "Heuristic")
+      &Solver::Uct => UCT_STR,
+      &Solver::Heuristic => HEURISTIC_STR
+    }
+  }
+
+  pub fn from_str(s: &str) -> Option<Solver> {
+    match s {
+      UCT_STR => Some(Solver::Uct),
+      HEURISTIC_STR => Some(Solver::Heuristic),
+      _ => None
     }
   }
 }
 
-static UCT_RADIUS: CoordSum = 3;
+impl Display for Solver {
+  fn fmt(&self, f: &mut Formatter) -> FmtResult {
+    write!(f, "{}", self.as_str())
+  }
+}
 
-static UCB_TYPE: UcbType = UcbType::Ucb1Tuned;
+impl Encodable for Solver {
+  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+    s.emit_str(self.as_str())
+  }
+}
 
-static FINAL_UCB_TYPE: UcbType = UcbType::Winrate;
+impl Decodable for Solver {
+  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+    d.read_str().and_then(|s| Solver::from_str(s.as_str()).ok_or(d.error("Invalid string!")))
+  }
+}
 
-static UCT_DRAW_WEIGHT: f32 = 0.4;
+#[derive(Clone, RustcDecodable, RustcEncodable)]
+struct Config {
+  uct: UctConfig,
+  bot: BotConfig
+}
 
-static UCTK: f32 = 1.0;
+#[derive(Clone, RustcDecodable, RustcEncodable)]
+struct UctConfig {
+  radius: CoordSum,
+  ucb_type: UcbType,
+  final_ucb_type: UcbType,
+  draw_weight: f32,
+  uctk: f32,
+  when_create_children: usize,
+  depth: Depth,
+  komi_type: UctKomiType,
+  red: f32,
+  green: f32,
+  komi_min_iterations: usize
+}
 
-static UCT_WHEN_CREATE_CHILDREN: usize = 2;
+#[derive(Clone, RustcDecodable, RustcEncodable)]
+struct BotConfig {
+  threads_count: Option<usize>,
+  time_gap: Time
+}
 
-static UCT_DEPTH: Depth = 8;
+const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
+  radius: 3,
+  ucb_type: UcbType::Ucb1Tuned,
+  final_ucb_type: UcbType::Winrate,
+  draw_weight: 0.4,
+  uctk: 1.0,
+  when_create_children: 2,
+  depth: 8,
+  komi_type: UctKomiType::Dynamic,
+  red: 0.45,
+  green: 0.5,
+  komi_min_iterations: 3000
+};
 
-static mut THREADS_COUNT: usize = 4;
+const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
+  threads_count: None,
+  time_gap: 100
+};
 
-static UCT_KOMI_TYPE: UctKomiType = UctKomiType::Dynamic;
+const DEFAULT_CONFIG: Config = Config {
+  uct: DEFAULT_UCT_CONFIG,
+  bot: DEFAULT_BOT_CONFIG
+};
 
-static UCT_RED: f32 = 0.45;
+static mut NUM_CPUS: usize = 4;
 
-static UCT_GREEN: f32 = 0.5;
+static mut CONFIG: Config = DEFAULT_CONFIG;
 
-static UCT_KOMI_MIN_ITERATIONS: usize = 1000;
-
-static TIME_GAP: Time = 100;
+#[inline]
+fn config() -> &'static Config {
+  unsafe { &CONFIG }
+}
 
 pub fn init() {
+  let num_cpus = num_cpus::get();
   unsafe {
-    THREADS_COUNT = num_cpus::get();
+    NUM_CPUS = num_cpus;
   }
+  info!(target: CONFIG_STR, "Default threads count is {}.", num_cpus);
+}
+
+pub fn read<T: Read>(input: &mut T) {
+  let mut string = String::new();
+  input.read_to_string(&mut string).ok();
+  if let Some(config) = toml::decode_str::<Config>(string.as_str()) {
+    unsafe {
+      CONFIG = config
+    }
+    debug!(target: CONFIG_STR, "Config has been loaded.");
+  } else {
+    error!(target: CONFIG_STR, "Bad config file!");
+  }
+}
+
+pub fn write<T: Write>(output: &mut T) {
+  write!(output, "{}", toml::encode(config())).ok();
+  info!(target: CONFIG_STR, "Config has been written.");
 }
 
 #[inline]
 pub fn uct_radius() -> CoordSum {
-  UCT_RADIUS
+  config().uct.radius
 }
 
 #[inline]
 pub fn ucb_type() -> UcbType {
-  UCB_TYPE
+  config().uct.ucb_type
 }
 
 #[inline]
 pub fn final_ucb_type() -> UcbType {
-  FINAL_UCB_TYPE
+  config().uct.final_ucb_type
 }
 
 #[inline]
 pub fn uct_draw_weight() -> f32 {
-  UCT_DRAW_WEIGHT
+  config().uct.draw_weight
 }
 
 #[inline]
 pub fn uctk() -> f32 {
-  UCTK
+  config().uct.uctk
 }
 
 #[inline]
 pub fn uct_when_create_children() -> usize {
-  UCT_WHEN_CREATE_CHILDREN
+  config().uct.when_create_children
 }
 
 #[inline]
 pub fn uct_depth() -> Depth {
-  UCT_DEPTH
+  config().uct.depth
 }
 
 #[inline]
 pub fn threads_count() -> usize {
-  unsafe { THREADS_COUNT }
+  config().bot.threads_count.unwrap_or(unsafe { NUM_CPUS })
 }
 
 #[inline]
 pub fn uct_komi_type() -> UctKomiType {
-  UCT_KOMI_TYPE
+  config().uct.komi_type
 }
 
 #[inline]
 pub fn uct_red() -> f32 {
-  UCT_RED
+  config().uct.red
 }
 
 #[inline]
 pub fn uct_green() -> f32 {
-  UCT_GREEN
+  config().uct.green
 }
 
 #[inline]
 pub fn uct_komi_min_iterations() -> usize {
-  UCT_KOMI_MIN_ITERATIONS
+  config().uct.komi_min_iterations
 }
 
 #[inline]
 pub fn time_gap() -> Time {
-  TIME_GAP
+  config().bot.time_gap
 }

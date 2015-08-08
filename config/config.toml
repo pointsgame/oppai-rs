@@ -1,0 +1,15 @@
+[bot]
+time_gap = 100
+
+[uct]
+depth = 8
+draw_weight = 0.4
+final_ucb_type = "Winrate"
+green = 0.5
+komi_min_iterations = 3000
+komi_type = "Dynamic"
+radius = 3
+red = 0.45
+ucb_type = "Ucb1Tuned"
+uctk = 1.0
+when_create_children = 2
