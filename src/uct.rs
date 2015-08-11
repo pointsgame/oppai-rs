@@ -1,12 +1,12 @@
-use std::{ptr, thread, mem, iter};
+use std::{ptr, thread, mem};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, AtomicPtr, Ordering};
 use rand::{Rng, XorShiftRng};
 use types::{Pos, Coord, Time, Depth, Score};
 use config;
 use config::{UcbType, UctKomiType};
 use player::Player;
-use field;
 use field::Field;
+use wave_pruning::WavePruning;
 
 const UCT_STR: &'static str = "uct";
 
@@ -160,11 +160,10 @@ impl UctNode {
 
 pub struct UctRoot {
   node: Option<Box<UctNode>>,
-  moves: Vec<Pos>,
-  moves_field: Vec<Pos>,
   player: Player,
   moves_count: usize,
   hash: u64,
+  wave_pruning: WavePruning,
   komi: AtomicIsize,
   komi_visits: AtomicUsize,
   komi_wins: AtomicUsize,
@@ -174,10 +173,7 @@ pub struct UctRoot {
 impl UctRoot {
   fn clear(&mut self) {
     self.node = None;
-    self.moves.clear();
-    for i in self.moves_field.iter_mut() {
-      *i = 0;
-    }
+    self.wave_pruning.clear();
     self.player = Player::Red;
     self.moves_count = 0;
     self.hash = 0;
@@ -196,27 +192,10 @@ impl UctRoot {
     if config::uct_komi_type() != UctKomiType::None {
       self.komi = AtomicIsize::new(field.score(player) as isize);
     }
-    let width = field.width();
-    for &start_pos in field.points_seq() {
-      field::wave(width, start_pos, |pos| {
-        if pos == start_pos && self.moves_field[pos] == 0 {
-          self.moves_field[pos] = 1;
-          true
-        } else if self.moves_field[pos] != start_pos && field.is_putting_allowed(pos) && field::manhattan(width, start_pos, pos) <= config::uct_radius() {
-          if self.moves_field[pos] == 0 {
-            self.moves.push(pos);
-          }
-          self.moves_field[pos] = start_pos;
-          true
-        } else {
-          false
-        }
-      });
-      self.moves_field[start_pos] = 0;
-    }
+    self.wave_pruning.init(field, config::uct_radius());
   }
 
-  fn expand_node(node: &mut UctNode, moves: &Vec<Pos>) {
+  fn expand_node<T: Rng>(node: &mut UctNode, moves: &mut Vec<Pos>, rng: &mut T) {
     if node.get_child_ref().is_none() {
       if node.get_visits() == usize::max_value() {
         node.clear_stats();
@@ -224,18 +203,19 @@ impl UctRoot {
     } else {
       let mut next = node.get_child_mut();
       while next.as_ref().unwrap().get_sibling_ref().is_some() {
-        UctRoot::expand_node(*next.as_mut().unwrap(), moves);
+        UctRoot::expand_node(*next.as_mut().unwrap(), moves, rng);
         next = next.unwrap().get_sibling_mut();
       }
-      UctRoot::expand_node(*next.as_mut().unwrap(), moves);
-      for &pos in moves {
+      UctRoot::expand_node(*next.as_mut().unwrap(), moves, rng);
+      rng.shuffle(moves);
+      for &pos in moves.iter() {
         next.as_mut().unwrap().set_sibling(Box::new(UctNode::new(pos)));
         next = next.unwrap().get_sibling_mut();
       }
     }
   }
 
-  fn update(&mut self, field: &Field, player: Player) {
+  fn update<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T) {
     if self.node.is_some() && field.hash_at(self.moves_count) != Some(self.hash) {
       self.clear();
     }
@@ -245,12 +225,16 @@ impl UctRoot {
       debug!(target: UCT_STR, "Updation.");
       let points_seq = field.points_seq();
       let moves_count = field.moves_count();
+      let last_moves_count = self.moves_count;
       loop {
         if self.moves_count == moves_count {
           if self.player != player {
             self.clear();
             self.init(field, player);
-          } else if let Some(node) = self.node.as_ref() {
+          } else if let Some(node) = self.node.as_mut() {
+            let mut added_moves = self.wave_pruning.update(field, last_moves_count, config::uct_radius());
+            debug!(target: UCT_STR, "Added  into consideration moves: {:?}.", added_moves.iter().map(|&pos| (field.to_x(pos), field.to_y(pos))).collect::<Vec<(Coord, Coord)>>());
+            UctRoot::expand_node(node, &mut added_moves, rng);
             match config::uct_komi_type() {
               UctKomiType::Static => self.komi = AtomicIsize::new(field.score(self.player) as isize),
               UctKomiType::Dynamic => {
@@ -284,35 +268,6 @@ impl UctRoot {
           break;
         }
         self.node = next;
-        let moves_field = &mut self.moves_field;
-        let moves = &mut self.moves;
-        moves.retain(|&pos| {
-          if field.is_putting_allowed(pos) {
-            true
-          } else {
-            moves_field[pos] = 0;
-            false
-          }
-        });
-        let mut added_moves = Vec::new();
-        let width = field.width();
-        field::wave(width, next_pos, |pos| {
-          if pos == next_pos && moves_field[pos] == 0 {
-            moves_field[pos] = 1;
-            true
-          } else if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && field::manhattan(width, next_pos, pos) <= config::uct_radius() {
-            if moves_field[pos] == 0 && pos != next_pos {
-              moves.push(pos);
-              added_moves.push(pos);
-            }
-            moves_field[pos] = next_pos;
-            true
-          } else {
-            false
-          }
-        });
-        moves_field[next_pos] = 0;
-        UctRoot::expand_node(self.node.as_mut().unwrap(), &added_moves);
         self.moves_count += 1;
         self.player = self.player.next();
         self.hash = field.hash();
@@ -326,11 +281,10 @@ impl UctRoot {
   pub fn new(length: Pos) -> UctRoot {
     UctRoot {
       node: None,
-      moves: Vec::with_capacity(length),
-      moves_field: iter::repeat(0).take(length).collect(),
       player: Player::Red,
       moves_count: 0,
       hash: 0,
+      wave_pruning: WavePruning::new(length),
       komi: AtomicIsize::new(0),
       komi_visits: AtomicUsize::new(0),
       komi_wins: AtomicUsize::new(0),
@@ -381,9 +335,10 @@ impl UctRoot {
     win_rate + uct
   }
 
-  fn create_children(field: &Field, possible_moves: &Vec<Pos>, node: &UctNode) {
+  fn create_children<T: Rng>(field: &Field, possible_moves: &mut Vec<Pos>, node: &UctNode, rng: &mut T) {
+    rng.shuffle(possible_moves);
     let mut children = None;
-    for &pos in possible_moves {
+    for &pos in possible_moves.iter() {
       if field.is_putting_allowed(pos) {
         let mut cur_child = Box::new(UctNode::new(pos));
         cur_child.set_sibling_option(children);
@@ -405,17 +360,15 @@ impl UctRoot {
       if visits == usize::max_value() {
         if wins == usize::max_value() {
           return Some(next_node);
-        } else {
-          next = next_node.get_sibling_ref();
-          continue;
         }
       } else if visits == 0 {
         return Some(next_node);
-      }
-      let uct_value = UctRoot::ucb(node, next_node, config::ucb_type());
-      if uct_value > best_uct {
-        best_uct = uct_value;
-        result = Some(next_node);
+      } else {
+        let uct_value = UctRoot::ucb(node, next_node, config::ucb_type());
+        if uct_value > best_uct {
+          best_uct = uct_value;
+          result = Some(next_node);
+        }
       }
       next = next_node.get_sibling_ref();
     }
@@ -450,7 +403,7 @@ impl UctRoot {
       UctRoot::play_random_game(field, player, rng, possible_moves, komi)
     } else {
       if node.get_child_ref().is_none() {
-        UctRoot::create_children(field, possible_moves, node)
+        UctRoot::create_children(field, possible_moves, node, rng)
       }
       if let Some(next) = UctRoot::uct_select(node) {
         let pos = next.get_pos();
@@ -518,7 +471,7 @@ impl UctRoot {
     info!(target: UCT_STR, "Generating best move for player {0}.", player);
     debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.get_player(pos))).collect::<Vec<(Coord, Coord, Player)>>());
     debug!(target: UCT_STR, "Next random u64: {0}.", rng.gen::<u64>());
-    self.update(field, player);
+    self.update(field, player, rng);
     info!(target: UCT_STR, "Komi is {0}, type is {1}.", self.komi.load(Ordering::Relaxed), config::uct_komi_type());
     let threads_count = config::threads_count();
     let iterations = AtomicUsize::new(0);
@@ -529,7 +482,7 @@ impl UctRoot {
       guards.push(thread::scoped(|| {
         let mut local_field = field.clone();
         let mut local_rng = xor_shift_rng;
-        let mut possible_moves = self.moves.clone();
+        let mut possible_moves = self.wave_pruning.moves().clone();
         while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
           self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
           for _ in 0 .. local_field.moves_count() - self.moves_count {

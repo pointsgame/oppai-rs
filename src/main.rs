@@ -25,6 +25,7 @@ mod player;
 mod zobrist;
 mod cell;
 mod field;
+mod wave_pruning;
 mod uct;
 mod heuristic;
 mod bot;
