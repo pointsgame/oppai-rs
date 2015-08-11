@@ -1,16 +1,35 @@
 [bot]
+# Engine for position estimating and best move choosing.
+# May be one of the next string values: "Uct", "Heuristic".
 solver = "Uct"
+# Number of milliseconds that is given for IO and some internal delay.
 time_gap = 100
+# Number of threads that bot will use. If it not specified it will be determined automatically.
+# threads_count = 4
 
 [uct]
-depth = 8
-draw_weight = 0.4
-final_ucb_type = "Winrate"
-green = 0.5
-komi_min_iterations = 3000
-komi_type = "Dynamic"
+# Maximum manhattan distance from playable field point to the nearest put point for UCT game. All other point will not take part in the game.
 radius = 3
-red = 0.45
-ucb_type = "Ucb1Tuned"
-uctk = 1.0
+# Maximum depth of UCT tree.
+depth = 8
+# Child nodes will be created only after this number of node visits.
 when_create_children = 2
+# Formula of UCT value.
+# May be one of the next string values: "Winrate", "Ucb1", "Ucb1Tuned".
+ucb_type = "Ucb1Tuned"
+# Formula of UCT value that will be used when best move choosing.
+# May be one of the next string values: "Winrate", "Ucb1", "Ucb1Tuned".
+final_ucb_type = "Winrate"
+# UCT constant. Larger values give uniform search. Smaller values give very selective search.
+uctk = 1.0
+# Draw weight for UCT formula. Should be fractional number between 0 (weight of defeat) and 1 (weight of win). Smaller values give more aggressive game.
+draw_weight = 0.4
+# Red zone for dynamic komi. Should be fractional number between 0 and 1. Also should be less than green zone.
+red = 0.45
+# Green zone for dynamic komi. Should be fractional number between 0 and 1. Also should be more than red zone.
+green = 0.5
+# Type of komi evaluation during the game.
+# May be one of the next string values: "None", "Static", "Dynamic".
+komi_type = "Dynamic"
+# Dynamic komi will be updated after this number of iterations.
+komi_min_iterations = 3000
