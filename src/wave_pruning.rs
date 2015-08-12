@@ -1,7 +1,6 @@
 use std::iter;
-use types::{Pos, CoordSum};
 use field;
-use field::Field;
+use field::{Pos, Field};
 
 pub struct WavePruning {
   moves: Vec<Pos>,
@@ -27,7 +26,7 @@ impl WavePruning {
     }
   }
 
-  pub fn init(&mut self, field: &Field, radius: CoordSum) {
+  pub fn init(&mut self, field: &Field, radius: u32) {
     let width = field.width();
     for &start_pos in field.points_seq() {
       field::wave(width, start_pos, |pos| {
@@ -48,7 +47,7 @@ impl WavePruning {
     }
   }
 
-  pub fn update(&mut self, field: &Field, last_moves_count: usize, radius: CoordSum) -> Vec<Pos> {
+  pub fn update(&mut self, field: &Field, last_moves_count: usize, radius: u32) -> Vec<Pos> {
     let moves_field = &mut self.moves_field;
     let moves = &mut self.moves;
     moves.retain(|&pos| {

@@ -3,21 +3,20 @@ use std::sync::Arc;
 use rand::{Rng, XorShiftRng, SeedableRng};
 use quickcheck;
 use quickcheck::TestResult;
-use types::{Coord, Pos};
 use player::Player;
 use zobrist::Zobrist;
 use field;
-use field::Field;
+use field::{Pos, Field};
 
 fn construct_field(image: &str) -> Field {
   let lines = image.split('\n').map(|line| line.trim_matches(' ')).filter(|line| !line.is_empty()).collect::<Vec<&str>>();
-  let height = lines.len() as Coord;
+  let height = lines.len() as u32;
   assert!(height > 0);
-  let width = lines.first().unwrap().len() as Coord;
-  assert!(lines.iter().all(|line| line.len() as Coord == width));
+  let width = lines.first().unwrap().len() as u32;
+  assert!(lines.iter().all(|line| line.len() as u32 == width));
   let mut moves = lines.into_iter().enumerate().flat_map(|(y, line)|
-    line.chars().enumerate().filter(|&(_, c)| c.to_ascii_lowercase() != c.to_ascii_uppercase()).map(move |(x, c)| (c, x as Coord, y as Coord))
-  ).collect::<Vec<(char, Coord, Coord)>>();
+    line.chars().enumerate().filter(|&(_, c)| c.to_ascii_lowercase() != c.to_ascii_uppercase()).map(move |(x, c)| (c, x as u32, y as u32))
+  ).collect::<Vec<(char, u32, u32)>>();
   moves.sort_by(|&(c1, _, _), &(c2, _, _)| (c1.to_ascii_lowercase(), c1.is_lowercase()).cmp(&(c2.to_ascii_lowercase(), c2.is_lowercase())));
   let mut rng = XorShiftRng::new_unseeded();
   let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
@@ -284,7 +283,7 @@ fn three_surroundings_with_common_borders() {
 
 #[test]
 fn undo_check() {
-  fn prop(width_seed: Coord, height_seed: Coord, seed: u64) -> TestResult {
+  fn prop(width_seed: u32, height_seed: u32, seed: u64) -> TestResult {
     let width = width_seed % 30;
     let height = height_seed % 30;
     if width < 3 || height < 3 {
@@ -311,5 +310,5 @@ fn undo_check() {
     }
     TestResult::passed()
   }
-  quickcheck::quickcheck(prop as fn(Coord, Coord, u64) -> TestResult);
+  quickcheck::quickcheck(prop as fn(u32, u32, u64) -> TestResult);
 }

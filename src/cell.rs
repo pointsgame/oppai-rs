@@ -1,23 +1,24 @@
-use types::CellValue;
 use player::Player;
 
-static PLAYER_BIT: CellValue = 1;
+type CellValue = u8;
 
-static PUT_BIT: CellValue = 2;
+const PLAYER_BIT: CellValue = 1;
 
-static CAPTURED_BIT: CellValue = 4;
+const PUT_BIT: CellValue = 2;
 
-static BOUND_BIT: CellValue = 8;
+const CAPTURED_BIT: CellValue = 4;
 
-static EMPTY_BASE_BIT: CellValue = 16;
+const BOUND_BIT: CellValue = 8;
 
-static BAD_BIT: CellValue = 32;
+const EMPTY_BASE_BIT: CellValue = 16;
 
-static TAG_BIT: CellValue = 64;
+const BAD_BIT: CellValue = 32;
+
+const TAG_BIT: CellValue = 64;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Cell { 
-  pub value: CellValue
+  value: CellValue
 }
 
 impl Cell {

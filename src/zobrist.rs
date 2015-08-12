@@ -1,5 +1,5 @@
-use types::Pos;
 use rand::Rng;
+use field::Pos;
 
 #[derive(Clone, PartialEq)]
 pub struct Zobrist {

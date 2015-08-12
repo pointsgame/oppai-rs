@@ -1,13 +1,12 @@
-use types::Pos;
 use player::Player;
-use field::Field;
+use field::{Pos, Field};
 
-static CG_SUM: [i8; 9] = [-5, -1, 0, 0, 1, 2, 5, 20, 30];
+static CG_SUM: [i32; 9] = [-5, -1, 0, 0, 1, 2, 5, 20, 30];
 
-fn heuristic_estimation(field: &Field, pos: Pos, player: Player) -> i8 {
+fn heuristic_estimation(field: &Field, pos: Pos, player: Player) -> i32 {
   let enemy = player.next();
-  let g1 = field.number_near_groups(pos, player) as i8;
-  let g2 = field.number_near_groups(pos, enemy) as i8;
+  let g1 = field.number_near_groups(pos, player) as i32;
+  let g2 = field.number_near_groups(pos, enemy) as i32;
   let c1 = CG_SUM[field.number_near_points(pos, player) as usize];
   let c2 = CG_SUM[field.number_near_points(pos, enemy) as usize];
   let mut result = (g1 * 3 + g2 * 2) * (5 - (g1 - g2).abs()) - c1 - c2;
@@ -20,7 +19,7 @@ fn heuristic_estimation(field: &Field, pos: Pos, player: Player) -> i8 {
 }
 
 pub fn heuristic(field: &Field, player: Player) -> Option<Pos> {
-  let mut best_estimation = i8::min_value();
+  let mut best_estimation = i32::min_value();
   let mut result = None;
   for pos in field.min_pos() .. field.max_pos() + 1 {
     if field.is_putting_allowed(pos) {

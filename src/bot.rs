@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use rand::{XorShiftRng, SeedableRng};
-use types::{Coord, Time};
 use player::Player;
 use config;
 use config::Solver;
@@ -12,9 +11,9 @@ use heuristic;
 
 const BOT_STR: &'static str = "bot";
 
-const MIN_COMPLEXITY: u8 = 0;
+const MIN_COMPLEXITY: u32 = 0;
 
-const MAX_COMPLEXITY: u8 = 100;
+const MAX_COMPLEXITY: u32 = 100;
 
 const MIN_UCT_ITERATIONS: usize = 0;
 
@@ -28,7 +27,7 @@ pub struct Bot {
 }
 
 impl Bot {
-  pub fn new(width: Coord, height: Coord, seed: u64) -> Bot {
+  pub fn new(width: u32, height: u32, seed: u64) -> Bot {
     info!(target: BOT_STR, "Initialization with width {0}, height {1}, seed {2}.", width, height, seed);
     let length = field::length(width, height);
     let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
@@ -43,11 +42,11 @@ impl Bot {
     }
   }
 
-  pub fn best_move(&mut self, player: Player) -> Option<(Coord, Coord)> {
+  pub fn best_move(&mut self, player: Player) -> Option<(u32, u32)> {
     self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
   }
 
-  pub fn best_move_with_time(&mut self, player: Player, time: Time) -> Option<(Coord, Coord)> {
+  pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<(u32, u32)> {
     match config::solver() {
       Solver::Uct => {
         let mut result = self.uct.best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap());
@@ -62,7 +61,7 @@ impl Bot {
     }
   }
 
-  pub fn best_move_with_complexity(&mut self, player: Player, complexity: u8) -> Option<(Coord, Coord)> {
+  pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<(u32, u32)> {
     match config::solver() {
       Solver::Uct => {
         let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS) / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize + MIN_UCT_ITERATIONS;
@@ -78,7 +77,7 @@ impl Bot {
     }
   }
 
-  pub fn put_point(&mut self, x: Coord, y: Coord, player: Player) -> bool {
+  pub fn put_point(&mut self, x: u32, y: u32, player: Player) -> bool {
     let pos = self.field.to_pos(x, y);
     self.field.put_point(pos, player)
   }

@@ -4,7 +4,6 @@ use std::io::{Write, Read};
 use num_cpus;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 use toml;
-use types::{CoordSum, Depth, Time};
 
 const CONFIG_STR: &'static str = "config";
 
@@ -161,23 +160,23 @@ struct Config {
 
 #[derive(Clone, RustcDecodable, RustcEncodable)]
 struct UctConfig {
-  radius: CoordSum,
+  radius: u32,
   ucb_type: UcbType,
   final_ucb_type: UcbType,
-  draw_weight: f32,
-  uctk: f32,
+  draw_weight: f64,
+  uctk: f64,
   when_create_children: usize,
-  depth: Depth,
+  depth: u32,
   komi_type: UctKomiType,
-  red: f32,
-  green: f32,
+  red: f64,
+  green: f64,
   komi_min_iterations: usize
 }
 
 #[derive(Clone, RustcDecodable, RustcEncodable)]
 struct BotConfig {
   threads_count: Option<usize>,
-  time_gap: Time,
+  time_gap: u32,
   solver: Solver
 }
 
@@ -242,7 +241,7 @@ pub fn write<T: Write>(output: &mut T) {
 }
 
 #[inline]
-pub fn uct_radius() -> CoordSum {
+pub fn uct_radius() -> u32 {
   config().uct.radius
 }
 
@@ -257,12 +256,12 @@ pub fn final_ucb_type() -> UcbType {
 }
 
 #[inline]
-pub fn uct_draw_weight() -> f32 {
+pub fn uct_draw_weight() -> f64 {
   config().uct.draw_weight
 }
 
 #[inline]
-pub fn uctk() -> f32 {
+pub fn uctk() -> f64 {
   config().uct.uctk
 }
 
@@ -272,7 +271,7 @@ pub fn uct_when_create_children() -> usize {
 }
 
 #[inline]
-pub fn uct_depth() -> Depth {
+pub fn uct_depth() -> u32 {
   config().uct.depth
 }
 
@@ -287,12 +286,12 @@ pub fn uct_komi_type() -> UctKomiType {
 }
 
 #[inline]
-pub fn uct_red() -> f32 {
+pub fn uct_red() -> f64 {
   config().uct.red
 }
 
 #[inline]
-pub fn uct_green() -> f32 {
+pub fn uct_green() -> f64 {
   config().uct.green
 }
 
@@ -302,7 +301,7 @@ pub fn uct_komi_min_iterations() -> usize {
 }
 
 #[inline]
-pub fn time_gap() -> Time {
+pub fn time_gap() -> u32 {
   config().bot.time_gap
 }
 

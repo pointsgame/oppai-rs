@@ -19,7 +19,6 @@ extern crate toml;
 #[cfg(test)]
 extern crate quickcheck;
 
-mod types;
 mod config;
 mod player;
 mod zobrist;
@@ -39,7 +38,6 @@ use std::str::FromStr;
 use std::path::Path;
 use std::fs::File;
 use log4rs::toml::Creator;
-use types::{Coord, Time};
 use player::Player;
 use bot::Bot;
 
@@ -63,24 +61,24 @@ fn write_init_error<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "? {0} init", id).ok();
 }
 
-fn write_gen_move<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  writeln!(output, "= {0} gen_move {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
+fn write_gen_move<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
+  writeln!(output, "= {0} gen_move {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
 }
 
 fn write_gen_move_error<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "? {0} gen_move", id).ok();
 }
 
-fn write_gen_move_with_complexity<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  writeln!(output, "= {0} gen_move_with_complexity {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
+fn write_gen_move_with_complexity<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
+  writeln!(output, "= {0} gen_move_with_complexity {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
 }
 
 fn write_gen_move_with_complexity_error<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "? {0} gen_move_with_complexity", id).ok();
 }
 
-fn write_gen_move_with_time<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  writeln!(output, "= {0} gen_move_with_time {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
+fn write_gen_move_with_time<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
+  writeln!(output, "= {0} gen_move_with_time {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
 }
 
 fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
@@ -111,8 +109,8 @@ fn write_name_error<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "? {0} name", id).ok();
 }
 
-fn write_play<T: Write>(output: &mut T, id: u32, x: Coord, y: Coord, player: Player) {
-  writeln!(output, "= {0} play {1} {2} {3}", id, x, y, player.to_bool() as u8).ok();
+fn write_play<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
+  writeln!(output, "= {0} play {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
 }
 
 fn write_play_error<T: Write>(output: &mut T, id: u32) {
@@ -174,8 +172,8 @@ fn main() {
           }
         },
         Some("init") => {
-          let x_option = split.next().and_then(|x_str| Coord::from_str(x_str).ok());
-          let y_option = split.next().and_then(|y_str| Coord::from_str(y_str).ok());
+          let x_option = split.next().and_then(|x_str| u32::from_str(x_str).ok());
+          let y_option = split.next().and_then(|y_str| u32::from_str(y_str).ok());
           let seed_option = split.next().and_then(|seed_str| u64::from_str(seed_str).ok());
           if split.next().is_some() {
             write_init_error(&mut output, id);
@@ -187,7 +185,7 @@ fn main() {
           }
         },
         Some("gen_move") => {
-          let player_option = split.next().and_then(|player_str| u8::from_str(player_str).ok()).and_then(|player_u8| match player_u8 { //TODO: from_number method
+          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
             0 => Some(Player::Red),
             1 => Some(Player::Black),
             _ => None
@@ -205,12 +203,12 @@ fn main() {
           }
         },
         Some("gen_move_with_complexity") => {
-          let player_option = split.next().and_then(|player_str| u8::from_str(player_str).ok()).and_then(|player_u8| match player_u8 { //TODO: from_number method
+          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
             0 => Some(Player::Red),
             1 => Some(Player::Black),
             _ => None
           });
-          let complexity_option = split.next().and_then(|complexity_str| u8::from_str(complexity_str).ok() );
+          let complexity_option = split.next().and_then(|complexity_str| u32::from_str(complexity_str).ok() );
           if split.next().is_some() {
             write_gen_move_with_complexity_error(&mut output, id);
           } else if let (Some(player), Some(complexity), Some(bot)) = (player_option, complexity_option, bot_option.as_mut()) {
@@ -224,12 +222,12 @@ fn main() {
           }
         },
         Some("gen_move_with_time") => {
-          let player_option = split.next().and_then(|player_str| u8::from_str(player_str).ok()).and_then(|player_u8| match player_u8 { //TODO: from_number method
+          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
             0 => Some(Player::Red),
             1 => Some(Player::Black),
             _ => None
           });
-          let time_option = split.next().and_then(|time_str| Time::from_str(time_str).ok() );
+          let time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok() );
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
           } else if let (Some(player), Some(time), Some(bot)) = (player_option, time_option, bot_option.as_mut()) {
@@ -264,9 +262,9 @@ fn main() {
           }
         },
         Some("play") => {
-          let x_option = split.next().and_then(|x_str| Coord::from_str(x_str).ok());
-          let y_option = split.next().and_then(|y_str| Coord::from_str(y_str).ok());
-          let player_option = split.next().and_then(|player_str| u8::from_str(player_str).ok()).and_then(|player_u8| match player_u8 { //TODO: from_number method
+          let x_option = split.next().and_then(|x_str| u32::from_str(x_str).ok());
+          let y_option = split.next().and_then(|y_str| u32::from_str(y_str).ok());
+          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
             0 => Some(Player::Red),
             1 => Some(Player::Black),
             _ => None

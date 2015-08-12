@@ -1,19 +1,20 @@
 use std::{mem, iter};
 use std::collections::LinkedList;
 use std::sync::Arc;
-use types::{Pos, Coord, CoordDiff, CoordSquare, CoordSum, CoordProd, Score};
 use player::Player;
 use cell::Cell;
 use zobrist::Zobrist;
 
+pub type Pos = usize;
+
 #[derive(Clone, PartialEq)]
 struct FieldChange {
-  score_red: Score,
-  score_black: Score,
+  score_red: i32,
+  score_black: i32,
   hash: u64,
   points_changes: Vec<(Pos, Cell)>,
   dsu_changes: Vec<(Pos, Pos)>,
-  dsu_size_change: Option<(Pos, CoordProd)>
+  dsu_size_change: Option<(Pos, u32)>
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -26,47 +27,47 @@ enum IntersectionState {
 
 #[derive(Clone, PartialEq)]
 pub struct Field {
-  width: Coord,
-  height: Coord,
+  width: u32,
+  height: u32,
   length: Pos,
-  score_red: Score,
-  score_black: Score,
+  score_red: i32,
+  score_black: i32,
   points_seq: Vec<Pos>,
   points: Vec<Cell>,
   dsu: Vec<Pos>,
-  dsu_size: Vec<CoordProd>,
+  dsu_size: Vec<u32>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   hash: u64
 }
 
 #[inline]
-pub fn length(width: Coord, height: Coord) -> Pos {
+pub fn length(width: u32, height: u32) -> Pos {
   (width as Pos + 2) * (height as Pos + 2)
 }
 
 #[inline]
-pub fn to_pos(width: Coord, x: Coord, y: Coord) -> Pos {
+pub fn to_pos(width: u32, x: u32, y: u32) -> Pos {
   (y as Pos + 1) * (width as Pos + 2) + x as Pos + 1
 }
 
 #[inline]
-pub fn to_x(width: Coord, pos: Pos) -> Coord {
-  (pos % (width as Pos + 2) - 1) as Coord
+pub fn to_x(width: u32, pos: Pos) -> u32 {
+  (pos % (width as Pos + 2) - 1) as u32
 }
 
 #[inline]
-pub fn to_y(width: Coord, pos: Pos) -> Coord {
-  (pos / (width as Pos + 2) - 1) as Coord
+pub fn to_y(width: u32, pos: Pos) -> u32 {
+  (pos / (width as Pos + 2) - 1) as u32
 }
 
 #[inline]
-pub fn n(width: Coord, pos: Pos) -> Pos {
+pub fn n(width: u32, pos: Pos) -> Pos {
   pos - width as Pos - 2
 }
 
 #[inline]
-pub fn s(width: Coord, pos: Pos) -> Pos {
+pub fn s(width: u32, pos: Pos) -> Pos {
   pos + width as Pos + 2
 }
 
@@ -81,36 +82,36 @@ pub fn e(pos: Pos) -> Pos {
 }
 
 #[inline]
-pub fn nw(width: Coord, pos: Pos) -> Pos {
+pub fn nw(width: u32, pos: Pos) -> Pos {
   n(width, w(pos))
 }
 
 #[inline]
-pub fn ne(width: Coord, pos: Pos) -> Pos {
+pub fn ne(width: u32, pos: Pos) -> Pos {
   n(width, e(pos))
 }
 
 #[inline]
-pub fn sw(width: Coord, pos: Pos) -> Pos {
+pub fn sw(width: u32, pos: Pos) -> Pos {
   s(width, w(pos))
 }
 
 #[inline]
-pub fn se(width: Coord, pos: Pos) -> Pos {
+pub fn se(width: u32, pos: Pos) -> Pos {
   s(width, e(pos))
 }
 
 #[inline]
-pub fn min_pos(width: Coord) -> Pos {
+pub fn min_pos(width: u32) -> Pos {
   to_pos(width, 0, 0)
 }
 
 #[inline]
-pub fn max_pos(width: Coord, height: Coord) -> Pos {
+pub fn max_pos(width: u32, height: u32) -> Pos {
   to_pos(width, width - 1, height - 1)
 }
 
-pub fn is_near(width: Coord, pos1: Pos, pos2: Pos) -> bool {
+pub fn is_near(width: u32, pos1: Pos, pos2: Pos) -> bool {
   n(width, pos1)  == pos2 ||
   s(width, pos1)  == pos2 ||
   w(pos1)         == pos2 ||
@@ -121,13 +122,13 @@ pub fn is_near(width: Coord, pos1: Pos, pos2: Pos) -> bool {
   se(width, pos1) == pos2
 }
 
-fn get_intersection_state(width: Coord, pos: Pos, next_pos: Pos) -> IntersectionState {
+fn get_intersection_state(width: u32, pos: Pos, next_pos: Pos) -> IntersectionState {
   let pos_x = to_x(width, pos);
   let pos_y = to_y(width, pos);
   let next_pos_x = to_x(width, next_pos);
   let next_pos_y = to_y(width, next_pos);
   if next_pos_x <= pos_x {
-    match next_pos_y as CoordDiff - pos_y as CoordDiff {
+    match next_pos_y as i32 - pos_y as i32 {
       1  => IntersectionState::Up,
       0  => IntersectionState::Target,
       -1 => IntersectionState::Down,
@@ -138,8 +139,8 @@ fn get_intersection_state(width: Coord, pos: Pos, next_pos: Pos) -> Intersection
   }
 }
 
-pub fn is_point_inside_ring(width: Coord, pos: Pos, ring: &LinkedList<Pos>) -> bool {
-  let mut intersections = 0u8;
+pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &LinkedList<Pos>) -> bool {
+  let mut intersections = 0u32;
   let mut state = IntersectionState::None;
   for &next_pos in ring {
     match get_intersection_state(width, pos, next_pos) {
@@ -175,11 +176,11 @@ pub fn is_point_inside_ring(width: Coord, pos: Pos, ring: &LinkedList<Pos>) -> b
 }
 
 #[inline]
-pub fn square(width: Coord, pos1: Pos, pos2: Pos) -> CoordSquare {
-  to_x(width, pos1) as CoordSquare * to_y(width, pos2) as CoordSquare - to_y(width, pos1) as CoordSquare * to_x(width, pos2) as CoordSquare
+pub fn square(width: u32, pos1: Pos, pos2: Pos) -> i32 {
+  (to_x(width, pos1) * to_y(width, pos2)) as i32 - (to_y(width, pos1) * to_x(width, pos2)) as i32
 }
 
-pub fn wave<F: FnMut(Pos) -> bool>(width: Coord, start_pos: Pos, mut cond: F) {
+pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
@@ -211,8 +212,8 @@ pub fn wave<F: FnMut(Pos) -> bool>(width: Coord, start_pos: Pos, mut cond: F) {
 }
 
 #[inline]
-pub fn manhattan(width: Coord, pos1: Pos, pos2: Pos) -> CoordSum {
-  (CoordDiff::abs(to_x(width, pos1) as CoordDiff - to_x(width, pos2) as CoordDiff) + CoordDiff::abs(to_y(width, pos1) as CoordDiff - to_y(width, pos2) as CoordDiff)) as CoordSum
+pub fn manhattan(width: u32, pos1: Pos, pos2: Pos) -> u32 {
+  (i32::abs(to_x(width, pos1) as i32 - to_x(width, pos2) as i32) + i32::abs(to_y(width, pos1) as i32 - to_y(width, pos2) as i32)) as u32
 }
 
 impl Field {
@@ -222,17 +223,17 @@ impl Field {
   }
 
   #[inline]
-  pub fn to_pos(&self, x: Coord, y: Coord) -> Pos {
+  pub fn to_pos(&self, x: u32, y: u32) -> Pos {
     to_pos(self.width, x, y)
   }
 
   #[inline]
-  pub fn to_x(&self, pos: Pos) -> Coord {
+  pub fn to_x(&self, pos: Pos) -> u32 {
     to_x(self.width, pos)
   }
 
   #[inline]
-  pub fn to_y(&self, pos: Pos) -> Coord {
+  pub fn to_y(&self, pos: Pos) -> u32 {
     to_y(self.width, pos)
   }
 
@@ -457,8 +458,8 @@ impl Field {
     self.is_live_players_point(self.se(center_pos), player)
   }
 
-  pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u8 {
-    let mut result = 0u8;
+  pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
+    let mut result = 0u32;
     if self.is_live_players_point(self.n(center_pos), player) { result += 1; }
     if self.is_live_players_point(self.s(center_pos), player) { result += 1; }
     if self.is_live_players_point(self.w(center_pos), player) { result += 1; }
@@ -470,8 +471,8 @@ impl Field {
     result
   }
 
-  pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u8 {
-    let mut result = 0u8;
+  pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u32 {
+    let mut result = 0u32;
     if !self.is_live_players_point(self.w(center_pos), player) && (self.is_live_players_point(self.nw(center_pos), player) || self.is_live_players_point(self.n(center_pos), player)) { result += 1; }
     if !self.is_live_players_point(self.s(center_pos), player) && (self.is_live_players_point(self.sw(center_pos), player) || self.is_live_players_point(self.w(center_pos), player)) { result += 1; }
     if !self.is_live_players_point(self.e(center_pos), player) && (self.is_live_players_point(self.se(center_pos), player) || self.is_live_players_point(self.s(center_pos), player)) { result += 1; }
@@ -479,7 +480,7 @@ impl Field {
     result
   }
 
-  pub fn new(width: Coord, height: Coord, zobrist: Arc<Zobrist>) -> Field {
+  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Field {
     let length = length(width, height);
     let mut field = Field {
       width: width,
@@ -556,7 +557,7 @@ impl Field {
   }
 
   #[inline]
-  fn square(&self, pos1: Pos, pos2: Pos) -> CoordSquare {
+  fn square(&self, pos1: Pos, pos2: Pos) -> i32 {
     square(self.width, pos1, pos2)
   }
 
@@ -661,8 +662,8 @@ impl Field {
   }
 
   fn capture(&mut self, chain: &LinkedList<Pos>, inside_pos: Pos, player: Player) -> bool {
-    let mut captured_count: Score = 0;
-    let mut freed_count: Score = 0;
+    let mut captured_count = 0i32;
+    let mut freed_count = 0i32;
     let mut captured_points = LinkedList::new();
     for &pos in chain {
       self.set_tag(pos);
@@ -788,9 +789,9 @@ impl Field {
             group.push(input_points[j]);
           }
         }
-        let group_points_count = group.len() as u8;
+        let group_points_count = group.len() as u32;
         if group_points_count > 1 {
-          let mut chains_count = 0u8;
+          let mut chains_count = 0u32;
           for &(chain_pos, captured_pos) in group.iter() {
             if let Some(chain) = self.build_chain(pos, player, chain_pos) {
               self.capture(&chain, captured_pos, player);
@@ -949,12 +950,12 @@ impl Field {
   }
 
   #[inline]
-  pub fn width(&self) -> Coord {
+  pub fn width(&self) -> u32 {
     self.width
   }
 
   #[inline]
-  pub fn height(&self) -> Coord {
+  pub fn height(&self) -> u32 {
     self.height
   }
 
@@ -964,7 +965,7 @@ impl Field {
   }
 
   #[inline]
-  pub fn captured_count(&self, player: Player) -> Score {
+  pub fn captured_count(&self, player: Player) -> i32 {
     match player {
       Player::Red => self.score_red,
       Player::Black => self.score_black
@@ -972,7 +973,7 @@ impl Field {
   }
 
   #[inline]
-  pub fn score(&self, player: Player) -> Score {
+  pub fn score(&self, player: Player) -> i32 {
     match player {
       Player::Red => self.score_red - self.score_black,
       Player::Black => self.score_black - self.score_red
@@ -980,7 +981,7 @@ impl Field {
   }
 
   #[inline]
-  pub fn get_delta_score(&self, player: Player) -> Score {
+  pub fn get_delta_score(&self, player: Player) -> i32 {
     self.score(player) - self.changes.last().map_or(0, |change| {
       match player {
         Player::Red => change.score_red - change.score_black,
