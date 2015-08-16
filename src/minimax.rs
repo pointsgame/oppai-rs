@@ -7,6 +7,8 @@ use field::{Pos, Field};
 use trajectories_pruning::TrajectoriesPruning;
 use common;
 
+const MINIMAX_STR: &'static str = "minimax";
+
 fn alpha_beta(field: &mut Field, depth: u32, last_pos: Pos, player: Player, trajectories_pruning: &TrajectoriesPruning, mut alpha: i32, beta: i32, empty_board: &mut Vec<u32>) -> i32 {
   let enemy = player.next();
   if common::is_last_move_stupid(field, last_pos, enemy) {
@@ -44,6 +46,7 @@ pub fn minimax(field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
   let trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board);
   let moves = trajectories_pruning.calculate_moves(&mut empty_board);
+  debug!(target: MINIMAX_STR, "Moves in consideration: {:?}.", moves.iter().map(|&pos| (field.to_x(pos), field.to_y(pos))).collect::<Vec<(u32, u32)>>());
   let (producer, consumer) = comm::spmc::unbounded::new();
   for pos in moves {
     producer.send(pos).ok();
@@ -72,9 +75,11 @@ pub fn minimax(field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
           let last_alpha = alpha.load(Ordering::SeqCst);
           if cur_estimation > last_alpha as i32 {
             if alpha.compare_and_swap(last_alpha, cur_estimation as isize, Ordering::SeqCst) == last_alpha && best_move.compare_and_swap(last_pos, pos, Ordering::SeqCst) == last_pos {
+              debug!(target: MINIMAX_STR, "Estimation for move ({0}, {1}) is {2}.", field.to_x(pos), field.to_y(pos), cur_estimation);
               break;
             }
           } else {
+            debug!(target: MINIMAX_STR, "{0} for move ({1}, {2}) is {3}.", if cur_estimation > cur_alpha { "Estimation" } else { "Upper bound of estimation" }, field.to_x(pos), field.to_y(pos), cur_estimation);
             break;
           }
         }
@@ -84,6 +89,7 @@ pub fn minimax(field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
   drop(guards);
   let result = best_move.load(Ordering::SeqCst);
   if result != 0 {
+    info!(target: MINIMAX_STR, "Best move is ({0}, {1}), estimation is {2}.", field.to_x(result), field.to_y(result), alpha.load(Ordering::SeqCst));
     Some(result)
   } else {
     None
