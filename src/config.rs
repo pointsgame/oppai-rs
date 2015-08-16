@@ -110,10 +110,13 @@ impl Decodable for UctKomiType {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Solver {
   Uct,
+  Minimax,
   Heuristic
 }
 
 const UCT_STR: &'static str = "Uct";
+
+const MINIMAX_STR: &'static str = "Minimax";
 
 const HEURISTIC_STR: &'static str = "Heuristic";
 
@@ -121,6 +124,7 @@ impl Solver {
   pub fn as_str(&self) -> &'static str {
     match self {
       &Solver::Uct => UCT_STR,
+      &Solver::Minimax => MINIMAX_STR,
       &Solver::Heuristic => HEURISTIC_STR
     }
   }
@@ -128,6 +132,7 @@ impl Solver {
   pub fn from_str(s: &str) -> Option<Solver> {
     match s {
       UCT_STR => Some(Solver::Uct),
+      MINIMAX_STR => Some(Solver::Minimax),
       HEURISTIC_STR => Some(Solver::Heuristic),
       _ => None
     }

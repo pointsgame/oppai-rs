@@ -6,6 +6,7 @@ use config::{UcbType, UctKomiType};
 use player::Player;
 use field::{Pos, Field};
 use wave_pruning::WavePruning;
+use common;
 
 const UCT_STR: &'static str = "uct";
 
@@ -374,29 +375,6 @@ impl UctRoot {
     result
   }
 
-  fn is_last_move_stupid(field: &Field, pos: Pos, player: Player) -> bool {
-    let delta_score = field.get_delta_score(player);
-    delta_score < 0 || delta_score == 0 && {
-      let enemy = player.next();
-      let mut enemies_around = 0u32;
-      if field.is_players_point(field.n(pos), enemy) {
-        enemies_around += 1;
-      }
-      if field.is_players_point(field.s(pos), enemy) {
-        enemies_around += 1;
-      }
-      if field.is_players_point(field.w(pos), enemy) {
-        enemies_around += 1;
-      }
-      if field.is_players_point(field.e(pos), enemy) {
-        enemies_around += 1;
-      }
-      enemies_around == 3
-    } && {
-      field.is_putting_allowed(field.n(pos)) || field.is_putting_allowed(field.s(pos)) || field.is_putting_allowed(field.w(pos)) || field.is_putting_allowed(field.e(pos))
-    }
-  }
-
   fn play_simulation_rec<T: Rng>(field: &mut Field, player: Player, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, komi: i32, depth: u32) -> Option<Player> {
     let random_result = if node.get_visits() < config::uct_when_create_children() || depth == config::uct_depth() {
       UctRoot::play_random_game(field, player, rng, possible_moves, komi)
@@ -407,7 +385,7 @@ impl UctRoot {
       if let Some(next) = UctRoot::uct_select(node) {
         let pos = next.get_pos();
         field.put_point(pos, player);
-        if UctRoot::is_last_move_stupid(field, pos, player) {
+        if common::is_last_move_stupid(field, pos, player) {
           field.undo();
           next.loose_node();
           return UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);

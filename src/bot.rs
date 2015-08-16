@@ -8,6 +8,7 @@ use field;
 use field::Field;
 use uct::UctRoot;
 use heuristic;
+use minimax;
 
 const BOT_STR: &'static str = "bot";
 
@@ -18,6 +19,10 @@ const MAX_COMPLEXITY: u32 = 100;
 const MIN_UCT_ITERATIONS: usize = 0;
 
 const MAX_UCT_ITERATIONS: usize = 500000;
+
+const MIN_MINIMAX_DEPTH: u32 = 0;
+
+const MAX_MINIMAX_DEPTH: u32 = 8;
 
 pub struct Bot {
   rng: XorShiftRng,
@@ -49,11 +54,12 @@ impl Bot {
   pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<(u32, u32)> {
     match config::solver() {
       Solver::Uct => {
-        let mut result = self.uct.best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap());
-        if result.is_none() {
-          result = heuristic::heuristic(&self.field, player);
-        }
-        result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+        self.uct.best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap())
+          .or_else(|| { heuristic::heuristic(&self.field, player) })
+          .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      },
+      Solver::Minimax => {
+        unimplemented!()
       },
       Solver::Heuristic => {
         heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
@@ -65,11 +71,15 @@ impl Bot {
     match config::solver() {
       Solver::Uct => {
         let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS) / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize + MIN_UCT_ITERATIONS;
-        let mut result = self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count);
-        if result.is_none() {
-          result = heuristic::heuristic(&self.field, player);
-        }
-        result.map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+        self.uct.best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count)
+          .or_else(|| { heuristic::heuristic(&self.field, player) })
+          .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      },
+      Solver::Minimax => {
+        let depth = (complexity - MIN_COMPLEXITY) * (MAX_MINIMAX_DEPTH - MIN_MINIMAX_DEPTH) / (MAX_COMPLEXITY - MIN_COMPLEXITY) + MIN_MINIMAX_DEPTH;
+        minimax::minimax(&mut self.field, player, depth)
+          .or_else(|| { heuristic::heuristic(&self.field, player) })
+          .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
       Solver::Heuristic => {
         heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))

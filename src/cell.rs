@@ -152,6 +152,10 @@ impl Cell {
     self.is_put() && !self.is_captured() && self.get_player() == player
   }
 
+  pub fn is_players_empty_base(self, player: Player) -> bool {
+    self.is_empty_base() && self.get_player() == player
+  }
+
   pub fn get_empty_base_player(self) -> Option<Player> {
     if self.is_empty_base() { Some(self.get_player()) } else { None }
   }

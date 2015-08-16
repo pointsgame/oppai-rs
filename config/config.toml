@@ -1,6 +1,6 @@
 [bot]
 # Engine for position estimating and best move choosing.
-# May be one of the next string values: "Uct", "Heuristic".
+# May be one of the next string values: "Uct", "Minimax", "Heuristic".
 solver = "Uct"
 # Number of milliseconds that is given for IO and some internal delay.
 time_gap = 100

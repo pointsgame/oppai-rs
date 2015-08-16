@@ -16,6 +16,8 @@ extern crate rustc_serialize;
 
 extern crate toml;
 
+extern crate comm;
+
 #[cfg(test)]
 extern crate quickcheck;
 
@@ -25,8 +27,11 @@ mod zobrist;
 mod cell;
 mod field;
 mod wave_pruning;
+mod trajectories_pruning;
+mod common;
 mod uct;
 mod heuristic;
+mod minimax;
 mod bot;
 
 #[cfg(test)]

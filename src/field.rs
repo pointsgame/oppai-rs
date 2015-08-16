@@ -423,6 +423,11 @@ impl Field {
   }
 
   #[inline]
+  pub fn is_players_empty_base(&self, pos: Pos, player: Player) -> bool {
+    self.points[pos].is_players_empty_base(player)
+  }
+
+  #[inline]
   pub fn get_empty_base_player(&self, pos: Pos) -> Option<Player> {
     self.points[pos].get_empty_base_player()
   }
@@ -778,7 +783,10 @@ impl Field {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len();
     if input_points_count > 1 {
-      let sets = input_points.iter().map(|&(chain_pos, _)| self.find_dsu_set(chain_pos)).collect::<Vec<Pos>>();
+      let mut sets = Vec::with_capacity(input_points.len());
+      for &(chain_pos, _) in input_points.iter() {
+        sets.push(self.find_dsu_set(chain_pos));
+      }
       let mut group = Vec::with_capacity(4);
       let mut result = false;
       for i in 0 .. input_points_count {
@@ -988,5 +996,9 @@ impl Field {
         Player::Black => change.score_black - change.score_red
       }
     })
+  }
+
+  pub fn zobrist(&self) -> &Zobrist {
+    &self.zobrist
   }
 }
