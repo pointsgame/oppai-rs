@@ -221,7 +221,7 @@ impl TrajectoriesPruning {
         for trajectory in last_enemy_trajectories {
           let len = trajectory.len() as u32;
           let contains_pos = trajectory.points().contains(&last_pos);
-          if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos) && trajectory.points().iter().all(|&pos| field.is_putting_allowed(pos)) {
+          if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos) && trajectory.points().iter().all(|&pos| field.is_putting_allowed(pos) || pos == last_pos) {
             let new_trajectory = if contains_pos {
               if len == 1 {
                 continue;
