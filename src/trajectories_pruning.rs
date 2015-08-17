@@ -239,5 +239,33 @@ impl TrajectoriesPruning {
     result
   }
 
-  //new_from_exists
+  pub fn new_from_exists(field: &Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, exists: &TrajectoriesPruning) -> TrajectoriesPruning {
+    if depth == 0 {
+      return TrajectoriesPruning::empty();
+    }
+    let mut result = TrajectoriesPruning {
+      red_trajectories: Vec::new(),
+      black_trajectories: Vec::new()
+    };
+    {
+      let (cur_trajectories, enemy_trajectories, exists_cur_trajectories, exists_enemy_trajectories) = match player {
+        Player::Red => (&mut result.red_trajectories, &mut result.black_trajectories, &exists.red_trajectories, &exists.black_trajectories),
+        Player::Black => (&mut result.black_trajectories, &mut result.red_trajectories, &exists.black_trajectories, &exists.red_trajectories)
+      };
+      let cur_depth = (depth + 1) / 2;
+      let enemy_depth = depth / 2;
+      if cur_depth > 0 {
+        for trajectory in exists_cur_trajectories.iter().filter(|trajectory| { trajectory.len() as u32 <= cur_depth }) {
+          cur_trajectories.push(Trajectory::new(trajectory.points.clone(), trajectory.hash()));
+        }
+      }
+      if enemy_depth > 0 {
+        for trajectory in exists_enemy_trajectories.iter().filter(|trajectory| { trajectory.len() as u32 <= enemy_depth }) {
+          enemy_trajectories.push(Trajectory::new(trajectory.points.clone(), trajectory.hash()));
+        }
+      }
+    }
+    TrajectoriesPruning::exclude_trajectories(&mut result.red_trajectories, &mut result.black_trajectories, field.zobrist(), empty_board);
+    result
+  }
 }
