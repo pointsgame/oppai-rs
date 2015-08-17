@@ -22,7 +22,7 @@ fn alpha_beta(field: &mut Field, depth: u32, last_pos: Pos, player: Player, traj
     return field.score(player);
   }
   for pos in moves {
-    field.put_point(pos, player);
+    field.put_point(pos, player); //TODO: is_penult_move_stuped
     let next_trajectories_pruning = TrajectoriesPruning::new_from_last(field, enemy, depth - 1, empty_board, trajectories_pruning, pos);
     let mut cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -alpha - 1, -alpha, empty_board);
     if cur_estimation > alpha && cur_estimation < beta {
