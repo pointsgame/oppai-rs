@@ -138,7 +138,7 @@ impl UctNode {
     self.visits.fetch_add(1, Ordering::Relaxed);
   }
 
-  pub fn loose_node(&self) {
+  pub fn lose_node(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
     self.visits.store(usize::max_value(), Ordering::Relaxed);
@@ -380,11 +380,13 @@ impl UctRoot {
         field.put_point(pos, player);
         if common::is_last_move_stupid(field, pos, player) {
           field.undo();
-          next.loose_node();
+          next.lose_node();
           return UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);
         }
         if common::is_penult_move_stuped(field) {
-          node.loose_node();
+          // Theoretically, visits in this node may be overflowed by another thread, but there's nothing to worry about.
+          // In this case this node will be marked as losing on the next visit because uct_select method selects child determined.
+          node.lose_node();
           return Some(player);
         }
         UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
