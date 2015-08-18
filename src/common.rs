@@ -23,3 +23,8 @@ pub fn is_last_move_stupid(field: &Field, pos: Pos, player: Player) -> bool {
     field.is_putting_allowed(field.n(pos)) || field.is_putting_allowed(field.s(pos)) || field.is_putting_allowed(field.w(pos)) || field.is_putting_allowed(field.e(pos))
   }
 }
+
+pub fn is_penult_move_stuped(field: &Field) -> bool {
+  let moves_count = field.moves_count();
+  moves_count > 1 && field.is_captured(field.points_seq()[moves_count - 2])
+}
