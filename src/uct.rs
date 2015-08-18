@@ -22,7 +22,7 @@ struct UctNode {
 
 impl Drop for UctNode {
   fn drop(&mut self) {
-    self.clear_child();
+    unsafe { self.clear_child(); }
   }
 }
 
@@ -97,21 +97,14 @@ impl UctNode {
     }
   }
 
-  pub fn clear_child(&self) {
+  unsafe fn clear_child(&self) {
     let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
     if !ptr.is_null() {
-      drop::<Box<UctNode>>(unsafe { mem::transmute(ptr) });
+      drop::<Box<UctNode>>(mem::transmute(ptr));
     }
   }
 
   pub fn set_child(&self, child: Box<UctNode>) {
-    let ptr = self.child.swap(unsafe { mem::transmute(child) }, Ordering::Relaxed);
-    if !ptr.is_null() {
-      drop::<Box<UctNode>>(unsafe { mem::transmute(ptr) });
-    }
-  }
-
-  pub fn set_child_if_empty(&self, child: Box<UctNode>) {
     let child_ptr = unsafe { mem::transmute(child) };
     let ptr = self.child.compare_and_swap(ptr::null_mut(), child_ptr, Ordering::Relaxed);
     if !ptr.is_null() {
@@ -346,7 +339,7 @@ impl UctRoot {
       }
     }
     if let Some(child) = children {
-      node.set_child_if_empty(child)
+      node.set_child(child)
     }
   }
 
@@ -389,6 +382,10 @@ impl UctRoot {
           field.undo();
           next.loose_node();
           return UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);
+        }
+        if common::is_penult_move_stuped(field) {
+          node.loose_node();
+          return Some(player);
         }
         UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
       } else {
