@@ -9,7 +9,7 @@ use common;
 
 const MINIMAX_STR: &'static str = "minimax";
 
-fn alpha_beta(field: &mut Field, depth: u32, last_pos: Pos, player: Player, trajectories_pruning: &TrajectoriesPruning, mut alpha: i32, beta: i32, empty_board: &mut Vec<u32>) -> i32 {
+fn alpha_beta(field: &mut Field, depth: u32, last_pos: Pos, player: Player, trajectories_pruning: &TrajectoriesPruning, mut alpha: i32, beta: i32, empty_board: &mut Vec<u32>, should_stop: &AtomicBool) -> i32 {
   let enemy = player.next();
   if common::is_last_move_stupid(field, last_pos, enemy) {
     return i32::max_value();
@@ -22,15 +22,18 @@ fn alpha_beta(field: &mut Field, depth: u32, last_pos: Pos, player: Player, traj
     return field.score(player);
   }
   for pos in moves {
+    if should_stop.load(Ordering::Relaxed) {
+      break;
+    }
     field.put_point(pos, player);
     if common::is_penult_move_stuped(field) {
       field.undo();
       return i32::max_value();
     }
     let next_trajectories_pruning = TrajectoriesPruning::from_last(field, enemy, depth - 1, empty_board, trajectories_pruning, pos);
-    let mut cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -alpha - 1, -alpha, empty_board);
+    let mut cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -alpha - 1, -alpha, empty_board, should_stop);
     if cur_estimation > alpha && cur_estimation < beta {
-      cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, empty_board);
+      cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, empty_board, should_stop);
     }
     field.undo();
     if cur_estimation > alpha {
@@ -84,10 +87,10 @@ fn alpha_beta_parallel(field: &mut Field, player: Player, depth: u32, alpha: i32
         if cur_alpha >= beta {
           break;
         }
-        let mut cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -cur_alpha - 1, -cur_alpha, &mut local_empty_board);
+        let mut cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -cur_alpha - 1, -cur_alpha, &mut local_empty_board, should_stop);
         if cur_estimation > cur_alpha {
           if !should_stop.load(Ordering::Relaxed) {
-            cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, &mut local_empty_board);
+            cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, &mut local_empty_board, should_stop);
           } else {
             debug!(target: MINIMAX_STR, "Time-out! Next estimation ma be approximated.");
           }
