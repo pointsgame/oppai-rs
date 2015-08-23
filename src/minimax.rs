@@ -1,5 +1,5 @@
 use std::{iter, thread};
-use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering};
 use comm;
 use config;
 use player::Player;
@@ -27,7 +27,7 @@ fn alpha_beta(field: &mut Field, depth: u32, last_pos: Pos, player: Player, traj
       field.undo();
       return i32::max_value();
     }
-    let next_trajectories_pruning = TrajectoriesPruning::new_from_last(field, enemy, depth - 1, empty_board, trajectories_pruning, pos);
+    let next_trajectories_pruning = TrajectoriesPruning::from_last(field, enemy, depth - 1, empty_board, trajectories_pruning, pos);
     let mut cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -alpha - 1, -alpha, empty_board);
     if cur_estimation > alpha && cur_estimation < beta {
       cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, empty_board);
@@ -71,7 +71,7 @@ fn alpha_beta_parallel(field: &mut Field, player: Player, depth: u32, alpha: i32
       let enemy = player.next();
       while let Some(pos) = local_consumer.recv_async().ok() {
         local_field.put_point(pos, player);
-        let next_trajectories_pruning = TrajectoriesPruning::new_from_last(&mut local_field, enemy, depth - 1, &mut local_empty_board, &trajectories_pruning, pos);
+        let next_trajectories_pruning = TrajectoriesPruning::from_last(&mut local_field, enemy, depth - 1, &mut local_empty_board, &trajectories_pruning, pos);
         let cur_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
         if cur_alpha >= beta {
           break;
@@ -123,7 +123,7 @@ pub fn minimax(field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
   let estimation = alpha_beta_parallel(field, player, depth, i32::min_value() + 1, i32::max_value(), &trajectories_pruning, &mut empty_board, &mut best_move);
   let enemy = player.next();
   let mut enemy_best_move = best_move;
-  let enemy_trajectories_pruning = TrajectoriesPruning::new_from_exists(&field, enemy, depth - 1, &mut empty_board, &trajectories_pruning);
+  let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, &trajectories_pruning);
   info!(target: MINIMAX_STR, "Calculating of enemy estimation with upper bound {}. Player is {}", -estimation + 1, enemy);
   if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, &mut empty_board, &mut enemy_best_move) < estimation {
     info!(target: MINIMAX_STR,  "Estimation is greater than enemy estimation. So the best move is {:?}, estimation is {}.", best_move.map(|pos| (field.to_x(pos), field.to_y(pos))), estimation);
@@ -132,4 +132,41 @@ pub fn minimax(field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
     info!(target: MINIMAX_STR,  "Estimation is less than or equal enemy estimation. So all moves have the same estimation {}.", estimation);
     None
   }
+}
+
+pub fn minimax_with_time(field: &mut Field, player: Player, time: u32) -> Option<Pos> {
+  let should_stop = AtomicBool::new(false);
+  let guard = thread::scoped(|| {
+    thread::sleep_ms(time);
+    should_stop.store(true, Ordering::Relaxed);
+  });
+  let enemy = player.next();
+  let mut depth = 1;
+  let mut best_move = None;
+  let mut cur_best_move = None;
+  let mut enemy_best_move = None;
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board);
+  while !should_stop.load(Ordering::Relaxed) {
+    let estimation = alpha_beta_parallel(field, player, depth, i32::min_value() + 1, i32::max_value(), &trajectories_pruning, &mut empty_board, &mut cur_best_move);
+    if should_stop.load(Ordering::Relaxed) {
+      break;
+    }
+    let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, &trajectories_pruning);
+    if should_stop.load(Ordering::Relaxed) {
+      break;
+    }
+    best_move = if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, &mut empty_board, &mut enemy_best_move) < estimation {
+      cur_best_move
+    } else {
+      None
+    };
+    if should_stop.load(Ordering::Relaxed) {
+      break;
+    }
+    depth += 1;
+    trajectories_pruning = TrajectoriesPruning::inc_exists(field, player, depth, &mut empty_board, &trajectories_pruning);
+  }
+  drop(guard);
+  best_move
 }

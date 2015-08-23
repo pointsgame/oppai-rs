@@ -59,7 +59,9 @@ impl Bot {
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
       Solver::Minimax => {
-        unimplemented!()
+        minimax::minimax_with_time(&mut self.field, player, time)
+          .or_else(|| { heuristic::heuristic(&self.field, player) })
+          .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
       Solver::Heuristic => {
         heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
