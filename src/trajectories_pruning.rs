@@ -1,5 +1,6 @@
 use std::ops::Index;
 use std::sync::atomic::{AtomicBool, Ordering};
+use rand::Rng;
 use zobrist::Zobrist;
 use player::Player;
 use field::{Pos, Field};
@@ -42,7 +43,8 @@ impl Trajectory {
 
 pub struct TrajectoriesPruning {
   red_trajectories: Vec<Trajectory>,
-  black_trajectories: Vec<Trajectory>
+  black_trajectories: Vec<Trajectory>,
+  moves: Vec<Pos>
 }
 
 impl TrajectoriesPruning {
@@ -62,7 +64,7 @@ impl TrajectoriesPruning {
         return;
       }
     }
-    let trajectory = Trajectory::new(points.iter().map(|&pos| pos).collect(), hash);
+    let trajectory = Trajectory::new(points.iter().cloned().collect(), hash);
     trajectories.push(trajectory);
   }
 
@@ -165,9 +167,9 @@ impl TrajectoriesPruning {
     TrajectoriesPruning::deproject(trajectories2, empty_board);
   }
 
-  pub fn calculate_moves(&self, empty_board: &mut Vec<u32>) -> Vec<Pos> {
+  fn calculate_moves<T: Rng>(trajectories1: &Vec<Trajectory>, trajectories2: &Vec<Trajectory>, empty_board: &mut Vec<u32>, rng: &mut T) -> Vec<Pos> {
     let mut result = Vec::new();
-    for &pos in self.red_trajectories.iter().chain(self.black_trajectories.iter()).filter(|trajectory| !trajectory.excluded()).flat_map(|trajectory| trajectory.points().iter()) {
+    for &pos in trajectories1.iter().chain(trajectories2.iter()).filter(|trajectory| !trajectory.excluded()).flat_map(|trajectory| trajectory.points().iter()) {
       if empty_board[pos] == 0 {
         empty_board[pos] = 1;
         result.push(pos);
@@ -176,19 +178,22 @@ impl TrajectoriesPruning {
     for &pos in result.iter() {
       empty_board[pos] = 0;
     }
+    rng.shuffle(&mut result); //TODO: sort by projection values.
     result
   }
 
   #[inline]
-  fn build_result(cur_trajectories: Vec<Trajectory>, enemy_trajectories: Vec<Trajectory>, player: Player) -> TrajectoriesPruning {
+  fn build_result(cur_trajectories: Vec<Trajectory>, enemy_trajectories: Vec<Trajectory>, moves: Vec<Pos>, player: Player) -> TrajectoriesPruning {
     match player {
       Player::Red => TrajectoriesPruning {
         red_trajectories: cur_trajectories,
-        black_trajectories: enemy_trajectories
+        black_trajectories: enemy_trajectories,
+        moves: moves
       },
       Player::Black => TrajectoriesPruning {
         red_trajectories: enemy_trajectories,
-        black_trajectories: cur_trajectories
+        black_trajectories: cur_trajectories,
+        moves: moves
       }
     }
   }
@@ -197,11 +202,12 @@ impl TrajectoriesPruning {
   pub fn empty() -> TrajectoriesPruning {
     TrajectoriesPruning {
       red_trajectories: Vec::with_capacity(0),
-      black_trajectories: Vec::with_capacity(0)
+      black_trajectories: Vec::with_capacity(0),
+      moves: Vec::with_capacity(0)
     }
   }
 
-  pub fn new(field: &mut Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, should_stop: &AtomicBool) -> TrajectoriesPruning {
+  pub fn new<T: Rng>(field: &mut Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, rng: &mut T, should_stop: &AtomicBool) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty();
     }
@@ -216,10 +222,11 @@ impl TrajectoriesPruning {
       return TrajectoriesPruning::empty();
     }
     TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, player)
+    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, moves, player)
   }
 
-  pub fn from_last(field: &mut Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, last: &TrajectoriesPruning, last_pos: Pos, should_stop: &AtomicBool) -> TrajectoriesPruning {
+  pub fn from_last<T: Rng>(field: &mut Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, rng: &mut T, last: &TrajectoriesPruning, last_pos: Pos, should_stop: &AtomicBool) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty();
     }
@@ -243,7 +250,7 @@ impl TrajectoriesPruning {
             if len == 1 {
               continue;
             }
-            Trajectory::new(trajectory.points.iter().map(|&pos| pos).filter(|&pos| pos != last_pos).collect(), trajectory.hash() ^ field.zobrist().get_hash(last_pos))
+            Trajectory::new(trajectory.points.iter().cloned().filter(|&pos| pos != last_pos).collect(), trajectory.hash() ^ field.zobrist().get_hash(last_pos))
           } else {
             Trajectory::new(trajectory.points.clone(), trajectory.hash())
           };
@@ -255,10 +262,11 @@ impl TrajectoriesPruning {
       return TrajectoriesPruning::empty();
     }
     TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, player)
+    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, moves, player)
   }
 
-  pub fn dec_exists(field: &Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, exists: &TrajectoriesPruning, should_stop: &AtomicBool) -> TrajectoriesPruning {
+  pub fn dec_exists<T: Rng>(field: &Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, rng: &mut T, exists: &TrajectoriesPruning, should_stop: &AtomicBool) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty();
     }
@@ -281,10 +289,11 @@ impl TrajectoriesPruning {
       return TrajectoriesPruning::empty();
     }
     TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, player)
+    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, moves, player)
   }
 
-  pub fn inc_exists(field: &mut Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, exists: &TrajectoriesPruning, should_stop: &AtomicBool) -> TrajectoriesPruning {
+  pub fn inc_exists<T: Rng>(field: &mut Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, rng: &mut T, exists: &TrajectoriesPruning, should_stop: &AtomicBool) -> TrajectoriesPruning {
     let mut cur_trajectories = Vec::new();
     let mut enemy_trajectories = Vec::new();
     let (exists_cur_trajectories, exists_enemy_trajectories) = match player {
@@ -312,6 +321,11 @@ impl TrajectoriesPruning {
       return TrajectoriesPruning::empty();
     }
     TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, player)
+    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    TrajectoriesPruning::build_result(cur_trajectories, enemy_trajectories, moves, player)
+  }
+
+  pub fn moves(&self) -> &Vec<Pos> {
+    &self.moves
   }
 }

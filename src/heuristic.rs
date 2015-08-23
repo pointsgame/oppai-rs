@@ -24,7 +24,7 @@ pub fn heuristic(field: &Field, player: Player) -> Option<Pos> {
   for pos in field.min_pos() .. field.max_pos() + 1 {
     if field.is_putting_allowed(pos) {
       let cur_estimation = heuristic_estimation(field, pos, player);
-      if cur_estimation > best_estimation {
+      if cur_estimation > best_estimation { //TODO: check for stupid move.
         best_estimation = cur_estimation;
         result = Some(pos);
       }

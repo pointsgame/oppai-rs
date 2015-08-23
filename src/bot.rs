@@ -59,7 +59,7 @@ impl Bot {
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
       Solver::Minimax => {
-        minimax::minimax_with_time(&mut self.field, player, time)
+        minimax::minimax_with_time(&mut self.field, player, &mut self.rng, time)
           .or_else(|| { heuristic::heuristic(&self.field, player) })
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
@@ -79,7 +79,7 @@ impl Bot {
       },
       Solver::Minimax => {
         let depth = (complexity - MIN_COMPLEXITY) * (MAX_MINIMAX_DEPTH - MIN_MINIMAX_DEPTH) / (MAX_COMPLEXITY - MIN_COMPLEXITY) + MIN_MINIMAX_DEPTH;
-        minimax::minimax(&mut self.field, player, depth)
+        minimax::minimax(&mut self.field, player, &mut self.rng, depth)
           .or_else(|| { heuristic::heuristic(&self.field, player) })
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
