@@ -30,7 +30,7 @@ fn alpha_beta(field: &mut Field, depth: u32, last_pos: Pos, player: Player, traj
       field.undo();
       return i32::max_value();
     }
-    let next_trajectories_pruning = TrajectoriesPruning::from_last(field, enemy, depth - 1, empty_board, trajectories_pruning, pos);
+    let next_trajectories_pruning = TrajectoriesPruning::from_last(field, enemy, depth - 1, empty_board, trajectories_pruning, pos, should_stop);
     let mut cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -alpha - 1, -alpha, empty_board, should_stop);
     if cur_estimation > alpha && cur_estimation < beta {
       cur_estimation = -alpha_beta(field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, empty_board, should_stop);
@@ -78,7 +78,7 @@ fn alpha_beta_parallel(field: &mut Field, player: Player, depth: u32, alpha: i32
           break;
         }
         local_field.put_point(pos, player);
-        let next_trajectories_pruning = TrajectoriesPruning::from_last(&mut local_field, enemy, depth - 1, &mut local_empty_board, &trajectories_pruning, pos);
+        let next_trajectories_pruning = TrajectoriesPruning::from_last(&mut local_field, enemy, depth - 1, &mut local_empty_board, &trajectories_pruning, pos, should_stop);
         if should_stop.load(Ordering::Relaxed) {
           debug!(target: MINIMAX_STR, "Time-out!");
           break;
@@ -133,13 +133,13 @@ pub fn minimax(field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
   }
   let should_stop = AtomicBool::new(false);
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-  let trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board);
+  let trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, &should_stop);
   let mut best_move = None;
   info!(target: MINIMAX_STR, "Calculating of our estimation. Player is {}", player);
   let estimation = alpha_beta_parallel(field, player, depth, i32::min_value() + 1, i32::max_value(), &trajectories_pruning, &mut empty_board, &mut best_move, &should_stop);
   let enemy = player.next();
   let mut enemy_best_move = best_move;
-  let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, &trajectories_pruning);
+  let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, &trajectories_pruning, &should_stop);
   info!(target: MINIMAX_STR, "Calculating of enemy estimation with upper bound {}. Player is {}", -estimation + 1, enemy);
   if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, &mut empty_board, &mut enemy_best_move, &should_stop) < estimation {
     info!(target: MINIMAX_STR,  "Estimation is greater than enemy estimation. So the best move is {:?}, estimation is {}.", best_move.map(|pos| (field.to_x(pos), field.to_y(pos))), estimation);
@@ -162,13 +162,13 @@ pub fn minimax_with_time(field: &mut Field, player: Player, time: u32) -> Option
   let mut cur_best_move = None;
   let mut enemy_best_move = None;
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-  let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board);
+  let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, &should_stop);
   while !should_stop.load(Ordering::Relaxed) {
     let estimation = alpha_beta_parallel(field, player, depth, i32::min_value() + 1, i32::max_value(), &trajectories_pruning, &mut empty_board, &mut cur_best_move, &should_stop);
     if should_stop.load(Ordering::Relaxed) {
       break;
     }
-    let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, &trajectories_pruning);
+    let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, &trajectories_pruning, &should_stop);
     if should_stop.load(Ordering::Relaxed) {
       break;
     }
@@ -181,7 +181,7 @@ pub fn minimax_with_time(field: &mut Field, player: Player, time: u32) -> Option
       break;
     }
     depth += 1;
-    trajectories_pruning = TrajectoriesPruning::inc_exists(field, player, depth, &mut empty_board, &trajectories_pruning);
+    trajectories_pruning = TrajectoriesPruning::inc_exists(field, player, depth, &mut empty_board, &trajectories_pruning, &should_stop);
   }
   drop(guard);
   best_move
