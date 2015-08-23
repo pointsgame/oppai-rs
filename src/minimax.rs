@@ -169,7 +169,7 @@ pub fn minimax_with_time(field: &mut Field, player: Player, time: u32) -> Option
     if should_stop.load(Ordering::Relaxed) {
       break;
     }
-    best_move = if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, &mut empty_board, &mut enemy_best_move, &should_stop) < estimation {
+    best_move = if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, &mut empty_board, &mut enemy_best_move, &should_stop) < estimation || should_stop.load(Ordering::Relaxed) {
       cur_best_move
     } else {
       None
