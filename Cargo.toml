@@ -12,9 +12,7 @@ log4rs = "0.3"
 num_cpus = "0.2"
 rustc-serialize = "0.3"
 toml = "0.1"
-
-[dependencies.comm]
-git = "https://github.com/mahkoh/comm.git"
+crossbeam = "0.1"
 
 [dev-dependencies]
 quickcheck = "0.2"

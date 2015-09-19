@@ -1,7 +1,8 @@
 use std::{iter, thread};
 use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering};
 use rand::{Rng, XorShiftRng};
-use comm;
+use crossbeam;
+use crossbeam::sync::MsQueue;
 use config;
 use player::Player;
 use field::{Pos, Field};
@@ -59,70 +60,69 @@ fn alpha_beta_parallel<T: Rng>(field: &mut Field, player: Player, depth: u32, al
     *best_move = None;
     return field.score(player);
   }
-  let (producer, consumer) = comm::spmc::unbounded::new();
+  let queue = MsQueue::new();
   if let Some(best_pos) = *best_move {
-    producer.send(best_pos).ok();
+    queue.push(best_pos);
     for &pos in moves.iter().filter(|&&pos| pos != best_pos) {
-      producer.send(pos).ok();
+      queue.push(pos);
     }
   } else {
     for &pos in moves.iter() {
-      producer.send(pos).ok();
+      queue.push(pos);
     }
   }
   let threads_count = config::threads_count();
   let atomic_alpha = AtomicIsize::new(alpha as isize);
   let atomic_best_move = AtomicUsize::new(0);
-  let mut guards = Vec::with_capacity(threads_count);
-  for _ in 0 .. threads_count {
-    let xor_shift_rng = rng.gen::<XorShiftRng>();
-    guards.push(thread::scoped(|| {
-      let local_consumer = consumer.clone();
-      let mut local_field = field.clone();
-      let mut local_rng = xor_shift_rng;
-      let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect();
-      let enemy = player.next();
-      while let Some(pos) = local_consumer.recv_async().ok() {
-        if should_stop.load(Ordering::Relaxed) {
-          debug!(target: MINIMAX_STR, "Time-out!");
-          break;
-        }
-        local_field.put_point(pos, player);
-        let next_trajectories_pruning = TrajectoriesPruning::from_last(&mut local_field, enemy, depth - 1, &mut local_empty_board, &mut local_rng, &trajectories_pruning, pos, should_stop);
-        if should_stop.load(Ordering::Relaxed) {
-          debug!(target: MINIMAX_STR, "Time-out!");
-          break;
-        }
-        let cur_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
-        if cur_alpha >= beta {
-          break;
-        }
-        let mut cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -cur_alpha - 1, -cur_alpha, &mut local_empty_board, &mut local_rng, should_stop);
-        if cur_estimation > cur_alpha {
-          if !should_stop.load(Ordering::Relaxed) {
-            cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, &mut local_empty_board, &mut local_rng, should_stop);
-          } else {
-            debug!(target: MINIMAX_STR, "Time-out! Next estimation ma be approximated.");
-          }
-        }
-        local_field.undo();
-        loop {
-          let last_pos = atomic_best_move.load(Ordering::SeqCst);
-          let last_alpha = atomic_alpha.load(Ordering::SeqCst);
-          if cur_estimation > last_alpha as i32 {
-            if atomic_alpha.compare_and_swap(last_alpha, cur_estimation as isize, Ordering::SeqCst) == last_alpha && atomic_best_move.compare_and_swap(last_pos, pos, Ordering::SeqCst) == last_pos {
-              debug!(target: MINIMAX_STR, "{} for move ({}, {}) is {}.", if cur_estimation < beta { "Estimation" } else { "Lower bound of estimation" }, field.to_x(pos), field.to_y(pos), cur_estimation);
-              break;
-            }
-          } else {
-            debug!(target: MINIMAX_STR, "{} for move ({}, {}) is {}.", if cur_estimation > cur_alpha { if cur_estimation < beta { "Estimation" } else { "Lower bound of estimation" } } else { "Upper bound of estimation" }, field.to_x(pos), field.to_y(pos), cur_estimation);
+  crossbeam::scope(|scope| {
+    for _ in 0 .. threads_count {
+      let xor_shift_rng = rng.gen::<XorShiftRng>();
+      scope.spawn(|| {
+        let mut local_field = field.clone();
+        let mut local_rng = xor_shift_rng;
+        let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect();
+        let enemy = player.next();
+        while let Some(pos) = queue.pop() {
+          if should_stop.load(Ordering::Relaxed) {
+            debug!(target: MINIMAX_STR, "Time-out!");
             break;
           }
+          local_field.put_point(pos, player);
+          let next_trajectories_pruning = TrajectoriesPruning::from_last(&mut local_field, enemy, depth - 1, &mut local_empty_board, &mut local_rng, &trajectories_pruning, pos, should_stop);
+          if should_stop.load(Ordering::Relaxed) {
+            debug!(target: MINIMAX_STR, "Time-out!");
+            break;
+          }
+          let cur_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
+          if cur_alpha >= beta {
+            break;
+          }
+          let mut cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -cur_alpha - 1, -cur_alpha, &mut local_empty_board, &mut local_rng, should_stop);
+          if cur_estimation > cur_alpha {
+            if !should_stop.load(Ordering::Relaxed) {
+              cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, &mut local_empty_board, &mut local_rng, should_stop);
+            } else {
+              debug!(target: MINIMAX_STR, "Time-out! Next estimation ma be approximated.");
+            }
+          }
+          local_field.undo();
+          loop {
+            let last_pos = atomic_best_move.load(Ordering::SeqCst);
+            let last_alpha = atomic_alpha.load(Ordering::SeqCst);
+            if cur_estimation > last_alpha as i32 {
+              if atomic_alpha.compare_and_swap(last_alpha, cur_estimation as isize, Ordering::SeqCst) == last_alpha && atomic_best_move.compare_and_swap(last_pos, pos, Ordering::SeqCst) == last_pos {
+                debug!(target: MINIMAX_STR, "{} for move ({}, {}) is {}.", if cur_estimation < beta { "Estimation" } else { "Lower bound of estimation" }, field.to_x(pos), field.to_y(pos), cur_estimation);
+                break;
+              }
+            } else {
+              debug!(target: MINIMAX_STR, "{} for move ({}, {}) is {}.", if cur_estimation > cur_alpha { if cur_estimation < beta { "Estimation" } else { "Lower bound of estimation" } } else { "Upper bound of estimation" }, field.to_x(pos), field.to_y(pos), cur_estimation);
+              break;
+            }
+          }
         }
-      }
-    }));
-  }
-  drop(guards);
+      });
+    }
+  });
   let result = atomic_best_move.load(Ordering::SeqCst);
   if result != 0 {
     info!(target: MINIMAX_STR, "Best move is ({}, {}).", field.to_x(result), field.to_y(result));
@@ -162,37 +162,38 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, rng: &mut T, depth: u3
 
 pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T, time: u32) -> Option<Pos> {
   let should_stop = AtomicBool::new(false);
-  let guard = thread::scoped(|| {
-    thread::sleep_ms(time);
-    should_stop.store(true, Ordering::Relaxed);
-  });
-  let enemy = player.next();
-  let mut depth = 1;
-  let mut best_move = None;
-  let mut cur_best_move = None;
-  let mut enemy_best_move = None;
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-  let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, rng, &should_stop);
-  while !should_stop.load(Ordering::Relaxed) {
-    let estimation = alpha_beta_parallel(field, player, depth, i32::min_value() + 1, i32::max_value(), &trajectories_pruning, rng, &mut cur_best_move, &should_stop);
-    if should_stop.load(Ordering::Relaxed) { //TODO: use calculated move.
-      break;
+  crossbeam::scope(|scope| {
+    scope.spawn(|| {
+      thread::sleep_ms(time);
+      should_stop.store(true, Ordering::Relaxed);
+    });
+    let enemy = player.next();
+    let mut depth = 1;
+    let mut best_move = None;
+    let mut cur_best_move = None;
+    let mut enemy_best_move = None;
+    let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+    let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, rng, &should_stop);
+    while !should_stop.load(Ordering::Relaxed) {
+      let estimation = alpha_beta_parallel(field, player, depth, i32::min_value() + 1, i32::max_value(), &trajectories_pruning, rng, &mut cur_best_move, &should_stop);
+      if should_stop.load(Ordering::Relaxed) { //TODO: use calculated move.
+        break;
+      }
+      let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, rng, &trajectories_pruning, &should_stop);
+      if should_stop.load(Ordering::Relaxed) {
+        break;
+      }
+      best_move = if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, rng, &mut enemy_best_move, &should_stop) < estimation || should_stop.load(Ordering::Relaxed) {
+        cur_best_move
+      } else {
+        None
+      };
+      if should_stop.load(Ordering::Relaxed) {
+        break;
+      }
+      depth += 1;
+      trajectories_pruning = TrajectoriesPruning::inc_exists(field, player, depth, &mut empty_board, rng, &trajectories_pruning, &should_stop);
     }
-    let enemy_trajectories_pruning = TrajectoriesPruning::dec_exists(&field, enemy, depth - 1, &mut empty_board, rng, &trajectories_pruning, &should_stop);
-    if should_stop.load(Ordering::Relaxed) {
-      break;
-    }
-    best_move = if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, rng, &mut enemy_best_move, &should_stop) < estimation || should_stop.load(Ordering::Relaxed) {
-      cur_best_move
-    } else {
-      None
-    };
-    if should_stop.load(Ordering::Relaxed) {
-      break;
-    }
-    depth += 1;
-    trajectories_pruning = TrajectoriesPruning::inc_exists(field, player, depth, &mut empty_board, rng, &trajectories_pruning, &should_stop);
-  }
-  drop(guard);
-  best_move
+    best_move
+  })
 }

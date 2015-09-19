@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 #![feature(unsafe_no_drop_flag)]
-#![feature(scoped)]
 #![feature(convert)]
 
 extern crate rand;
@@ -16,7 +15,7 @@ extern crate rustc_serialize;
 
 extern crate toml;
 
-extern crate comm;
+extern crate crossbeam;
 
 #[cfg(test)]
 extern crate quickcheck;

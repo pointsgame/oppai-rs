@@ -1,6 +1,7 @@
 use std::{ptr, thread, mem};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, AtomicPtr, Ordering};
 use rand::{Rng, XorShiftRng};
+use crossbeam;
 use config;
 use config::{UcbType, UctKomiType};
 use player::Player;
@@ -452,23 +453,23 @@ impl UctRoot {
     let threads_count = config::threads_count();
     let iterations = AtomicUsize::new(0);
     let ratched = AtomicIsize::new(isize::max_value());
-    let mut guards = Vec::with_capacity(threads_count);
-    for _ in 0 .. threads_count {
-      let xor_shift_rng = rng.gen::<XorShiftRng>();
-      guards.push(thread::scoped(|| {
-        let mut local_field = field.clone();
-        let mut local_rng = xor_shift_rng;
-        let mut possible_moves = self.wave_pruning.moves().clone();
-        while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
-          self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
-          for _ in 0 .. local_field.moves_count() - self.moves_count {
-            local_field.undo();
+    crossbeam::scope(|scope| {
+      for _ in 0 .. threads_count {
+        let xor_shift_rng = rng.gen::<XorShiftRng>();
+        scope.spawn(|| {
+          let mut local_field = field.clone();
+          let mut local_rng = xor_shift_rng;
+          let mut possible_moves = self.wave_pruning.moves().clone();
+          while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
+            self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
+            for _ in 0 .. local_field.moves_count() - self.moves_count {
+              local_field.undo();
+            }
+            iterations.fetch_add(1, Ordering::Relaxed);
           }
-          iterations.fetch_add(1, Ordering::Relaxed);
-        }
-      }));
-    }
-    drop(guards);
+        });
+      }
+    });
     info!(target: UCT_STR, "Iterations count: {0}.", iterations.load(Ordering::Relaxed));
     let mut best_uct = 0f64;
     let mut result = None;
@@ -493,13 +494,13 @@ impl UctRoot {
 
   pub fn best_move_with_time<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: u32) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
-    let guard = thread::scoped(|| {
-      thread::sleep_ms(time);
-      should_stop.store(true, Ordering::Relaxed);
-    });
-    let result = self.best_move_generic(field, player, rng, &should_stop, usize::max_value());
-    drop(guard);
-    result
+    crossbeam::scope(|scope| {
+      scope.spawn(|| {
+        thread::sleep_ms(time);
+        should_stop.store(true, Ordering::Relaxed);
+      });
+      self.best_move_generic(field, player, rng, &should_stop, usize::max_value())
+    })
   }
 
   pub fn best_move_with_iterations_count<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, iterations: usize) -> Option<Pos> {
