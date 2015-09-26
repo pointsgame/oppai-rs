@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::fmt::Result as FmtResult;
 use std::io::{Write, Read};
+use std::str::FromStr;
 use num_cpus;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 use toml;
@@ -22,19 +23,22 @@ const UCB1_TUNED_STR: &'static str = "Ucb1Tuned";
 
 impl UcbType {
   pub fn as_str(&self) -> &'static str {
-    match self {
-      &UcbType::Winrate => WINRATE_STR,
-      &UcbType::Ucb1 => UCB1_STR,
-      &UcbType::Ucb1Tuned => UCB1_TUNED_STR
+    match *self {
+      UcbType::Winrate => WINRATE_STR,
+      UcbType::Ucb1 => UCB1_STR,
+      UcbType::Ucb1Tuned => UCB1_TUNED_STR
     }
   }
+}
 
-  pub fn from_str(s: &str) -> Option<UcbType> {
+impl FromStr for UcbType {
+  type Err = &'static str;
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
-      WINRATE_STR => Some(UcbType::Winrate),
-      UCB1_STR => Some(UcbType::Ucb1),
-      UCB1_TUNED_STR => Some(UcbType::Ucb1Tuned),
-      _ => None
+      WINRATE_STR => Ok(UcbType::Winrate),
+      UCB1_STR => Ok(UcbType::Ucb1),
+      UCB1_TUNED_STR => Ok(UcbType::Ucb1Tuned),
+      _ => Err("Invalid string!")
     }
   }
 }
@@ -53,7 +57,7 @@ impl Encodable for UcbType {
 
 impl Decodable for UcbType {
   fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_str().and_then(|s| UcbType::from_str(s.as_str()).ok_or(d.error("Invalid string!")))
+    d.read_str().and_then(|s| UcbType::from_str(s.as_str()).map_err(|s| d.error(s)))
   }
 }
 
@@ -72,19 +76,22 @@ const DYNAMIC_STR: &'static str = "Dynamic";
 
 impl UctKomiType {
   pub fn as_str(&self) -> &'static str {
-    match self {
-      &UctKomiType::None => NONE_STR,
-      &UctKomiType::Static => STATIC_STR,
-      &UctKomiType::Dynamic => DYNAMIC_STR
+    match *self {
+      UctKomiType::None => NONE_STR,
+      UctKomiType::Static => STATIC_STR,
+      UctKomiType::Dynamic => DYNAMIC_STR
     }
   }
+}
 
-  pub fn from_str(s: &str) -> Option<UctKomiType> {
+impl FromStr for UctKomiType {
+  type Err = &'static str;
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
-      NONE_STR => Some(UctKomiType::None),
-      STATIC_STR => Some(UctKomiType::Static),
-      DYNAMIC_STR => Some(UctKomiType::Dynamic),
-      _ => None
+      NONE_STR => Ok(UctKomiType::None),
+      STATIC_STR => Ok(UctKomiType::Static),
+      DYNAMIC_STR => Ok(UctKomiType::Dynamic),
+      _ => Err("Invalid string!")
     }
   }
 }
@@ -103,7 +110,7 @@ impl Encodable for UctKomiType {
 
 impl Decodable for UctKomiType {
   fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_str().and_then(|s| UctKomiType::from_str(s.as_str()).ok_or(d.error("Invalid string!")))
+    d.read_str().and_then(|s| UctKomiType::from_str(s.as_str()).map_err(|s| d.error(s)))
   }
 }
 
@@ -122,19 +129,22 @@ const HEURISTIC_STR: &'static str = "Heuristic";
 
 impl Solver {
   pub fn as_str(&self) -> &'static str {
-    match self {
-      &Solver::Uct => UCT_STR,
-      &Solver::Minimax => MINIMAX_STR,
-      &Solver::Heuristic => HEURISTIC_STR
+    match *self {
+      Solver::Uct => UCT_STR,
+      Solver::Minimax => MINIMAX_STR,
+      Solver::Heuristic => HEURISTIC_STR
     }
   }
+}
 
-  pub fn from_str(s: &str) -> Option<Solver> {
+impl FromStr for Solver {
+  type Err = &'static str;
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
-      UCT_STR => Some(Solver::Uct),
-      MINIMAX_STR => Some(Solver::Minimax),
-      HEURISTIC_STR => Some(Solver::Heuristic),
-      _ => None
+      UCT_STR => Ok(Solver::Uct),
+      MINIMAX_STR => Ok(Solver::Minimax),
+      HEURISTIC_STR => Ok(Solver::Heuristic),
+      _ => Err("Invalid string!")
     }
   }
 }
@@ -153,7 +163,7 @@ impl Encodable for Solver {
 
 impl Decodable for Solver {
   fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_str().and_then(|s| Solver::from_str(s.as_str()).ok_or(d.error("Invalid string!")))
+    d.read_str().and_then(|s| Solver::from_str(s.as_str()).map_err(|s| d.error(s)))
   }
 }
 

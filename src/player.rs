@@ -25,9 +25,9 @@ impl Player {
 
 impl Display for Player {
   fn fmt(&self, f: &mut Formatter) -> Result {
-    match self {
-      &Player::Red => write!(f, "Red"),
-      &Player::Black => write!(f, "Black")
+    match *self {
+      Player::Red => write!(f, "Red"),
+      Player::Black => write!(f, "Black")
     }
   }
 }

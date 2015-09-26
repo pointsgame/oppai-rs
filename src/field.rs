@@ -186,27 +186,22 @@ pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
   }
   let mut queue = LinkedList::new();
   queue.push_back(start_pos);
-  loop {
-    match queue.pop_front() {
-      Some(pos) => {
-        let n_pos = n(width, pos);
-        let s_pos = s(width, pos);
-        let w_pos = w(pos);
-        let e_pos = e(pos);
-        if cond(n_pos) {
-          queue.push_back(n_pos);
-        }
-        if cond(s_pos) {
-          queue.push_back(s_pos);
-        }
-        if cond(w_pos) {
-          queue.push_back(w_pos);
-        }
-        if cond(e_pos) {
-          queue.push_back(e_pos);
-        }
-      },
-      None => break
+  while let Some(pos) = queue.pop_front() {
+    let n_pos = n(width, pos);
+    let s_pos = s(width, pos);
+    let w_pos = w(pos);
+    let e_pos = e(pos);
+    if cond(n_pos) {
+      queue.push_back(n_pos);
+    }
+    if cond(s_pos) {
+      queue.push_back(s_pos);
+    }
+    if cond(w_pos) {
+      queue.push_back(w_pos);
+    }
+    if cond(e_pos) {
+      queue.push_back(e_pos);
     }
   }
 }
@@ -642,7 +637,7 @@ impl Field {
       base_square += self.square(center_pos, pos);
       if pos == start_pos { break }
     }
-    for &pos in chain.iter() {
+    for &pos in &chain {
       self.clear_tag(pos);
     }
     if base_square < 0 && chain.len() > 2 {
@@ -705,7 +700,7 @@ impl Field {
         self.save_pos_value(pos);
         self.set_bound(pos);
       }
-      for &pos in captured_points.iter() {
+      for &pos in &captured_points {
         self.clear_tag(pos);
         self.save_pos_value(pos);
         if !self.is_put(pos) {
@@ -734,7 +729,7 @@ impl Field {
       for &pos in chain.iter() {
         self.clear_tag(pos);
       }
-      for &pos in captured_points.iter() {
+      for &pos in &captured_points {
         self.clear_tag(pos);
         if !self.is_put(pos) {
           self.save_pos_value(pos);

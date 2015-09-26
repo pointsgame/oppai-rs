@@ -5,14 +5,15 @@ authors = ["Kurnevsky Evgeny <kurnevsky@gmail.com>"]
 license = "GPL-3.0"
 
 [dependencies]
-rand = "0.3"
-time = "0.1"
-log = "0.3"
-log4rs = "0.3"
-num_cpus = "0.2"
-rustc-serialize = "0.3"
-toml = "0.1"
-crossbeam = "0.1"
+rand = "*"
+time = "*"
+log = "*"
+log4rs = "*"
+num_cpus = "*"
+rustc-serialize = "*"
+toml = "*"
+crossbeam = "*"
+clippy = "*"
 
 [dev-dependencies]
 quickcheck = "0.2"
