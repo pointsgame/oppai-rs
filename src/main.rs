@@ -93,7 +93,7 @@ fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_license<T: Write>(output: &mut T, id: u32) {
-  writeln!(output, "= {0} license GPL3", id).ok();
+  writeln!(output, "= {0} license AGPLv3", id).ok();
 }
 
 fn write_license_error<T: Write>(output: &mut T, id: u32) {

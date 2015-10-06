@@ -2,7 +2,7 @@
 name = "opai-rust"
 version = "0.0.1"
 authors = ["Kurnevsky Evgeny <kurnevsky@gmail.com>"]
-license = "GPL-3.0"
+license = "AGPL-3.0"
 
 [dependencies]
 rand = "*"
