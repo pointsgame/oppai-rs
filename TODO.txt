@@ -1,4 +1,3 @@
-Negascout.
 MTD(f).
 Effective parallelization of minimax.
 Hashing for minimax.
