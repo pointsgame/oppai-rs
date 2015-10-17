@@ -778,14 +778,13 @@ impl Field {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len();
     if input_points_count > 1 {
-      let mut sets = Vec::with_capacity(input_points.len());
-      for &(chain_pos, _) in input_points.iter() {
+      let mut sets = Vec::with_capacity(input_points_count);
+      for &(chain_pos, _) in &input_points {
         sets.push(self.find_dsu_set(chain_pos));
       }
       let mut group = Vec::with_capacity(4);
-      let mut result = false;
-      for i in 0 .. input_points_count {
-        let set = sets[i];
+        let mut result = false;
+      for (i, &set) in sets.iter().enumerate() {
         group.clear();
         for j in i .. input_points_count {
           if sets[j] == set {
