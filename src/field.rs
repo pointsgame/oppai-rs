@@ -754,7 +754,7 @@ impl Field {
     }
   }
 
-  fn union_dsu_sets(&mut self, sets: &Vec<Pos>) -> Pos {
+  fn union_dsu_sets(&mut self, sets: &[Pos]) -> Pos {
     let mut max_dsu_size = 0;
     let mut parent = 0;
     for &set in sets.iter() {
@@ -795,7 +795,7 @@ impl Field {
         let group_points_count = group.len() as u32;
         if group_points_count > 1 {
           let mut chains_count = 0u32;
-          for &(chain_pos, captured_pos) in group.iter() {
+          for &(chain_pos, captured_pos) in &group {
             if let Some(chain) = self.build_chain(pos, player, chain_pos) {
               self.capture(&chain, captured_pos, player);
               chains_count += 1;

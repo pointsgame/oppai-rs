@@ -130,13 +130,13 @@ impl TrajectoriesPruning {
     }
   }
 
-  fn project(trajectories: &Vec<Trajectory>, empty_board: &mut Vec<u32>) {
+  fn project(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
     for &pos in trajectories.iter().filter(|trajectory| !trajectory.excluded()).flat_map(|trajectory| trajectory.points().iter()) {
       empty_board[pos] += 1;
     }
   }
 
-  fn deproject(trajectories: &Vec<Trajectory>, empty_board: &mut Vec<u32>) {
+  fn deproject(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
     for &pos in trajectories.iter().filter(|trajectory| !trajectory.excluded()).flat_map(|trajectory| trajectory.points().iter()) {
       empty_board[pos] -= 1;
     }
@@ -167,7 +167,7 @@ impl TrajectoriesPruning {
     TrajectoriesPruning::deproject(trajectories2, empty_board);
   }
 
-  fn calculate_moves<T: Rng>(trajectories1: &Vec<Trajectory>, trajectories2: &Vec<Trajectory>, empty_board: &mut Vec<u32>, rng: &mut T) -> Vec<Pos> {
+  fn calculate_moves<T: Rng>(trajectories1: &[Trajectory], trajectories2: &[Trajectory], empty_board: &mut Vec<u32>, rng: &mut T) -> Vec<Pos> {
     let mut result = Vec::new();
     for &pos in trajectories1.iter().chain(trajectories2.iter()).filter(|trajectory| !trajectory.excluded()).flat_map(|trajectory| trajectory.points().iter()) {
       if empty_board[pos] == 0 {
@@ -175,7 +175,7 @@ impl TrajectoriesPruning {
         result.push(pos);
       }
     }
-    for &pos in result.iter() {
+    for &pos in &result {
       empty_board[pos] = 0;
     }
     rng.shuffle(&mut result); //TODO: sort by projection values.

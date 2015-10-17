@@ -21,7 +21,7 @@ impl WavePruning {
 
   pub fn clear(&mut self) {
     self.moves.clear();
-    for i in self.moves_field.iter_mut() {
+    for i in &mut self.moves_field {
       *i = 0;
     }
   }
