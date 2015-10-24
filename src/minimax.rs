@@ -149,7 +149,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, rng: &mut T, depth: u3
   let estimation = alpha_beta_parallel(field, player, depth, i32::min_value() + 1, i32::max_value(), &trajectories_pruning, rng, &mut best_move, &should_stop);
   let enemy = player.next();
   let mut enemy_best_move = best_move;
-  let enemy_trajectories_pruning = TrajectoriesPruning::dec_and_swap_exists(&field, enemy, depth - 1, &mut empty_board, rng, &trajectories_pruning, &should_stop);
+  let enemy_trajectories_pruning = TrajectoriesPruning::dec_and_swap_exists(&field, depth - 1, &mut empty_board, rng, &trajectories_pruning, &should_stop);
   info!(target: MINIMAX_STR, "Calculating of enemy estimation with upper bound {}. Player is {}", -estimation + 1, enemy);
   if -alpha_beta_parallel(field, enemy, depth - 1, -estimation, -estimation + 1, &enemy_trajectories_pruning, rng, &mut enemy_best_move, &should_stop) < estimation {
     info!(target: MINIMAX_STR,  "Estimation is greater than enemy estimation. So the best move is {:?}, estimation is {}.", best_move.map(|pos| (field.to_x(pos), field.to_y(pos))), estimation);
@@ -179,7 +179,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T,
       if should_stop.load(Ordering::Relaxed) { //TODO: use calculated move.
         break;
       }
-      let enemy_trajectories_pruning = TrajectoriesPruning::dec_and_swap_exists(&field, enemy, depth - 1, &mut empty_board, rng, &trajectories_pruning, &should_stop);
+      let enemy_trajectories_pruning = TrajectoriesPruning::dec_and_swap_exists(&field, depth - 1, &mut empty_board, rng, &trajectories_pruning, &should_stop);
       if should_stop.load(Ordering::Relaxed) {
         break;
       }

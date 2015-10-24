@@ -254,7 +254,7 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn dec_and_swap_exists<T: Rng>(field: &Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, rng: &mut T, exists: &TrajectoriesPruning, should_stop: &AtomicBool) -> TrajectoriesPruning {
+  pub fn dec_and_swap_exists<T: Rng>(field: &Field, depth: u32, empty_board: &mut Vec<u32>, rng: &mut T, exists: &TrajectoriesPruning, should_stop: &AtomicBool) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty();
     }
