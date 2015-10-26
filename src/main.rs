@@ -35,6 +35,7 @@ mod uct;
 mod heuristic;
 mod minimax;
 mod bot;
+mod dfa;
 
 #[cfg(test)]
 mod field_test;
