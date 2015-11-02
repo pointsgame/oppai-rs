@@ -113,4 +113,41 @@ impl Dfa {
         }
         self.states = new_states;
     }
+
+    fn pyramid_idx_base(i: usize) -> usize {
+        i * (i - 1) / 2
+    }
+
+    fn pyramid_idx(i: usize, j: usize) -> usize {
+        Dfa::pyramid_idx_base(i) + j
+    }
+
+    pub fn minimize(&mut self) {
+        let len = self.states.len();
+        let mut not_equal = iter::repeat(0).take(len * (len - 1) / 2 + len - 1).collect::<Vec<u32>>();
+        for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
+            let base = Dfa::pyramid_idx_base(i);
+            for (j, pattern_j) in self.states[.. i - 1].iter().enumerate() {
+                if pattern_i.pattern != pattern_j.pattern {
+                    not_equal[base + j] = 1;
+                }
+            }
+        }
+        'outer: loop {
+            for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
+                let base = Dfa::pyramid_idx_base(i);
+                for (j, pattern_j) in self.states[.. i - 1].iter().enumerate() {
+                    let idx = base + j;
+                    if not_equal[idx] == 0 {
+                        if pattern_i.empty != pattern_j.empty && (pattern_i.empty == -1 || pattern_j.empty == -1 || not_equal[Dfa::pyramid_idx(pattern_i.empty as usize, pattern_j.empty as usize)] == 1) ||
+                            pattern_i.red != pattern_j.red && (pattern_i.red == -1 || pattern_j.red == -1 || not_equal[Dfa::pyramid_idx(pattern_i.red as usize, pattern_j.red as usize)] == 1) {
+                            not_equal[idx] = 1;
+                            continue 'outer;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+    }
 }
