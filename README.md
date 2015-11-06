@@ -35,4 +35,4 @@ License
 
 This project is licensed under AGPL version 3 or (at your option) any later version. See LICENSE.txt for details.
 
-Copyright (C) Kurnevsky Evgeny 2015
+Copyright (C) 2015 Kurnevsky Evgeny, Vasya Novikov
