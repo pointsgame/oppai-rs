@@ -94,7 +94,7 @@ fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_license<T: Write>(output: &mut T, id: u32) {
-  writeln!(output, "= {0} license AGPLv3", id).ok();
+  writeln!(output, "= {0} license AGPLv3+", id).ok();
 }
 
 fn write_license_error<T: Write>(output: &mut T, id: u32) {
@@ -142,7 +142,7 @@ fn write_undo_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_version<T: Write>(output: &mut T, id: u32) {
-  writeln!(output, "= {0} version 4.0.0", id).ok();
+  writeln!(output, "= {0} version {1}", id, env!("CARGO_PKG_VERSION")).ok();
 }
 
 fn write_version_error<T: Write>(output: &mut T, id: u32) {

@@ -1,8 +1,8 @@
 [package]
-name = "opai-rust"
-version = "0.0.1"
+name = "opai-rs"
+version = "0.1.0"
 authors = ["Kurnevsky Evgeny <kurnevsky@gmail.com>"]
-license = "AGPL-3.0"
+license = "AGPL-3.0+"
 
 [dependencies]
 rand = "*"
