@@ -3,7 +3,7 @@ use std::collections::vec_deque::VecDeque;
 use player::Player;
 use cell::Cell;
 
-struct DfaState {
+pub struct DfaState {
     empty: i32,
     red: i32,
     black: i32,
@@ -11,11 +11,29 @@ struct DfaState {
     pattern: i32
 }
 
-struct Dfa {
+impl DfaState {
+    pub fn new(empty: i32, red: i32, black: i32, bad: i32, pattern: i32) -> DfaState {
+        DfaState {
+            empty: empty,
+            red: red,
+            black: black,
+            bad: bad,
+            pattern: pattern
+        }
+    }
+}
+
+pub struct Dfa {
     states: Vec<DfaState>
 }
 
 impl Dfa {
+    pub fn new(states: Vec<DfaState>) -> Dfa {
+        Dfa {
+            states: states
+        }
+    }
+
     pub fn product(&self, other: &Dfa) -> Dfa {
         let other_len = other.states.len();
         let other_len_i32 = other_len as i32;

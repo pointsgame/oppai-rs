@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![feature(unsafe_no_drop_flag)]
 #![feature(convert)]
+#![feature(str_char)]
 #![feature(plugin)]
 
 #![plugin(clippy)]
@@ -20,6 +21,8 @@ extern crate toml;
 
 extern crate crossbeam;
 
+extern crate tar;
+
 #[cfg(test)]
 extern crate quickcheck;
 
@@ -36,6 +39,8 @@ mod heuristic;
 mod minimax;
 mod bot;
 mod dfa;
+mod zigzag;
+mod patterns;
 
 #[cfg(test)]
 mod field_test;
