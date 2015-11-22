@@ -23,20 +23,26 @@ struct Patterns {
 }
 
 impl Patterns {
-    fn read_sizes<T: BufRead>(input: &mut T, s: &mut String) -> (u32, u32, u32) {
+    fn read_header<T: BufRead>(input: &mut T, s: &mut String) -> (u32, u32, u32, f64) {
         s.clear();
         input.read_line(s).ok();
         let mut split = s.split(' ').fuse();
-        let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32.");
+        let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32."); //TODO: validate all this.
         let height = u32::from_str(split.next().expect("Invalid pattern format: expected height.")).expect("Invalid pattern format: height must be u32.");
         let moves_count = u32::from_str(split.next().expect("Invalid pattern format: expected moves count.")).expect("Invalid pattern format: moves count must be u32.");
-        (width, height, moves_count)
+        let priority = f64::from_str(split.next().expect("Invalid pattern format: expected priority.")).expect("Invalid pattern format: priority must be f64.");
+        (width, height, moves_count, priority)
     }
 
     fn read_pattern<T: BufRead>(input: &mut T, s: &mut String, width: u32, height: u32) {
+        s.clear();
         for y in 0 .. height {
-            input.read_line(s).ok();
+            input.read_line(s).ok(); //TODO: check sizes.
         }
+    }
+
+    fn read_moves<T: BufRead>(input: &mut T, s: &mut String, moves_count: u32) -> Vec<Move> {
+        unimplemented!()
     }
 
     fn covering_zigzag_length(side_of_square: u32) -> u32 {
@@ -79,10 +85,38 @@ impl Patterns {
     pub fn load(file: File) -> Patterns {
         let archive = Archive::new(file);
         let mut s = String::new();
-        for file in archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed.")) {
+        let mut patterns = Vec::new();
+        let mut iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
+        let mut dfa = {
+            let file = iter.next().expect("Archive should contain at least one pattern.");
             let mut input = BufReader::new(file);
-            let (width, height, moves_count) = Patterns::read_sizes(&mut input, &mut s);
+            let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
+            Patterns::read_pattern(&mut input, &mut s, width, height);
+            let cur_dfa = Patterns::build_dfa(width, height, 0, &s);
+            let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
+            patterns.push(Pattern {
+                p: priority,
+                moves: moves
+            });
+            cur_dfa
+        };
+        for file in iter {
+            let mut input = BufReader::new(file);
+            let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
+            Patterns::read_pattern(&mut input, &mut s, width, height);
+            let cur_dfa = Patterns::build_dfa(width, height, patterns.len() as u32, &s);
+            dfa = dfa.product(&cur_dfa);
+            dfa.delete_non_reachable();
+            let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
+            patterns.push(Pattern {
+                p: priority,
+                moves: moves
+            });
         }
-        unimplemented!()
+        dfa.minimize();
+        Patterns {
+            dfa: dfa,
+            patterns: patterns
+        }
     }
 }
