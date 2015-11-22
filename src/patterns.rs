@@ -1,6 +1,7 @@
 use std::io::{BufReader, BufRead};
 use std::str::FromStr;
 use std::fs::File;
+use std::cmp;
 use tar::Archive;
 use zigzag::Zigzag;
 use dfa::{Dfa, DfaState};
@@ -26,9 +27,9 @@ impl Patterns {
         s.clear();
         input.read_line(s).ok();
         let mut split = s.split(' ').fuse();
-        let width = u32::from_str(split.next().expect("???")).expect("???");
-        let height = u32::from_str(split.next().expect("???")).expect("???");
-        let moves_count = u32::from_str(split.next().expect("???")).expect("???");
+        let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32.");
+        let height = u32::from_str(split.next().expect("Invalid pattern format: expected height.")).expect("Invalid pattern format: height must be u32.");
+        let moves_count = u32::from_str(split.next().expect("Invalid pattern format: expected moves count.")).expect("Invalid pattern format: moves count must be u32.");
         (width, height, moves_count)
     }
 
@@ -38,12 +39,18 @@ impl Patterns {
         }
     }
 
+    fn covering_zigzag_length(side_of_square: u32) -> u32 {
+        let x = side_of_square / 2;
+        8 * x * x - 13 * x + 6
+    }
+
     fn build_dfa(width: u32, height: u32, pattern: u32, s: &str) -> Dfa {
         let center_x = width / 2;
         let center_y = height / 2;
-        let mut states = Vec::new(); //TODO: capacity
+        let zigzag_length = Patterns::covering_zigzag_length(cmp::max(width, height)) as usize;
+        let mut states = Vec::with_capacity(zigzag_length + 1);
         let mut i = 0;
-        for (shift_x, shift_y) in Zigzag::new().into_iter().take(10) {
+        for (shift_x, shift_y) in Zigzag::new().into_iter().take(zigzag_length) {
             i += 1;
             let x = center_x as i32 + shift_x;
             let y = center_y as i32 + shift_y;
