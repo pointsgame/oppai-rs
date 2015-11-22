@@ -41,7 +41,7 @@ impl Patterns {
 
     fn covering_zigzag_length(side_of_square: u32) -> u32 {
         let x = side_of_square / 2;
-        8 * x * x - 13 * x + 6
+        (8 * x - 13) * x + 6
     }
 
     fn build_dfa(width: u32, height: u32, pattern: u32, s: &str) -> Dfa {
