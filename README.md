@@ -12,6 +12,9 @@ Features
 * UCT algorithm for searching the optimal move.
 * UCT caching that persists between moves.
 * Cache invalidation for moves no longer possible on the field.
+* Minimax algorithm.
+* Multi-threading for both Minimax and UCT.
+* Time-based calculation (`gen_move_with_time`)
 
 
 Running
