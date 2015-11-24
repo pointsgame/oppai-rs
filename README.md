@@ -5,12 +5,21 @@ Opai-rs an artificial intelligence for the game of points.
 
 It's written in rust language and implements "points console AI protocol v6". (See /doc/PointsAIProtocol6.txt for details.)
 
+
+Features
+====
+
+* UCT algorithm for searching the optimal move.
+* UCT caching that persists between moves.
+* Cache invalidation for moves no longer possible on the field.
+
+
 Running
 ====
 
 In order to build opai-rs you need a _nightly_ rust installed on your system.
 
-Rustc version "nightly-2015-11-01" is known to be able to build opai-rs. You can use "multirust" to specify and update nightly versions of rust. [https://github.com/brson/multirust](https://github.com/brson/multirust)
+Rustc version "nightly-2015-11-19" is known to be able to build opai-rs. You can use "multirust" to specify and update nightly versions of rust. [https://github.com/brson/multirust](https://github.com/brson/multirust)
 
 Once you have rust installed on your system, compile with
 
