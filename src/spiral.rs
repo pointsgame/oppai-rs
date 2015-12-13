@@ -1,11 +1,11 @@
-pub struct Zigzag<T> {
+pub struct Spiral<T> {
     x: T,
     y: T
 }
 
-impl Zigzag<i32> {
-    pub fn new() -> Zigzag<i32> {
-        Zigzag {
+impl Spiral<i32> {
+    pub fn new() -> Spiral<i32> {
+        Spiral {
             x: 0,
             y: 0
         }
@@ -45,7 +45,7 @@ impl Zigzag<i32> {
     }
 }
 
-impl Iterator for Zigzag<i32> {
+impl Iterator for Spiral<i32> {
     type Item = (i32, i32);
     fn next(&mut self) -> Option<(i32, i32)> {
         let result = Some((self.x, self.y));

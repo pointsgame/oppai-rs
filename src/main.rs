@@ -39,7 +39,7 @@ mod heuristic;
 mod minimax;
 mod bot;
 mod dfa;
-mod zigzag;
+mod spiral;
 mod patterns;
 
 #[cfg(test)]

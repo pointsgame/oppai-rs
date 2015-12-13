@@ -3,8 +3,9 @@ use std::str::FromStr;
 use std::fs::File;
 use std::cmp;
 use tar::Archive;
-use zigzag::Zigzag;
+use spiral::Spiral;
 use dfa::{Dfa, DfaState};
+use field::Field;
 
 struct Move {
     x: u32,
@@ -45,7 +46,7 @@ impl Patterns {
         unimplemented!()
     }
 
-    fn covering_zigzag_length(side_of_square: u32) -> u32 {
+    fn covering_spiral_length(side_of_square: u32) -> u32 {
         let x = side_of_square / 2;
         (8 * x - 13) * x + 6
     }
@@ -53,10 +54,10 @@ impl Patterns {
     fn build_dfa(width: u32, height: u32, pattern: u32, s: &str) -> Dfa {
         let center_x = width / 2;
         let center_y = height / 2;
-        let zigzag_length = Patterns::covering_zigzag_length(cmp::max(width, height)) as usize;
-        let mut states = Vec::with_capacity(zigzag_length + 1);
+        let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
+        let mut states = Vec::with_capacity(spiral_length + 1);
         let mut i = 0;
-        for (shift_x, shift_y) in Zigzag::new().into_iter().take(zigzag_length) {
+        for (shift_x, shift_y) in Spiral::new().into_iter().take(spiral_length) {
             i += 1;
             let x = center_x as i32 + shift_x;
             let y = center_y as i32 + shift_y;
@@ -118,5 +119,9 @@ impl Patterns {
             dfa: dfa,
             patterns: patterns
         }
+    }
+
+    pub fn find(&self, field: &Field) -> Vec<(i32, i32, f64)> {
+        unimplemented!()
     }
 }
