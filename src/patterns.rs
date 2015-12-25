@@ -5,6 +5,7 @@ use std::cmp;
 use tar::Archive;
 use spiral::Spiral;
 use dfa::{Dfa, DfaState};
+use cell::Cell;
 use field::Field;
 
 struct Move {
@@ -15,6 +16,8 @@ struct Move {
 
 struct Pattern {
   p: f64, // priority (probability = p / sum(p))
+  width: u32,
+  height: u32,
   moves: Vec<Move>
 }
 
@@ -68,7 +71,7 @@ impl Patterns {
     (8 * x - 13) * x + 6
   }
 
-  fn build_dfa(width: u32, height: u32, pattern: u32, s: &str) -> Dfa {
+  fn build_dfa(width: u32, height: u32, pattern: u32, s: &str) -> Dfa { //TODO: different color, rotations, reflections.
     let center_x = width / 2;
     let center_y = height / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
@@ -113,6 +116,8 @@ impl Patterns {
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
       patterns.push(Pattern {
         p: priority,
+        width: width,
+        height: height,
         moves: moves
       });
       cur_dfa
@@ -127,6 +132,8 @@ impl Patterns {
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
       patterns.push(Pattern {
         p: priority,
+        width: width,
+        height: height,
         moves: moves
       });
     }
@@ -137,7 +144,31 @@ impl Patterns {
     }
   }
 
-  pub fn find(&self, field: &Field) -> Vec<(i32, i32, f64)> {
-    unimplemented!()
+  pub fn find(&self, field: &Field) -> Vec<(u32, u32, f64)> {
+    let mut priorities_sum = 0f64;
+    let mut moves_count = 0usize;
+    let mut matched = Vec::new();
+    for y in 0 .. field.height() { //TODO: don't search on borders were pattern cann't be found.
+      for x in 0 .. field.width() {
+        if let Some(pattern_number) = self.dfa.run(&mut Spiral::new().into_iter().map(|(i, j)| {
+          Cell::new(true) //TODO
+        })) {
+          let pattern = &self.patterns[pattern_number as usize];
+          priorities_sum += pattern.p;
+          moves_count += pattern.moves.len();
+          matched.push((pattern_number, x, y));
+        }
+      }
+    }
+    let mut result = Vec::with_capacity(moves_count);
+    for (pattern_number, center_x, center_y) in matched {
+      let pattern = &self.patterns[pattern_number as usize];
+      for &Move { x, y, p: probability } in &pattern.moves {
+        let move_x = center_x - pattern.width / 2 + x;
+        let move_y = center_y - pattern.height / 2 + y;
+        result.push((move_x, 0, probability * pattern.p / priorities_sum));
+      }
+    }
+    result
   }
 }

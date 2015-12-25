@@ -59,7 +59,7 @@ impl Dfa {
     }
   }
 
-  pub fn run(&self, iter: &mut Iterator<Item = Cell>) -> Option<u32> {
+  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T) -> Option<u32> {
     let mut state_idx = 0i32;
     loop {
       let state = &self.states[state_idx as usize];
