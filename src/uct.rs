@@ -74,7 +74,7 @@ impl UctNode {
   pub fn get_child(&self) -> Option<Box<UctNode>> {
     let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
     if !ptr.is_null() {
-      Some(unsafe { mem::transmute(ptr) })
+      Some(unsafe { Box::from_raw(ptr) })
     } else {
       None
     }
@@ -101,15 +101,15 @@ impl UctNode {
   unsafe fn clear_child(&self) {
     let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
     if !ptr.is_null() {
-      drop::<Box<UctNode>>(mem::transmute(ptr));
+      drop::<Box<UctNode>>(Box::from_raw(ptr));
     }
   }
 
   pub fn set_child(&self, child: Box<UctNode>) {
-    let child_ptr = unsafe { mem::transmute(child) };
+    let child_ptr = unsafe { Box::into_raw(child) };
     let ptr = self.child.compare_and_swap(ptr::null_mut(), child_ptr, Ordering::Relaxed);
     if !ptr.is_null() {
-      drop::<Box<UctNode>>(unsafe { mem::transmute(child_ptr) });
+      drop::<Box<UctNode>>(unsafe { Box::from_raw(child_ptr) });
     }
   }
 
