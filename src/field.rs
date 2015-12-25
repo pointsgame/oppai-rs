@@ -992,7 +992,13 @@ impl Field {
     })
   }
 
+  #[inline]
   pub fn zobrist(&self) -> &Zobrist {
     &self.zobrist
+  }
+
+  #[inline]
+  pub fn cell(&self, pos: Pos) -> Cell {
+    self.points[pos]
   }
 }

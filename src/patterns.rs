@@ -150,8 +150,15 @@ impl Patterns {
     let mut matched = Vec::new();
     for y in 0 .. field.height() { //TODO: don't search on borders were pattern cann't be found.
       for x in 0 .. field.width() {
-        if let Some(pattern_number) = self.dfa.run(&mut Spiral::new().into_iter().map(|(i, j)| {
-          Cell::new(true) //TODO
+        if let Some(pattern_number) = self.dfa.run(&mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
+          let cur_x = x as i32 + shift_x;
+          let cur_y = y as i32 + shift_y;
+          if cur_x >= 0 && cur_x < field.width() as i32 && cur_y >= 0 && cur_y < field.height() as i32 {
+            let pos = field.to_pos(x as u32, y as u32);
+            field.cell(pos)
+          } else {
+            Cell::new(true)
+          }
         })) {
           let pattern = &self.patterns[pattern_number as usize];
           priorities_sum += pattern.p;
