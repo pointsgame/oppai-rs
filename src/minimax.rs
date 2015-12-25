@@ -1,5 +1,6 @@
 use std::{iter, thread};
 use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering};
+use std::time::Duration;
 use rand::{Rng, XorShiftRng};
 use crossbeam;
 use crossbeam::sync::MsQueue;
@@ -164,7 +165,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T,
   let should_stop = AtomicBool::new(false);
   crossbeam::scope(|scope| {
     scope.spawn(|| {
-      thread::sleep_ms(time);
+      thread::sleep(Duration::from_millis(time as u64));
       should_stop.store(true, Ordering::Relaxed);
     });
     let enemy = player.next();
