@@ -18,7 +18,7 @@ struct Pattern {
   moves: Vec<Move>
 }
 
-struct Patterns {
+pub struct Patterns {
   dfa: Dfa,
   patterns: Vec<Pattern>
 }
@@ -27,6 +27,7 @@ impl Patterns {
   fn read_header<T: BufRead>(input: &mut T, s: &mut String) -> (u32, u32, u32, f64) {
     s.clear();
     input.read_line(s).ok();
+    s.pop();
     let mut split = s.split(' ').fuse();
     let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32."); //TODO: validate all this.
     let height = u32::from_str(split.next().expect("Invalid pattern format: expected height.")).expect("Invalid pattern format: height must be u32.");
@@ -39,6 +40,7 @@ impl Patterns {
     s.clear();
     for y in 0 .. height {
       input.read_line(s).ok(); //TODO: check sizes.
+      s.pop();
     }
   }
 
