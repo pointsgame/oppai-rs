@@ -1,0 +1,8 @@
+max_width = 120
+ideal_width = 100
+tab_spaces = 2
+struct_trailing_comma = "Never"
+struct_lit_trailing_comma = "Never"
+enum_trailing_comma = false
+reorder_imports = true
+single_line_if_else = true
