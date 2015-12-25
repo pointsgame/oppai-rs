@@ -45,7 +45,22 @@ impl Patterns {
   }
 
   fn read_moves<T: BufRead>(input: &mut T, s: &mut String, moves_count: u32) -> Vec<Move> {
-    unimplemented!()
+    let mut moves = Vec::with_capacity(moves_count as usize);
+    for _ in 0 .. moves_count {
+      s.clear();
+      input.read_line(s).ok();
+      s.pop();
+      let mut split = s.split(' ').fuse();
+      let x = u32::from_str(split.next().expect("Invalid pattern format: expected x coordinate.")).expect("Invalid pattern format: x coordinate must be u32.");
+      let y = u32::from_str(split.next().expect("Invalid pattern format: expected x coordinate.")).expect("Invalid pattern format: x coordinate must be u32.");
+      let p = f64::from_str(split.next().expect("Invalid pattern format: expected probability.")).expect("Invalid pattern format: probability must be f64.");
+      moves.push(Move {
+        x: x,
+        y: y,
+        p: p
+      });
+    }
+    moves
   }
 
   fn covering_spiral_length(side_of_square: u32) -> u32 {
