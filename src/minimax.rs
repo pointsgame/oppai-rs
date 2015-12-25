@@ -82,7 +82,7 @@ fn alpha_beta_parallel<T: Rng>(field: &mut Field, player: Player, depth: u32, al
         let mut local_rng = xor_shift_rng;
         let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect();
         let enemy = player.next();
-        while let Some(pos) = queue.pop() {
+        while let Some(pos) = queue.try_pop() {
           if should_stop.load(Ordering::Relaxed) {
             debug!(target: MINIMAX_STR, "Time-out!");
             break;
