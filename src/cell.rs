@@ -16,7 +16,7 @@ const BAD_BIT: CellValue = 32;
 
 const TAG_BIT: CellValue = 64;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Cell { 
   value: CellValue
 }

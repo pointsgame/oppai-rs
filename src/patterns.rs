@@ -67,13 +67,14 @@ impl Patterns {
   }
 
   fn covering_spiral_length(side_of_square: u32) -> u32 {
-    let x = side_of_square / 2;
-    (8 * x - 13) * x + 6
+    let x = side_of_square / 2 + 1;
+    let y = (1 - side_of_square % 2) * side_of_square * 2;
+    (8 * x - 13) * x + 6 - y
   }
 
   fn build_dfa(width: u32, height: u32, pattern: u32, s: &str) -> Dfa { //TODO: different color, rotations, reflections.
-    let center_x = width / 2;
-    let center_y = height / 2;
+    let center_x = (width - 1) / 2;
+    let center_y = (height - 1) / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
     let mut states = Vec::with_capacity(spiral_length + 1);
     let mut i = 0;
@@ -94,7 +95,7 @@ impl Patterns {
           c   => panic!("Invalid character in pattern: {}", c)
         }
       } else {
-        DfaState::new(-1, -1, -1, -1, -1)
+        DfaState::new(i, i, i, i, -1) //TODO: what we should do in such case? Parametrize it?
       };
       states.push(state);
     }
@@ -154,7 +155,7 @@ impl Patterns {
           let cur_x = x as i32 + shift_x;
           let cur_y = y as i32 + shift_y;
           if cur_x >= 0 && cur_x < field.width() as i32 && cur_y >= 0 && cur_y < field.height() as i32 {
-            let pos = field.to_pos(x as u32, y as u32);
+            let pos = field.to_pos(cur_x as u32, cur_y as u32);
             field.cell(pos)
           } else {
             Cell::new(true)
@@ -171,9 +172,9 @@ impl Patterns {
     for (pattern_number, center_x, center_y) in matched {
       let pattern = &self.patterns[pattern_number as usize];
       for &Move { x, y, p: probability } in &pattern.moves {
-        let move_x = center_x - pattern.width / 2 + x;
-        let move_y = center_y - pattern.height / 2 + y;
-        result.push((move_x, 0, probability * pattern.p / priorities_sum));
+        let move_x = center_x - (pattern.width - 1) / 2 + x;
+        let move_y = center_y - (pattern.height - 1) / 2 + y;
+        result.push((move_x, move_y, probability * pattern.p / priorities_sum));
       }
     }
     result

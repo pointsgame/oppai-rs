@@ -3,6 +3,7 @@ use std::collections::vec_deque::VecDeque;
 use player::Player;
 use cell::Cell;
 
+#[derive(Debug)]
 pub struct DfaState {
   empty: i32,
   red: i32,
@@ -164,7 +165,7 @@ impl Dfa {
             if pattern_i.empty != pattern_j.empty && (pattern_i.empty == -1 || pattern_j.empty == -1 || not_equal[Dfa::pyramid_idx(pattern_i.empty as usize, pattern_j.empty as usize)] == 1) ||
                pattern_i.red != pattern_j.red && (pattern_i.red == -1 || pattern_j.red == -1 || not_equal[Dfa::pyramid_idx(pattern_i.red as usize, pattern_j.red as usize)] == 1) ||
                pattern_i.black != pattern_j.black && (pattern_i.black == -1 || pattern_j.black == -1 || not_equal[Dfa::pyramid_idx(pattern_i.black as usize, pattern_j.black as usize)] == 1) ||
-               pattern_i.bad != pattern_j.bad && (pattern_i.bad == -1 || pattern_j.bad == -1 || not_equal[Dfa::pyramid_idx(pattern_i.bad as usize, pattern_j.black as usize)] == 1) {
+               pattern_i.bad != pattern_j.bad && (pattern_i.bad == -1 || pattern_j.bad == -1 || not_equal[Dfa::pyramid_idx(pattern_i.bad as usize, pattern_j.bad as usize)] == 1) {
               not_equal[idx] = 1;
               continue 'outer;
             }
