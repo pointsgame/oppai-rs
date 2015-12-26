@@ -3,7 +3,7 @@ use std::collections::vec_deque::VecDeque;
 use player::Player;
 use cell::Cell;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DfaState {
   empty: i32,
   red: i32,
@@ -24,18 +24,35 @@ impl DfaState {
   }
 }
 
+#[derive(Clone, Debug)]
 pub struct Dfa {
   states: Vec<DfaState>
 }
 
 impl Dfa {
+  pub fn empty() -> Dfa {
+    Dfa {
+      states: Vec::with_capacity(0)
+    }
+  }
+
   pub fn new(states: Vec<DfaState>) -> Dfa {
     Dfa {
       states: states
     }
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.states.is_empty()
+  }
+
   pub fn product(&self, other: &Dfa) -> Dfa {
+    if self.is_empty() {
+      return other.clone();
+    }
+    if other.is_empty() {
+      return self.clone();
+    }
     let other_len = other.states.len();
     let other_len_i32 = other_len as i32;
     let mut new_states = Vec::with_capacity(self.states.len() * other_len);
@@ -61,6 +78,9 @@ impl Dfa {
   }
 
   pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T) -> Option<u32> {
+    if self.is_empty() {
+      return None;
+    }
     let mut state_idx = 0i32;
     loop {
       let state = &self.states[state_idx as usize];
@@ -112,6 +132,9 @@ impl Dfa {
   }
 
   pub fn delete_non_reachable(&mut self) {
+    if self.is_empty() {
+      return;
+    }
     let mut non_reachable = iter::repeat(1).take(self.states.len()).collect::<Vec<u32>>();
     let mut q = VecDeque::with_capacity(self.states.len());
     q.push_back(1);
@@ -146,6 +169,9 @@ impl Dfa {
   }
 
   pub fn minimize(&mut self) { //TODO: delete unnecesarry states at the end.
+    if self.is_empty() {
+      return;
+    }
     let len = self.states.len();
     let mut not_equal = iter::repeat(0).take(len * (len - 1) / 2 + len - 1).collect::<Vec<u32>>();
     for (i, pattern_i) in self.states.iter().enumerate().skip(1) {

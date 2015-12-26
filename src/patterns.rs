@@ -108,28 +108,14 @@ impl Patterns {
     let mut s = String::new();
     let mut patterns = Vec::new();
     let mut iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
-    let mut dfa = {
-      let file = iter.next().expect("Archive should contain at least one pattern.");
-      let mut input = BufReader::new(file);
-      let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
-      Patterns::read_pattern(&mut input, &mut s, width, height);
-      let cur_dfa = Patterns::build_dfa(width, height, 0, &s);
-      let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
-      patterns.push(Pattern {
-        p: priority,
-        width: width,
-        height: height,
-        moves: moves
-      });
-      cur_dfa
-    };
+    let mut dfa = Dfa::empty();
     for file in iter {
       let mut input = BufReader::new(file);
       let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
       Patterns::read_pattern(&mut input, &mut s, width, height);
       let cur_dfa = Patterns::build_dfa(width, height, patterns.len() as u32, &s);
       dfa = dfa.product(&cur_dfa);
-      dfa.delete_non_reachable();
+      //dfa.delete_non_reachable();
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
       patterns.push(Pattern {
         p: priority,
