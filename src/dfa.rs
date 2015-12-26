@@ -53,24 +53,44 @@ impl Dfa {
     if other.is_empty() {
       return self.clone();
     }
+    let self_len = self.states.len();
     let other_len = other.states.len();
+    let self_len_i32 = self_len as i32;
     let other_len_i32 = other_len as i32;
-    let mut new_states = Vec::with_capacity(self.states.len() * other_len);
+    let other_len_inc_i32 = other_len_i32 + 1;
+    let mut new_states = Vec::with_capacity((self_len + 1) * (other_len + 1) - 1);
     for self_state in &self.states {
-      let base_empty = (self_state.empty + 1) * other_len_i32;
-      let base_red = (self_state.red + 1) * other_len_i32;
-      let base_black = (self_state.black + 1) * other_len_i32;
-      let base_bad = (self_state.bad + 1) * other_len_i32;
+      let base_empty = if self_state.empty == -1 { self_len_i32 } else { self_state.empty } * other_len_inc_i32;
+      let base_red = if self_state.red == -1 { self_len_i32 } else { self_state.red } * other_len_inc_i32;
+      let base_black = if self_state.black == -1 { self_len_i32 } else { self_state.black } * other_len_inc_i32;
+      let base_bad = if self_state.bad == -1 { self_len_i32 } else { self_state.bad } * other_len_inc_i32;
       for other_state in &other.states {
         let new_state = DfaState {
-          empty: base_empty + other_state.empty,
-          red: base_red + other_state.red,
-          black: base_black + other_state.black,
-          bad: base_bad + other_state.bad,
+          empty: if other_state.empty == -1 { if self_state.empty == -1 { -1 } else { base_empty + other_len_i32 } } else { base_empty + other_state.empty },
+          red: if other_state.red == -1 { if self_state.red == -1 { -1 } else { base_red + other_len_i32 } } else { base_red + other_state.red },
+          black: if other_state.black == -1 { if self_state.black == -1 { -1 } else { base_black + other_len_i32 } } else { base_black + other_state.black },
+          bad: if other_state.bad == -1 { if self_state.bad == -1 { -1 } else { base_bad + other_len_i32 } } else { base_bad + other_state.bad },
           pattern: if self_state.pattern != -1 { self_state.pattern } else { other_state.pattern }
         };
         new_states.push(new_state);
       }
+      new_states.push(DfaState {
+        empty: if self_state.empty == -1 { -1 } else { base_empty + other_len_i32 },
+        red: if self_state.red == -1 { -1 } else { base_red + other_len_i32 },
+        black: if self_state.black == -1 { -1 } else { base_black + other_len_i32 },
+        bad: if self_state.bad == -1 { -1 } else { base_bad + other_len_i32 },
+        pattern: self_state.pattern
+      });
+    }
+    let base = self_len_i32 * other_len_inc_i32;
+    for other_state in &other.states {
+      new_states.push(DfaState {
+        empty: if other_state.empty == -1 { -1 } else { base + other_state.empty },
+        red: if other_state.red == -1 { -1 } else { base + other_state.red },
+        black: if other_state.black == -1 { -1 } else { base + other_state.black },
+        bad: if other_state.bad == -1 { -1 } else { base + other_state.bad },
+        pattern: other_state.pattern
+      });
     }
     Dfa {
       states: new_states

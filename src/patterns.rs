@@ -124,7 +124,7 @@ impl Patterns {
         moves: moves
       });
     }
-    dfa.minimize();
+    dfa.minimize(); //TODO: does it work?
     Patterns {
       dfa: dfa,
       patterns: patterns
