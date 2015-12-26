@@ -136,8 +136,9 @@ impl Dfa {
       return;
     }
     let mut non_reachable = iter::repeat(1).take(self.states.len()).collect::<Vec<u32>>();
+    non_reachable[0] = 0;
     let mut q = VecDeque::with_capacity(self.states.len());
-    q.push_back(1);
+    q.push_back(0);
     while let Some(idx) = q.pop_front() {
       let state = &self.states[idx as usize];
       if state.empty != -1 && non_reachable[state.empty as usize] == 1 {

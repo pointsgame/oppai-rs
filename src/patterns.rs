@@ -115,7 +115,7 @@ impl Patterns {
       Patterns::read_pattern(&mut input, &mut s, width, height);
       let cur_dfa = Patterns::build_dfa(width, height, patterns.len() as u32, &s);
       dfa = dfa.product(&cur_dfa);
-      //dfa.delete_non_reachable();
+      dfa.delete_non_reachable();
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
       patterns.push(Pattern {
         p: priority,
