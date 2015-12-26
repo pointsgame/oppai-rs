@@ -145,7 +145,7 @@ impl Dfa {
     Dfa::pyramid_idx_base(i) + j
   }
 
-  pub fn minimize(&mut self) {
+  pub fn minimize(&mut self) { //TODO: delete unnecesarry states at the end.
     let len = self.states.len();
     let mut not_equal = iter::repeat(0).take(len * (len - 1) / 2 + len - 1).collect::<Vec<u32>>();
     for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
