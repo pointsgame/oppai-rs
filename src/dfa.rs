@@ -47,7 +47,7 @@ impl Dfa {
   }
 
   pub fn is_empty(&self) -> bool {
-    self.states.len() == 1 && self.states[0].is_final == true && self.states[0].patterns.is_empty()
+    self.states[0].is_final == true && self.states[0].patterns.is_empty()
   }
 
   pub fn product(&self, other: &Dfa) -> Dfa {
