@@ -137,7 +137,7 @@ impl Patterns {
     }
   }
 
-  pub fn find(&self, field: &Field) -> Vec<(u32, u32, f64)> {
+  pub fn find(&self, field: &Field, first_match: bool) -> Vec<(u32, u32, f64)> {
     let mut priorities_sum = 0f64;
     let mut moves_count = 0usize;
     let mut matched = Vec::new();
@@ -152,7 +152,7 @@ impl Patterns {
           } else {
             Cell::new(true)
           }
-        }));
+        }), first_match);
         for &pattern_number in patterns {
           let pattern = &self.patterns[pattern_number];
           priorities_sum += pattern.p;

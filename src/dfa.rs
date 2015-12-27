@@ -1,4 +1,4 @@
-use std::iter;
+use std::{iter, mem};
 use std::collections::vec_deque::VecDeque;
 use std::collections::HashSet;
 use player::Player;
@@ -82,14 +82,14 @@ impl Dfa {
     }
   }
 
-  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T) -> &HashSet<usize> {
+  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, first_match: bool) -> &HashSet<usize> {
     if self.is_empty() {
       return &self.states[0].patterns;
     }
     let mut state_idx = 0usize;
     loop {
       let state = &self.states[state_idx];
-      if state.is_final { //TODO: parametrize state.patterns.non_empty
+      if state.is_final || first_match && !state.patterns.is_empty() {
         return &state.patterns;
       }
       if let Some(cell) = iter.next() {
@@ -119,19 +119,19 @@ impl Dfa {
     if deletions == 0 {
       return;
     }
-    let mut new_states = Vec::with_capacity(self.states.len() - deletions);
-    for state in self.states.iter().zip(states_for_delete.into_iter()).filter_map(|(state, sd)| if sd == 0 { Some(state) } else { None }) {
+    let mut states = Vec::with_capacity(self.states.len() - deletions);
+    mem::swap(&mut self.states, &mut states);
+    for state in states.into_iter().zip(states_for_delete.into_iter()).filter_map(|(state, sd)| if sd == 0 { Some(state) } else { None }) {
       let new_state = DfaState {
         empty: state.empty - shifts[state.empty],
         red: state.red - shifts[state.red],
         black: state.black - shifts[state.black],
         bad: state.bad - shifts[state.bad],
         is_final: state.is_final,
-        patterns: state.patterns.clone() //TODO: no clone
+        patterns: state.patterns
       };
-      new_states.push(new_state);
+      self.states.push(new_state);
     }
-    self.states = new_states;
   }
 
   pub fn delete_non_reachable(&mut self) {
