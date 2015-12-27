@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::{BufReader, BufRead};
 use std::str::FromStr;
 use std::fs::File;
@@ -72,11 +73,13 @@ impl Patterns {
     (8 * x - 13) * x + 6 - y
   }
 
-  fn build_dfa(width: u32, height: u32, pattern: u32, s: &str) -> Dfa { //TODO: different color, rotations, reflections.
+  fn build_dfa(width: u32, height: u32, pattern: usize, s: &str) -> Dfa { //TODO: different color, rotations, reflections.
     let center_x = (width - 1) / 2;
     let center_y = (height - 1) / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
-    let mut states = Vec::with_capacity(spiral_length + 1);
+    let mut states = Vec::with_capacity(spiral_length + 2);
+    let fs = spiral_length;
+    let nfs = spiral_length + 1; // Not found state.
     let mut i = 0;
     for (shift_x, shift_y) in Spiral::new().into_iter().take(spiral_length) {
       i += 1;
@@ -85,21 +88,24 @@ impl Patterns {
       let state = if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
         let pos = y as u32 * width + x as u32;
         match s.char_at(pos as usize) {
-          '.' => DfaState::new(i, -1, -1, -1, -1),
-          '?' => DfaState::new(i, i, i, i, -1),
-          'R' => DfaState::new(-1, i, -1, -1, -1),
-          'B' => DfaState::new(-1, -1, i, -1, -1),
-          'r' => DfaState::new(i, i, -1, -1, -1),
-          'b' => DfaState::new(i, -1, i, -1, -1),
-          '*' => DfaState::new(-1, -1, -1, i, -1),
+          '.' => DfaState::new(i, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
+          '?' => DfaState::new(i, i, i, i, false, HashSet::with_capacity(0)),
+          'R' => DfaState::new(nfs, i, nfs, nfs, false, HashSet::with_capacity(0)),
+          'B' => DfaState::new(nfs, nfs, i, nfs, false, HashSet::with_capacity(0)),
+          'r' => DfaState::new(i, i, nfs, nfs, false, HashSet::with_capacity(0)),
+          'b' => DfaState::new(i, nfs, i, nfs, false, HashSet::with_capacity(0)),
+          '*' => DfaState::new(nfs, nfs, nfs, i, false, HashSet::with_capacity(0)),
           c   => panic!("Invalid character in pattern: {}", c)
         }
       } else {
-        DfaState::new(i, i, i, i, -1) //TODO: what we should do in such case? Parametrize it?
+        DfaState::new(i, i, i, i, false, HashSet::with_capacity(0)) //TODO: what we should do in such case? Parametrize it?
       };
       states.push(state);
     }
-    states.push(DfaState::new(-1, -1, -1, -1, pattern as i32));
+    let mut patterns = HashSet::with_capacity(1);
+    patterns.insert(pattern);
+    states.push(DfaState::new(fs, fs, fs, fs, true, patterns));
+    states.push(DfaState::new(nfs, nfs, nfs, nfs, true, HashSet::with_capacity(0)));
     Dfa::new(states)
   }
 
@@ -113,7 +119,7 @@ impl Patterns {
       let mut input = BufReader::new(file);
       let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
       Patterns::read_pattern(&mut input, &mut s, width, height);
-      let cur_dfa = Patterns::build_dfa(width, height, patterns.len() as u32, &s);
+      let cur_dfa = Patterns::build_dfa(width, height, patterns.len(), &s);
       dfa = dfa.product(&cur_dfa);
       dfa.delete_non_reachable();
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
@@ -137,7 +143,7 @@ impl Patterns {
     let mut matched = Vec::new();
     for y in 0 .. field.height() { //TODO: don't search on borders were pattern cann't be found.
       for x in 0 .. field.width() {
-        if let Some(pattern_number) = self.dfa.run(&mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
+        let patterns = self.dfa.run(&mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
           let cur_x = x as i32 + shift_x;
           let cur_y = y as i32 + shift_y;
           if cur_x >= 0 && cur_x < field.width() as i32 && cur_y >= 0 && cur_y < field.height() as i32 {
@@ -146,7 +152,8 @@ impl Patterns {
           } else {
             Cell::new(true)
           }
-        })) {
+        }));
+        for pattern_number in patterns {
           let pattern = &self.patterns[pattern_number as usize];
           priorities_sum += pattern.p;
           moves_count += pattern.moves.len();

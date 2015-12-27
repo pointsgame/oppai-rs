@@ -1,25 +1,28 @@
 use std::iter;
 use std::collections::vec_deque::VecDeque;
+use std::collections::HashSet;
 use player::Player;
 use cell::Cell;
 
 #[derive(Clone, Debug)]
 pub struct DfaState {
-  empty: i32,
-  red: i32,
-  black: i32,
-  bad: i32,
-  pattern: i32
+  empty: usize,
+  red: usize,
+  black: usize,
+  bad: usize,
+  is_final: bool,
+  patterns: HashSet<usize>
 }
 
 impl DfaState {
-  pub fn new(empty: i32, red: i32, black: i32, bad: i32, pattern: i32) -> DfaState {
+  pub fn new(empty: usize, red: usize, black: usize, bad: usize, is_final: bool, patterns: HashSet<usize>) -> DfaState {
     DfaState {
       empty: empty,
       red: red,
       black: black,
       bad: bad,
-      pattern: pattern
+      is_final: is_final,
+      patterns: patterns
     }
   }
 }
@@ -55,57 +58,38 @@ impl Dfa {
     }
     let self_len = self.states.len();
     let other_len = other.states.len();
-    let self_len_i32 = self_len as i32;
-    let other_len_i32 = other_len as i32;
-    let other_len_inc_i32 = other_len_i32 + 1;
-    let mut new_states = Vec::with_capacity((self_len + 1) * (other_len + 1) - 1);
+    let mut new_states = Vec::with_capacity(self_len * other_len);
     for self_state in &self.states {
-      let base_empty = if self_state.empty == -1 { self_len_i32 } else { self_state.empty } * other_len_inc_i32;
-      let base_red = if self_state.red == -1 { self_len_i32 } else { self_state.red } * other_len_inc_i32;
-      let base_black = if self_state.black == -1 { self_len_i32 } else { self_state.black } * other_len_inc_i32;
-      let base_bad = if self_state.bad == -1 { self_len_i32 } else { self_state.bad } * other_len_inc_i32;
+      let base_empty = self_state.empty * other_len;
+      let base_red = self_state.red * other_len;
+      let base_black = self_state.black * other_len;
+      let base_bad = self_state.bad * other_len;
       for other_state in &other.states {
         let new_state = DfaState {
-          empty: if other_state.empty == -1 { if self_state.empty == -1 { -1 } else { base_empty + other_len_i32 } } else { base_empty + other_state.empty },
-          red: if other_state.red == -1 { if self_state.red == -1 { -1 } else { base_red + other_len_i32 } } else { base_red + other_state.red },
-          black: if other_state.black == -1 { if self_state.black == -1 { -1 } else { base_black + other_len_i32 } } else { base_black + other_state.black },
-          bad: if other_state.bad == -1 { if self_state.bad == -1 { -1 } else { base_bad + other_len_i32 } } else { base_bad + other_state.bad },
-          pattern: if self_state.pattern != -1 { self_state.pattern } else { other_state.pattern }
+          empty: base_empty + other_state.empty,
+          red: base_red + other_state.red,
+          black: base_black + other_state.black,
+          bad: base_bad + other_state.bad,
+          is_final: self_state.is_final && other_state.is_final,
+          patterns: self_state.patterns.union(&other_state.patterns).cloned().collect()
         };
         new_states.push(new_state);
       }
-      new_states.push(DfaState {
-        empty: if self_state.empty == -1 { -1 } else { base_empty + other_len_i32 },
-        red: if self_state.red == -1 { -1 } else { base_red + other_len_i32 },
-        black: if self_state.black == -1 { -1 } else { base_black + other_len_i32 },
-        bad: if self_state.bad == -1 { -1 } else { base_bad + other_len_i32 },
-        pattern: self_state.pattern
-      });
-    }
-    let base = self_len_i32 * other_len_inc_i32;
-    for other_state in &other.states {
-      new_states.push(DfaState {
-        empty: if other_state.empty == -1 { -1 } else { base + other_state.empty },
-        red: if other_state.red == -1 { -1 } else { base + other_state.red },
-        black: if other_state.black == -1 { -1 } else { base + other_state.black },
-        bad: if other_state.bad == -1 { -1 } else { base + other_state.bad },
-        pattern: other_state.pattern
-      });
     }
     Dfa {
       states: new_states
     }
   }
 
-  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T) -> Option<u32> {
+  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T) -> HashSet<usize> {
     if self.is_empty() {
-      return None;
+      return HashSet::with_capacity(0);
     }
-    let mut state_idx = 0i32;
+    let mut state_idx = 0usize;
     loop {
       let state = &self.states[state_idx as usize];
-      if state.pattern != -1 {
-        return Some(state.pattern as u32);
+      if state.is_final { //TODO: parametrize state.patterns.non_empty
+        return state.patterns.clone(); //TODO: no clone
       }
       if let Some(cell) = iter.next() {
         if cell.is_bad() {
@@ -119,15 +103,12 @@ impl Dfa {
           state_idx = state.empty;
         }
       } else {
-        return None;
-      }
-      if state_idx == -1 {
-        return None;
+        return state.patterns.clone(); //TODO: no clone
       }
     }
   }
 
-  fn delete_states(&mut self, states_for_delete: Vec<u32>) {
+  fn delete_states(&mut self, states_for_delete: Vec<usize>) {
     let mut shifts = Vec::with_capacity(self.states.len());
     for sd in &states_for_delete {
       let shift = shifts.last().map_or(0, |&d| d) + sd;
@@ -137,14 +118,15 @@ impl Dfa {
     if deletions == 0 {
       return;
     }
-    let mut new_states = Vec::with_capacity(self.states.len() - deletions as usize);
+    let mut new_states = Vec::with_capacity(self.states.len() - deletions);
     for state in self.states.iter().zip(states_for_delete.into_iter()).filter_map(|(state, sd)| if sd == 0 { Some(state) } else { None }) {
       let new_state = DfaState {
-        empty: if state.empty == -1 { -1 } else { state.empty - shifts[state.empty as usize] as i32 },
-        red: if state.red == -1 { -1 } else { state.red - shifts[state.red as usize] as i32 },
-        black: if state.black == -1 { -1 } else { state.black - shifts[state.black as usize] as i32 },
-        bad: if state.bad == -1 { -1 } else { state.bad - shifts[state.bad as usize] as i32 },
-        pattern: state.pattern
+        empty: state.empty - shifts[state.empty],
+        red: state.red - shifts[state.red],
+        black: state.black - shifts[state.black],
+        bad: state.bad - shifts[state.bad],
+        is_final: state.is_final,
+        patterns: state.patterns.clone() //TODO: no clone
       };
       new_states.push(new_state);
     }
@@ -155,26 +137,26 @@ impl Dfa {
     if self.is_empty() {
       return;
     }
-    let mut non_reachable = iter::repeat(1).take(self.states.len()).collect::<Vec<u32>>();
+    let mut non_reachable = iter::repeat(1).take(self.states.len()).collect::<Vec<usize>>();
     non_reachable[0] = 0;
     let mut q = VecDeque::with_capacity(self.states.len());
     q.push_back(0);
     while let Some(idx) = q.pop_front() {
-      let state = &self.states[idx as usize];
-      if state.empty != -1 && non_reachable[state.empty as usize] == 1 {
-        non_reachable[state.empty as usize] = 0;
+      let state = &self.states[idx];
+      if non_reachable[state.empty] == 1 {
+        non_reachable[state.empty] = 0;
         q.push_back(state.empty);
       }
-      if state.red != -1 && non_reachable[state.red as usize] == 1 {
-        non_reachable[state.red as usize] = 0;
+      if non_reachable[state.red] == 1 {
+        non_reachable[state.red] = 0;
         q.push_back(state.red);
       }
-      if state.black != -1 && non_reachable[state.black as usize] == 1 {
-        non_reachable[state.black as usize] = 0;
+      if non_reachable[state.black] == 1 {
+        non_reachable[state.black] = 0;
         q.push_back(state.black);
       }
-      if state.bad != -1 && non_reachable[state.bad as usize] == 1 {
-        non_reachable[state.bad as usize] = 0;
+      if non_reachable[state.bad] == 1 {
+        non_reachable[state.bad] = 0;
         q.push_back(state.bad);
       }
     }
@@ -198,7 +180,7 @@ impl Dfa {
     for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
       let base = Dfa::pyramid_idx_base(i);
       for (j, pattern_j) in self.states[.. i - 1].iter().enumerate() {
-        if pattern_i.pattern != pattern_j.pattern {
+        if pattern_i.is_final != pattern_j.is_final || pattern_i.patterns != pattern_j.patterns {
           not_equal[base + j] = 1;
         }
       }
@@ -209,10 +191,10 @@ impl Dfa {
         for (j, pattern_j) in self.states[.. i - 1].iter().enumerate() {
           let idx = base + j;
           if not_equal[idx] == 0 {
-            if pattern_i.empty != pattern_j.empty && (pattern_i.empty == -1 || pattern_j.empty == -1 || not_equal[Dfa::pyramid_idx(pattern_i.empty as usize, pattern_j.empty as usize)] == 1) ||
-               pattern_i.red != pattern_j.red && (pattern_i.red == -1 || pattern_j.red == -1 || not_equal[Dfa::pyramid_idx(pattern_i.red as usize, pattern_j.red as usize)] == 1) ||
-               pattern_i.black != pattern_j.black && (pattern_i.black == -1 || pattern_j.black == -1 || not_equal[Dfa::pyramid_idx(pattern_i.black as usize, pattern_j.black as usize)] == 1) ||
-               pattern_i.bad != pattern_j.bad && (pattern_i.bad == -1 || pattern_j.bad == -1 || not_equal[Dfa::pyramid_idx(pattern_i.bad as usize, pattern_j.bad as usize)] == 1) {
+            if pattern_i.empty != pattern_j.empty && not_equal[Dfa::pyramid_idx(pattern_i.empty, pattern_j.empty)] == 1 ||
+               pattern_i.red != pattern_j.red && not_equal[Dfa::pyramid_idx(pattern_i.red, pattern_j.red)] == 1 ||
+               pattern_i.black != pattern_j.black && not_equal[Dfa::pyramid_idx(pattern_i.black, pattern_j.black)] == 1 ||
+               pattern_i.bad != pattern_j.bad && not_equal[Dfa::pyramid_idx(pattern_i.bad, pattern_j.bad)] == 1 {
               not_equal[idx] = 1;
               continue 'outer;
             }
@@ -221,26 +203,24 @@ impl Dfa {
       }
       break;
     }
-    let mut deleted = iter::repeat(0).take(self.states.len()).collect::<Vec<u32>>();
+    let mut deleted = iter::repeat(0).take(self.states.len()).collect::<Vec<usize>>();
     for i in 1 .. self.states.len() {
       let base = Dfa::pyramid_idx_base(i);
-      let i_i32 = i as i32;
       for j in 0 .. i - 1 {
         let idx = base + j;
         if not_equal[idx] == 0 && deleted[j] == 0 {
-          let j_i32 = j as i32;
           for state in &mut self.states {
-            if state.empty == i_i32 {
-              state.empty = j_i32;
+            if state.empty == i {
+              state.empty = j;
             }
-            if state.red == i_i32 {
-              state.red = j_i32;
+            if state.red == i {
+              state.red = j;
             }
-            if state.black == i_i32 {
-              state.black = j_i32;
+            if state.black == i {
+              state.black = j;
             }
-            if state.bad == i_i32 {
-              state.bad = j_i32;
+            if state.bad == i {
+              state.bad = j;
             }
           }
           deleted[i] = 1;
