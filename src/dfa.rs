@@ -34,8 +34,9 @@ pub struct Dfa {
 
 impl Dfa {
   pub fn empty() -> Dfa {
+    let state = DfaState::new(0, 0, 0, 0, true, HashSet::with_capacity(0));
     Dfa {
-      states: Vec::with_capacity(0)
+      states: vec![state]
     }
   }
 
@@ -46,7 +47,7 @@ impl Dfa {
   }
 
   pub fn is_empty(&self) -> bool {
-    self.states.is_empty()
+    self.states.len() == 1 && self.states[0].is_final == true && self.states[0].patterns.is_empty()
   }
 
   pub fn product(&self, other: &Dfa) -> Dfa {
@@ -81,15 +82,15 @@ impl Dfa {
     }
   }
 
-  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T) -> HashSet<usize> {
+  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T) -> &HashSet<usize> {
     if self.is_empty() {
-      return HashSet::with_capacity(0);
+      return &self.states[0].patterns;
     }
     let mut state_idx = 0usize;
     loop {
       let state = &self.states[state_idx as usize];
       if state.is_final { //TODO: parametrize state.patterns.non_empty
-        return state.patterns.clone(); //TODO: no clone
+        return &state.patterns;
       }
       if let Some(cell) = iter.next() {
         if cell.is_bad() {
@@ -103,7 +104,7 @@ impl Dfa {
           state_idx = state.empty;
         }
       } else {
-        return state.patterns.clone(); //TODO: no clone
+        return &state.patterns;
       }
     }
   }

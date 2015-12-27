@@ -153,8 +153,8 @@ impl Patterns {
             Cell::new(true)
           }
         }));
-        for pattern_number in patterns {
-          let pattern = &self.patterns[pattern_number as usize];
+        for &pattern_number in patterns {
+          let pattern = &self.patterns[pattern_number];
           priorities_sum += pattern.p;
           moves_count += pattern.moves.len();
           matched.push((pattern_number, x, y));
@@ -163,7 +163,7 @@ impl Patterns {
     }
     let mut result = Vec::with_capacity(moves_count);
     for (pattern_number, center_x, center_y) in matched {
-      let pattern = &self.patterns[pattern_number as usize];
+      let pattern = &self.patterns[pattern_number];
       for &Move { x, y, p: probability } in &pattern.moves {
         let move_x = center_x - (pattern.width - 1) / 2 + x;
         let move_y = center_y - (pattern.height - 1) / 2 + y;
