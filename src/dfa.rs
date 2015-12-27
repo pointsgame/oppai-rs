@@ -88,7 +88,7 @@ impl Dfa {
     }
     let mut state_idx = 0usize;
     loop {
-      let state = &self.states[state_idx as usize];
+      let state = &self.states[state_idx];
       if state.is_final { //TODO: parametrize state.patterns.non_empty
         return &state.patterns;
       }
