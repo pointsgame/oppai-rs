@@ -16,13 +16,14 @@ struct Move {
 }
 
 struct Pattern {
-  p: f64, // priority (probability = p / sum(p))
+  p: f64, // priority
   width: u32,
   height: u32,
   moves: Vec<Move>
 }
 
 pub struct Patterns {
+  min_size: u32,
   dfa: Dfa,
   patterns: Vec<Pattern>
 }
@@ -98,7 +99,7 @@ impl Patterns {
           c   => panic!("Invalid character in pattern: {}", c)
         }
       } else {
-        DfaState::new(i, i, i, i, false, HashSet::with_capacity(0)) //TODO: what we should do in such case? Parametrize it?
+        DfaState::new(i, i, i, i, false, HashSet::with_capacity(0))
       };
       states.push(state);
     }
@@ -115,9 +116,16 @@ impl Patterns {
     let mut patterns = Vec::new();
     let mut iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
     let mut dfa = Dfa::empty();
+    let mut min_size = u32::max_value();
     for file in iter {
       let mut input = BufReader::new(file);
       let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
+      if width < min_size {
+        min_size = width;
+      }
+      if height < min_size {
+        min_size = height;
+      }
       Patterns::read_pattern(&mut input, &mut s, width, height);
       let cur_dfa = Patterns::build_dfa(width, height, patterns.len(), &s);
       dfa = dfa.product(&cur_dfa);
@@ -132,17 +140,23 @@ impl Patterns {
     }
     dfa.minimize(); //TODO: does it work?
     Patterns {
+      min_size: min_size,
       dfa: dfa,
       patterns: patterns
     }
   }
 
   pub fn find(&self, field: &Field, first_match: bool) -> Vec<(u32, u32, f64)> {
+    if self.dfa.is_empty() {
+      return Vec::with_capacity(0);
+    }
     let mut priorities_sum = 0f64;
     let mut moves_count = 0usize;
     let mut matched = Vec::new();
-    for y in 0 .. field.height() { //TODO: don't search on borders were pattern cann't be found.
-      for x in 0 .. field.width() {
+    let left_border = (self.min_size - 1) / 2;
+    let right_border = self.min_size / 2;
+    for y in left_border .. field.height() - right_border {
+      for x in left_border .. field.width() - right_border {
         let patterns = self.dfa.run(&mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
           let cur_x = x as i32 + shift_x;
           let cur_y = y as i32 + shift_y;
