@@ -95,7 +95,7 @@ impl Patterns {
           'B' => DfaState::new(nfs, nfs, i, nfs, false, HashSet::with_capacity(0)),
           'r' => DfaState::new(i, i, nfs, nfs, false, HashSet::with_capacity(0)),
           'b' => DfaState::new(i, nfs, i, nfs, false, HashSet::with_capacity(0)),
-          '*' => DfaState::new(nfs, nfs, nfs, i, false, HashSet::with_capacity(0)),
+          '#' => DfaState::new(nfs, nfs, nfs, i, false, HashSet::with_capacity(0)),
           c   => panic!("Invalid character in pattern: {}", c)
         }
       } else {
