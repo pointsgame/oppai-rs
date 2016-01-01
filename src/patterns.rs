@@ -143,7 +143,7 @@ impl Patterns {
       }
       Patterns::read_pattern(&mut input, &mut pattern_s, width, height);
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
-      for i in 0 .. 7 {
+      for i in 0 .. 8 {
         let cur_dfa = Patterns::build_dfa(width, height, patterns.len(), i, &pattern_s);
         dfa = dfa.product(&cur_dfa);
         dfa.delete_non_reachable();
