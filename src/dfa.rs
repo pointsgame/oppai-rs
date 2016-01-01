@@ -82,7 +82,7 @@ impl Dfa {
     }
   }
 
-  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, first_match: bool) -> &HashSet<usize> {
+  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, inv_color: bool, first_match: bool) -> &HashSet<usize> {
     if self.is_empty() {
       return &self.states[0].patterns;
     }
@@ -97,8 +97,8 @@ impl Dfa {
           state_idx = state.bad;
         } else if let Some(player) = cell.get_owner() {
           match player {
-            Player::Red => state_idx = state.red,
-            Player::Black => state_idx = state.black
+            Player::Red => state_idx = if inv_color { state.black } else { state.red },
+            Player::Black => state_idx = if inv_color { state.red } else { state.black }
           }
         } else {
           state_idx = state.empty;

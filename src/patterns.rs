@@ -6,6 +6,7 @@ use std::cmp;
 use tar::Archive;
 use spiral::Spiral;
 use dfa::{Dfa, DfaState};
+use player::Player;
 use cell::Cell;
 use field::Field;
 
@@ -74,7 +75,7 @@ impl Patterns {
     (8 * x - 13) * x + 6 - y
   }
 
-  fn build_dfa(width: u32, height: u32, pattern: usize, s: &str) -> Dfa { //TODO: different color, rotations, reflections.
+  fn build_dfa(width: u32, height: u32, pattern: usize, s: &str) -> Dfa { //TODO: rotations, reflections.
     let center_x = (width - 1) / 2;
     let center_y = (height - 1) / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
@@ -146,7 +147,7 @@ impl Patterns {
     }
   }
 
-  pub fn find(&self, field: &Field, first_match: bool) -> Vec<(u32, u32, f64)> {
+  pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<(u32, u32, f64)> {
     if self.dfa.is_empty() {
       return Vec::with_capacity(0);
     }
@@ -155,6 +156,7 @@ impl Patterns {
     let mut matched = Vec::new();
     let left_border = (self.min_size - 1) / 2;
     let right_border = self.min_size / 2;
+    let inv_color = player == Player::Black;
     for y in left_border .. field.height() - right_border {
       for x in left_border .. field.width() - right_border {
         let patterns = self.dfa.run(&mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
@@ -166,7 +168,7 @@ impl Patterns {
           } else {
             Cell::new(true)
           }
-        }), first_match);
+        }), inv_color, first_match);
         for &pattern_number in patterns {
           let pattern = &self.patterns[pattern_number];
           priorities_sum += pattern.p;
