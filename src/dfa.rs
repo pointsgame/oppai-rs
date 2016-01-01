@@ -186,7 +186,9 @@ impl Dfa {
         }
       }
     }
-    'outer: loop {
+    let mut another_iter = true;
+    while another_iter {
+      another_iter = false;
       for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
         let base = Dfa::pyramid_idx_base(i);
         for (j, pattern_j) in self.states[.. i - 1].iter().enumerate() {
@@ -197,12 +199,11 @@ impl Dfa {
                pattern_i.black != pattern_j.black && not_equal[Dfa::pyramid_idx(pattern_i.black, pattern_j.black)] == 1 ||
                pattern_i.bad != pattern_j.bad && not_equal[Dfa::pyramid_idx(pattern_i.bad, pattern_j.bad)] == 1 {
               not_equal[idx] = 1;
-              continue 'outer;
+              another_iter = true;
             }
           }
         }
       }
-      break;
     }
     let mut deleted = iter::repeat(0).take(self.states.len()).collect::<Vec<usize>>();
     for i in 1 .. self.states.len() {

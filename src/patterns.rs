@@ -75,18 +75,31 @@ impl Patterns {
     (8 * x - 13) * x + 6 - y
   }
 
-  fn build_dfa(width: u32, height: u32, pattern: usize, s: &str) -> Dfa { //TODO: rotations, reflections.
+  fn rotate(width: u32, height: u32, x: i32, y: i32, rotation: u32) -> (i32, i32) {
+    match rotation {
+      0 => (x, y),
+      1 => (width as i32 - x - 1, y),
+      2 => (x, height as i32 - y - 1),
+      3 => (width as i32 - x - 1, height as i32 - y - 1),
+      4 => (y, x),
+      5 => (height as i32 - y - 1, x),
+      6 => (y, width as i32 - x - 1),
+      7 => (height as i32 - y - 1, width as i32 - x - 1),
+      r => panic!("Invalid rotation number: {}", r)
+    }
+  }
+
+  fn build_dfa(width: u32, height: u32, pattern: usize, rotation: u32, s: &str) -> Dfa {
     let center_x = (width - 1) / 2;
     let center_y = (height - 1) / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
     let mut states = Vec::with_capacity(spiral_length + 2);
-    let fs = spiral_length;
-    let nfs = spiral_length + 1; // Not found state.
+    let fs = spiral_length; // "Found" state.
+    let nfs = spiral_length + 1; // "Not found" state.
     let mut i = 0;
     for (shift_x, shift_y) in Spiral::new().into_iter().take(spiral_length) {
       i += 1;
-      let x = center_x as i32 + shift_x;
-      let y = center_y as i32 + shift_y;
+      let (x, y) = Patterns::rotate(width, height, center_x as i32 + shift_x, center_y as i32 + shift_y, rotation);
       let state = if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
         let pos = y as u32 * width + x as u32;
         match s.char_at(pos as usize) {
@@ -114,6 +127,7 @@ impl Patterns {
   pub fn load(file: File) -> Patterns {
     let archive = Archive::new(file);
     let mut s = String::new();
+    let mut pattern_s = String::new();
     let mut patterns = Vec::new();
     let mut iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
     let mut dfa = Dfa::empty();
@@ -127,17 +141,26 @@ impl Patterns {
       if height < min_size {
         min_size = height;
       }
-      Patterns::read_pattern(&mut input, &mut s, width, height);
-      let cur_dfa = Patterns::build_dfa(width, height, patterns.len(), &s);
-      dfa = dfa.product(&cur_dfa);
-      dfa.delete_non_reachable();
+      Patterns::read_pattern(&mut input, &mut pattern_s, width, height);
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
-      patterns.push(Pattern {
-        p: priority,
-        width: width,
-        height: height,
-        moves: moves
-      });
+      for i in 0 .. 7 {
+        let cur_dfa = Patterns::build_dfa(width, height, patterns.len(), i, &pattern_s);
+        dfa = dfa.product(&cur_dfa);
+        dfa.delete_non_reachable();
+        patterns.push(Pattern {
+          p: priority,
+          width: width,
+          height: height,
+          moves: moves.iter().map(|m| {
+            let (x, y) = Patterns::rotate(width, height, m.x as i32, m.y as i32, i);
+            Move {
+              x: x as u32,
+              y: y as u32,
+              p: m.p
+            }
+          }).collect()
+        });
+      }
     }
     dfa.minimize(); //TODO: does it work?
     Patterns {
