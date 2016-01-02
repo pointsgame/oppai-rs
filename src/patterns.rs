@@ -11,6 +11,8 @@ use player::Player;
 use cell::Cell;
 use field::{Pos, Field};
 
+const PATTERNS_STR: &'static str = "patterns";
+
 #[derive(Clone, Debug)]
 struct Move {
   x: u32,
@@ -168,8 +170,8 @@ impl Patterns {
         dfa = dfa.product(&cur_dfa);
         patterns.push(Pattern {
           p: priority,
-          width: width,
-          height: height,
+          width: if i < 4 { width } else { height },
+          height: if i < 4 { height } else { width },
           moves: moves.iter().map(|m| {
             let (x, y) = Patterns::rotate(width, height, m.x as i32, m.y as i32, i);
             Move {
