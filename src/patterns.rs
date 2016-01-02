@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::io::{BufReader, BufRead};
 use std::str::FromStr;
 use std::fs::File;
@@ -10,6 +10,7 @@ use player::Player;
 use cell::Cell;
 use field::Field;
 
+#[derive(Clone, Debug)]
 struct Move {
   x: u32,
   y: u32,
@@ -104,7 +105,8 @@ impl Patterns {
         let pos = y as u32 * width + x as u32;
         match s.char_at(pos as usize) {
           '.' => DfaState::new(i, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
-          '?' => DfaState::new(i, i, i, i, false, HashSet::with_capacity(0)),
+          '?' => DfaState::new(i, i, i, nfs, false, HashSet::with_capacity(0)),
+          '*' => DfaState::new(i, i, i, i, false, HashSet::with_capacity(0)),
           'R' => DfaState::new(nfs, i, nfs, nfs, false, HashSet::with_capacity(0)),
           'B' => DfaState::new(nfs, nfs, i, nfs, false, HashSet::with_capacity(0)),
           'r' => DfaState::new(i, i, nfs, nfs, false, HashSet::with_capacity(0)),
@@ -146,7 +148,6 @@ impl Patterns {
       for i in 0 .. 8 {
         let cur_dfa = Patterns::build_dfa(width, height, patterns.len(), i, &pattern_s);
         dfa = dfa.product(&cur_dfa);
-        dfa.delete_non_reachable();
         patterns.push(Pattern {
           p: priority,
           width: width,
@@ -170,7 +171,7 @@ impl Patterns {
     }
   }
 
-  pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<(u32, u32, f64)> {
+  pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<Move> {
     if self.dfa.is_empty() {
       return Vec::with_capacity(0);
     }
@@ -206,9 +207,22 @@ impl Patterns {
       for &Move { x, y, p: probability } in &pattern.moves {
         let move_x = center_x - (pattern.width - 1) / 2 + x;
         let move_y = center_y - (pattern.height - 1) / 2 + y;
-        result.push((move_x, move_y, probability * pattern.p / priorities_sum));
+        result.push(Move { x: move_x, y: move_y, p: probability * pattern.p / priorities_sum });
       }
     }
+    result
+  }
+
+  pub fn find_sorted(&self, field: &Field, player: Player, first_match: bool) -> Vec<Move> {
+    let moves = self.find(field, player, first_match);
+    let mut map = HashMap::with_capacity(moves.len());
+    for Move { x, y, p } in moves {
+      let coord = (x, y);
+      let sum_p = map.get(&coord).cloned().unwrap_or(0f64) + p;
+      map.insert(coord, sum_p);
+    }
+    let mut result = map.into_iter().map(|((x, y), p)| Move { x: x, y: y, p: p }).collect::<Vec<Move>>();
+    result.sort_by(|a, b| b.p.partial_cmp(&a.p).expect("Cann't compare f64 types."));
     result
   }
 }

@@ -1,6 +1,6 @@
 use std::{iter, mem};
 use std::collections::vec_deque::VecDeque;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use player::Player;
 use cell::Cell;
 
@@ -51,34 +51,74 @@ impl Dfa {
   }
 
   pub fn product(&self, other: &Dfa) -> Dfa {
+    fn build_state(other_len: usize, left: &DfaState, right: &DfaState) -> DfaState {
+      DfaState {
+        empty: left.empty * other_len + right.empty,
+        red: left.red * other_len + right.red,
+        black: left.black * other_len + right.black,
+        bad: left.bad * other_len + right.bad,
+        is_final: left.is_final && right.is_final,
+        patterns: left.patterns.union(&right.patterns).cloned().collect()
+      }
+    }
     if self.is_empty() {
       return other.clone();
     }
     if other.is_empty() {
       return self.clone();
     }
-    let self_len = self.states.len();
     let other_len = other.states.len();
-    let mut new_states = Vec::with_capacity(self_len * other_len);
-    for self_state in &self.states {
-      let base_empty = self_state.empty * other_len;
-      let base_red = self_state.red * other_len;
-      let base_black = self_state.black * other_len;
-      let base_bad = self_state.bad * other_len;
-      for other_state in &other.states {
-        let new_state = DfaState {
-          empty: base_empty + other_state.empty,
-          red: base_red + other_state.red,
-          black: base_black + other_state.black,
-          bad: base_bad + other_state.bad,
-          is_final: self_state.is_final && other_state.is_final,
-          patterns: self_state.patterns.union(&other_state.patterns).cloned().collect()
-        };
-        new_states.push(new_state);
-      }
+    let mut states = Vec::new();
+    states.push(build_state(other_len, &self.states[0], &other.states[0]));
+    let mut map = HashMap::new();
+    map.insert(0, 0);
+    let mut q = VecDeque::new();
+    q.push_back(0);
+    while let Some(cur_idx) = q.pop_front() {
+      let self_idx = cur_idx / other_len;
+      let other_idx = cur_idx % other_len;
+      let self_state = &self.states[self_idx];
+      let other_state = &other.states[other_idx];
+      let cur_map_idx = map.get(&cur_idx).cloned().unwrap();
+      let empty_next = states[cur_map_idx].empty;
+      let red_next = states[cur_map_idx].red;
+      let black_next = states[cur_map_idx].black;
+      let bad_next = states[cur_map_idx].bad;
+      let empty_map_next = map.get(&empty_next).cloned().unwrap_or_else(|| {
+        q.push_back(empty_next);
+        let empty_map_next = states.len();
+        map.insert(empty_next, empty_map_next);
+        states.push(build_state(other_len, &self.states[self_state.empty], &other.states[other_state.empty]));
+        empty_map_next
+      });
+      let red_map_next = map.get(&red_next).cloned().unwrap_or_else(|| {
+        q.push_back(red_next);
+        let red_map_next = states.len();
+        map.insert(red_next, red_map_next);
+        states.push(build_state(other_len, &self.states[self_state.red], &other.states[other_state.red]));
+        red_map_next
+      });
+      let black_map_next = map.get(&black_next).cloned().unwrap_or_else(|| {
+        q.push_back(black_next);
+        let black_map_next = states.len();
+        map.insert(black_next, black_map_next);
+        states.push(build_state(other_len, &self.states[self_state.black], &other.states[other_state.black]));
+        black_map_next
+      });
+      let bad_map_next = map.get(&bad_next).cloned().unwrap_or_else(|| {
+        q.push_back(bad_next);
+        let bad_map_next = states.len();
+        map.insert(bad_next, bad_map_next);
+        states.push(build_state(other_len, &self.states[self_state.bad], &other.states[other_state.bad]));
+        bad_map_next
+      });
+      states[cur_map_idx].empty = empty_map_next;
+      states[cur_map_idx].red = red_map_next;
+      states[cur_map_idx].black = black_map_next;
+      states[cur_map_idx].bad = bad_map_next;
     }
     Dfa {
-      states: new_states
+      states: states
     }
   }
 
@@ -180,7 +220,7 @@ impl Dfa {
     let mut not_equal = iter::repeat(0).take(len * (len - 1) / 2 + len - 1).collect::<Vec<u32>>();
     for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
       let base = Dfa::pyramid_idx_base(i);
-      for (j, pattern_j) in self.states[.. i - 1].iter().enumerate() {
+      for (j, pattern_j) in self.states[.. i].iter().enumerate() {
         if pattern_i.is_final != pattern_j.is_final || pattern_i.patterns != pattern_j.patterns {
           not_equal[base + j] = 1;
         }
@@ -191,7 +231,7 @@ impl Dfa {
       another_iter = false;
       for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
         let base = Dfa::pyramid_idx_base(i);
-        for (j, pattern_j) in self.states[.. i - 1].iter().enumerate() {
+        for (j, pattern_j) in self.states[.. i].iter().enumerate() {
           let idx = base + j;
           if not_equal[idx] == 0 {
             if pattern_i.empty != pattern_j.empty && not_equal[Dfa::pyramid_idx(pattern_i.empty, pattern_j.empty)] == 1 ||
@@ -208,7 +248,7 @@ impl Dfa {
     let mut deleted = iter::repeat(0).take(self.states.len()).collect::<Vec<usize>>();
     for i in 1 .. self.states.len() {
       let base = Dfa::pyramid_idx_base(i);
-      for j in 0 .. i - 1 {
+      for j in 0 .. i {
         let idx = base + j;
         if not_equal[idx] == 0 && deleted[j] == 0 {
           for state in &mut self.states {
