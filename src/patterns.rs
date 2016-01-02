@@ -45,7 +45,7 @@ impl Patterns {
     input.read_line(s).ok();
     s.pop();
     let mut split = s.split(' ').fuse();
-    let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32."); //TODO: validate all this.
+    let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32.");
     let height = u32::from_str(split.next().expect("Invalid pattern format: expected height.")).expect("Invalid pattern format: height must be u32.");
     let moves_count = u32::from_str(split.next().expect("Invalid pattern format: expected moves count.")).expect("Invalid pattern format: moves count must be u32.");
     let priority = f64::from_str(split.next().expect("Invalid pattern format: expected priority.")).expect("Invalid pattern format: priority must be f64.");
