@@ -54,9 +54,11 @@ impl Patterns {
 
   fn read_pattern<T: BufRead>(input: &mut T, s: &mut String, width: u32, height: u32) {
     s.clear();
-    for y in 0 .. height {
-      input.read_line(s).ok(); //TODO: check sizes.
+    for _ in 0 .. height {
+      let last_len = s.len();
+      input.read_line(s).ok();
       s.pop();
+      assert_eq!((s.len() - last_len) as u32, width)
     }
   }
 
