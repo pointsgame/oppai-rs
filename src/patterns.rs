@@ -9,10 +9,10 @@ use spiral::Spiral;
 use dfa::{Dfa, DfaState};
 use player::Player;
 use cell::Cell;
-use field::Field;
+use field::{Pos, Field};
 
 #[derive(Clone, Debug)]
-pub struct Move {
+struct Move {
   x: u32,
   y: u32,
   p: f64 // probability
@@ -184,7 +184,7 @@ impl Patterns {
     }
   }
 
-  pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<Move> {
+  pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<(Pos, f64)> {
     if self.dfa.is_empty() {
       return Vec::with_capacity(0);
     }
@@ -220,30 +220,29 @@ impl Patterns {
       for &Move { x, y, p: probability } in &pattern.moves {
         let move_x = center_x - (pattern.width - 1) / 2 + x;
         let move_y = center_y - (pattern.height - 1) / 2 + y;
-        result.push(Move { x: move_x, y: move_y, p: probability * pattern.p / priorities_sum });
+        result.push((field.to_pos(move_x, move_y), probability * pattern.p / priorities_sum));
       }
     }
     result
   }
 
-  pub fn find_sorted(&self, field: &Field, player: Player, first_match: bool) -> Vec<Move> {
+  pub fn find_sorted(&self, field: &Field, player: Player, first_match: bool) -> Vec<(Pos, f64)> {
     let moves = self.find(field, player, first_match);
     let mut map = HashMap::with_capacity(moves.len());
-    for Move { x, y, p } in moves {
-      let coord = (x, y);
-      let sum_p = map.get(&coord).cloned().unwrap_or(0f64) + p;
-      map.insert(coord, sum_p);
+    for (pos, p) in moves {
+      let sum_p = map.get(&pos).cloned().unwrap_or(0f64) + p;
+      map.insert(pos, sum_p);
     }
-    let mut result = map.into_iter().map(|((x, y), p)| Move { x: x, y: y, p: p }).collect::<Vec<Move>>();
-    result.sort_by(|a, b| b.p.partial_cmp(&a.p).expect("Cann't compare f64 types."));
+    let mut result = map.into_iter().collect::<Vec<(Pos, f64)>>();
+    result.sort_by(|&(_, a), &(_, b)| b.partial_cmp(&a).expect("Cann't compare f64 types."));
     result
   }
 
-  pub fn find_foreground(&self, field: &Field, player: Player, first_match: bool) -> Option<(u32, u32)> {
-    self.find_sorted(field, player, first_match).first().map(|m| (m.x, m.y))
+  pub fn find_foreground(&self, field: &Field, player: Player, first_match: bool) -> Option<Pos> {
+    self.find_sorted(field, player, first_match).first().map(|&(pos, _)| pos)
   }
 
-  pub fn find_rand<T: Rng>(&self, field: &Field, player: Player, first_match: bool, rng: &mut T) -> Option<(u32, u32)> {
+  pub fn find_rand<T: Rng>(&self, field: &Field, player: Player, first_match: bool, rng: &mut T) -> Option<Pos> {
     let moves = self.find_sorted(field, player, first_match);
     if moves.is_empty() {
       return None;
@@ -252,10 +251,9 @@ impl Patterns {
     let mut sum = 0f64;
     let mut idx = 0;
     while sum < rand && idx < moves.len() {
-      sum += moves[idx].p;
+      sum += moves[idx].1;
       idx += 1;
     }
-    let result = &moves[idx - 1];
-    Some((result.x, result.y))
+    Some(moves[idx - 1].0)
   }
 }

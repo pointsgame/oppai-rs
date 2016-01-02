@@ -1,4 +1,3 @@
-use std::{iter, mem};
 use std::collections::vec_deque::VecDeque;
 use std::collections::{HashSet, HashMap};
 use player::Player;
