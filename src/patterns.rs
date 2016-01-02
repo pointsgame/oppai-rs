@@ -151,7 +151,7 @@ impl Patterns {
     let mut min_size = u32::max_value();
     for file in iter {
       let name = file.header().path().ok()
-        .and_then(|path| path.to_str().map(|s| s.to_string()))
+        .and_then(|path| path.to_str().map(|s| s.to_owned()))
         .unwrap_or_else(|| "<unknown>".to_owned());
       let mut input = BufReader::new(file);
       let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
