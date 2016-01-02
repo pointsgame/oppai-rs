@@ -163,7 +163,6 @@ impl Patterns {
         });
       }
     }
-    dfa.minimize(); //TODO: does it work?
     Patterns {
       min_size: min_size,
       dfa: dfa,

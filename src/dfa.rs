@@ -50,7 +50,7 @@ impl Dfa {
     self.states[0].is_final == true && self.states[0].patterns.is_empty()
   }
 
-  pub fn product(&self, other: &Dfa) -> Dfa {
+  pub fn product(&self, other: &Dfa) -> Dfa { //TODO: delete unnecesarry states at the end.
     fn build_state(other_len: usize, left: &DfaState, right: &DfaState) -> DfaState {
       DfaState {
         empty: left.empty * other_len + right.empty,
@@ -147,128 +147,5 @@ impl Dfa {
         return &state.patterns;
       }
     }
-  }
-
-  fn delete_states(&mut self, states_for_delete: Vec<usize>) {
-    let mut shifts = Vec::with_capacity(self.states.len());
-    for sd in &states_for_delete {
-      let shift = shifts.last().map_or(0, |&d| d) + sd;
-      shifts.push(shift);
-    }
-    let deletions = shifts.last().map_or(0, |&d| d);
-    if deletions == 0 {
-      return;
-    }
-    let mut states = Vec::with_capacity(self.states.len() - deletions);
-    mem::swap(&mut self.states, &mut states);
-    for state in states.into_iter().zip(states_for_delete.into_iter()).filter_map(|(state, sd)| if sd == 0 { Some(state) } else { None }) {
-      let new_state = DfaState {
-        empty: state.empty - shifts[state.empty],
-        red: state.red - shifts[state.red],
-        black: state.black - shifts[state.black],
-        bad: state.bad - shifts[state.bad],
-        is_final: state.is_final,
-        patterns: state.patterns
-      };
-      self.states.push(new_state);
-    }
-  }
-
-  pub fn delete_non_reachable(&mut self) {
-    if self.is_empty() {
-      return;
-    }
-    let mut non_reachable = iter::repeat(1).take(self.states.len()).collect::<Vec<usize>>();
-    non_reachable[0] = 0;
-    let mut q = VecDeque::with_capacity(self.states.len());
-    q.push_back(0);
-    while let Some(idx) = q.pop_front() {
-      let state = &self.states[idx];
-      if non_reachable[state.empty] == 1 {
-        non_reachable[state.empty] = 0;
-        q.push_back(state.empty);
-      }
-      if non_reachable[state.red] == 1 {
-        non_reachable[state.red] = 0;
-        q.push_back(state.red);
-      }
-      if non_reachable[state.black] == 1 {
-        non_reachable[state.black] = 0;
-        q.push_back(state.black);
-      }
-      if non_reachable[state.bad] == 1 {
-        non_reachable[state.bad] = 0;
-        q.push_back(state.bad);
-      }
-    }
-    self.delete_states(non_reachable);
-  }
-
-  fn pyramid_idx_base(i: usize) -> usize {
-    i * (i - 1) / 2
-  }
-
-  fn pyramid_idx(i: usize, j: usize) -> usize {
-    Dfa::pyramid_idx_base(i) + j
-  }
-
-  pub fn minimize(&mut self) { //TODO: delete unnecesarry states at the end.
-    if self.is_empty() {
-      return;
-    }
-    let len = self.states.len();
-    let mut not_equal = iter::repeat(0).take(len * (len - 1) / 2 + len - 1).collect::<Vec<u32>>();
-    for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
-      let base = Dfa::pyramid_idx_base(i);
-      for (j, pattern_j) in self.states[.. i].iter().enumerate() {
-        if pattern_i.is_final != pattern_j.is_final || pattern_i.patterns != pattern_j.patterns {
-          not_equal[base + j] = 1;
-        }
-      }
-    }
-    let mut another_iter = true;
-    while another_iter {
-      another_iter = false;
-      for (i, pattern_i) in self.states.iter().enumerate().skip(1) {
-        let base = Dfa::pyramid_idx_base(i);
-        for (j, pattern_j) in self.states[.. i].iter().enumerate() {
-          let idx = base + j;
-          if not_equal[idx] == 0 {
-            if pattern_i.empty != pattern_j.empty && not_equal[Dfa::pyramid_idx(pattern_i.empty, pattern_j.empty)] == 1 ||
-               pattern_i.red != pattern_j.red && not_equal[Dfa::pyramid_idx(pattern_i.red, pattern_j.red)] == 1 ||
-               pattern_i.black != pattern_j.black && not_equal[Dfa::pyramid_idx(pattern_i.black, pattern_j.black)] == 1 ||
-               pattern_i.bad != pattern_j.bad && not_equal[Dfa::pyramid_idx(pattern_i.bad, pattern_j.bad)] == 1 {
-              not_equal[idx] = 1;
-              another_iter = true;
-            }
-          }
-        }
-      }
-    }
-    let mut deleted = iter::repeat(0).take(self.states.len()).collect::<Vec<usize>>();
-    for i in 1 .. self.states.len() {
-      let base = Dfa::pyramid_idx_base(i);
-      for j in 0 .. i {
-        let idx = base + j;
-        if not_equal[idx] == 0 && deleted[j] == 0 {
-          for state in &mut self.states {
-            if state.empty == i {
-              state.empty = j;
-            }
-            if state.red == i {
-              state.red = j;
-            }
-            if state.black == i {
-              state.black = j;
-            }
-            if state.bad == i {
-              state.bad = j;
-            }
-          }
-          deleted[i] = 1;
-        }
-      }
-    }
-    self.delete_states(deleted);
   }
 }
