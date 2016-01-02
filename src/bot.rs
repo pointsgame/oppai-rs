@@ -1,3 +1,4 @@
+use std::cmp;
 use std::sync::Arc;
 use rand::{XorShiftRng, SeedableRng};
 use player::Player;
@@ -50,11 +51,62 @@ impl Bot {
     }
   }
 
+  pub fn initial_move(&self) -> Option<(u32, u32)> {
+    match self.field.moves_count() {
+      0 => Some((self.field.width() / 2, self.field.height() / 2)),
+      1 => {
+        let width = self.field.width();
+        let height = self.field.height();
+        let pos = self.field.points_seq()[0];
+        let x = self.field.to_x(pos);
+        let y = self.field.to_y(pos);
+        if x == 0 || x == width - 1 || y == 0 || y == height - 1 {
+          Some((width / 2, height / 2))
+        } else if cmp::min(x, width - x - 1) < cmp::min(y, height - y - 1) {
+          if x < width - x - 1 {
+            Some((x + 1, y))
+          } else {
+            Some((x - 1, y))
+          }
+        } else if cmp::min(x, width - x - 1) > cmp::min(y, height - y - 1) {
+          if y < height - y - 1 {
+            Some((x, y + 1))
+          } else {
+            Some((x, y - 1))
+          }
+        } else {
+          let dx = x as i32 - (width / 2) as i32;
+          let dy = y as i32 - (height / 2) as i32;
+          if dx.abs() > dy.abs() {
+            if dx < 0 {
+              Some((x + 1, y))
+            } else {
+              Some((x - 1, y))
+            }
+          } else {
+            if dy < 0 {
+              Some((x, y + 1))
+            } else {
+              Some((x, y - 1))
+            }
+          }
+        }
+      },
+      _ => None
+    }
+  }
+
   pub fn best_move(&mut self, player: Player) -> Option<(u32, u32)> {
     self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<(u32, u32)> {
+    if self.field.width() < 3 || self.field.height() < 3 {
+      return None;
+    }
+    if let Some(m) = self.initial_move() {
+      return Some(m);
+    }
     if let Some(pos) = self.patterns.find_rand(&self.field, player, false, &mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
@@ -76,6 +128,12 @@ impl Bot {
   }
 
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<(u32, u32)> {
+    if self.field.width() < 3 || self.field.height() < 3 {
+      return None;
+    }
+    if let Some(m) = self.initial_move() {
+      return Some(m);
+    }
     if let Some(pos) = self.patterns.find_rand(&self.field, player, false, &mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
