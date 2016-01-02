@@ -111,25 +111,24 @@ impl Patterns {
     let mut states = Vec::with_capacity(spiral_length + 2);
     let fs = spiral_length; // "Found" state.
     let nfs = spiral_length + 1; // "Not found" state.
-    let mut i = 0;
-    for (shift_x, shift_y) in Spiral::new().into_iter().take(spiral_length) {
-      i += 1;
+    for (i, (shift_x, shift_y)) in Spiral::new().into_iter().take(spiral_length).enumerate() {
+      let nxt = i + 1;
       let (x, y) = Patterns::rotate(width, height, center_x as i32 + shift_x, center_y as i32 + shift_y, rotation);
       let state = if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
         let pos = y as u32 * width + x as u32;
         match s.char_at(pos as usize) {
-          '.' => DfaState::new(i, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
-          '?' => DfaState::new(i, i, i, nfs, false, HashSet::with_capacity(0)),
-          '*' => DfaState::new(i, i, i, i, false, HashSet::with_capacity(0)),
-          'R' => DfaState::new(nfs, i, nfs, nfs, false, HashSet::with_capacity(0)),
-          'B' => DfaState::new(nfs, nfs, i, nfs, false, HashSet::with_capacity(0)),
-          'r' => DfaState::new(i, i, nfs, nfs, false, HashSet::with_capacity(0)),
-          'b' => DfaState::new(i, nfs, i, nfs, false, HashSet::with_capacity(0)),
-          '#' => DfaState::new(nfs, nfs, nfs, i, false, HashSet::with_capacity(0)),
+          '.' => DfaState::new(nxt, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
+          '?' => DfaState::new(nxt, nxt, nxt, nfs, false, HashSet::with_capacity(0)),
+          '*' => DfaState::new(nxt, nxt, nxt, nxt, false, HashSet::with_capacity(0)),
+          'R' => DfaState::new(nfs, nxt, nfs, nfs, false, HashSet::with_capacity(0)),
+          'B' => DfaState::new(nfs, nfs, nxt, nfs, false, HashSet::with_capacity(0)),
+          'r' => DfaState::new(nxt, nxt, nfs, nfs, false, HashSet::with_capacity(0)),
+          'b' => DfaState::new(nxt, nfs, nxt, nfs, false, HashSet::with_capacity(0)),
+          '#' => DfaState::new(nfs, nfs, nfs, nxt, false, HashSet::with_capacity(0)),
           c   => panic!("Invalid character in pattern: {}", c)
         }
       } else {
-        DfaState::new(i, i, i, i, false, HashSet::with_capacity(0))
+        DfaState::new(nxt, nxt, nxt, nxt, false, HashSet::with_capacity(0))
       };
       states.push(state);
     }
