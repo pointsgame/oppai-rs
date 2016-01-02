@@ -11,7 +11,7 @@ use cell::Cell;
 use field::Field;
 
 #[derive(Clone, Debug)]
-struct Move {
+pub struct Move {
   x: u32,
   y: u32,
   p: f64 // probability
@@ -31,6 +31,14 @@ pub struct Patterns {
 }
 
 impl Patterns {
+  pub fn empty() -> Patterns {
+    Patterns {
+      min_size: u32::max_value(),
+      dfa: Dfa::empty(),
+      patterns: Vec::with_capacity(0)
+    }
+  }
+
   fn read_header<T: BufRead>(input: &mut T, s: &mut String) -> (u32, u32, u32, f64) {
     s.clear();
     input.read_line(s).ok();
@@ -136,7 +144,7 @@ impl Patterns {
     let mut s = String::new();
     let mut pattern_s = String::new();
     let mut patterns = Vec::new();
-    let mut iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
+    let iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
     let mut dfa = Dfa::empty();
     let mut min_size = u32::max_value();
     for file in iter {

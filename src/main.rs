@@ -50,13 +50,17 @@ use std::io::{Write, BufReader, BufRead};
 use std::str::FromStr;
 use std::path::Path;
 use std::fs::File;
+use std::sync::Arc;
 use log4rs::toml::Creator;
 use player::Player;
 use bot::Bot;
+use patterns::Patterns;
 
 const CONFIG_PATH: &'static str = "config/config.toml";
 
 const LOG_CONFIG_PATH: &'static str = "config/log.toml";
+
+const PATTERNS_PATH: &'static str = "patterns.tar";
 
 fn write_author<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "= {0} author kurnevsky_evgeny", id).ok();
@@ -166,6 +170,11 @@ fn main() {
   } else if let Some(mut config_file) = File::create(CONFIG_PATH).ok() {
     config::write(&mut config_file);
   }
+  let patterns = Arc::new(if let Some(patterns_file) = File::open(PATTERNS_PATH).ok() {
+    Patterns::load(patterns_file)
+  } else {
+    Patterns::empty()
+  });
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();
   let mut bot_option = None;
@@ -191,7 +200,7 @@ fn main() {
           if split.next().is_some() {
             write_init_error(&mut output, id);
           } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
-            bot_option = Some(Bot::new(x, y, seed));
+            bot_option = Some(Bot::new(x, y, seed, patterns.clone()));
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);

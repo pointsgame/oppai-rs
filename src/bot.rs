@@ -9,6 +9,7 @@ use field::Field;
 use uct::UctRoot;
 use heuristic;
 use minimax;
+use patterns::Patterns;
 
 const BOT_STR: &'static str = "bot";
 
@@ -26,13 +27,14 @@ const MAX_MINIMAX_DEPTH: u32 = 8;
 
 pub struct Bot {
   rng: XorShiftRng,
+  patterns: Arc<Patterns>,
   zobrist: Arc<Zobrist>,
   field: Field,
   uct: UctRoot
 }
 
 impl Bot {
-  pub fn new(width: u32, height: u32, seed: u64) -> Bot {
+  pub fn new(width: u32, height: u32, seed: u64, patterns: Arc<Patterns>) -> Bot {
     info!(target: BOT_STR, "Initialization with width {0}, height {1}, seed {2}.", width, height, seed);
     let length = field::length(width, height);
     let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
@@ -41,6 +43,7 @@ impl Bot {
     let field_zobrist = zobrist.clone();
     Bot {
       rng: rng,
+      patterns: patterns,
       zobrist: zobrist,
       field: Field::new(width, height, field_zobrist),
       uct: UctRoot::new(length)
