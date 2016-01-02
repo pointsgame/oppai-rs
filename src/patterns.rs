@@ -3,6 +3,7 @@ use std::io::{BufReader, BufRead};
 use std::str::FromStr;
 use std::fs::File;
 use std::cmp;
+use rand::Rng;
 use tar::Archive;
 use spiral::Spiral;
 use dfa::{Dfa, DfaState};
@@ -236,5 +237,25 @@ impl Patterns {
     let mut result = map.into_iter().map(|((x, y), p)| Move { x: x, y: y, p: p }).collect::<Vec<Move>>();
     result.sort_by(|a, b| b.p.partial_cmp(&a.p).expect("Cann't compare f64 types."));
     result
+  }
+
+  pub fn find_foreground(&self, field: &Field, player: Player, first_match: bool) -> Option<(u32, u32)> {
+    self.find_sorted(field, player, first_match).first().map(|m| (m.x, m.y))
+  }
+
+  pub fn find_rand<T: Rng>(&self, field: &Field, player: Player, first_match: bool, rng: &mut T) -> Option<(u32, u32)> {
+    let moves = self.find_sorted(field, player, first_match);
+    if moves.is_empty() {
+      return None;
+    }
+    let rand = rng.gen();
+    let mut sum = 0f64;
+    let mut idx = 0;
+    while sum < rand && idx < moves.len() {
+      sum += moves[idx].p;
+      idx += 1;
+    }
+    let result = &moves[idx - 1];
+    Some((result.x, result.y))
   }
 }
