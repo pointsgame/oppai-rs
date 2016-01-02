@@ -150,11 +150,9 @@ impl Patterns {
     let mut dfa = Dfa::empty();
     let mut min_size = u32::max_value();
     for file in iter {
-      let name = if let Some(path) = file.header().path().ok() {
-        path.to_string_lossy().to_string()
-      } else {
-        "<unknown>".to_owned()
-      };
+      let name = file.header().path().ok()
+        .and_then(|path| path.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "<unknown>".to_owned());
       let mut input = BufReader::new(file);
       let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
       if width < min_size {
