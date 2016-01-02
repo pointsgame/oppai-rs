@@ -106,7 +106,7 @@ impl Patterns {
     }
   }
 
-  fn build_dfa(width: u32, height: u32, pattern: usize, rotation: u32, s: &str) -> Dfa {
+  fn build_dfa(name: &str, width: u32, height: u32, pattern: usize, rotation: u32, s: &str) -> Dfa {
     let center_x = (width - 1) / 2;
     let center_y = (height - 1) / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
@@ -127,7 +127,7 @@ impl Patterns {
           'r' => DfaState::new(nxt, nxt, nfs, nfs, false, HashSet::with_capacity(0)),
           'b' => DfaState::new(nxt, nfs, nxt, nfs, false, HashSet::with_capacity(0)),
           '#' => DfaState::new(nfs, nfs, nfs, nxt, false, HashSet::with_capacity(0)),
-          c   => panic!("Invalid character in pattern: {}", c)
+          c   => panic!("Invalid character in the pattern '{}': {}", name, c)
         }
       } else {
         DfaState::new(nxt, nxt, nxt, nxt, false, HashSet::with_capacity(0))
@@ -150,6 +150,11 @@ impl Patterns {
     let mut dfa = Dfa::empty();
     let mut min_size = u32::max_value();
     for file in iter {
+      let name = if let Some(path) = file.header().path().ok() {
+        path.to_string_lossy().to_string()
+      } else {
+        "<unknown>".to_owned()
+      };
       let mut input = BufReader::new(file);
       let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
       if width < min_size {
@@ -161,7 +166,7 @@ impl Patterns {
       Patterns::read_pattern(&mut input, &mut pattern_s, width, height);
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
       for i in 0 .. 8 {
-        let cur_dfa = Patterns::build_dfa(width, height, patterns.len(), i, &pattern_s);
+        let cur_dfa = Patterns::build_dfa(name.as_str(), width, height, patterns.len(), i, &pattern_s);
         dfa = dfa.product(&cur_dfa);
         patterns.push(Pattern {
           p: priority,
