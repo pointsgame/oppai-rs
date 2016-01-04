@@ -108,16 +108,34 @@ impl Patterns {
     }
   }
 
+  fn rotate_back(width: u32, height: u32, x: i32, y: i32, rotation: u32) -> (i32, i32) {
+    let back_rotation = match rotation {
+      5 => 6,
+      6 => 5,
+      r => r
+    };
+    Patterns::rotate(width, height, x, y, back_rotation)
+  }
+
+  fn rotate_sizes(width: u32, height: u32, rotation: u32) -> (u32, u32) {
+    if rotation < 4 {
+      (width, height)
+    } else {
+      (height, width)
+    }
+  }
+
   fn build_dfa(name: &str, width: u32, height: u32, pattern: usize, rotation: u32, s: &str) -> Dfa {
-    let center_x = (width - 1) / 2;
-    let center_y = (height - 1) / 2;
+    let (rotated_width, rotated_height) = Patterns::rotate_sizes(width, height, rotation);
+    let center_x = (rotated_width - 1) / 2;
+    let center_y = (rotated_height - 1) / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
     let mut states = Vec::with_capacity(spiral_length + 2);
     let fs = spiral_length; // "Found" state.
     let nfs = spiral_length + 1; // "Not found" state.
     for (i, (shift_x, shift_y)) in Spiral::new().into_iter().take(spiral_length).enumerate() {
       let nxt = i + 1;
-      let (x, y) = Patterns::rotate(width, height, center_x as i32 + shift_x, center_y as i32 + shift_y, rotation);
+      let (x, y) = Patterns::rotate_back(rotated_width, rotated_height, center_x as i32 + shift_x, center_y as i32 + shift_y, rotation);
       let state = if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
         let pos = y as u32 * width + x as u32;
         match s.char_at(pos as usize) {
@@ -155,6 +173,7 @@ impl Patterns {
       let name = file.header().path().ok()
         .and_then(|path| path.to_str().map(|s| s.to_owned()))
         .unwrap_or_else(|| "<unknown>".to_owned());
+      info!(target: PATTERNS_STR, "Loading pattern '{}'", name);
       let mut input = BufReader::new(file);
       let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
       if width < min_size {
@@ -165,15 +184,16 @@ impl Patterns {
       }
       Patterns::read_pattern(&mut input, &mut pattern_s, width, height);
       let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
-      for i in 0 .. 8 {
-        let cur_dfa = Patterns::build_dfa(name.as_str(), width, height, patterns.len(), i, &pattern_s);
+      for rotation in 0 .. 8 {
+        let cur_dfa = Patterns::build_dfa(name.as_str(), width, height, patterns.len(), rotation, &pattern_s);
         dfa = dfa.product(&cur_dfa);
+        let (rotated_width, rotated_height) = Patterns::rotate_sizes(width, height, rotation);
         patterns.push(Pattern {
           p: priority,
-          width: if i < 4 { width } else { height },
-          height: if i < 4 { height } else { width },
+          width: rotated_width,
+          height: rotated_height,
           moves: moves.iter().map(|m| {
-            let (x, y) = Patterns::rotate(width, height, m.x as i32, m.y as i32, i);
+            let (x, y) = Patterns::rotate(width, height, m.x as i32, m.y as i32, rotation);
             Move {
               x: x as u32,
               y: y as u32,
@@ -214,6 +234,7 @@ impl Patterns {
         }), inv_color, first_match);
         for &pattern_number in patterns {
           let pattern = &self.patterns[pattern_number];
+          info!(target: PATTERNS_STR, "Found pattern {} ({} with rotation {}) at ({}, {}).", pattern_number, pattern_number / 8, pattern_number % 8, x - (pattern.width - 1) / 2, y -(pattern.height - 1) / 2);
           priorities_sum += pattern.p;
           moves_count += pattern.moves.len();
           matched.push((pattern_number, x, y));
@@ -229,6 +250,7 @@ impl Patterns {
         result.push((field.to_pos(move_x, move_y), probability * pattern.p / priorities_sum));
       }
     }
+    info!(target: PATTERNS_STR, "Found moves: {:?}.", result.iter().map(|&(pos, p)| (field.to_x(pos), field.to_y(pos), p)).collect::<Vec<(u32, u32, f64)>>());
     result
   }
 
@@ -241,6 +263,7 @@ impl Patterns {
     }
     let mut result = map.into_iter().collect::<Vec<(Pos, f64)>>();
     result.sort_by(|&(_, a), &(_, b)| b.partial_cmp(&a).expect("Cann't compare f64 types."));
+    info!(target: PATTERNS_STR, "Found sorted moves: {:?}.", result.iter().map(|&(pos, p)| (field.to_x(pos), field.to_y(pos), p)).collect::<Vec<(u32, u32, f64)>>());
     result
   }
 
