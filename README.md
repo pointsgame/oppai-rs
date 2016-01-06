@@ -9,12 +9,13 @@ It's written in rust language and implements "points console AI protocol v6". (S
 Features
 ====
 
-* UCT algorithm for searching the optimal move.
+* Two algorithms for searching the optimal move: UCT, NegaScout (principal variation search).
 * UCT caching that persists between moves.
-* Cache invalidation for moves no longer possible on the field.
-* Minimax algorithm.
-* Multi-threading for both Minimax and UCT.
-* Time-based calculation (`gen_move_with_time`)
+* Trajectories for moves pruning in the NegaScout search tree.
+* Lock-free multi-threading for both NegaScout and UCT.
+* DFA-based patterns searching.
+* DSU to optimize capturing.
+* Time-based (`gen_move_with_time`) and complexity-based (`gen_move_with_complexity`) calculations.
 
 
 Running
