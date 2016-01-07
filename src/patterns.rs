@@ -42,16 +42,15 @@ impl Patterns {
     }
   }
 
-  fn read_header<T: BufRead>(input: &mut T, s: &mut String) -> (u32, u32, u32, f64) {
+  fn read_header<T: BufRead>(input: &mut T, s: &mut String) -> (u32, u32, f64) {
     s.clear();
     input.read_line(s).ok();
     s.pop();
     let mut split = s.split(' ').fuse();
     let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32.");
     let height = u32::from_str(split.next().expect("Invalid pattern format: expected height.")).expect("Invalid pattern format: height must be u32.");
-    let moves_count = u32::from_str(split.next().expect("Invalid pattern format: expected moves count.")).expect("Invalid pattern format: moves count must be u32.");
     let priority = f64::from_str(split.next().expect("Invalid pattern format: expected priority.")).expect("Invalid pattern format: priority must be f64.");
-    (width, height, moves_count, priority)
+    (width, height, priority)
   }
 
   fn read_pattern<T: BufRead>(input: &mut T, s: &mut String, width: u32, height: u32) {
@@ -64,8 +63,10 @@ impl Patterns {
     }
   }
 
-  fn read_moves<T: BufRead>(input: &mut T, s: &mut String, moves_count: u32) -> Vec<Move> {
+  fn read_moves<T: BufRead>(name: &str, input: &mut T, s: &mut String, pattern_moves: HashSet<(u32, u32)>) -> Vec<Move> {
+    let moves_count = pattern_moves.len();
     let mut moves = Vec::with_capacity(moves_count as usize);
+    let mut moves_set = HashSet::new();
     let mut priorities_sum = 0f64;
     for _ in 0 .. moves_count {
       s.clear();
@@ -75,12 +76,21 @@ impl Patterns {
       let x = u32::from_str(split.next().expect("Invalid pattern format: expected x coordinate.")).expect("Invalid pattern format: x coordinate must be u32.");
       let y = u32::from_str(split.next().expect("Invalid pattern format: expected x coordinate.")).expect("Invalid pattern format: x coordinate must be u32.");
       let p = f64::from_str(split.next().expect("Invalid pattern format: expected probability.")).expect("Invalid pattern format: probability must be f64.");
+      moves_set.insert((x, y));
       priorities_sum += p;
       moves.push(Move {
         x: x,
         y: y,
         p: p
       });
+    }
+    if moves_set != pattern_moves {
+      panic!("Moves list does not match moves in the pattern named '{}'.", name);
+    }
+    s.clear();
+    input.read_line(s).ok();
+    if !s.is_empty() {
+      panic!("Pattern '{}' should end with empty line.", name);
     }
     for m in &mut moves {
       m.p /= priorities_sum;
@@ -139,7 +149,7 @@ impl Patterns {
       let state = if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
         let pos = y as u32 * width + x as u32;
         match s.char_at(pos as usize) {
-          '.' => DfaState::new(nxt, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
+          '.' | '+' => DfaState::new(nxt, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
           '?' => DfaState::new(nxt, nxt, nxt, nfs, false, HashSet::with_capacity(0)),
           '*' => DfaState::new(nxt, nxt, nxt, nxt, false, HashSet::with_capacity(0)),
           'R' => DfaState::new(nfs, nxt, nfs, nfs, false, HashSet::with_capacity(0)),
@@ -147,7 +157,7 @@ impl Patterns {
           'r' => DfaState::new(nxt, nxt, nfs, nfs, false, HashSet::with_capacity(0)),
           'b' => DfaState::new(nxt, nfs, nxt, nfs, false, HashSet::with_capacity(0)),
           '#' => DfaState::new(nfs, nfs, nfs, nxt, false, HashSet::with_capacity(0)),
-          c   => panic!("Invalid character in the pattern '{}': {}", name, c)
+          c => panic!("Invalid character in the pattern '{}': {}", name, c)
         }
       } else {
         DfaState::new(nxt, nxt, nxt, nxt, false, HashSet::with_capacity(0))
@@ -187,6 +197,17 @@ impl Patterns {
     Dfa::new(states)
   }
 
+  fn get_pattern_moves(name: &str, width: u32, s: &str) -> HashSet<(u32, u32)> {
+    let mut pattern_moves = HashSet::new();
+    for i in s.chars().enumerate().filter(|&(_, c)| c == '+').map(|(i, _)| i as u32) {
+      pattern_moves.insert((i % width, i / width));
+    }
+    if pattern_moves.is_empty() {
+      panic!("Moves are not defined in the pattern '{}'.", name);
+    }
+    pattern_moves
+  }
+
   pub fn load(file: File) -> Patterns {
     let archive = Archive::new(file);
     let mut s = String::new();
@@ -201,7 +222,7 @@ impl Patterns {
         .unwrap_or_else(|| "<unknown>".to_owned());
       info!(target: PATTERNS_STR, "Loading pattern '{}'", name);
       let mut input = BufReader::new(file);
-      let (width, height, moves_count, priority) = Patterns::read_header(&mut input, &mut s);
+      let (width, height, priority) = Patterns::read_header(&mut input, &mut s);
       if width < min_size {
         min_size = width;
       }
@@ -209,11 +230,12 @@ impl Patterns {
         min_size = height;
       }
       Patterns::read_pattern(&mut input, &mut pattern_s, width, height);
-      let moves = Patterns::read_moves(&mut input, &mut s, moves_count);
+      let pattern_moves = Patterns::get_pattern_moves(&name, width, &pattern_s);
+      let moves = Patterns::read_moves(&name, &mut input, &mut s, pattern_moves);
       for rotation in 0 .. 8 {
-        let cur_dfa = Patterns::build_dfa(name.as_str(), width, height, patterns.len(), rotation, &pattern_s);
+        let cur_dfa = Patterns::build_dfa(&name, width, height, patterns.len(), rotation, &pattern_s);
         dfa = dfa.product(&cur_dfa);
-        info!(target: PATTERNS_STR, "DFA total size {}.", dfa.states_count());
+        info!(target: PATTERNS_STR, "DFA total size: {}.", dfa.states_count());
         let (rotated_width, rotated_height) = Patterns::rotate_sizes(width, height, rotation);
         patterns.push(Pattern {
           p: priority,
