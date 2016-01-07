@@ -5,12 +5,12 @@ use cell::Cell;
 
 #[derive(Clone, Debug)]
 pub struct DfaState {
-  empty: usize,
-  red: usize,
-  black: usize,
-  bad: usize,
-  is_final: bool,
-  patterns: HashSet<usize>
+  pub empty: usize,
+  pub red: usize,
+  pub black: usize,
+  pub bad: usize,
+  pub is_final: bool,
+  pub patterns: HashSet<usize>
 }
 
 impl DfaState {

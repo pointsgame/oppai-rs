@@ -154,10 +154,36 @@ impl Patterns {
       };
       states.push(state);
     }
+    let mut c = 0;
+    for state in states.iter().rev().take(spiral_length - 1) {
+      if state.empty == nfs || state.red == nfs || state.black == nfs || state.bad == nfs {
+        break;
+      }
+      c += 1;
+    }
+    let new_fs = fs - c;
+    let new_nfs = nfs - c;
+    if c > 0 {
+      states.truncate(spiral_length - c);
+      for state in &mut states {
+        if state.empty == nfs {
+          state.empty = new_nfs;
+        }
+        if state.red == nfs {
+          state.red = new_nfs;
+        }
+        if state.black == nfs {
+          state.black = new_nfs;
+        }
+        if state.bad == nfs {
+          state.bad = new_nfs;
+        }
+      }
+    }
     let mut patterns = HashSet::with_capacity(1);
     patterns.insert(pattern);
-    states.push(DfaState::new(fs, fs, fs, fs, true, patterns));
-    states.push(DfaState::new(nfs, nfs, nfs, nfs, true, HashSet::with_capacity(0)));
+    states.push(DfaState::new(new_fs, new_fs, new_fs, new_fs, true, patterns));
+    states.push(DfaState::new(new_nfs, new_nfs, new_nfs, new_nfs, true, HashSet::with_capacity(0)));
     Dfa::new(states)
   }
 
