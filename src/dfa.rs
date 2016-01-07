@@ -49,7 +49,11 @@ impl Dfa {
     self.states[0].is_final == true && self.states[0].patterns.is_empty()
   }
 
-  pub fn product(&self, other: &Dfa) -> Dfa { //TODO: delete unnecesarry states at the end.
+  pub fn states_count(&self) -> usize {
+    self.states.len()
+  }
+
+  pub fn product(&self, other: &Dfa) -> Dfa {
     fn build_state(other_len: usize, left: &DfaState, right: &DfaState) -> DfaState {
       DfaState {
         empty: left.empty * other_len + right.empty,

@@ -187,6 +187,7 @@ impl Patterns {
       for rotation in 0 .. 8 {
         let cur_dfa = Patterns::build_dfa(name.as_str(), width, height, patterns.len(), rotation, &pattern_s);
         dfa = dfa.product(&cur_dfa);
+        info!(target: PATTERNS_STR, "DFA total length {}.", dfa.states_count());
         let (rotated_width, rotated_height) = Patterns::rotate_sizes(width, height, rotation);
         patterns.push(Pattern {
           p: priority,
