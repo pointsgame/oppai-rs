@@ -42,13 +42,19 @@ impl Patterns {
     }
   }
 
-  fn read_header<T: BufRead>(input: &mut T, s: &mut String) -> (u32, u32, f64) {
+  fn read_header<T: BufRead>(name: &str, input: &mut T, s: &mut String) -> (u32, u32, f64) {
     s.clear();
     input.read_line(s).ok();
     s.pop();
     let mut split = s.split(' ').fuse();
     let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32.");
+    if width < 3 {
+      panic!("Minimum allowed width is 3 in the pattern '{}'.", name);
+    }
     let height = u32::from_str(split.next().expect("Invalid pattern format: expected height.")).expect("Invalid pattern format: height must be u32.");
+    if height < 3 {
+      panic!("Minimum allowed height is 3 in the pattern '{}'.", name);
+    }
     let priority = f64::from_str(split.next().expect("Invalid pattern format: expected priority.")).expect("Invalid pattern format: priority must be f64.");
     (width, height, priority)
   }
@@ -222,7 +228,7 @@ impl Patterns {
         .unwrap_or_else(|| "<unknown>".to_owned());
       info!(target: PATTERNS_STR, "Loading pattern '{}'", name);
       let mut input = BufReader::new(file);
-      let (width, height, priority) = Patterns::read_header(&mut input, &mut s);
+      let (width, height, priority) = Patterns::read_header(&name, &mut input, &mut s);
       if width < min_size {
         min_size = width;
       }
@@ -260,14 +266,15 @@ impl Patterns {
   }
 
   pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<(Pos, f64)> {
-    if self.dfa.is_empty() || field.width() < self.min_size || field.height() < self.min_size {
+    let min_size_2 = self.min_size - 2;
+    if self.dfa.is_empty() || field.width() < min_size_2 || field.height() < min_size_2 {
       return Vec::with_capacity(0);
     }
     let mut priorities_sum = 0f64;
     let mut moves_count = 0usize;
     let mut matched = Vec::new();
-    let left_border = (self.min_size - 1) / 2;
-    let right_border = self.min_size / 2;
+    let left_border = (min_size_2 - 1) / 2;
+    let right_border = min_size_2 / 2;
     let inv_color = player == Player::Black;
     for y in left_border .. field.height() - right_border {
       for x in left_border .. field.width() - right_border {
