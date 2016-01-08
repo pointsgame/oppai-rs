@@ -291,7 +291,7 @@ fn undo_check() {
     }
     let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
     let mut rng = XorShiftRng::from_seed(seed_array);
-    let mut moves = (field::min_pos(width) .. field::max_pos(width, height)).collect::<Vec<Pos>>();
+    let mut moves = (field::min_pos(width) .. field::max_pos(width, height) + 1).collect::<Vec<Pos>>();
     rng.shuffle(&mut moves);
     let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
     let mut field = Field::new(width, height, zobrist);
