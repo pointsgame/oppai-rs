@@ -96,12 +96,21 @@ impl Bot {
     }
   }
 
+  fn is_field_occupied(field: &Field) -> bool {
+    for pos in field.min_pos() .. field.max_pos() + 1 {
+      if field.is_putting_allowed(pos) {
+        return false;
+      }
+    }
+    true
+  }
+
   pub fn best_move(&mut self, player: Player) -> Option<(u32, u32)> {
     self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<(u32, u32)> {
-    if self.field.width() < 3 || self.field.height() < 3 {
+    if self.field.width() < 3 || self.field.height() < 3 || Bot::is_field_occupied(&self.field) {
       return None;
     }
     if let Some(m) = self.initial_move() {
@@ -128,7 +137,7 @@ impl Bot {
   }
 
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<(u32, u32)> {
-    if self.field.width() < 3 || self.field.height() < 3 {
+    if self.field.width() < 3 || self.field.height() < 3 || Bot::is_field_occupied(&self.field) {
       return None;
     }
     if let Some(m) = self.initial_move() {
