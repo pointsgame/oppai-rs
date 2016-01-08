@@ -260,7 +260,7 @@ impl Patterns {
   }
 
   pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<(Pos, f64)> {
-    if self.dfa.is_empty() {
+    if self.dfa.is_empty() || field.width() < self.min_size || field.height() < self.min_size {
       return Vec::with_capacity(0);
     }
     let mut priorities_sum = 0f64;
