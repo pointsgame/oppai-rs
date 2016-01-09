@@ -48,12 +48,12 @@ impl Patterns {
     s.pop();
     let mut split = s.split(' ').fuse();
     let width = u32::from_str(split.next().expect("Invalid pattern format: expected width.")).expect("Invalid pattern format: width must be u32.");
-    if width < 3 {
-      panic!("Minimum allowed width is 3 in the pattern '{}'.", name);
+    if width < 2 {
+      panic!("Minimum allowed width is 2 in the pattern '{}'.", name);
     }
     let height = u32::from_str(split.next().expect("Invalid pattern format: expected height.")).expect("Invalid pattern format: height must be u32.");
-    if height < 3 {
-      panic!("Minimum allowed height is 3 in the pattern '{}'.", name);
+    if height < 2 {
+      panic!("Minimum allowed height is 2 in the pattern '{}'.", name);
     }
     let priority = f64::from_str(split.next().expect("Invalid pattern format: expected priority.")).expect("Invalid pattern format: priority must be f64.");
     (width, height, priority)
@@ -222,7 +222,7 @@ impl Patterns {
     let iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
     let mut dfa = Dfa::empty();
     let mut min_size = u32::max_value();
-    for file in iter {
+    for file in iter.filter(|file| file.header().link[0] == 0 || file.header().link[0] == b'0')/*.filter(|file| file.header().entry_type().is_file())*/ {
       let name = file.header().path().ok()
         .and_then(|path| path.to_str().map(|s| s.to_owned()))
         .unwrap_or_else(|| "<unknown>".to_owned());
@@ -266,21 +266,20 @@ impl Patterns {
   }
 
   pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<(Pos, f64)> {
-    let min_size_2 = self.min_size - 2;
-    if self.dfa.is_empty() || field.width() < min_size_2 || field.height() < min_size_2 {
+    if self.dfa.is_empty() || field.width() < self.min_size - 2 || field.height() < self.min_size - 2 {
       return Vec::with_capacity(0);
     }
     let mut priorities_sum = 0f64;
     let mut moves_count = 0usize;
     let mut matched = Vec::new();
-    let left_border = (min_size_2 - 1) / 2;
-    let right_border = min_size_2 / 2;
+    let left_border = (self.min_size as i32 - 1) / 2 - 1;
+    let right_border = self.min_size as i32 / 2 - 1;
     let inv_color = player == Player::Black;
-    for y in left_border .. field.height() - right_border {
-      for x in left_border .. field.width() - right_border {
+    for y in left_border .. field.height() as i32 - right_border {
+      for x in left_border .. field.width() as i32 - right_border {
         let patterns = self.dfa.run(&mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
-          let cur_x = x as i32 + shift_x;
-          let cur_y = y as i32 + shift_y;
+          let cur_x = x + shift_x;
+          let cur_y = y + shift_y;
           if cur_x >= 0 && cur_x < field.width() as i32 && cur_y >= 0 && cur_y < field.height() as i32 {
             let pos = field.to_pos(cur_x as u32, cur_y as u32);
             field.cell(pos)
@@ -290,7 +289,7 @@ impl Patterns {
         }), inv_color, first_match);
         for &pattern_number in patterns {
           let pattern = &self.patterns[pattern_number];
-          info!(target: PATTERNS_STR, "Found pattern {} ({} with rotation {}) at ({}, {}).", pattern_number, pattern_number / 8, pattern_number % 8, x - (pattern.width - 1) / 2, y -(pattern.height - 1) / 2);
+          info!(target: PATTERNS_STR, "Found pattern {} ({} with rotation {}) at ({}, {}).", pattern_number, pattern_number / 8, pattern_number % 8, x - (pattern.width as i32 - 1) / 2, y - (pattern.height as i32 - 1) / 2);
           priorities_sum += pattern.p;
           moves_count += pattern.moves.len();
           matched.push((pattern_number, x, y));
@@ -301,8 +300,8 @@ impl Patterns {
     for (pattern_number, center_x, center_y) in matched {
       let pattern = &self.patterns[pattern_number];
       for &Move { x, y, p: probability } in &pattern.moves {
-        let move_x = center_x - (pattern.width - 1) / 2 + x;
-        let move_y = center_y - (pattern.height - 1) / 2 + y;
+        let move_x = (center_x - (pattern.width as i32 - 1) / 2 + x as i32) as u32;
+        let move_y = (center_y - (pattern.height as i32 - 1) / 2 + y as i32) as u32;
         result.push((field.to_pos(move_x, move_y), probability * pattern.p / priorities_sum));
       }
     }
