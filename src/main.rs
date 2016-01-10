@@ -5,6 +5,7 @@
 #![feature(plugin)]
 
 #![plugin(clippy)]
+#![allow(float_cmp)]
 
 extern crate rand;
 
