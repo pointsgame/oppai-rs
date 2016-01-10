@@ -1,5 +1,5 @@
 use std::{mem, iter};
-use std::collections::LinkedList;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use player::Player;
 use cell::Cell;
@@ -139,7 +139,7 @@ fn get_intersection_state(width: u32, pos: Pos, next_pos: Pos) -> IntersectionSt
   }
 }
 
-pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &LinkedList<Pos>) -> bool {
+pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &[Pos]) -> bool {
   let mut intersections = 0u32;
   let mut state = IntersectionState::None;
   for &next_pos in ring {
@@ -184,24 +184,24 @@ pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
-  let mut queue = LinkedList::new();
-  queue.push_back(start_pos);
-  while let Some(pos) = queue.pop_front() {
+  let mut q = VecDeque::new();
+  q.push_back(start_pos);
+  while let Some(pos) = q.pop_front() {
     let n_pos = n(width, pos);
     let s_pos = s(width, pos);
     let w_pos = w(pos);
     let e_pos = e(pos);
     if cond(n_pos) {
-      queue.push_back(n_pos);
+      q.push_back(n_pos);
     }
     if cond(s_pos) {
-      queue.push_back(s_pos);
+      q.push_back(s_pos);
     }
     if cond(w_pos) {
-      queue.push_back(w_pos);
+      q.push_back(w_pos);
     }
     if cond(e_pos) {
-      queue.push_back(e_pos);
+      q.push_back(e_pos);
     }
   }
 }
@@ -613,21 +613,21 @@ impl Field {
     }
   }
 
-  fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<LinkedList<Pos>> {
-    let mut chain = LinkedList::new();
-    chain.push_back(start_pos);
+  fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
+    let mut chain = Vec::new();
+    chain.push(start_pos);
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
     let mut base_square = self.square(center_pos, pos);
     loop {
       if self.is_tagged(pos) {
-        while *chain.back().unwrap() != pos {
-          self.clear_tag(*chain.back().unwrap());
-          chain.pop_back();
+        while *chain.last().unwrap() != pos {
+          self.clear_tag(*chain.last().unwrap());
+          chain.pop();
         }
       } else {
         self.set_tag(pos);
-        chain.push_back(pos);
+        chain.push(pos);
       }
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
@@ -648,7 +648,7 @@ impl Field {
   }
 
   #[inline]
-  pub fn is_point_inside_ring(&self, pos: Pos, ring: &LinkedList<Pos>) -> bool {
+  pub fn is_point_inside_ring(&self, pos: Pos, ring: &[Pos]) -> bool {
     is_point_inside_ring(self.width, pos, ring)
   }
 
@@ -661,17 +661,17 @@ impl Field {
     }
   }
 
-  fn capture(&mut self, chain: &LinkedList<Pos>, inside_pos: Pos, player: Player) -> bool {
+  fn capture(&mut self, chain: &[Pos], inside_pos: Pos, player: Player) -> bool {
     let mut captured_count = 0i32;
     let mut freed_count = 0i32;
-    let mut captured_points = LinkedList::new();
+    let mut captured_points = Vec::new();
     for &pos in chain {
       self.set_tag(pos);
     }
     wave(self.width, inside_pos, |pos| {
       if !self.is_tagged(pos) && !self.is_bound_player(pos, player) {
         self.set_tag(pos);
-        captured_points.push_back(pos);
+        captured_points.push(pos);
         if self.is_put(pos) {
           if self.get_player(pos) != player {
             captured_count += 1;
