@@ -36,6 +36,10 @@ impl Trajectory {
     self.points.len()
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.points.is_empty()
+  }
+
   pub fn exclude(&mut self) {
     self.excluded = true;
   }
