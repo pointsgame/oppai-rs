@@ -222,7 +222,7 @@ impl Patterns {
     let iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
     let mut dfa = Dfa::empty();
     let mut min_size = u32::max_value();
-    for file in iter.filter(|file| file.header().link[0] == 0 || file.header().link[0] == b'0')/*.filter(|file| file.header().entry_type().is_file())*/ {
+    for file in iter.filter(|file| file.header().entry_type().is_file()) {
       let name = file.header().path().ok()
         .and_then(|path| path.to_str().map(|s| s.to_owned()))
         .unwrap_or_else(|| "<unknown>".to_owned());

@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 #![feature(unsafe_no_drop_flag)]
-#![feature(convert)]
 #![feature(str_char)]
 #![feature(plugin)]
 
