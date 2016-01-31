@@ -120,6 +120,7 @@ impl TrajectoriesPruning {
   }
 
   fn exclude_composite_trajectories(trajectories: &mut Vec<Trajectory>, zobrist: &Zobrist, empty_board: &mut Vec<u32>) {
+    #![allow(needless_range_loop)]
     let len = trajectories.len();
     for k in 0 .. len {
       for i in 0 .. len - 1 {

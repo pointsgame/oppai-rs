@@ -2,9 +2,9 @@
 #![feature(unsafe_no_drop_flag)]
 #![feature(str_char)]
 #![feature(plugin)]
+#![feature(stmt_expr_attributes)]
 
 #![plugin(clippy)]
-#![allow(float_cmp)]
 
 extern crate rand;
 
