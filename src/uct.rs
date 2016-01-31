@@ -244,7 +244,7 @@ impl UctRoot {
         }
         let next_pos = points_seq[self.moves_count];
         debug!(target: UCT_STR, "Next move is ({0}, {1}), player {2}.", field.to_x(next_pos), field.to_y(next_pos), self.player);
-        if !field.is_players_point(next_pos, self.player) {
+        if !field.cell(next_pos).is_players_point(self.player) {
           self.clear();
           self.init(field, player);
           break;
@@ -303,7 +303,8 @@ impl UctRoot {
     rng.shuffle(possible_moves);
     let mut cur_player = player;
     for &pos in possible_moves.iter() {
-      if field.is_putting_allowed(pos) && !field.is_empty_base(pos) {
+      let cell = field.cell(pos);
+      if cell.is_putting_allowed() && !cell.is_empty_base() {
         field.put_point(pos, cur_player);
         cur_player = cur_player.next();
       }
@@ -334,7 +335,7 @@ impl UctRoot {
     rng.shuffle(possible_moves);
     let mut children = None;
     for &pos in possible_moves.iter() {
-      if field.is_putting_allowed(pos) {
+      if field.cell(pos).is_putting_allowed() {
         let mut cur_child = Box::new(UctNode::new(pos));
         cur_child.set_sibling_option(children);
         children = Some(cur_child);
@@ -447,7 +448,7 @@ impl UctRoot {
 
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, max_iterations_count: usize) -> Option<Pos> {
     info!(target: UCT_STR, "Generating best move for player {0}.", player);
-    debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.get_player(pos))).collect::<Vec<(u32, u32, Player)>>());
+    debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player())).collect::<Vec<(u32, u32, Player)>>());
     debug!(target: UCT_STR, "Next random u64: {0}.", rng.gen::<u64>());
     self.update(field, player, rng);
     info!(target: UCT_STR, "Komi is {0}, type is {1}.", self.komi.load(Ordering::Relaxed), config::uct_komi_type());

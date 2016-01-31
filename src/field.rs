@@ -288,158 +288,8 @@ impl Field {
   }
 
   #[inline]
-  pub fn get_player(&self, pos: Pos) -> Player {
-    self.points[pos].get_player()
-  }
-
-  #[inline]
-  fn set_player(&mut self, pos: Pos, player: Player) {
-    self.points[pos].set_player(player)
-  }
-
-  #[inline]
-  pub fn is_put(&self, pos: Pos) -> bool {
-    self.points[pos].is_put()
-  }
-
-  #[inline]
-  fn set_put(&mut self, pos: Pos) {
-    self.points[pos].set_put()
-  }
-
-  #[inline]
-  fn clear_put(&mut self, pos: Pos) {
-    self.points[pos].clear_put()
-  }
-
-  #[inline]
-  pub fn is_captured(&self, pos: Pos) -> bool {
-    self.points[pos].is_captured()
-  }
-
-  #[inline]
-  fn set_captured(&mut self, pos: Pos) {
-    self.points[pos].set_captured()
-  }
-
-  #[inline]
-  fn clear_captured(&mut self, pos: Pos) {
-    self.points[pos].clear_captured()
-  }
-
-  #[inline]
-  pub fn is_bound(&self, pos: Pos) -> bool {
-    self.points[pos].is_bound()
-  }
-
-  #[inline]
-  fn set_bound(&mut self, pos: Pos) {
-    self.points[pos].set_bound()
-  }
-
-  #[inline]
-  fn clear_bound(&mut self, pos: Pos) {
-    self.points[pos].clear_bound()
-  }
-
-  #[inline]
-  pub fn is_empty_base(&self, pos: Pos) -> bool {
-    self.points[pos].is_empty_base()
-  }
-
-  #[inline]
-  fn set_empty_base(&mut self, pos: Pos) {
-    self.points[pos].set_empty_base()
-  }
-
-  #[inline]
-  fn clear_empty_base(&mut self, pos: Pos) {
-    self.points[pos].clear_empty_base()
-  }
-
-  #[inline]
-  pub fn is_bad(&self, pos: Pos) -> bool {
-    self.points[pos].is_bad()
-  }
-
-  #[inline]
-  pub fn set_bad(&mut self, pos: Pos) {
-    self.points[pos].set_bad()
-  }
-
-  #[inline]
-  pub fn clear_bad(&mut self, pos: Pos) {
-    self.points[pos].clear_bad()
-  }
-
-  #[inline]
-  pub fn is_tagged(&self, pos: Pos) -> bool {
-    self.points[pos].is_tagged()
-  }
-
-  #[inline]
-  pub fn set_tag(&mut self, pos: Pos) {
-    self.points[pos].set_tag()
-  }
-
-  #[inline]
-  pub fn clear_tag(&mut self, pos: Pos) {
-    self.points[pos].clear_tag()
-  }
-
-  #[inline]
-  pub fn get_owner(&self, pos: Pos) -> Option<Player> {
-    self.points[pos].get_owner()
-  }
-
-  #[inline]
-  pub fn is_owner(&self, pos: Pos, player: Player) -> bool {
-    self.points[pos].is_owner(player)
-  }
-
-  #[inline]
-  pub fn get_players_point(&self, pos: Pos) -> Option<Player> {
-    self.points[pos].get_players_point()
-  }
-
-  #[inline]
-  pub fn is_players_point(&self, pos: Pos, player: Player) -> bool {
-    self.points[pos].is_players_point(player)
-  }
-
-  #[inline]
-  pub fn get_live_players_point(&self, pos: Pos) -> Option<Player> {
-    self.points[pos].get_live_players_point()
-  }
-
-  #[inline]
-  pub fn is_live_players_point(&self, pos: Pos, player: Player) -> bool {
-    self.points[pos].is_live_players_point(player)
-  }
-
-  #[inline]
-  pub fn is_players_empty_base(&self, pos: Pos, player: Player) -> bool {
-    self.points[pos].is_players_empty_base(player)
-  }
-
-  #[inline]
-  pub fn get_empty_base_player(&self, pos: Pos) -> Option<Player> {
-    self.points[pos].get_empty_base_player()
-  }
-
-  #[inline]
-  fn just_put_point(&mut self, pos: Pos, player: Player) {
-    self.points[pos].put_point(player)
-  }
-
-  #[inline]
-  fn set_empty_base_player(&mut self, pos: Pos, player: Player) {
-    self.points[pos].set_empty_base_player(player)
-  }
-
-  #[inline]
-  pub fn is_bound_player(&self, pos: Pos, player: Player) -> bool {
-    self.points[pos].is_bound_player(player)
+  pub fn cell(&self, pos: Pos) -> Cell {
+    self.points[pos]
   }
 
   #[inline]
@@ -448,35 +298,51 @@ impl Field {
   }
 
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
-    self.is_live_players_point(self.n(center_pos), player)  ||
-    self.is_live_players_point(self.s(center_pos), player)  ||
-    self.is_live_players_point(self.w(center_pos), player)  ||
-    self.is_live_players_point(self.e(center_pos), player)  ||
-    self.is_live_players_point(self.nw(center_pos), player) ||
-    self.is_live_players_point(self.ne(center_pos), player) ||
-    self.is_live_players_point(self.sw(center_pos), player) ||
-    self.is_live_players_point(self.se(center_pos), player)
+    self.points[self.n(center_pos)].is_live_players_point(player)  ||
+    self.points[self.s(center_pos)].is_live_players_point(player)  ||
+    self.points[self.w(center_pos)].is_live_players_point(player)  ||
+    self.points[self.e(center_pos)].is_live_players_point(player)  ||
+    self.points[self.nw(center_pos)].is_live_players_point(player) ||
+    self.points[self.ne(center_pos)].is_live_players_point(player) ||
+    self.points[self.sw(center_pos)].is_live_players_point(player) ||
+    self.points[self.se(center_pos)].is_live_players_point(player)
   }
 
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
     let mut result = 0u32;
-    if self.is_live_players_point(self.n(center_pos), player) { result += 1; }
-    if self.is_live_players_point(self.s(center_pos), player) { result += 1; }
-    if self.is_live_players_point(self.w(center_pos), player) { result += 1; }
-    if self.is_live_players_point(self.e(center_pos), player) { result += 1; }
-    if self.is_live_players_point(self.nw(center_pos), player) { result += 1; }
-    if self.is_live_players_point(self.ne(center_pos), player) { result += 1; }
-    if self.is_live_players_point(self.sw(center_pos), player) { result += 1; }
-    if self.is_live_players_point(self.se(center_pos), player) { result += 1; }
+    if self.points[self.n(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.s(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.w(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.e(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.nw(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.ne(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.sw(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.se(center_pos)].is_live_players_point(player) { result += 1; }
     result
   }
 
   pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u32 {
     let mut result = 0u32;
-    if !self.is_live_players_point(self.w(center_pos), player) && (self.is_live_players_point(self.nw(center_pos), player) || self.is_live_players_point(self.n(center_pos), player)) { result += 1; }
-    if !self.is_live_players_point(self.s(center_pos), player) && (self.is_live_players_point(self.sw(center_pos), player) || self.is_live_players_point(self.w(center_pos), player)) { result += 1; }
-    if !self.is_live_players_point(self.e(center_pos), player) && (self.is_live_players_point(self.se(center_pos), player) || self.is_live_players_point(self.s(center_pos), player)) { result += 1; }
-    if !self.is_live_players_point(self.n(center_pos), player) && (self.is_live_players_point(self.ne(center_pos), player) || self.is_live_players_point(self.e(center_pos), player)) { result += 1; }
+    if !self.points[self.w(center_pos)].is_live_players_point(player) &&
+      (self.points[self.nw(center_pos)].is_live_players_point(player) ||
+        self.points[self.n(center_pos)].is_live_players_point(player)) {
+      result += 1;
+    }
+    if !self.points[self.s(center_pos)].is_live_players_point(player) &&
+      (self.points[self.sw(center_pos)].is_live_players_point(player) ||
+        self.points[self.w(center_pos)].is_live_players_point(player)) {
+      result += 1;
+    }
+    if !self.points[self.e(center_pos)].is_live_players_point(player) &&
+      (self.points[self.se(center_pos)].is_live_players_point(player) ||
+        self.points[self.s(center_pos)].is_live_players_point(player)) {
+      result += 1;
+    }
+    if !self.points[self.n(center_pos)].is_live_players_point(player) &&
+      (self.points[self.ne(center_pos)].is_live_players_point(player) ||
+        self.points[self.e(center_pos)].is_live_players_point(player)) {
+      result += 1;
+    }
     result
   }
 
@@ -498,12 +364,12 @@ impl Field {
     };
     let max_pos = field.max_pos();
     for x in 0 .. width as Pos + 2 {
-      field.set_bad(x);
-      field.set_bad(max_pos + 2 + x);
+      field.points[x].set_bad();
+      field.points[max_pos + 2 + x].set_bad();
     }
     for y in 1 .. height as Pos + 1 {
-      field.set_bad(y * (width as Pos + 2));
-      field.set_bad((y + 1) * (width as Pos + 2) - 1);
+      field.points[y * (width as Pos + 2)].set_bad();
+      field.points[(y + 1) * (width as Pos + 2) - 1].set_bad();
     }
     field
   }
@@ -525,31 +391,31 @@ impl Field {
 
   fn get_input_points(&self, center_pos: Pos, player: Player) -> Vec<(Pos, Pos)> {
     let mut inp_points = Vec::with_capacity(4);
-    if !self.is_live_players_point(self.w(center_pos), player) {
-      if self.is_live_players_point(self.nw(center_pos), player) {
+    if !self.points[self.w(center_pos)].is_live_players_point(player) {
+      if self.points[self.nw(center_pos)].is_live_players_point(player) {
         inp_points.push((self.nw(center_pos), self.w(center_pos)));
-      } else if self.is_live_players_point(self.n(center_pos), player) {
+      } else if self.points[self.n(center_pos)].is_live_players_point(player) {
         inp_points.push((self.n(center_pos), self.w(center_pos)));
       }
     }
-    if !self.is_live_players_point(self.s(center_pos), player) {
-      if self.is_live_players_point(self.sw(center_pos), player) {
+    if !self.points[self.s(center_pos)].is_live_players_point(player) {
+      if self.points[self.sw(center_pos)].is_live_players_point(player) {
         inp_points.push((self.sw(center_pos), self.s(center_pos)));
-      } else if self.is_live_players_point(self.w(center_pos), player) {
+      } else if self.points[self.w(center_pos)].is_live_players_point(player) {
         inp_points.push((self.w(center_pos), self.s(center_pos)));
       }
     }
-    if !self.is_live_players_point(self.e(center_pos), player) {
-      if self.is_live_players_point(self.se(center_pos), player) {
+    if !self.points[self.e(center_pos)].is_live_players_point(player) {
+      if self.points[self.se(center_pos)].is_live_players_point(player) {
         inp_points.push((self.se(center_pos), self.e(center_pos)));
-      } else if self.is_live_players_point(self.s(center_pos), player) {
+      } else if self.points[self.s(center_pos)].is_live_players_point(player) {
         inp_points.push((self.s(center_pos), self.e(center_pos)));
       }
     }
-    if !self.is_live_players_point(self.n(center_pos), player) {
-      if self.is_live_players_point(self.ne(center_pos), player) {
+    if !self.points[self.n(center_pos)].is_live_players_point(player) {
+      if self.points[self.ne(center_pos)].is_live_players_point(player) {
         inp_points.push((self.ne(center_pos), self.n(center_pos)));
-      } else if self.is_live_players_point(self.e(center_pos), player) {
+      } else if self.points[self.e(center_pos)].is_live_players_point(player) {
         inp_points.push((self.e(center_pos), self.n(center_pos)));
       }
     }
@@ -620,25 +486,25 @@ impl Field {
     let mut center_pos = start_pos;
     let mut base_square = self.square(center_pos, pos);
     loop {
-      if self.is_tagged(pos) {
+      if self.points[pos].is_tagged() {
         while *chain.last().unwrap() != pos {
-          self.clear_tag(*chain.last().unwrap());
+          self.points[*chain.last().unwrap()].clear_tag();
           chain.pop();
         }
       } else {
-        self.set_tag(pos);
+        self.points[pos].set_tag();
         chain.push(pos);
       }
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
-      while !self.is_live_players_point(pos, player) {
+      while !self.points[pos].is_live_players_point(player) {
         pos = self.get_next_pos(center_pos, pos);
       }
       base_square += self.square(center_pos, pos);
       if pos == start_pos { break }
     }
     for &pos in &chain {
-      self.clear_tag(pos);
+      self.points[pos].clear_tag();
     }
     if base_square < 0 && chain.len() > 2 {
       Some(chain)
@@ -666,16 +532,17 @@ impl Field {
     let mut freed_count = 0i32;
     let mut captured_points = Vec::new();
     for &pos in chain {
-      self.set_tag(pos);
+      self.points[pos].set_tag();
     }
     wave(self.width, inside_pos, |pos| {
-      if !self.is_tagged(pos) && !self.is_bound_player(pos, player) {
-        self.set_tag(pos);
+      let cell = self.points[pos];
+      if !cell.is_tagged() && !cell.is_bound_player(player) {
+        self.points[pos].set_tag();
         captured_points.push(pos);
-        if self.is_put(pos) {
-          if self.get_player(pos) != player {
+        if cell.is_put() {
+          if cell.get_player() != player {
             captured_count += 1;
-          } else if self.is_captured(pos) {
+          } else if cell.is_captured() {
             freed_count += 1;
           }
         }
@@ -696,29 +563,30 @@ impl Field {
         }
       }
       for &pos in chain.iter() {
-        self.clear_tag(pos);
+        self.points[pos].clear_tag();
         self.save_pos_value(pos);
-        self.set_bound(pos);
+        self.points[pos].set_bound();
       }
       for &pos in &captured_points {
-        self.clear_tag(pos);
+        self.points[pos].clear_tag();
         self.save_pos_value(pos);
-        if !self.is_put(pos) {
-          if !self.is_captured(pos) {
-            self.set_captured(pos);
+        let cell = self.points[pos];
+        if !cell.is_put() {
+          if !cell.is_captured() {
+            self.points[pos].set_captured();
           } else {
             self.update_hash(pos, player.next());
           }
-          self.clear_empty_base(pos);
-          self.set_player(pos, player);
+          self.points[pos].clear_empty_base();
+          self.points[pos].set_player(player);
           self.update_hash(pos, player);
         } else {
-          if self.get_player(pos) != player {
-            self.set_captured(pos);
+          if cell.get_player() != player {
+            self.points[pos].set_captured();
             self.update_hash(pos, player.next());
             self.update_hash(pos, player);
-          } else if self.is_captured(pos) {
-            self.clear_captured(pos);
+          } else if cell.is_captured() {
+            self.points[pos].clear_captured();
             self.update_hash(pos, player.next());
             self.update_hash(pos, player);
           }
@@ -727,13 +595,13 @@ impl Field {
       true
     } else {
       for &pos in chain.iter() {
-        self.clear_tag(pos);
+        self.points[pos].clear_tag();
       }
       for &pos in &captured_points {
-        self.clear_tag(pos);
-        if !self.is_put(pos) {
+        self.points[pos].clear_tag();
+        if !self.points[pos].is_put() {
           self.save_pos_value(pos);
-          self.set_empty_base_player(pos, player);
+          self.points[pos].set_empty_base_player(player);
         }
       }
       false
@@ -831,9 +699,9 @@ impl Field {
   #[inline]
   fn remove_empty_base(&mut self, start_pos: Pos) {
     wave(self.width, start_pos, |pos| {
-      if self.is_empty_base(pos) {
+      if self.points[pos].is_empty_base() {
         self.save_pos_value(pos);
-        self.clear_empty_base(pos);
+        self.points[pos].clear_empty_base();
         true
       } else {
         false
@@ -854,11 +722,11 @@ impl Field {
       self.changes.push(change);
       self.save_pos_value(pos);
       self.update_hash(pos, player);
-      match self.get_empty_base_player(pos) {
+      match self.points[pos].get_empty_base_player() {
         Some(empty_base_player) => {
-          self.just_put_point(pos, player);
+          self.points[pos].put_point(player);
           if empty_base_player == player {
-            self.clear_empty_base(pos);
+            self.points[pos].clear_empty_base();
           } else {
             if self.find_captures(pos, player) {
               self.remove_empty_base(pos);
@@ -867,7 +735,7 @@ impl Field {
               let mut bound_pos = pos;
               'outer: loop {
                 bound_pos = self.w(bound_pos);
-                while !self.is_players_point(bound_pos, next_player) {
+                while !self.points[bound_pos].is_players_point(next_player) {
                   bound_pos = self.w(bound_pos);
                 }
                 let input_points = self.get_input_points(bound_pos, next_player);
@@ -884,7 +752,7 @@ impl Field {
           }
         },
         None => {
-          self.just_put_point(pos, player);
+          self.points[pos].put_point(player);
           self.find_captures(pos, player);
         }
       }
@@ -945,7 +813,7 @@ impl Field {
 
   #[inline]
   pub fn last_player(&self) -> Option<Player> {
-    self.points_seq.last().map(|&pos| self.get_player(pos))
+    self.points_seq.last().map(|&pos| self.points[pos].get_player())
   }
 
   #[inline]
@@ -992,10 +860,5 @@ impl Field {
   #[inline]
   pub fn zobrist(&self) -> &Zobrist {
     &self.zobrist
-  }
-
-  #[inline]
-  pub fn cell(&self, pos: Pos) -> Cell {
-    self.points[pos]
   }
 }

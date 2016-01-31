@@ -33,7 +33,7 @@ impl WavePruning {
         if pos == start_pos && self.moves_field[pos] == 0 {
           self.moves_field[pos] = 1;
           true
-        } else if self.moves_field[pos] != start_pos && field.is_putting_allowed(pos) && field::manhattan(width, start_pos, pos) <= radius {
+        } else if self.moves_field[pos] != start_pos && field.cell(pos).is_putting_allowed() && field::manhattan(width, start_pos, pos) <= radius {
           if self.moves_field[pos] == 0 {
             self.moves.push(pos);
           }
@@ -51,7 +51,7 @@ impl WavePruning {
     let moves_field = &mut self.moves_field;
     let moves = &mut self.moves;
     moves.retain(|&pos| {
-      if field.is_putting_allowed(pos) {
+      if field.cell(pos).is_putting_allowed() {
         true
       } else {
         moves_field[pos] = 0;
@@ -65,7 +65,7 @@ impl WavePruning {
         if pos == next_pos && moves_field[pos] == 0 {
           moves_field[pos] = 1;
           true
-        } else if moves_field[pos] != next_pos && field.is_putting_allowed(pos) && field::manhattan(width, next_pos, pos) <= radius {
+        } else if moves_field[pos] != next_pos && field.cell(pos).is_putting_allowed() && field::manhattan(width, next_pos, pos) <= radius {
           if moves_field[pos] == 0 && pos != next_pos {
             moves.push(pos);
             added_moves.push(pos);

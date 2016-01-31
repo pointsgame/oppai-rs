@@ -40,11 +40,11 @@ fn simple_surround() {
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
-  assert!(!field.is_putting_allowed(field.to_pos(1, 1)));
-  assert!(!field.is_putting_allowed(field.to_pos(0, 1)));
-  assert!(!field.is_putting_allowed(field.to_pos(1, 0)));
-  assert!(!field.is_putting_allowed(field.to_pos(1, 2)));
-  assert!(!field.is_putting_allowed(field.to_pos(2, 1)));
+  assert!(!field.cell(field.to_pos(1, 1)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(0, 1)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(1, 0)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(1, 2)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(2, 1)).is_putting_allowed());
 }
 
 #[test]
@@ -58,12 +58,12 @@ fn surround_empty_territory() {
   );
   assert_eq!(field.captured_count(Player::Red), 0);
   assert_eq!(field.captured_count(Player::Black), 0);
-  assert!(field.is_putting_allowed(field.to_pos(1, 1)));
-  assert!(field.is_empty_base(field.to_pos(1, 1)));
-  assert_eq!(field.get_empty_base_player(field.to_pos(1, 1)), Some(Player::Red));
-  assert!(!field.is_putting_allowed(field.to_pos(0, 1)));
-  assert!(!field.is_putting_allowed(field.to_pos(1, 0)));
-  assert!(!field.is_putting_allowed(field.to_pos(1, 2)));
+  assert!(field.cell(field.to_pos(1, 1)).is_putting_allowed());
+  assert!(field.cell(field.to_pos(1, 1)).is_empty_base());
+  assert_eq!(field.cell(field.to_pos(1, 1)).get_empty_base_player(), Some(Player::Red));
+  assert!(!field.cell(field.to_pos(0, 1)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(1, 0)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(1, 2)).is_putting_allowed());
   assert!(!field.is_putting_allowed(field.to_pos(2, 1)));
 }
 
@@ -146,8 +146,8 @@ fn double_surround_with_empty_part() {
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
-  assert!(field.is_putting_allowed(field.to_pos(1, 1)));
-  assert!(!field.is_putting_allowed(field.to_pos(3, 1)));
+  assert!(field.cell(field.to_pos(1, 1)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(3, 1)).is_putting_allowed());
 }
 
 #[test]
@@ -165,12 +165,12 @@ fn should_not_leave_empty_inside() {
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
-  assert!(!field.is_putting_allowed(field.to_pos(2, 3)));
-  assert!(!field.is_putting_allowed(field.to_pos(2, 4)));
-  assert!(!field.is_putting_allowed(field.to_pos(2, 2)));
-  assert!(!field.is_putting_allowed(field.to_pos(1, 3)));
-  assert!(!field.is_putting_allowed(field.to_pos(3, 3)));
-  assert!(!field.is_putting_allowed(field.to_pos(1, 1)));
+  assert!(!field.cell(field.to_pos(2, 3)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(2, 4)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(2, 2)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(1, 3)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(3, 3)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(1, 1)).is_putting_allowed());
 }
 
 #[test]
@@ -190,8 +190,8 @@ fn a_hole_inside_a_surrounding() {
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
-  assert!(!field.is_putting_allowed(field.to_pos(4, 4)));
-  assert!(!field.is_putting_allowed(field.to_pos(4, 1)));
+  assert!(!field.cell(field.to_pos(4, 4)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(4, 1)).is_putting_allowed());
 }
 
 #[test]
@@ -211,8 +211,8 @@ fn a_hole_inside_a_surrounding_after_control_surrounding() {
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
-  assert!(!field.is_putting_allowed(field.to_pos(4, 4)));
-  assert!(!field.is_putting_allowed(field.to_pos(4, 1)));
+  assert!(!field.cell(field.to_pos(4, 4)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(4, 1)).is_putting_allowed());
 }
 
 #[test]
@@ -232,11 +232,11 @@ fn surrounding_does_not_expand() {
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
-  assert!(field.is_putting_allowed(field.to_pos(6, 3)));
-  assert!(field.is_putting_allowed(field.to_pos(4, 3)));
-  assert!(field.is_putting_allowed(field.to_pos(4, 5)));
-  assert!(field.is_putting_allowed(field.to_pos(6, 5)));
-  assert!(!field.is_putting_allowed(field.to_pos(5, 4)));
+  assert!(field.cell(field.to_pos(6, 3)).is_putting_allowed());
+  assert!(field.cell(field.to_pos(4, 3)).is_putting_allowed());
+  assert!(field.cell(field.to_pos(4, 5)).is_putting_allowed());
+  assert!(field.cell(field.to_pos(6, 5)).is_putting_allowed());
+  assert!(!field.cell(field.to_pos(5, 4)).is_putting_allowed());
 }
 
 #[test]

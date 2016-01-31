@@ -54,7 +54,7 @@ pub struct TrajectoriesPruning {
 impl TrajectoriesPruning {
   fn add_trajectory(field: &Field, trajectories: &mut Vec<Trajectory>, points: &[Pos], player: Player) {
     for &pos in points {
-      if !field.is_bound(pos) || field.number_near_groups(pos, player) < 2 {
+      if !field.cell(pos).is_bound() || field.number_near_groups(pos, player) < 2 {
         return;
       }
     }
@@ -74,11 +74,12 @@ impl TrajectoriesPruning {
 
   fn build_trajectories_rec(field: &mut Field, trajectories: &mut Vec<Trajectory>, player: Player, cur_depth: u32, depth: u32, should_stop: &AtomicBool) {
     for pos in field.min_pos() .. field.max_pos() + 1 {
-      if field.is_putting_allowed(pos) && field.has_near_points(pos, player) && !field.is_players_empty_base(pos, player) {
+      let cell = field.cell(pos);
+      if cell.is_putting_allowed() && field.has_near_points(pos, player) && !cell.is_players_empty_base(player) {
         if should_stop.load(Ordering::Relaxed) {
           break;
         }
-        if field.is_players_empty_base(pos, player.next()) {
+        if cell.is_players_empty_base(player.next()) {
           field.put_point(pos, player);
           if field.get_delta_score(player) > 0 {
             TrajectoriesPruning::add_trajectory(field, trajectories, field.points_seq().index(field.moves_count() - cur_depth as usize .. field.moves_count()), player);
@@ -234,7 +235,7 @@ impl TrajectoriesPruning {
       for trajectory in &last.cur_trajectories {
         let len = trajectory.len() as u32;
         let contains_pos = trajectory.points().contains(&last_pos);
-        if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos) && trajectory.points().iter().all(|&pos| field.is_putting_allowed(pos) || pos == last_pos) {
+        if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos) && trajectory.points().iter().all(|&pos| field.cell(pos).is_putting_allowed() || pos == last_pos) {
           let new_trajectory = if contains_pos {
             if len == 1 {
               continue;

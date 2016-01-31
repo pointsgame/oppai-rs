@@ -6,25 +6,28 @@ pub fn is_last_move_stupid(field: &Field, pos: Pos, player: Player) -> bool {
   delta_score < 0 || delta_score == 0 && {
     let enemy = player.next();
     let mut enemies_around = 0u32;
-    if field.is_players_point(field.n(pos), enemy) {
+    if field.cell(field.n(pos)).is_players_point(enemy) {
       enemies_around += 1;
     }
-    if field.is_players_point(field.s(pos), enemy) {
+    if field.cell(field.s(pos)).is_players_point(enemy) {
       enemies_around += 1;
     }
-    if field.is_players_point(field.w(pos), enemy) {
+    if field.cell(field.w(pos)).is_players_point(enemy) {
       enemies_around += 1;
     }
-    if field.is_players_point(field.e(pos), enemy) {
+    if field.cell(field.e(pos)).is_players_point(enemy) {
       enemies_around += 1;
     }
     enemies_around == 3
   } && {
-    field.is_putting_allowed(field.n(pos)) || field.is_putting_allowed(field.s(pos)) || field.is_putting_allowed(field.w(pos)) || field.is_putting_allowed(field.e(pos))
+    field.cell(field.n(pos)).is_putting_allowed() ||
+      field.cell(field.s(pos)).is_putting_allowed() ||
+      field.cell(field.w(pos)).is_putting_allowed() ||
+      field.cell(field.e(pos)).is_putting_allowed()
   }
 }
 
 pub fn is_penult_move_stuped(field: &Field) -> bool {
   let moves_count = field.moves_count();
-  moves_count > 1 && field.is_captured(field.points_seq()[moves_count - 2])
+  moves_count > 1 && field.cell(field.points_seq()[moves_count - 2]).is_captured()
 }
