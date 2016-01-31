@@ -58,10 +58,9 @@ impl WavePruning {
         false
       }
     });
-    let points_seq = field.points_seq();
     let width = field.width();
     let mut added_moves = Vec::new();
-    for &next_pos in points_seq.iter().skip(last_moves_count) {
+    for &next_pos in field.points_seq().iter().skip(last_moves_count) {
       field::wave(width, next_pos, |pos| {
         if pos == next_pos && moves_field[pos] == 0 {
           moves_field[pos] = 1;
