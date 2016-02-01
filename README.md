@@ -5,6 +5,7 @@ Opai-rs an artificial intelligence for the game of points.
 
 It's written in rust language and implements "points console AI protocol v6". (See /doc/PointsAIProtocol6.txt for details.)
 
+You can play with it using [Missile](https://github.com/kurnevsky/missile).
 
 Features
 ====
@@ -16,7 +17,6 @@ Features
 * DFA-based patterns searching.
 * DSU to optimize capturing.
 * Time-based (`gen_move_with_time`) and complexity-based (`gen_move_with_complexity`) calculations.
-
 
 Running
 ====
