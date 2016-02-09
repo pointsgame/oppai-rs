@@ -64,7 +64,7 @@ fn surround_empty_territory() {
   assert!(!field.cell(field.to_pos(0, 1)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(1, 0)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(1, 2)).is_putting_allowed());
-  assert!(!field.is_putting_allowed(field.to_pos(2, 1)));
+  assert!(!field.cell(field.to_pos(2, 1)).is_putting_allowed());
 }
 
 #[test]
