@@ -126,9 +126,9 @@ fn apply_control_surrounding_in_same_turn() {
 fn double_surround() {
   let field = construct_field(
     "
-    .b.b..
-    bAzAb.
-    .b.b..
+    .a.a.
+    aAbAa
+    .a.a.
     "
   );
   assert_eq!(field.captured_count(Player::Red), 2);
@@ -247,19 +247,6 @@ fn two_surroundings_with_common_border() {
     aAa.
     .bAa
     ..a.
-    "
-  );
-  assert_eq!(field.captured_count(Player::Red), 2);
-  assert_eq!(field.captured_count(Player::Black), 0);
-}
-
-#[test]
-fn two_surroundings_with_common_dot() {
-  let field = construct_field(
-    "
-    .a.a.
-    aAbAa
-    .a.a.
     "
   );
   assert_eq!(field.captured_count(Player::Red), 2);
