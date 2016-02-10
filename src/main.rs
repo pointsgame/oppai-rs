@@ -3,7 +3,6 @@
 #![feature(str_char)]
 #![feature(stmt_expr_attributes)]
 #![cfg_attr(feature="clippy", feature(plugin))]
-#![cfg_attr(feature="clippy", feature(stmt_expr_attributes))]
 
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
