@@ -481,7 +481,7 @@ impl UctRoot {
         let uct_value = UctRoot::ucb(root, next_node, config::final_ucb_type());
         let pos = next_node.get_pos();
         info!(target: UCT_STR, "Uct for move ({0}, {1}) is {2}, {3} wins, {4} draws, {5} visits.", field.to_x(pos), field.to_y(pos), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits());
-        if uct_value > best_uct || (#![allow(float_cmp)] uct_value == best_uct) && rng.gen() {
+        if uct_value > best_uct || (#![cfg_attr(feature="clippy", allow(float_cmp))] uct_value == best_uct) && rng.gen() {
           best_uct = uct_value;
           result = Some(pos);
         }

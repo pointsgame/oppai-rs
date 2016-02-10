@@ -13,11 +13,14 @@ num_cpus = "*"
 rustc-serialize = "*"
 toml = "*"
 crossbeam = "*"
-clippy = "*"
+clippy = { version = "*", optional = true }
 tar = "*"
 
 [dev-dependencies]
 quickcheck = "0.2"
+
+[features]
+default = ["clippy"]
 
 [profile.dev]
 opt-level = 0

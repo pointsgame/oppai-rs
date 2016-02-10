@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 #![feature(unsafe_no_drop_flag)]
 #![feature(str_char)]
-#![feature(plugin)]
 #![feature(stmt_expr_attributes)]
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", feature(stmt_expr_attributes))]
 
-#![plugin(clippy)]
+#![cfg_attr(feature="clippy", plugin(clippy))]
 
 extern crate rand;
 
