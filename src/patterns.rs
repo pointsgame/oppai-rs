@@ -215,11 +215,11 @@ impl Patterns {
   }
 
   pub fn load(file: File) -> Patterns {
-    let archive = Archive::new(file);
+    let mut archive = Archive::new(file);
     let mut s = String::new();
     let mut pattern_s = String::new();
     let mut patterns = Vec::new();
-    let iter = archive.files().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
+    let iter = archive.entries().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
     let mut dfa = Dfa::empty();
     let mut min_size = u32::max_value();
     for file in iter.filter(|file| file.header().entry_type().is_file()) {
