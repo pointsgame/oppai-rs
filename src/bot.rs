@@ -136,6 +136,10 @@ impl Bot {
     }
   }
 
+  pub fn best_move_with_full_time(&mut self, player: Player, remaining_time: u32, time_per_move: u32) -> Option<(u32, u32)> {
+    self.best_move_with_time(player, time_per_move + remaining_time / 25)
+  }
+
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<(u32, u32)> {
     if self.field.width() < 3 || self.field.height() < 3 || Bot::is_field_occupied(&self.field) {
       return None;

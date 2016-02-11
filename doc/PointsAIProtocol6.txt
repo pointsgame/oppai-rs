@@ -50,6 +50,9 @@ gen_move_with_complexity color complexity - request to calculate an AI move with
 gen_move_with_time color time - request to calculate an AI move within the given time (milliseconds), but NOT to make it on the field.
   return arguments - x, y, color of the suggested move.
 
+gen_move_with_full_time color remaining_time time_per_move - request to calculate an AI move with full time (milliseconds) control at the side of AI, but NOT to make it on the field.
+  return arguments - x, y, color of the suggested move.
+
 undo - undo move.
   return arguments - none.
 

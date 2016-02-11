@@ -102,6 +102,14 @@ fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "? {0} gen_move_with_time", id).ok();
 }
 
+fn write_gen_move_with_full_time<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
+  writeln!(output, "= {0} gen_move_with_full_time {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
+}
+
+fn write_gen_move_with_full_time_error<T: Write>(output: &mut T, id: u32) {
+  writeln!(output, "? {0} gen_move_with_full_time", id).ok();
+}
+
 fn write_license<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "= {0} license AGPLv3+", id).ok();
 }
@@ -230,7 +238,7 @@ fn main() {
             1 => Some(Player::Black),
             _ => None
           });
-          let complexity_option = split.next().and_then(|complexity_str| u32::from_str(complexity_str).ok() );
+          let complexity_option = split.next().and_then(|complexity_str| u32::from_str(complexity_str).ok());
           if split.next().is_some() {
             write_gen_move_with_complexity_error(&mut output, id);
           } else if let (Some(player), Some(complexity), Some(bot)) = (player_option, complexity_option, bot_option.as_mut()) {
@@ -249,7 +257,7 @@ fn main() {
             1 => Some(Player::Black),
             _ => None
           });
-          let time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok() );
+          let time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
           } else if let (Some(player), Some(time), Some(bot)) = (player_option, time_option, bot_option.as_mut()) {
@@ -260,6 +268,26 @@ fn main() {
             }
           } else {
             write_gen_move_with_time_error(&mut output, id);
+          }
+        },
+        Some("gen_move_with_full_time") => {
+          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
+            0 => Some(Player::Red),
+            1 => Some(Player::Black),
+            _ => None
+          });
+          let remaining_time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
+          let time_per_move_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
+          if split.next().is_some() {
+            write_gen_move_with_full_time_error(&mut output, id);
+          } else if let (Some(player), Some(remaining_time), Some(time_per_move), Some(bot)) = (player_option, remaining_time_option, time_per_move_option, bot_option.as_mut()) {
+            if let Some((x, y)) = bot.best_move_with_full_time(player, remaining_time, time_per_move) {
+              write_gen_move_with_full_time(&mut output, id, x, y, player);
+            } else {
+              write_gen_move_with_full_time_error(&mut output, id);
+            }
+          } else {
+            write_gen_move_with_full_time_error(&mut output, id);
           }
         },
         Some("license") => {
