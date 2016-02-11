@@ -126,7 +126,7 @@ impl Bot {
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
       Solver::Minimax => {
-        minimax::minimax_with_time(&mut self.field, player, &mut self.rng, time)
+        minimax::minimax_with_time(&mut self.field, player, &mut self.rng, time - config::time_gap())
           .or_else(|| heuristic::heuristic(&self.field, player))
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
