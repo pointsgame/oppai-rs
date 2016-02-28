@@ -1,13 +1,18 @@
 [bot]
 # Engine type for position estimation and choosing the best move.
-# May be one of string values: "Uct", "Minimax", "Heuristic".
-solver = "Uct"
+# May be one of string values: "UCT", "NegaScout", "Heuristic".
+solver = "UCT"
 # Number of milliseconds that is given to IO plus internal delay.
 time_gap = 100
 # Number of threads to use.
 # Best performance is achieved by specifying the number of _physical_ CPU cores on the target computer.
 # Will be determined automatically if not specified, but automatic resolution is prone to errors for multithreaded CPU-s.
 # threads_count = 4
+
+[minimax]
+# The way of the moves sorting. It affects the move time.
+# May be one of string values: "None", "Random", "TrajectoriesCount".
+minimax_moves_sorting = "Random"
 
 [uct]
 # Radius for points that will be considered by UCT search algorithm.

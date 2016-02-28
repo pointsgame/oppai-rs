@@ -1,8 +1,11 @@
+use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::atomic::{AtomicBool, Ordering};
 use rand::Rng;
 use zobrist::Zobrist;
 use player::Player;
+use config;
+use config::MinimaxMovesSorting;
 use field::{Pos, Field};
 
 struct Trajectory {
@@ -163,28 +166,24 @@ impl TrajectoriesPruning {
     need_exclude
   }
 
-  fn exclude_trajectories(trajectories1: &mut Vec<Trajectory>, trajectories2: &mut Vec<Trajectory>, zobrist: &Zobrist, empty_board: &mut Vec<u32>) {
+  fn calculate_moves<T: Rng>(trajectories1: &mut Vec<Trajectory>, trajectories2: &mut Vec<Trajectory>, zobrist: &Zobrist, empty_board: &mut Vec<u32>, rng: &mut T) -> Vec<Pos> {
     TrajectoriesPruning::exclude_composite_trajectories(trajectories1, zobrist, empty_board);
     TrajectoriesPruning::exclude_composite_trajectories(trajectories2, zobrist, empty_board);
     TrajectoriesPruning::project(trajectories1, empty_board);
     TrajectoriesPruning::project(trajectories2, empty_board);
     while TrajectoriesPruning::exclude_unnecessary_trajectories(trajectories1, empty_board) || TrajectoriesPruning::exclude_unnecessary_trajectories(trajectories2, empty_board) { }
+    let mut result_set = HashSet::new();
+    for &pos in trajectories1.iter().chain(trajectories2.iter()).filter(|trajectory| !trajectory.excluded()).flat_map(|trajectory| trajectory.points().iter()) {
+      result_set.insert(pos);
+    }
+    let mut result = result_set.into_iter().collect::<Vec<Pos>>();
+    match config::minimax_moves_sorting() {
+      MinimaxMovesSorting::None => { },
+      MinimaxMovesSorting::Random => rng.shuffle(&mut result),
+      MinimaxMovesSorting::TrajectoriesCount => result.sort_by(|&pos1, &pos2| empty_board[pos2].cmp(&empty_board[pos1]))
+    }
     TrajectoriesPruning::deproject(trajectories1, empty_board);
     TrajectoriesPruning::deproject(trajectories2, empty_board);
-  }
-
-  fn calculate_moves<T: Rng>(trajectories1: &[Trajectory], trajectories2: &[Trajectory], empty_board: &mut Vec<u32>, rng: &mut T) -> Vec<Pos> {
-    let mut result = Vec::new();
-    for &pos in trajectories1.iter().chain(trajectories2.iter()).filter(|trajectory| !trajectory.excluded()).flat_map(|trajectory| trajectory.points().iter()) {
-      if empty_board[pos] == 0 {
-        empty_board[pos] = 1;
-        result.push(pos);
-      }
-    }
-    for &pos in &result {
-      empty_board[pos] = 0;
-    }
-    rng.shuffle(&mut result); //TODO: sort by projection values.
     result
   }
 
@@ -211,8 +210,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty();
     }
-    TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
       cur_trajectories: cur_trajectories,
       enemy_trajectories: enemy_trajectories,
@@ -251,8 +249,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty();
     }
-    TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
       cur_trajectories: cur_trajectories,
       enemy_trajectories: enemy_trajectories,
@@ -278,8 +275,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty();
     }
-    TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
       cur_trajectories: cur_trajectories,
       enemy_trajectories: enemy_trajectories,
@@ -310,8 +306,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty();
     }
-    TrajectoriesPruning::exclude_trajectories(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board);
-    let moves = TrajectoriesPruning::calculate_moves(&cur_trajectories, &enemy_trajectories, empty_board, rng);
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
       cur_trajectories: cur_trajectories,
       enemy_trajectories: enemy_trajectories,

@@ -15,18 +15,18 @@ pub enum UcbType {
   Ucb1Tuned
 }
 
-const WINRATE_STR: &'static str = "Winrate";
+const UCB_TYPE_WINRATE_STR: &'static str = "Winrate";
 
-const UCB1_STR: &'static str = "Ucb1";
+const UCB_TYPE_UCB1_STR: &'static str = "Ucb1";
 
-const UCB1_TUNED_STR: &'static str = "Ucb1Tuned";
+const UCB_TYPE_UCB1_TUNED_STR: &'static str = "Ucb1Tuned";
 
 impl UcbType {
   pub fn as_str(&self) -> &'static str {
     match *self {
-      UcbType::Winrate => WINRATE_STR,
-      UcbType::Ucb1 => UCB1_STR,
-      UcbType::Ucb1Tuned => UCB1_TUNED_STR
+      UcbType::Winrate => UCB_TYPE_WINRATE_STR,
+      UcbType::Ucb1 => UCB_TYPE_UCB1_STR,
+      UcbType::Ucb1Tuned => UCB_TYPE_UCB1_TUNED_STR
     }
   }
 }
@@ -35,9 +35,9 @@ impl FromStr for UcbType {
   type Err = &'static str;
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
-      WINRATE_STR => Ok(UcbType::Winrate),
-      UCB1_STR => Ok(UcbType::Ucb1),
-      UCB1_TUNED_STR => Ok(UcbType::Ucb1Tuned),
+      UCB_TYPE_WINRATE_STR => Ok(UcbType::Winrate),
+      UCB_TYPE_UCB1_STR => Ok(UcbType::Ucb1),
+      UCB_TYPE_UCB1_TUNED_STR => Ok(UcbType::Ucb1Tuned),
       _ => Err("Invalid string!")
     }
   }
@@ -68,18 +68,18 @@ pub enum UctKomiType {
   Dynamic
 }
 
-const NONE_STR: &'static str = "None";
+const UCT_KOMI_TYPE_NONE_STR: &'static str = "None";
 
-const STATIC_STR: &'static str = "Static";
+const UCT_KOMI_TYPE_STATIC_STR: &'static str = "Static";
 
-const DYNAMIC_STR: &'static str = "Dynamic";
+const UCT_KOMI_TYPE_DYNAMIC_STR: &'static str = "Dynamic";
 
 impl UctKomiType {
   pub fn as_str(&self) -> &'static str {
     match *self {
-      UctKomiType::None => NONE_STR,
-      UctKomiType::Static => STATIC_STR,
-      UctKomiType::Dynamic => DYNAMIC_STR
+      UctKomiType::None => UCT_KOMI_TYPE_NONE_STR,
+      UctKomiType::Static => UCT_KOMI_TYPE_STATIC_STR,
+      UctKomiType::Dynamic => UCT_KOMI_TYPE_DYNAMIC_STR
     }
   }
 }
@@ -88,9 +88,9 @@ impl FromStr for UctKomiType {
   type Err = &'static str;
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
-      NONE_STR => Ok(UctKomiType::None),
-      STATIC_STR => Ok(UctKomiType::Static),
-      DYNAMIC_STR => Ok(UctKomiType::Dynamic),
+      UCT_KOMI_TYPE_NONE_STR => Ok(UctKomiType::None),
+      UCT_KOMI_TYPE_STATIC_STR => Ok(UctKomiType::Static),
+      UCT_KOMI_TYPE_DYNAMIC_STR => Ok(UctKomiType::Dynamic),
       _ => Err("Invalid string!")
     }
   }
@@ -114,25 +114,79 @@ impl Decodable for UctKomiType {
   }
 }
 
+const MINIMAX_MOVES_SORTING_NONE: &'static str = "None";
+
+const MINIMAX_MOVES_SORTING_RANDOM: &'static str = "Random";
+
+const MINIMAX_MOVES_SORTING_TRAJECTORIES_COUNT: &'static str = "TrajectoriesCount";
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MinimaxMovesSorting {
+  None,
+  Random,
+  TrajectoriesCount
+  // Heuristic
+}
+
+impl MinimaxMovesSorting {
+  pub fn as_str(&self) -> &'static str {
+    match *self {
+      MinimaxMovesSorting::None => MINIMAX_MOVES_SORTING_NONE,
+      MinimaxMovesSorting::Random => MINIMAX_MOVES_SORTING_RANDOM,
+      MinimaxMovesSorting::TrajectoriesCount => MINIMAX_MOVES_SORTING_TRAJECTORIES_COUNT
+    }
+  }
+}
+
+impl FromStr for MinimaxMovesSorting {
+  type Err = &'static str;
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s {
+      MINIMAX_MOVES_SORTING_NONE => Ok(MinimaxMovesSorting::None),
+      MINIMAX_MOVES_SORTING_RANDOM => Ok(MinimaxMovesSorting::Random),
+      MINIMAX_MOVES_SORTING_TRAJECTORIES_COUNT => Ok(MinimaxMovesSorting::TrajectoriesCount),
+      _ => Err("Invalid string!")
+    }
+  }
+}
+
+impl Display for MinimaxMovesSorting {
+  fn fmt(&self, f: &mut Formatter) -> FmtResult {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl Encodable for MinimaxMovesSorting {
+  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+    s.emit_str(self.as_str())
+  }
+}
+
+impl Decodable for MinimaxMovesSorting {
+  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+    d.read_str().and_then(|s| MinimaxMovesSorting::from_str(s.as_str()).map_err(|s| d.error(s)))
+  }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Solver {
   Uct,
-  Minimax,
+  NegaScout,
   Heuristic
 }
 
-const UCT_STR: &'static str = "Uct";
+const SOLVER_UCT_STR: &'static str = "UCT";
 
-const MINIMAX_STR: &'static str = "Minimax";
+const SOLVER_NEGA_SCOUT_STR: &'static str = "NegaScout";
 
-const HEURISTIC_STR: &'static str = "Heuristic";
+const SOLVER_HEURISTIC_STR: &'static str = "Heuristic";
 
 impl Solver {
   pub fn as_str(&self) -> &'static str {
     match *self {
-      Solver::Uct => UCT_STR,
-      Solver::Minimax => MINIMAX_STR,
-      Solver::Heuristic => HEURISTIC_STR
+      Solver::Uct => SOLVER_UCT_STR,
+      Solver::NegaScout => SOLVER_NEGA_SCOUT_STR,
+      Solver::Heuristic => SOLVER_HEURISTIC_STR
     }
   }
 }
@@ -141,9 +195,9 @@ impl FromStr for Solver {
   type Err = &'static str;
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
-      UCT_STR => Ok(Solver::Uct),
-      MINIMAX_STR => Ok(Solver::Minimax),
-      HEURISTIC_STR => Ok(Solver::Heuristic),
+      SOLVER_UCT_STR => Ok(Solver::Uct),
+      SOLVER_NEGA_SCOUT_STR => Ok(Solver::NegaScout),
+      SOLVER_HEURISTIC_STR => Ok(Solver::Heuristic),
       _ => Err("Invalid string!")
     }
   }
@@ -170,6 +224,7 @@ impl Decodable for Solver {
 #[derive(Clone, RustcDecodable, RustcEncodable)]
 struct Config {
   uct: UctConfig,
+  minimax: MinimaxConfig,
   bot: BotConfig
 }
 
@@ -186,6 +241,11 @@ struct UctConfig {
   red: f64,
   green: f64,
   komi_min_iterations: usize
+}
+
+#[derive(Clone, RustcDecodable, RustcEncodable)]
+struct MinimaxConfig {
+  minimax_moves_sorting: MinimaxMovesSorting
 }
 
 #[derive(Clone, RustcDecodable, RustcEncodable)]
@@ -209,6 +269,10 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
   komi_min_iterations: 3000
 };
 
+const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
+  minimax_moves_sorting: MinimaxMovesSorting::Random
+};
+
 const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
   threads_count: None,
   time_gap: 100,
@@ -217,6 +281,7 @@ const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
 
 const DEFAULT_CONFIG: Config = Config {
   uct: DEFAULT_UCT_CONFIG,
+  minimax: DEFAULT_MINIMAX_CONFIG,
   bot: DEFAULT_BOT_CONFIG
 };
 
@@ -313,6 +378,11 @@ pub fn uct_green() -> f64 {
 #[inline]
 pub fn uct_komi_min_iterations() -> usize {
   config().uct.komi_min_iterations
+}
+
+#[inline]
+pub fn minimax_moves_sorting() -> MinimaxMovesSorting {
+  config().minimax.minimax_moves_sorting
 }
 
 #[inline]
