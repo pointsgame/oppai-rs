@@ -115,12 +115,10 @@ impl Cell {
       } else {
         Some(self.get_player())
       }
+    } else if self.is_put() {
+      Some(self.get_player())
     } else {
-      if self.is_put() {
-        Some(self.get_player())
-      } else {
-        None
-      }
+      None
     }
   }
 

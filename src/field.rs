@@ -440,12 +440,10 @@ impl Field {
       } else {
         self.se(center_pos)
       }
+    } else if pos == self.e(center_pos) || pos == self.se(center_pos) {
+      self.sw(center_pos)
     } else {
-      if pos == self.e(center_pos) || pos == self.se(center_pos) {
-        self.sw(center_pos)
-      } else {
-        self.nw(center_pos)
-      }
+      self.nw(center_pos)
     }
   }
 
@@ -466,16 +464,14 @@ impl Field {
       } else {
         self.nw(center_pos)
       }
+    } else if pos == self.e(center_pos) {
+      self.se(center_pos)
+    } else if pos == self.se(center_pos) {
+      self.s(center_pos)
+    } else if pos == self.s(center_pos) {
+      self.sw(center_pos)
     } else {
-      if pos == self.e(center_pos) {
-        self.se(center_pos)
-      } else if pos == self.se(center_pos) {
-        self.s(center_pos)
-      } else if pos == self.s(center_pos) {
-        self.sw(center_pos)
-      } else {
-        self.w(center_pos)
-      }
+      self.w(center_pos)
     }
   }
 
@@ -580,16 +576,14 @@ impl Field {
           self.points[pos].clear_empty_base();
           self.points[pos].set_player(player);
           self.update_hash(pos, player);
-        } else {
-          if cell.get_player() != player {
-            self.points[pos].set_captured();
-            self.update_hash(pos, player.next());
-            self.update_hash(pos, player);
-          } else if cell.is_captured() {
-            self.points[pos].clear_captured();
-            self.update_hash(pos, player.next());
-            self.update_hash(pos, player);
-          }
+        } else if cell.get_player() != player {
+          self.points[pos].set_captured();
+          self.update_hash(pos, player.next());
+          self.update_hash(pos, player);
+        } else if cell.is_captured() {
+          self.points[pos].clear_captured();
+          self.update_hash(pos, player.next());
+          self.update_hash(pos, player);
         }
       }
       true
@@ -727,24 +721,22 @@ impl Field {
           self.points[pos].put_point(player);
           if empty_base_player == player {
             self.points[pos].clear_empty_base();
+          } else if self.find_captures(pos, player) {
+            self.remove_empty_base(pos);
           } else {
-            if self.find_captures(pos, player) {
-              self.remove_empty_base(pos);
-            } else {
-              let next_player = player.next();
-              let mut bound_pos = pos;
-              'outer: loop {
+            let next_player = player.next();
+            let mut bound_pos = pos;
+            'outer: loop {
+              bound_pos = self.w(bound_pos);
+              while !self.points[bound_pos].is_players_point(next_player) {
                 bound_pos = self.w(bound_pos);
-                while !self.points[bound_pos].is_players_point(next_player) {
-                  bound_pos = self.w(bound_pos);
-                }
-                let input_points = self.get_input_points(bound_pos, next_player);
-                for (chain_pos, captured_pos) in input_points {
-                  if let Some(chain) = self.build_chain(bound_pos, next_player, chain_pos) {
-                    if self.is_point_inside_ring(pos, &chain) {
-                      self.capture(&chain, captured_pos, next_player);
-                      break 'outer
-                    }
+              }
+              let input_points = self.get_input_points(bound_pos, next_player);
+              for (chain_pos, captured_pos) in input_points {
+                if let Some(chain) = self.build_chain(bound_pos, next_player, chain_pos) {
+                  if self.is_point_inside_ring(pos, &chain) {
+                    self.capture(&chain, captured_pos, next_player);
+                    break 'outer
                   }
                 }
               }

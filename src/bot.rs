@@ -83,12 +83,10 @@ impl Bot {
             } else {
               Some((x - 1, y))
             }
+          } else if dy < 0 {
+            Some((x, y + 1))
           } else {
-            if dy < 0 {
-              Some((x, y + 1))
-            } else {
-              Some((x, y - 1))
-            }
+            Some((x, y - 1))
           }
         }
       },

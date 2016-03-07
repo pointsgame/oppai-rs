@@ -46,7 +46,7 @@ impl Dfa {
   }
 
   pub fn is_empty(&self) -> bool {
-    self.states[0].is_final == true && self.states[0].patterns.is_empty()
+    self.states[0].is_final && self.states[0].patterns.is_empty()
   }
 
   pub fn states_count(&self) -> usize {
