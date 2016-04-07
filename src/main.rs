@@ -51,7 +51,7 @@ use std::str::FromStr;
 use std::path::Path;
 use std::fs::File;
 use std::sync::Arc;
-use log4rs::toml::Creator;
+use std::default::Default;
 use player::Player;
 use bot::Bot;
 use patterns::Patterns;
@@ -171,7 +171,7 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn main() {
-  log4rs::init_file(Path::new(LOG_CONFIG_PATH), Creator::default()).ok();
+  log4rs::init_file(Path::new(LOG_CONFIG_PATH), Default::default()).ok();
   config::init();
   if let Some(mut config_file) = File::open(CONFIG_PATH).ok() {
     config::read(&mut config_file);

@@ -8,7 +8,7 @@ license = "AGPL-3.0+"
 rand = "*"
 time = "*"
 log = "*"
-log4rs = "*"
+log4rs = { version = "*", features = ["toml"] }
 num_cpus = "*"
 rustc-serialize = "*"
 toml = "*"

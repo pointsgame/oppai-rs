@@ -1,54 +1,49 @@
-[appender.all]
+[appenders.all]
 kind = "file"
 path = "log/all.log"
 pattern = "%d{%FT%T.%f%z} [%t] %m"
 
-[appender.uct]
+[appenders.uct]
 kind = "file"
 path = "log/uct.log"
 pattern = "%d{%FT%T.%f%z} %m"
 
-[appender.minimax]
+[appenders.minimax]
 kind = "file"
 path = "log/minimax.log"
 pattern = "%d{%FT%T.%f%z} %m"
 
-[appender.bot]
+[appenders.bot]
 kind = "file"
 path = "log/bot.log"
 pattern = "%d{%FT%T.%f%z} %m"
 
-[appender.config]
+[appenders.config]
 kind = "file"
 path = "log/config.log"
 pattern = "%d{%FT%T.%f%z} %m"
 
-[appender.patterns]
+[appenders.patterns]
 kind = "file"
 path = "log/patterns.log"
 pattern = "%d{%FT%T.%f%z} %m"
 
-[[logger]]
-name = "uct"
+[loggers.uct]
 level = "debug"
 appenders = ["uct", "all"]
 
-[[logger]]
-name = "minimax"
+[loggers.minimax]
 level = "debug"
 appenders = ["minimax", "all"]
 
-[[logger]]
-name = "bot"
+[loggers.bot]
 level = "debug"
 appenders = ["bot", "all"]
 
-[[logger]]
-name = "config"
+[loggers.config]
 level = "debug"
 appenders = ["config", "all"]
 
-[[logger]]
-name = "patterns"
+[loggers.patterns]
 level = "debug"
 appenders = ["patterns", "all"]
