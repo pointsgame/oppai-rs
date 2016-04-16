@@ -568,10 +568,10 @@ impl Field {
         self.save_pos_value(pos);
         let cell = self.points[pos];
         if !cell.is_put() {
-          if !cell.is_captured() {
-            self.points[pos].set_captured();
-          } else {
+          if cell.is_captured() {
             self.update_hash(pos, player.next());
+          } else {
+            self.points[pos].set_captured();
           }
           self.points[pos].clear_empty_base();
           self.points[pos].set_player(player);

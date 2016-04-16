@@ -149,12 +149,13 @@ impl Patterns {
     let mut states = Vec::with_capacity(spiral_length + 2);
     let fs = spiral_length; // "Found" state.
     let nfs = spiral_length + 1; // "Not found" state.
+    let s_bytes = s.as_bytes();
     for (i, (shift_x, shift_y)) in Spiral::new().into_iter().take(spiral_length).enumerate() {
       let nxt = i + 1;
       let (x, y) = Patterns::rotate_back(rotated_width, rotated_height, center_x as i32 + shift_x, center_y as i32 + shift_y, rotation);
       let state = if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
         let pos = y as u32 * width + x as u32;
-        match s.char_at(pos as usize) {
+        match s_bytes[pos as usize] as char {
           '.' | '+' => DfaState::new(nxt, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
           '?' => DfaState::new(nxt, nxt, nxt, nfs, false, HashSet::with_capacity(0)),
           '*' => DfaState::new(nxt, nxt, nxt, nxt, false, HashSet::with_capacity(0)),

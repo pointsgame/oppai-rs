@@ -100,10 +100,10 @@ fn alpha_beta_parallel<T: Rng>(field: &mut Field, player: Player, depth: u32, al
           }
           let mut cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -cur_alpha - 1, -cur_alpha, &mut local_empty_board, &mut local_rng, should_stop);
           if cur_estimation > cur_alpha {
-            if !should_stop.load(Ordering::Relaxed) {
-              cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, &mut local_empty_board, &mut local_rng, should_stop);
+            if should_stop.load(Ordering::Relaxed) {
+              debug!(target: MINIMAX_STR, "Time-out! Next estimation may be approximated.");
             } else {
-              debug!(target: MINIMAX_STR, "Time-out! Next estimation ma be approximated.");
+              cur_estimation = -alpha_beta(&mut local_field, depth - 1, pos, enemy, &next_trajectories_pruning, -beta, -cur_estimation, &mut local_empty_board, &mut local_rng, should_stop);
             }
           }
           local_field.undo();
@@ -125,12 +125,12 @@ fn alpha_beta_parallel<T: Rng>(field: &mut Field, player: Player, depth: u32, al
     }
   });
   let result = atomic_best_move.load(Ordering::SeqCst);
-  if result != 0 {
-    info!(target: MINIMAX_STR, "Best move is ({}, {}).", field.to_x(result), field.to_y(result));
-    *best_move = Some(result);
-  } else {
+  if result == 0 {
     info!(target: MINIMAX_STR, "Best move is not found.");
     *best_move = None;
+  } else {
+    info!(target: MINIMAX_STR, "Best move is ({}, {}).", field.to_x(result), field.to_y(result));
+    *best_move = Some(result);
   }
   let cur_alpha = atomic_alpha.load(Ordering::SeqCst);
   info!(target: MINIMAX_STR, "Estimation is {}.", cur_alpha);

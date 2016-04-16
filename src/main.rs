@@ -1,10 +1,12 @@
-#![allow(dead_code)]
 #![feature(unsafe_no_drop_flag)]
-#![feature(str_char)]
 #![feature(stmt_expr_attributes)]
 #![cfg_attr(feature="clippy", feature(plugin))]
-
 #![cfg_attr(feature="clippy", plugin(clippy))]
+
+#![allow(dead_code)]
+#![cfg_attr(feature="clippy", allow(similar_names))]
+#![cfg_attr(feature="clippy", allow(too_many_arguments))]
+#![cfg_attr(feature="clippy", allow(cyclomatic_complexity))]
 
 extern crate rand;
 
