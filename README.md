@@ -23,7 +23,7 @@ Running
 
 In order to build opai-rs you need a _nightly_ rust installed on your system.
 
-Rustc version 1.10.0-nightly (2174bd97c 2016-04-14) is known to be able to build opai-rs. You can use "[multirust](https://github.com/brson/multirust)" to specify and update nightly versions of rust.
+Rustc version 1.10.0-nightly (2b79e05a0 2016-05-13) is known to be able to build opai-rs. You can use "[multirust](https://github.com/brson/multirust)" to specify and update nightly versions of rust.
 
 Once you have rust installed on your system, compile with
 
