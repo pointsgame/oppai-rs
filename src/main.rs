@@ -39,6 +39,7 @@ mod uct;
 mod heuristic;
 mod minimax;
 mod bot;
+mod rotate;
 mod dfa;
 mod spiral;
 mod patterns;

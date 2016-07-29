@@ -10,6 +10,7 @@ use dfa::{Dfa, DfaState};
 use player::Player;
 use cell::Cell;
 use field::{Pos, Field};
+use rotate::*;
 
 const PATTERNS_STR: &'static str = "patterns";
 
@@ -110,39 +111,8 @@ impl Patterns {
     (8 * x - 13) * x + 6 - y
   }
 
-  fn rotate(width: u32, height: u32, x: i32, y: i32, rotation: u32) -> (i32, i32) {
-    match rotation {
-      0 => (x, y),
-      1 => (width as i32 - x - 1, y),
-      2 => (x, height as i32 - y - 1),
-      3 => (width as i32 - x - 1, height as i32 - y - 1),
-      4 => (y, x),
-      5 => (height as i32 - y - 1, x),
-      6 => (y, width as i32 - x - 1),
-      7 => (height as i32 - y - 1, width as i32 - x - 1),
-      r => panic!("Invalid rotation number: {}", r)
-    }
-  }
-
-  fn rotate_back(width: u32, height: u32, x: i32, y: i32, rotation: u32) -> (i32, i32) {
-    let back_rotation = match rotation {
-      5 => 6,
-      6 => 5,
-      r => r
-    };
-    Patterns::rotate(width, height, x, y, back_rotation)
-  }
-
-  fn rotate_sizes(width: u32, height: u32, rotation: u32) -> (u32, u32) {
-    if rotation < 4 {
-      (width, height)
-    } else {
-      (height, width)
-    }
-  }
-
   fn build_dfa(name: &str, width: u32, height: u32, pattern: usize, rotation: u32, s: &str) -> Dfa {
-    let (rotated_width, rotated_height) = Patterns::rotate_sizes(width, height, rotation);
+    let (rotated_width, rotated_height) = rotate_sizes(width, height, rotation);
     let center_x = (rotated_width - 1) / 2;
     let center_y = (rotated_height - 1) / 2;
     let spiral_length = Patterns::covering_spiral_length(cmp::max(width, height)) as usize;
@@ -152,9 +122,11 @@ impl Patterns {
     let s_bytes = s.as_bytes();
     for (i, (shift_x, shift_y)) in Spiral::new().into_iter().take(spiral_length).enumerate() {
       let nxt = i + 1;
-      let (x, y) = Patterns::rotate_back(rotated_width, rotated_height, center_x as i32 + shift_x, center_y as i32 + shift_y, rotation);
-      let state = if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
-        let pos = y as u32 * width + x as u32;
+      let rotated_x = center_x as i32 + shift_x;
+      let rotated_y = center_y as i32 + shift_y;
+      let state = if rotated_x >= 0 && rotated_x < rotated_width as i32 && rotated_y >= 0 && rotated_y < rotated_height as i32 {
+        let (x, y) = rotate_back(rotated_width, rotated_height, rotated_x as u32, rotated_y as u32, rotation);
+        let pos = y * width + x;
         match s_bytes[pos as usize] as char {
           '.' | '+' => DfaState::new(nxt, nfs, nfs, nfs, false, HashSet::with_capacity(0)),
           '?' => DfaState::new(nxt, nxt, nxt, nfs, false, HashSet::with_capacity(0)),
@@ -243,16 +215,16 @@ impl Patterns {
         let cur_dfa = Patterns::build_dfa(&name, width, height, patterns.len(), rotation, &pattern_s);
         dfa = dfa.product(&cur_dfa);
         info!(target: PATTERNS_STR, "DFA total size: {}.", dfa.states_count());
-        let (rotated_width, rotated_height) = Patterns::rotate_sizes(width, height, rotation);
+        let (rotated_width, rotated_height) = rotate_sizes(width, height, rotation);
         patterns.push(Pattern {
           p: priority,
           width: rotated_width,
           height: rotated_height,
           moves: moves.iter().map(|m| {
-            let (x, y) = Patterns::rotate(width, height, m.x as i32, m.y as i32, rotation);
+            let (x, y) = rotate(width, height, m.x, m.y, rotation);
             Move {
-              x: x as u32,
-              y: y as u32,
+              x: x,
+              y: y,
               p: m.p
             }
           }).collect()
