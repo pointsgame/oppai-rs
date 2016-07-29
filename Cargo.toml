@@ -19,15 +19,14 @@ tar = "*"
 [dev-dependencies]
 quickcheck = "0.2"
 
-[features]
-default = ["clippy"]
-
 [profile.dev]
 opt-level = 0
 lto = false
 debug = true
+panic = "unwind"
 
 [profile.release]
 opt-level = 3
 lto = true
 debug = false
+panic = "abort"
