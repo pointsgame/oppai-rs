@@ -30,7 +30,7 @@ struct Pattern {
 
 pub struct Patterns {
   min_size: u32,
-  dfa: Dfa,
+  dfa: Dfa<usize>,
   patterns: Vec<Pattern>
 }
 
@@ -111,7 +111,7 @@ impl Patterns {
     (8 * x - 13) * x + 6 - y
   }
 
-  fn build_dfa(name: &str, width: u32, height: u32, pattern: usize, rotation: u32, s: &str) -> Dfa {
+  fn build_dfa(name: &str, width: u32, height: u32, pattern: usize, rotation: u32, s: &str) -> Dfa<usize> {
     let (rotated_width, rotated_height) = rotate_sizes(width, height, rotation);
     let center_x = (rotated_width - 1) / 2;
     let center_y = (rotated_height - 1) / 2;

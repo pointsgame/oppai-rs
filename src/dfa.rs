@@ -1,20 +1,21 @@
+use std::hash::Hash;
 use std::collections::vec_deque::VecDeque;
 use std::collections::{HashSet, HashMap};
 use player::Player;
 use cell::Cell;
 
 #[derive(Clone, Debug)]
-pub struct DfaState {
+pub struct DfaState<P: Eq + Hash + Clone> {
   pub empty: usize,
   pub red: usize,
   pub black: usize,
   pub bad: usize,
   pub is_final: bool,
-  pub patterns: HashSet<usize>
+  pub patterns: HashSet<P>
 }
 
-impl DfaState {
-  pub fn new(empty: usize, red: usize, black: usize, bad: usize, is_final: bool, patterns: HashSet<usize>) -> DfaState {
+impl<P: Eq + Hash + Clone> DfaState<P> {
+  pub fn new(empty: usize, red: usize, black: usize, bad: usize, is_final: bool, patterns: HashSet<P>) -> DfaState<P> {
     DfaState {
       empty: empty,
       red: red,
@@ -27,19 +28,19 @@ impl DfaState {
 }
 
 #[derive(Clone, Debug)]
-pub struct Dfa {
-  states: Vec<DfaState>
+pub struct Dfa<P: Eq + Hash + Clone> {
+  states: Vec<DfaState<P>>
 }
 
-impl Dfa {
-  pub fn empty() -> Dfa {
+impl<P: Eq + Hash + Clone> Dfa<P> {
+  pub fn empty() -> Dfa<P> {
     let state = DfaState::new(0, 0, 0, 0, true, HashSet::with_capacity(0));
     Dfa {
       states: vec![state]
     }
   }
 
-  pub fn new(states: Vec<DfaState>) -> Dfa {
+  pub fn new(states: Vec<DfaState<P>>) -> Dfa<P> {
     Dfa {
       states: states
     }
@@ -53,8 +54,8 @@ impl Dfa {
     self.states.len()
   }
 
-  pub fn product(&self, other: &Dfa) -> Dfa {
-    fn build_state(other_len: usize, left: &DfaState, right: &DfaState) -> DfaState {
+  pub fn product(&self, other: &Dfa<P>) -> Dfa<P> {
+    fn build_state<P: Eq + Hash + Clone>(other_len: usize, left: &DfaState<P>, right: &DfaState<P>) -> DfaState<P> {
       DfaState {
         empty: left.empty * other_len + right.empty,
         red: left.red * other_len + right.red,
@@ -125,7 +126,7 @@ impl Dfa {
     }
   }
 
-  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, inv_color: bool, first_match: bool) -> &HashSet<usize> {
+  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, inv_color: bool, first_match: bool) -> &HashSet<P> {
     if self.is_empty() {
       return &self.states[0].patterns;
     }
