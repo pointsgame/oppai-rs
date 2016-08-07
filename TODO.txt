@@ -1,9 +1,0 @@
-MTD(f).
-Effective parallelization of minimax.
-Hashing for minimax.
-Fractional komi.
-Logs.
-Debuts.
-Solver chosing.
-Readme.
-Comments.

@@ -43,6 +43,23 @@ or with
     ./target/release/opai-rs
 ```
 
+TODO
+====
+* Fill debuts database.
+* Fill heuristics database.
+* Tests for patterns engine.
+* Use patterns for UCT random games (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
+* Use patterns for NegaScout best move prediction.
+* Use Zobrist hashes for NegaScout (wait for concurrent hashmap implementation in rust).
+* Complex estimating function for NegaScout (see [link](https://www.gnu.org/software/gnugo/gnugo_13.html#SEC167))
+* MTD(f).
+* Smart time control for UCT (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
+* Smart time control for NegaScout.
+* Think on enemy's move.
+* Ladders solver.
+* Fractional komi support.
+* Split trajectories by groups for NegaScout (see [link](https://www.icsi.berkeley.edu/ftp/global/pub/techreports/1996/tr-96-030.pdf)).
+
 License
 ====
 
