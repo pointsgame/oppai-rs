@@ -45,7 +45,11 @@ mod spiral;
 mod patterns;
 
 #[cfg(test)]
+mod construct_field;
+#[cfg(test)]
 mod field_test;
+#[cfg(test)]
+mod patterns_test;
 
 use std::io;
 use std::io::{Write, BufReader, BufRead};
@@ -180,11 +184,11 @@ fn main() {
   } else if let Some(mut config_file) = File::create(CONFIG_PATH).ok() {
     config::write(&mut config_file);
   }
-  let patterns = Arc::new(if let Some(patterns_file) = File::open(PATTERNS_PATH).ok() {
-    Patterns::load(patterns_file)
-  } else {
-    Patterns::empty()
-  });
+  let mut patterns = Patterns::empty();
+  if let Some(patterns_file) = File::open(PATTERNS_PATH).ok() {
+    patterns.add_tar(patterns_file)
+  }
+  let patterns_arc = Arc::new(patterns);
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();
   let mut bot_option = None;
@@ -210,7 +214,7 @@ fn main() {
           if split.next().is_some() {
             write_init_error(&mut output, id);
           } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
-            bot_option = Some(Bot::new(x, y, seed, patterns.clone()));
+            bot_option = Some(Bot::new(x, y, seed, patterns_arc.clone()));
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);

@@ -2,6 +2,7 @@ use std::collections::{HashSet, HashMap};
 use std::io::{BufReader, BufRead};
 use std::str::FromStr;
 use std::fs::File;
+use std::io::Cursor;
 use std::cmp;
 use rand::Rng;
 use tar::Archive;
@@ -39,7 +40,7 @@ impl Patterns {
     Patterns {
       min_size: u32::max_value(),
       dfa: Dfa::empty(),
-      patterns: Vec::with_capacity(0)
+      patterns: Vec::new()
     }
   }
 
@@ -187,54 +188,56 @@ impl Patterns {
     pattern_moves
   }
 
-  pub fn load(file: File) -> Patterns {
+  fn add<T: BufRead>(&mut self, name: &str, input: &mut T, s: &mut String, pattern_s: &mut String) {
+    let (width, height, priority) = Patterns::read_header(name, input, s);
+    if width < self.min_size {
+      self.min_size = width;
+    }
+    if height < self.min_size {
+      self.min_size = height;
+    }
+    Patterns::read_pattern(input, pattern_s, width, height);
+    let pattern_moves = Patterns::get_pattern_moves(name, width, pattern_s);
+    let moves = Patterns::read_moves(name, input, s, pattern_moves);
+    for rotation in 0 .. 8 {
+      let cur_dfa = Patterns::build_dfa(name, width, height, self.patterns.len(), rotation, pattern_s);
+      self.dfa = self.dfa.product(&cur_dfa);
+      info!(target: PATTERNS_STR, "DFA total size: {}.", self.dfa.states_count());
+      let (rotated_width, rotated_height) = rotate_sizes(width, height, rotation);
+      self.patterns.push(Pattern {
+        p: priority,
+        width: rotated_width,
+        height: rotated_height,
+        moves: moves.iter().map(|m| {
+          let (x, y) = rotate(width, height, m.x, m.y, rotation);
+          Move {
+            x: x,
+            y: y,
+            p: m.p
+          }
+        }).collect()
+      });
+    }
+  }
+
+  pub fn add_str(&mut self, string: &str) {
+    let mut s = String::new();
+    let mut pattern_s = String::new();
+    self.add("<none>", &mut Cursor::new(string.as_bytes()), &mut s, &mut pattern_s);
+  }
+
+  pub fn add_tar(&mut self, file: File) {
     let mut archive = Archive::new(file);
     let mut s = String::new();
     let mut pattern_s = String::new();
-    let mut patterns = Vec::new();
     let iter = archive.entries().expect("Reading of tar archive is failed.").into_iter().map(|file| file.expect("Reading of file in tar archive is failed."));
-    let mut dfa = Dfa::empty();
-    let mut min_size = u32::max_value();
     for file in iter.filter(|file| file.header().entry_type().is_file()) {
       let name = file.header().path().ok()
         .and_then(|path| path.to_str().map(|s| s.to_owned()))
         .unwrap_or_else(|| "<unknown>".to_owned());
       info!(target: PATTERNS_STR, "Loading pattern '{}'", name);
       let mut input = BufReader::new(file);
-      let (width, height, priority) = Patterns::read_header(&name, &mut input, &mut s);
-      if width < min_size {
-        min_size = width;
-      }
-      if height < min_size {
-        min_size = height;
-      }
-      Patterns::read_pattern(&mut input, &mut pattern_s, width, height);
-      let pattern_moves = Patterns::get_pattern_moves(&name, width, &pattern_s);
-      let moves = Patterns::read_moves(&name, &mut input, &mut s, pattern_moves);
-      for rotation in 0 .. 8 {
-        let cur_dfa = Patterns::build_dfa(&name, width, height, patterns.len(), rotation, &pattern_s);
-        dfa = dfa.product(&cur_dfa);
-        info!(target: PATTERNS_STR, "DFA total size: {}.", dfa.states_count());
-        let (rotated_width, rotated_height) = rotate_sizes(width, height, rotation);
-        patterns.push(Pattern {
-          p: priority,
-          width: rotated_width,
-          height: rotated_height,
-          moves: moves.iter().map(|m| {
-            let (x, y) = rotate(width, height, m.x, m.y, rotation);
-            Move {
-              x: x,
-              y: y,
-              p: m.p
-            }
-          }).collect()
-        });
-      }
-    }
-    Patterns {
-      min_size: min_size,
-      dfa: dfa,
-      patterns: patterns
+      self.add(&name, &mut input, &mut s, &mut pattern_s);
     }
   }
 
