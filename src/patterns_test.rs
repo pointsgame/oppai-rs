@@ -47,6 +47,29 @@ fn pattern_without_moves_on_image() {
 }
 
 #[test]
+fn pattern_empty_doesnt_match() {
+  let p = construct_patterns(&[
+    "
+    4 4 1.0
+    #...
+    #RB.
+    #B..
+    #..+
+    3 3 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    ...
+    aA.
+    Aa.
+    ...
+    "
+  );
+  assert!(p.find(&field, Player::Red, false).is_empty());
+}
+
+#[test]
 fn pattern_borders_matches() {
   let p = construct_patterns(&[
     "
@@ -87,6 +110,121 @@ fn pattern_borders_doesnt_match() {
     .aA.
     .Aa.
     ....
+    "
+  );
+  assert!(p.find(&field, Player::Red, false).is_empty());
+}
+
+#[test]
+fn pattern_any_matches() {
+  let p = construct_patterns(&[
+    "
+    4 4 1.0
+    #...
+    #RB.
+    ****
+    #..+
+    3 3 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    ...
+    aA.
+    Aa.
+    ...
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(2, 3), 1f64)]);
+}
+
+#[test]
+fn pattern_any_except_border_matches() {
+  let p = construct_patterns(&[
+    "
+    4 4 1.0
+    #...
+    #RB.
+    #???
+    #..+
+    3 3 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    ...
+    aA.
+    Aa.
+    ...
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(2, 3), 1f64)]);
+}
+
+#[test]
+fn pattern_any_except_border_doesnt_match() {
+  let p = construct_patterns(&[
+    "
+    4 4 1.0
+    #...
+    #RB.
+    ????
+    #..+
+    3 3 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    ...
+    aA.
+    Aa.
+    ...
+    "
+  );
+  assert!(p.find(&field, Player::Red, false).is_empty());
+}
+
+#[test]
+fn pattern_red_black_or_none_matches() {
+  let p = construct_patterns(&[
+    "
+    4 4 1.0
+    #...
+    #Rbb
+    #Brr
+    #..+
+    3 3 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    ...
+    aA.
+    Aa.
+    ...
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(2, 3), 1f64)]);
+}
+
+#[test]
+fn pattern_red_black_or_none_doesnt_match() {
+  let p = construct_patterns(&[
+    "
+    4 4 1.0
+    #...
+    #bbb
+    #rrr
+    #..+
+    3 3 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    ...
+    aA.
+    Aa.
+    ...
     "
   );
   assert!(p.find(&field, Player::Red, false).is_empty());
