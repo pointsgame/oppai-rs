@@ -25,8 +25,8 @@ fn pattern_moves_discrepancy() {
     ....
     .RB.
     .BR.
-    ..+.
-    3 3 1.0
+    .+..
+    2 3 1.0
     "
   ]);
 }
@@ -41,7 +41,7 @@ fn pattern_without_moves_on_image() {
     .RB.
     .BR.
     ....
-    3 3 1.0
+    2 3 1.0
     "
   ]);
 }
@@ -54,8 +54,8 @@ fn pattern_empty_doesnt_match() {
     #...
     #RB.
     #B..
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -77,8 +77,8 @@ fn pattern_borders_matches() {
     #...
     #RB.
     #BR.
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -89,7 +89,7 @@ fn pattern_borders_matches() {
     ...
     "
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(2, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
 }
 
 #[test]
@@ -100,8 +100,8 @@ fn pattern_borders_doesnt_match() {
     #...
     #RB.
     #BR.
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -123,8 +123,8 @@ fn pattern_any_matches() {
     #...
     #RB.
     ****
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -135,7 +135,7 @@ fn pattern_any_matches() {
     ...
     "
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(2, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
 }
 
 #[test]
@@ -146,8 +146,8 @@ fn pattern_any_except_border_matches() {
     #...
     #RB.
     #???
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -158,7 +158,7 @@ fn pattern_any_except_border_matches() {
     ...
     "
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(2, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
 }
 
 #[test]
@@ -169,8 +169,8 @@ fn pattern_any_except_border_doesnt_match() {
     #...
     #RB.
     ????
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -192,8 +192,8 @@ fn pattern_red_black_or_none_matches() {
     #...
     #Rbb
     #Brr
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -204,7 +204,7 @@ fn pattern_red_black_or_none_matches() {
     ...
     "
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(2, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
 }
 
 #[test]
@@ -215,8 +215,8 @@ fn pattern_red_black_or_none_doesnt_match() {
     #...
     #bbb
     #rrr
-    #..+
-    3 3 1.0
+    #.+.
+    2 3 1.0
     "
   ]);
   let field = construct_field(
@@ -228,4 +228,204 @@ fn pattern_red_black_or_none_doesnt_match() {
     "
   );
   assert!(p.find(&field, Player::Red, false).is_empty());
+}
+
+#[test]
+fn pattern_rotation_0() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    .aA..
+    .Aa..
+    .A.a.
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(0, 1), 1f64)]);
+}
+
+#[test]
+fn pattern_rotation_1() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    ...a.
+    .Aa..
+    .aAA.
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 4), 1f64)]);
+}
+
+#[test]
+fn pattern_rotation_2() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    .a.A.
+    ..aA.
+    ..Aa.
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(4, 3), 1f64)]);
+}
+
+#[test]
+fn pattern_rotation_3() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    .AAa.
+    ..aA.
+    .a...
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(3, 0), 1f64)]);
+}
+
+#[test]
+fn pattern_rotation_4() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    ..Aa.
+    ..aA.
+    .a.A.
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(4, 1), 1f64)]);
+}
+
+#[test]
+fn pattern_rotation_5() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    .aAA.
+    .Aa..
+    ...a.
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 0), 1f64)]);
+}
+
+#[test]
+fn pattern_rotation_6() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    .A.a.
+    .Aa..
+    .aA..
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(0, 3), 1f64)]);
+}
+
+#[test]
+fn pattern_rotation_7() {
+  let p = construct_patterns(&[
+    "
+    5 5 1.0
+    .....
+    +RB..
+    .BR..
+    .B.R.
+    .....
+    0 1 1.0
+    "
+  ]);
+  let field = construct_field(
+    "
+    .....
+    .a...
+    ..aA.
+    .AAa.
+    .....
+    "
+  );
+  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(3, 4), 1f64)]);
 }
