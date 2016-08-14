@@ -47,7 +47,6 @@ TODO
 ====
 * Fill debuts database.
 * Fill heuristics database.
-* Tests for patterns engine.
 * Use patterns for UCT random games (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
 * Use patterns for NegaScout best move prediction.
 * Use Zobrist hashes for NegaScout (wait for concurrent hashmap implementation in rust).
