@@ -45,6 +45,8 @@ or with
 
 TODO
 ====
+* Parallel patterns loading.
+* Cache built DFA for fast patterns loading.
 * Fill debuts database.
 * Fill heuristics database.
 * Use patterns for UCT random games (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
