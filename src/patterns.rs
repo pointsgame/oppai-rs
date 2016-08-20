@@ -199,9 +199,10 @@ impl Patterns {
     Patterns::read_pattern(input, pattern_s, width, height);
     let pattern_moves = Patterns::get_pattern_moves(name, width, pattern_s);
     let moves = Patterns::read_moves(name, input, s, pattern_moves);
+    let mut dfa = Dfa::empty();
     for rotation in 0 .. 8 {
       let cur_dfa = Patterns::build_dfa(name, width, height, self.patterns.len(), rotation, pattern_s);
-      self.dfa = self.dfa.product(&cur_dfa);
+      dfa = dfa.product(&cur_dfa);
       info!(target: PATTERNS_STR, "DFA total size: {}.", self.dfa.states_count());
       let (rotated_width, rotated_height) = rotate_sizes(width, height, rotation);
       self.patterns.push(Pattern {
@@ -218,6 +219,7 @@ impl Patterns {
         }).collect()
       });
     }
+    self.dfa = self.dfa.product(&dfa);
   }
 
   pub fn add_str(&mut self, string: &str) {
