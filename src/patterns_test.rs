@@ -3,15 +3,9 @@ use patterns::Patterns;
 use construct_field::construct_field;
 
 fn construct_patterns(strings: &[&str]) -> Patterns {
-  let mut pattern_s = String::new();
   let mut p = Patterns::empty();
   for s in strings {
-    pattern_s.clear();
-    for line in s.split('\n').map(|line| line.trim_matches(' ')).filter(|line| !line.is_empty()) {
-      pattern_s.push_str(line);
-      pattern_s.push('\n');
-    }
-    p.add_str(pattern_s.as_str());
+    p = p.union(&Patterns::from_str("<none>", s));
   }
   p
 }

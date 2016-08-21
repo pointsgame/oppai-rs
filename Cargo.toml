@@ -13,6 +13,7 @@ num_cpus = "*"
 rustc-serialize = "*"
 toml = "*"
 crossbeam = "*"
+rayon = "*"
 clippy = { version = "*", optional = true }
 tar = "*"
 

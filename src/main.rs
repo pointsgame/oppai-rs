@@ -1,5 +1,6 @@
 #![feature(unsafe_no_drop_flag)]
 #![feature(stmt_expr_attributes)]
+#![feature(slice_patterns)]
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
@@ -21,6 +22,8 @@ extern crate rustc_serialize;
 extern crate toml;
 
 extern crate crossbeam;
+
+extern crate rayon;
 
 extern crate tar;
 
@@ -184,10 +187,11 @@ fn main() {
   } else if let Some(mut config_file) = File::create(CONFIG_PATH).ok() {
     config::write(&mut config_file);
   }
-  let mut patterns = Patterns::empty();
-  if let Some(patterns_file) = File::open(PATTERNS_PATH).ok() {
-    patterns.add_tar(patterns_file)
-  }
+  let patterns = if let Some(patterns_file) = File::open(PATTERNS_PATH).ok() {
+    Patterns::from_tar(patterns_file)
+  } else {
+    Patterns::empty()
+  };
   let patterns_arc = Arc::new(patterns);
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();

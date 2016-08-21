@@ -1,21 +1,20 @@
-use std::hash::Hash;
 use std::collections::vec_deque::VecDeque;
-use std::collections::{HashSet, HashMap};
+use std::collections::HashMap;
 use player::Player;
 use cell::Cell;
 
 #[derive(Clone, Debug)]
-pub struct DfaState<P: Eq + Hash + Clone> {
+pub struct DfaState<P: Clone> {
   pub empty: usize,
   pub red: usize,
   pub black: usize,
   pub bad: usize,
   pub is_final: bool,
-  pub patterns: HashSet<P>
+  pub patterns: Vec<P>
 }
 
-impl<P: Eq + Hash + Clone> DfaState<P> {
-  pub fn new(empty: usize, red: usize, black: usize, bad: usize, is_final: bool, patterns: HashSet<P>) -> DfaState<P> {
+impl<P: Clone> DfaState<P> {
+  pub fn new(empty: usize, red: usize, black: usize, bad: usize, is_final: bool, patterns: Vec<P>) -> DfaState<P> {
     DfaState {
       empty: empty,
       red: red,
@@ -28,13 +27,13 @@ impl<P: Eq + Hash + Clone> DfaState<P> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Dfa<P: Eq + Hash + Clone> {
+pub struct Dfa<P: Clone> {
   states: Vec<DfaState<P>>
 }
 
-impl<P: Eq + Hash + Clone> Dfa<P> {
+impl<P: Clone> Dfa<P> {
   pub fn empty() -> Dfa<P> {
-    let state = DfaState::new(0, 0, 0, 0, true, HashSet::with_capacity(0));
+    let state = DfaState::new(0, 0, 0, 0, true, Vec::with_capacity(0));
     Dfa {
       states: vec![state]
     }
@@ -55,14 +54,14 @@ impl<P: Eq + Hash + Clone> Dfa<P> {
   }
 
   pub fn product(&self, other: &Dfa<P>) -> Dfa<P> {
-    fn build_state<P: Eq + Hash + Clone>(other_len: usize, left: &DfaState<P>, right: &DfaState<P>) -> DfaState<P> {
+    fn build_state<P: Clone>(other_len: usize, left: &DfaState<P>, right: &DfaState<P>) -> DfaState<P> {
       DfaState {
         empty: left.empty * other_len + right.empty,
         red: left.red * other_len + right.red,
         black: left.black * other_len + right.black,
         bad: left.bad * other_len + right.bad,
         is_final: left.is_final && right.is_final,
-        patterns: left.patterns.union(&right.patterns).cloned().collect()
+        patterns: left.patterns.iter().chain(right.patterns.iter()).cloned().collect()
       }
     }
     if self.is_empty() {
@@ -126,7 +125,7 @@ impl<P: Eq + Hash + Clone> Dfa<P> {
     }
   }
 
-  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, inv_color: bool, first_match: bool) -> &HashSet<P> {
+  pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, inv_color: bool, first_match: bool) -> &Vec<P> {
     if self.is_empty() {
       return &self.states[0].patterns;
     }
