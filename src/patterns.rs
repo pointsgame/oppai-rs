@@ -236,11 +236,14 @@ impl Patterns {
       let name = file.header().path().ok()
         .and_then(|path| path.to_str().map(|s| s.to_owned()))
         .unwrap_or_else(|| "<unknown>".to_owned());
+      info!(target: PATTERNS_STR, "Loading pattern '{}'", name);
       let mut s = String::new();
       file.read_to_string(&mut s).ok();
       strings.push((name, s));
     }
-    Patterns::from_strings(&strings)
+    let patterns = Patterns::from_strings(&strings);
+    info!(target: PATTERNS_STR, "DFA total size: {}.", patterns.dfa.states_count());
+    patterns
   }
 
   pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<(Pos, f64)> {

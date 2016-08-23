@@ -45,7 +45,6 @@ or with
 
 TODO
 ====
-* Parallel patterns loading.
 * Cache built DFA for fast patterns loading.
 * Fill debuts database.
 * Fill heuristics database.
