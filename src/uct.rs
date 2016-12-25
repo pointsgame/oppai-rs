@@ -12,7 +12,6 @@ use common;
 
 const UCT_STR: &'static str = "uct";
 
-#[unsafe_no_drop_flag]
 struct UctNode {
   wins: AtomicUsize,
   draws: AtomicUsize,

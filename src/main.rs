@@ -1,4 +1,3 @@
-#![feature(unsafe_no_drop_flag)]
 #![feature(stmt_expr_attributes)]
 #![feature(slice_patterns)]
 #![cfg_attr(feature="clippy", feature(plugin))]
@@ -182,12 +181,12 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 fn main() {
   log4rs::init_file(Path::new(LOG_CONFIG_PATH), Default::default()).ok();
   config::init();
-  if let Some(mut config_file) = File::open(CONFIG_PATH).ok() {
+  if let Ok(mut config_file) = File::open(CONFIG_PATH) {
     config::read(&mut config_file);
-  } else if let Some(mut config_file) = File::create(CONFIG_PATH).ok() {
+  } else if let Ok(mut config_file) = File::create(CONFIG_PATH) {
     config::write(&mut config_file);
   }
-  let patterns = if let Some(patterns_file) = File::open(PATTERNS_PATH).ok() {
+  let patterns = if let Ok(patterns_file) = File::open(PATTERNS_PATH) {
     Patterns::from_tar(patterns_file)
   } else {
     Patterns::empty()
