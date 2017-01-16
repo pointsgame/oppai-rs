@@ -18,7 +18,7 @@ clippy = { version = "*", optional = true }
 tar = "*"
 
 [dev-dependencies]
-quickcheck = "0.2"
+quickcheck = "*"
 
 [profile.dev]
 opt-level = 0

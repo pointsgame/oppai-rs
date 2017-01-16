@@ -19,7 +19,7 @@ pub fn construct_field(image: &str) -> Field {
   let mut rng = XorShiftRng::new_unseeded();
   let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
   let mut field = Field::new(width, height, zobrist);
-  for (c, x, y) in moves.into_iter() {
+  for (c, x, y) in moves {
     let player = Player::from_bool(c.is_uppercase());
     let pos = field.to_pos(x, y);
     field.put_point(pos, player);
