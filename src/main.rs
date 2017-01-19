@@ -1,5 +1,3 @@
-#![feature(stmt_expr_attributes)]
-#![feature(slice_patterns)]
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 

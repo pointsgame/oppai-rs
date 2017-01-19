@@ -445,6 +445,8 @@ impl UctRoot {
     }
   }
 
+  //TODO: move this to exact place once stmt_expr_attributes gets stabilized (see #15701)
+  #[cfg_attr(feature="clippy", allow(float_cmp))]
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, max_iterations_count: usize) -> Option<Pos> {
     info!(target: UCT_STR, "Generating best move for player {0}.", player);
     debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player())).collect::<Vec<(u32, u32, Player)>>());
@@ -480,7 +482,7 @@ impl UctRoot {
         let uct_value = UctRoot::ucb(root, next_node, config::final_ucb_type());
         let pos = next_node.get_pos();
         info!(target: UCT_STR, "Uct for move ({0}, {1}) is {2}, {3} wins, {4} draws, {5} visits.", field.to_x(pos), field.to_y(pos), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits());
-        if uct_value > best_uct || (#![cfg_attr(feature="clippy", allow(float_cmp))] uct_value == best_uct) && rng.gen() {
+        if uct_value > best_uct || uct_value == best_uct && rng.gen() {
           best_uct = uct_value;
           result = Some(pos);
         }

@@ -216,10 +216,14 @@ impl Patterns {
   }
 
   fn from_strings(strings: &[(String, String)]) -> Patterns {
-    if let [(ref name, ref pattern_str)] = *strings {
+    let len = strings.len();
+    // TODO: use slice patterns once it gets stabilized (see #23121)
+    // if let [(ref name, ref pattern_str)] = *strings {
+    //   Patterns::from_str(name, pattern_str)
+    if len == 1 {
+      let (ref name, ref pattern_str) = strings[0];
       Patterns::from_str(name, pattern_str)
     } else {
-      let len = strings.len();
       let split_idx = len / 2;
       let left = &strings[0 .. split_idx];
       let right = &strings[split_idx .. len];
