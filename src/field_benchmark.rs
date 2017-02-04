@@ -20,6 +20,9 @@ fn random_game(bencher: &mut Bencher, width: u32, height: u32, seed_array: [u32;
         player = player.next();
       }
     }
+    for _ in 0 .. field.moves_count() {
+      field.undo();
+    }
     field
   });
 }
