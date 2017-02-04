@@ -1,3 +1,4 @@
+#![cfg_attr(feature="bench", feature(test))]
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
@@ -27,6 +28,9 @@ extern crate tar;
 #[cfg(test)]
 extern crate quickcheck;
 
+#[cfg(all(test, feature="bench"))]
+extern crate test;
+
 mod config;
 mod player;
 mod zobrist;
@@ -50,6 +54,9 @@ mod construct_field;
 mod field_test;
 #[cfg(test)]
 mod patterns_test;
+
+#[cfg(all(test, feature="bench"))]
+mod field_benchmark;
 
 use std::io;
 use std::io::{Write, BufReader, BufRead};

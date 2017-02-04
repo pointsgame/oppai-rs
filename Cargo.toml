@@ -20,11 +20,21 @@ tar = "*"
 [dev-dependencies]
 quickcheck = "*"
 
+[features]
+default = []
+bench = []
+
 [profile.dev]
 opt-level = 0
 lto = false
 debug = true
 panic = "unwind"
+
+[profile.bench]
+opt-level = 3
+lto = true
+debug = false
+panic = "abort"
 
 [profile.release]
 opt-level = 3
