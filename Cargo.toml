@@ -21,7 +21,8 @@ tar = "*"
 quickcheck = "*"
 
 [features]
-default = []
+default = ["dsu"]
+dsu = []
 bench = []
 
 [profile.dev]

@@ -7,6 +7,7 @@ use zobrist::Zobrist;
 
 pub type Pos = usize;
 
+#[cfg(feature="dsu")]
 #[derive(Clone, PartialEq)]
 struct FieldChange {
   score_red: i32,
@@ -17,6 +18,15 @@ struct FieldChange {
   dsu_size_change: Option<(Pos, u32)>
 }
 
+#[cfg(not(feature="dsu"))]
+#[derive(Clone, PartialEq)]
+struct FieldChange {
+  score_red: i32,
+  score_black: i32,
+  hash: u64,
+  points_changes: Vec<(Pos, Cell)>
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum IntersectionState {
   None,
@@ -25,6 +35,7 @@ enum IntersectionState {
   Down
 }
 
+#[cfg(feature="dsu")]
 #[derive(Clone, PartialEq)]
 pub struct Field {
   width: u32,
@@ -36,6 +47,21 @@ pub struct Field {
   points: Vec<Cell>,
   dsu: Vec<Pos>,
   dsu_size: Vec<u32>,
+  changes: Vec<FieldChange>,
+  zobrist: Arc<Zobrist>,
+  hash: u64
+}
+
+#[cfg(not(feature="dsu"))]
+#[derive(Clone, PartialEq)]
+pub struct Field {
+  width: u32,
+  height: u32,
+  length: Pos,
+  score_red: i32,
+  score_black: i32,
+  points_seq: Vec<Pos>,
+  points: Vec<Cell>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   hash: u64
@@ -348,6 +374,7 @@ impl Field {
 
   pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Field {
     let length = length(width, height);
+    #[cfg(feature="dsu")]
     let mut field = Field {
       width: width,
       height: height,
@@ -358,6 +385,19 @@ impl Field {
       points: iter::repeat(Cell::new(false)).take(length).collect(),
       dsu: (0 .. length).collect(),
       dsu_size: iter::repeat(1).take(length).collect(),
+      changes: Vec::with_capacity(length),
+      zobrist: zobrist,
+      hash: 0
+    };
+    #[cfg(not(feature="dsu"))]
+    let mut field = Field {
+      width: width,
+      height: height,
+      length: length,
+      score_red: 0,
+      score_black: 0,
+      points_seq: Vec::with_capacity(length),
+      points: iter::repeat(Cell::new(false)).take(length).collect(),
       changes: Vec::with_capacity(length),
       zobrist: zobrist,
       hash: 0
@@ -379,11 +419,13 @@ impl Field {
     self.changes.last_mut().unwrap().points_changes.push((pos, self.points[pos]));
   }
 
+  #[cfg(feature="dsu")]
   #[inline]
   fn save_dsu_value(&mut self, pos: Pos) {
     self.changes.last_mut().unwrap().dsu_changes.push((pos, self.dsu[pos]));
   }
 
+  #[cfg(feature="dsu")]
   #[inline]
   fn save_dsu_size_value(&mut self, pos: Pos) {
     self.changes.last_mut().unwrap().dsu_size_change = Some((pos, self.dsu_size[pos]));
@@ -602,6 +644,7 @@ impl Field {
     }
   }
 
+  #[cfg(feature="dsu")]
   fn find_dsu_set(&mut self, pos: Pos) -> Pos {
     let dsu_value = self.dsu[pos];
     if dsu_value == pos {
@@ -616,6 +659,7 @@ impl Field {
     }
   }
 
+  #[cfg(feature="dsu")]
   fn union_dsu_sets(&mut self, sets: &[Pos]) -> Pos {
     let mut max_dsu_size = 0;
     let mut parent = 0;
@@ -636,6 +680,7 @@ impl Field {
     parent
   }
 
+  #[cfg(feature="dsu")]
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len();
@@ -690,6 +735,27 @@ impl Field {
     }
   }
 
+  #[cfg(not(feature="dsu"))]
+  fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
+    let input_points = self.get_input_points(pos, player);
+    let input_points_count = input_points.len();
+    if input_points_count > 1 {
+      let mut chains_count = 0;
+      for (chain_pos, captured_pos) in input_points {
+        if let Some(chain) = self.build_chain(pos, player, chain_pos) {
+          self.capture(&chain, captured_pos, player);
+          chains_count += 1;
+          if chains_count == input_points_count - 1 {
+            break;
+          }
+        }
+      }
+      chains_count > 0
+    } else {
+      false
+    }
+  }
+
   #[inline]
   fn remove_empty_base(&mut self, start_pos: Pos) {
     wave(self.width, start_pos, |pos| {
@@ -705,6 +771,7 @@ impl Field {
 
   pub fn put_point(&mut self, pos: Pos, player: Player) -> bool {
     if self.is_putting_allowed(pos) {
+      #[cfg(feature="dsu")]
       let change = FieldChange {
         score_red: self.score_red,
         score_black: self.score_black,
@@ -712,6 +779,13 @@ impl Field {
         points_changes: Vec::new(),
         dsu_changes: Vec::new(),
         dsu_size_change: None
+      };
+      #[cfg(not(feature="dsu"))]
+      let change = FieldChange {
+        score_red: self.score_red,
+        score_black: self.score_black,
+        hash: self.hash,
+        points_changes: Vec::new()
       };
       self.changes.push(change);
       self.save_pos_value(pos);
@@ -764,11 +838,14 @@ impl Field {
       for (pos, cell) in change.points_changes.into_iter().rev() {
         self.points[pos] = cell;
       }
-      for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
-        self.dsu[pos] = dsu_value;
-      }
-      if let Some((pos, dsu_size)) = change.dsu_size_change {
-        self.dsu_size[pos] = dsu_size;
+      #[cfg(feature="dsu")]
+      {
+        for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
+          self.dsu[pos] = dsu_value;
+        }
+        if let Some((pos, dsu_size)) = change.dsu_size_change {
+          self.dsu_size[pos] = dsu_size;
+        }
       }
       true
     } else {

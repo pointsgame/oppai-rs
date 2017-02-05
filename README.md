@@ -15,7 +15,7 @@ Features
 * Trajectories for moves pruning in the NegaScout search tree.
 * Lock-free multi-threading for both NegaScout and UCT.
 * DFA-based patterns searching.
-* DSU to optimize capturing.
+* DSU to optimize capturing (optional).
 * Time-based (`gen_move_with_time`) and complexity-based (`gen_move_with_complexity`) calculations.
 
 Running
