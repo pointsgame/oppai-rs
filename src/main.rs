@@ -57,6 +57,8 @@ mod patterns_test;
 
 #[cfg(all(test, feature="bench"))]
 mod field_benchmark;
+#[cfg(all(test, feature="bench"))]
+mod uct_benchmark;
 
 use std::io;
 use std::io::{Write, BufReader, BufRead};
