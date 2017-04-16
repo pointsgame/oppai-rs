@@ -41,7 +41,6 @@ or with
 
 TODO
 ====
-* Command line arguments.
 * Cache built DFA for fast patterns loading.
 * Fill debuts database.
 * Fill heuristics database.

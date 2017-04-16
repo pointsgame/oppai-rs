@@ -71,7 +71,7 @@ impl TrajectoriesPruning {
         return;
       }
     }
-    let trajectory = Trajectory::new(points.iter().cloned().collect(), hash);
+    let trajectory = Trajectory::new(points.to_vec(), hash);
     trajectories.push(trajectory);
   }
 

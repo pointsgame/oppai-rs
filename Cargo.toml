@@ -3,6 +3,7 @@ name = "opai-rs"
 version = "0.1.0"
 authors = ["Kurnevsky Evgeny <kurnevsky@gmail.com>"]
 license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
 
 [dependencies]
 rand = "*"
@@ -16,6 +17,8 @@ crossbeam = "*"
 rayon = "*"
 clippy = { version = "*", optional = true }
 tar = "*"
+chashmap = "*"
+clap = "*"
 
 [dev-dependencies]
 quickcheck = "*"

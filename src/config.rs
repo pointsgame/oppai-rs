@@ -1,234 +1,53 @@
-use std::fmt::{Display, Formatter};
-use std::fmt::Result as FmtResult;
-use std::io::{Write, Read};
-use std::str::FromStr;
 use num_cpus;
-use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
-use toml;
+use clap::{Arg, ArgGroup, App};
 
 const CONFIG_STR: &'static str = "config";
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum UcbType {
-  Winrate,
-  Ucb1,
-  Ucb1Tuned
-}
-
-const UCB_TYPE_WINRATE_STR: &'static str = "Winrate";
-
-const UCB_TYPE_UCB1_STR: &'static str = "Ucb1";
-
-const UCB_TYPE_UCB1_TUNED_STR: &'static str = "Ucb1Tuned";
-
-impl UcbType {
-  pub fn as_str(&self) -> &'static str {
-    match *self {
-      UcbType::Winrate => UCB_TYPE_WINRATE_STR,
-      UcbType::Ucb1 => UCB_TYPE_UCB1_STR,
-      UcbType::Ucb1Tuned => UCB_TYPE_UCB1_TUNED_STR
-    }
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum UcbType {
+    Winrate,
+    Ucb1,
+    Ucb1Tuned
   }
 }
 
-impl FromStr for UcbType {
-  type Err = &'static str;
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    match s {
-      UCB_TYPE_WINRATE_STR => Ok(UcbType::Winrate),
-      UCB_TYPE_UCB1_STR => Ok(UcbType::Ucb1),
-      UCB_TYPE_UCB1_TUNED_STR => Ok(UcbType::Ucb1Tuned),
-      _ => Err("Invalid string!")
-    }
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum UctKomiType {
+    None,
+    Static,
+    Dynamic
   }
 }
 
-impl Display for UcbType {
-  fn fmt(&self, f: &mut Formatter) -> FmtResult {
-    write!(f, "{}", self.as_str())
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum MinimaxMovesSorting {
+    None,
+    Random,
+    TrajectoriesCount
+    // Heuristic
   }
 }
 
-impl Encodable for UcbType {
-  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-    s.emit_str(self.as_str())
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum Solver {
+    Uct,
+    NegaScout,
+    Heuristic
   }
 }
 
-impl Decodable for UcbType {
-  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_str().and_then(|s| UcbType::from_str(s.as_str()).map_err(|s| d.error(s)))
-  }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum UctKomiType {
-  None,
-  Static,
-  Dynamic
-}
-
-const UCT_KOMI_TYPE_NONE_STR: &'static str = "None";
-
-const UCT_KOMI_TYPE_STATIC_STR: &'static str = "Static";
-
-const UCT_KOMI_TYPE_DYNAMIC_STR: &'static str = "Dynamic";
-
-impl UctKomiType {
-  pub fn as_str(&self) -> &'static str {
-    match *self {
-      UctKomiType::None => UCT_KOMI_TYPE_NONE_STR,
-      UctKomiType::Static => UCT_KOMI_TYPE_STATIC_STR,
-      UctKomiType::Dynamic => UCT_KOMI_TYPE_DYNAMIC_STR
-    }
-  }
-}
-
-impl FromStr for UctKomiType {
-  type Err = &'static str;
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    match s {
-      UCT_KOMI_TYPE_NONE_STR => Ok(UctKomiType::None),
-      UCT_KOMI_TYPE_STATIC_STR => Ok(UctKomiType::Static),
-      UCT_KOMI_TYPE_DYNAMIC_STR => Ok(UctKomiType::Dynamic),
-      _ => Err("Invalid string!")
-    }
-  }
-}
-
-impl Display for UctKomiType {
-  fn fmt(&self, f: &mut Formatter) -> FmtResult {
-    write!(f, "{}", self.as_str())
-  }
-}
-
-impl Encodable for UctKomiType {
-  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-    s.emit_str(self.as_str())
-  }
-}
-
-impl Decodable for UctKomiType {
-  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_str().and_then(|s| UctKomiType::from_str(s.as_str()).map_err(|s| d.error(s)))
-  }
-}
-
-const MINIMAX_MOVES_SORTING_NONE: &'static str = "None";
-
-const MINIMAX_MOVES_SORTING_RANDOM: &'static str = "Random";
-
-const MINIMAX_MOVES_SORTING_TRAJECTORIES_COUNT: &'static str = "TrajectoriesCount";
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum MinimaxMovesSorting {
-  None,
-  Random,
-  TrajectoriesCount
-  // Heuristic
-}
-
-impl MinimaxMovesSorting {
-  pub fn as_str(&self) -> &'static str {
-    match *self {
-      MinimaxMovesSorting::None => MINIMAX_MOVES_SORTING_NONE,
-      MinimaxMovesSorting::Random => MINIMAX_MOVES_SORTING_RANDOM,
-      MinimaxMovesSorting::TrajectoriesCount => MINIMAX_MOVES_SORTING_TRAJECTORIES_COUNT
-    }
-  }
-}
-
-impl FromStr for MinimaxMovesSorting {
-  type Err = &'static str;
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    match s {
-      MINIMAX_MOVES_SORTING_NONE => Ok(MinimaxMovesSorting::None),
-      MINIMAX_MOVES_SORTING_RANDOM => Ok(MinimaxMovesSorting::Random),
-      MINIMAX_MOVES_SORTING_TRAJECTORIES_COUNT => Ok(MinimaxMovesSorting::TrajectoriesCount),
-      _ => Err("Invalid string!")
-    }
-  }
-}
-
-impl Display for MinimaxMovesSorting {
-  fn fmt(&self, f: &mut Formatter) -> FmtResult {
-    write!(f, "{}", self.as_str())
-  }
-}
-
-impl Encodable for MinimaxMovesSorting {
-  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-    s.emit_str(self.as_str())
-  }
-}
-
-impl Decodable for MinimaxMovesSorting {
-  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_str().and_then(|s| MinimaxMovesSorting::from_str(s.as_str()).map_err(|s| d.error(s)))
-  }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Solver {
-  Uct,
-  NegaScout,
-  Heuristic
-}
-
-const SOLVER_UCT_STR: &'static str = "UCT";
-
-const SOLVER_NEGA_SCOUT_STR: &'static str = "NegaScout";
-
-const SOLVER_HEURISTIC_STR: &'static str = "Heuristic";
-
-impl Solver {
-  pub fn as_str(&self) -> &'static str {
-    match *self {
-      Solver::Uct => SOLVER_UCT_STR,
-      Solver::NegaScout => SOLVER_NEGA_SCOUT_STR,
-      Solver::Heuristic => SOLVER_HEURISTIC_STR
-    }
-  }
-}
-
-impl FromStr for Solver {
-  type Err = &'static str;
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    match s {
-      SOLVER_UCT_STR => Ok(Solver::Uct),
-      SOLVER_NEGA_SCOUT_STR => Ok(Solver::NegaScout),
-      SOLVER_HEURISTIC_STR => Ok(Solver::Heuristic),
-      _ => Err("Invalid string!")
-    }
-  }
-}
-
-impl Display for Solver {
-  fn fmt(&self, f: &mut Formatter) -> FmtResult {
-    write!(f, "{}", self.as_str())
-  }
-}
-
-impl Encodable for Solver {
-  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-    s.emit_str(self.as_str())
-  }
-}
-
-impl Decodable for Solver {
-  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_str().and_then(|s| Solver::from_str(s.as_str()).map_err(|s| d.error(s)))
-  }
-}
-
-#[derive(Clone, RustcDecodable, RustcEncodable)]
+#[derive(Clone, PartialEq, Debug)]
 struct Config {
   uct: UctConfig,
   minimax: MinimaxConfig,
   bot: BotConfig
 }
 
-#[derive(Clone, RustcDecodable, RustcEncodable)]
+#[derive(Clone, PartialEq, Debug)]
 struct UctConfig {
   radius: u32,
   ucb_type: UcbType,
@@ -243,14 +62,14 @@ struct UctConfig {
   komi_min_iterations: usize
 }
 
-#[derive(Clone, RustcDecodable, RustcEncodable)]
+#[derive(Clone, PartialEq, Debug)]
 struct MinimaxConfig {
   minimax_moves_sorting: MinimaxMovesSorting
 }
 
-#[derive(Clone, RustcDecodable, RustcEncodable)]
+#[derive(Clone, PartialEq, Debug)]
 struct BotConfig {
-  threads_count: Option<usize>,
+  threads_count: usize,
   time_gap: u32,
   solver: Solver
 }
@@ -274,7 +93,7 @@ const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
 };
 
 const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
-  threads_count: None,
+  threads_count: 4,
   time_gap: 100,
   solver: Solver::Uct
 };
@@ -285,8 +104,6 @@ const DEFAULT_CONFIG: Config = Config {
   bot: DEFAULT_BOT_CONFIG
 };
 
-static mut NUM_CPUS: usize = 4;
-
 static mut CONFIG: Config = DEFAULT_CONFIG;
 
 #[inline]
@@ -294,30 +111,152 @@ fn config() -> &'static Config {
   unsafe { &CONFIG }
 }
 
-pub fn init() {
-  let num_cpus = num_cpus::get();
+pub fn cli_parse() {
+  #[cfg_attr(feature="clippy", allow(zero_ptr))]
+  let num_cpus_string = num_cpus::get().to_string();
+  let matches = App::new(crate_name!())
+    .version(crate_version!())
+    .author(crate_authors!("\n"))
+    .about(crate_description!())
+    .group(ArgGroup::with_name("NegaScout")
+           .arg("moves-order"))
+    .group(ArgGroup::with_name("NegaScout")
+           .args(&[
+             "radius",
+             "depth",
+             "when-create-children",
+             "ucb-type",
+             "final-ucb-type",
+             "uctk",
+             "draw-weight",
+             "red",
+             "green",
+             "komi-type",
+             "komi-min-iterations"
+           ]))
+    .arg(Arg::with_name("solver")
+         .short("s")
+         .long("solver")
+         .help("Engine type for position estimation and the best move choosing")
+         .takes_value(true)
+         .possible_values(&Solver::variants())
+         .default_value("Uct"))
+    .arg(Arg::with_name("time-gap")
+         .short("g")
+         .long("time-gap")
+         .help("Number of milliseconds that is given to IO plus internal delay")
+         .takes_value(true)
+         .default_value("100"))
+    .arg(Arg::with_name("threads-count")
+         .short("t")
+         .long("threads-count")
+         .help("Number of threads to use. Best performance is achieved by specifying \
+                the number of physical CPU cores on the target computer. Will be determined \
+                automatically if not specified, but automatic resolution is prone to errors \
+                for multithreaded CPU-s")
+         .takes_value(true)
+         .default_value(&num_cpus_string))
+    .arg(Arg::with_name("moves-order")
+         .long("moves-order")
+         .help("Moves sorting method for NegaScout")
+         .takes_value(true)
+         .possible_values(&MinimaxMovesSorting::variants())
+         .default_value("TrajectoriesCount"))
+    .arg(Arg::with_name("radius")
+         .long("radius")
+         .help("Radius for points that will be considered by UCT search algorithm. \
+                The initial points are fixed once the UCT search algorithm starts. After \
+                that, only points that are close enough to staring ones are considered. \
+                Points that are more distant to any of the starting points are discarted")
+         .takes_value(true)
+         .default_value("3"))
+    .arg(Arg::with_name("depth")
+         .long("depth")
+         .help("Maximum depth of the UCT tree")
+         .takes_value(true)
+         .default_value("8"))
+    .arg(Arg::with_name("when-create-children")
+         .long("when-create-children")
+         .help("Child nodes in the UTC tree will be created only after this number of node visits.")
+         .takes_value(true)
+         .default_value("2"))
+    .arg(Arg::with_name("ucb-type")
+         .long("ucb-type")
+         .help("Formula of the UCT value")
+         .takes_value(true)
+         .possible_values(&UcbType::variants())
+         .default_value("Ucb1Tuned"))
+    .arg(Arg::with_name("final-ucb-type")
+         .long("final-ucb-type")
+         .help("Formula of the UCT value that will be used for best move choosing")
+         .takes_value(true)
+         .possible_values(&UcbType::variants())
+         .default_value("Winrate"))
+    .arg(Arg::with_name("uctk")
+         .long("uctk")
+         .help("UCT constant. Larger values give uniform search. Smaller values give very selective search")
+         .takes_value(true)
+         .default_value("1.0"))
+    .arg(Arg::with_name("draw-weight")
+         .long("draw-weight")
+         .help("Draw weight for UCT formula. Should be fractional number between 0 \
+                (weight of the defeat) and 1 (weight of the win). Smaller values give \
+                more aggressive game")
+         .takes_value(true)
+         .default_value("0.4"))
+    .arg(Arg::with_name("red")
+         .long("red")
+         .help("Red zone for dynamic komi for UCT. Should be fractional number \
+                between 0 and 1. Should also be less than green zone")
+         .takes_value(true)
+         .default_value("0.45"))
+    .arg(Arg::with_name("green")
+         .long("green")
+         .help("Green zone for dynamic komi for UCT. Should be fractional number \
+                between 0 and 1. Should also be more than red zone.")
+         .takes_value(true)
+         .default_value("0.5"))
+    .arg(Arg::with_name("komi-type")
+         .long("komi-type")
+         .help("Type of komi evaluation for UTC during the game")
+         .takes_value(true)
+         .possible_values(&UctKomiType::variants())
+         .default_value("Dynamic"))
+    .arg(Arg::with_name("komi-min-iterations")
+         .long("komi-min-iterations")
+         .help("Dynamic komi for UCT will be updated after this number of iterations")
+         .takes_value(true)
+         .default_value("3000"))
+    .get_matches();
+  let uct_config = UctConfig {
+    radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
+    ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
+    final_ucb_type: value_t!(matches.value_of("final-ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
+    draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
+    uctk: value_t!(matches.value_of("uctk"), f64).unwrap_or_else(|e| e.exit()),
+    when_create_children: value_t!(matches.value_of("when-create-children"), usize).unwrap_or_else(|e| e.exit()),
+    depth: value_t!(matches.value_of("depth"), u32).unwrap_or_else(|e| e.exit()),
+    komi_type: value_t!(matches.value_of("komi-type"), UctKomiType).unwrap_or_else(|e| e.exit()),
+    red: value_t!(matches.value_of("red"), f64).unwrap_or_else(|e| e.exit()),
+    green: value_t!(matches.value_of("green"), f64).unwrap_or_else(|e| e.exit()),
+    komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit())
+  };
+  let minimax_config = MinimaxConfig {
+    minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSorting).unwrap_or_else(|e| e.exit())
+  };
+  let bot_config = BotConfig {
+    threads_count: value_t!(matches.value_of("threads-count"), usize).unwrap_or_else(|e| e.exit()),
+    time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
+    solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit())
+  };
+  let config = Config {
+    uct: uct_config,
+    minimax: minimax_config,
+    bot: bot_config
+  };
   unsafe {
-    NUM_CPUS = num_cpus;
+    CONFIG = config;
   }
-  info!(target: CONFIG_STR, "Default threads count is {}.", num_cpus);
-}
-
-pub fn read<T: Read>(input: &mut T) {
-  let mut string = String::new();
-  input.read_to_string(&mut string).ok();
-  if let Some(config) = toml::decode_str::<Config>(string.as_str()) {
-    unsafe {
-      CONFIG = config
-    }
-    debug!(target: CONFIG_STR, "Config has been loaded.");
-  } else {
-    error!(target: CONFIG_STR, "Bad config file!");
-  }
-}
-
-pub fn write<T: Write>(output: &mut T) {
-  write!(output, "{}", toml::encode(config())).ok();
-  info!(target: CONFIG_STR, "Config has been written.");
 }
 
 #[inline]
@@ -357,7 +296,7 @@ pub fn uct_depth() -> u32 {
 
 #[inline]
 pub fn threads_count() -> usize {
-  config().bot.threads_count.unwrap_or(unsafe { NUM_CPUS })
+  config().bot.threads_count
 }
 
 #[inline]

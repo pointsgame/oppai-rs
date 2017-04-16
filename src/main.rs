@@ -25,6 +25,9 @@ extern crate rayon;
 
 extern crate tar;
 
+#[macro_use]
+extern crate clap;
+
 #[cfg(test)]
 extern crate quickcheck;
 
@@ -72,6 +75,7 @@ use std::default::Default;
 use player::Player;
 use bot::Bot;
 use patterns::Patterns;
+use config::cli_parse;
 
 const CONFIG_PATH: &'static str = "config/config.toml";
 
@@ -188,13 +192,8 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn main() {
+  cli_parse();
   log4rs::init_file(Path::new(LOG_CONFIG_PATH), Default::default()).ok();
-  config::init();
-  if let Ok(mut config_file) = File::open(CONFIG_PATH) {
-    config::read(&mut config_file);
-  } else if let Ok(mut config_file) = File::create(CONFIG_PATH) {
-    config::write(&mut config_file);
-  }
   let patterns = if let Ok(patterns_file) = File::open(PATTERNS_PATH) {
     Patterns::from_tar(patterns_file)
   } else {
