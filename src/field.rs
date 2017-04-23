@@ -7,24 +7,14 @@ use zobrist::Zobrist;
 
 pub type Pos = usize;
 
-#[cfg(feature="dsu")]
 #[derive(Clone, PartialEq)]
 struct FieldChange {
   score_red: i32,
   score_black: i32,
   hash: u64,
   points_changes: Vec<(Pos, Cell)>,
-  dsu_changes: Vec<(Pos, Pos)>,
-  dsu_size_change: Option<(Pos, u32)>
-}
-
-#[cfg(not(feature="dsu"))]
-#[derive(Clone, PartialEq)]
-struct FieldChange {
-  score_red: i32,
-  score_black: i32,
-  hash: u64,
-  points_changes: Vec<(Pos, Cell)>
+  #[cfg(feature="dsu")] dsu_changes: Vec<(Pos, Pos)>,
+  #[cfg(feature="dsu")] dsu_size_change: Option<(Pos, u32)>
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -35,7 +25,6 @@ enum IntersectionState {
   Down
 }
 
-#[cfg(feature="dsu")]
 #[derive(Clone, PartialEq)]
 pub struct Field {
   width: u32,
@@ -45,23 +34,8 @@ pub struct Field {
   score_black: i32,
   points_seq: Vec<Pos>,
   points: Vec<Cell>,
-  dsu: Vec<Pos>,
-  dsu_size: Vec<u32>,
-  changes: Vec<FieldChange>,
-  zobrist: Arc<Zobrist>,
-  hash: u64
-}
-
-#[cfg(not(feature="dsu"))]
-#[derive(Clone, PartialEq)]
-pub struct Field {
-  width: u32,
-  height: u32,
-  length: Pos,
-  score_red: i32,
-  score_black: i32,
-  points_seq: Vec<Pos>,
-  points: Vec<Cell>,
+  #[cfg(feature="dsu")] dsu: Vec<Pos>,
+  #[cfg(feature="dsu")] dsu_size: Vec<u32>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   hash: u64
