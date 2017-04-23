@@ -664,7 +664,7 @@ impl Field {
         sets.push(self.find_dsu_set(chain_pos));
       }
       let mut group = Vec::with_capacity(4);
-        let mut result = false;
+      let mut result = false;
       for (i, &set) in sets.iter().enumerate() {
         group.clear();
         for j in i .. input_points_count {
