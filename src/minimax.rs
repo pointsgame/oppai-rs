@@ -181,7 +181,10 @@ fn alpha_beta_parallel<T: Rng>(
             &mut local_rng,
             should_stop
           );
-          if cur_estimation > cur_alpha && !should_stop.load(Ordering::Relaxed) {
+          if should_stop.load(Ordering::Relaxed) {
+            break;
+          }
+          if cur_estimation > cur_alpha {
             cur_estimation = -alpha_beta(
               &mut local_field,
               depth - 1,
@@ -194,6 +197,11 @@ fn alpha_beta_parallel<T: Rng>(
               &mut local_rng,
               should_stop
             );
+          }
+          // We should check it before the best move assignment because it's possible
+          // that current estimation is higher than real in case of time out.
+          if should_stop.load(Ordering::Relaxed) {
+            break;
           }
           debug!(
             target: MINIMAX_STR,
