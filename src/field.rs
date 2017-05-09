@@ -1,4 +1,4 @@
-use std::{mem, iter};
+use std::mem;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use player::Player;
@@ -356,9 +356,9 @@ impl Field {
       score_red: 0,
       score_black: 0,
       points_seq: Vec::with_capacity(length),
-      points: iter::repeat(Cell::new(false)).take(length).collect(),
+      points: vec![Cell::new(false); length],
       dsu: (0 .. length).collect(),
-      dsu_size: iter::repeat(1).take(length).collect(),
+      dsu_size: vec![1; length],
       changes: Vec::with_capacity(length),
       zobrist: zobrist,
       hash: 0
@@ -371,7 +371,7 @@ impl Field {
       score_red: 0,
       score_black: 0,
       points_seq: Vec::with_capacity(length),
-      points: iter::repeat(Cell::new(false)).take(length).collect(),
+      points: vec![Cell::new(false); length],
       changes: Vec::with_capacity(length),
       zobrist: zobrist,
       hash: 0
