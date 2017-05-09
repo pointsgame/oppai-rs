@@ -15,8 +15,6 @@ extern crate log4rs;
 
 extern crate num_cpus;
 
-extern crate rustc_serialize;
-
 extern crate toml;
 
 extern crate crossbeam;
