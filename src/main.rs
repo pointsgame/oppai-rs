@@ -42,6 +42,7 @@ mod trajectories_pruning;
 mod common;
 mod uct;
 mod heuristic;
+mod hash_table;
 mod minimax;
 mod bot;
 mod rotate;
