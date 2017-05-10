@@ -19,6 +19,7 @@ pub struct HashEntry {
   estimation: i32
 }
 
+#[derive(Debug)]
 pub struct HashTable {
   entries: Vec<AtomicPtr<HashEntry>>
 }
@@ -109,6 +110,7 @@ impl HashTable {
   }
 }
 
+#[derive(Clone, Debug)]
 pub struct HashTablePair<'l> {
   pub cur_hash_table: &'l HashTable,
   pub enemy_hash_table: &'l HashTable
