@@ -15,7 +15,7 @@ extern crate log4rs;
 
 extern crate num_cpus;
 
-extern crate toml;
+extern crate itertools;
 
 extern crate crossbeam;
 
@@ -54,6 +54,8 @@ mod patterns;
 mod construct_field;
 #[cfg(test)]
 mod field_test;
+#[cfg(test)]
+mod hash_table_test;
 #[cfg(test)]
 mod minimax_test;
 #[cfg(test)]

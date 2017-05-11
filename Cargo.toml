@@ -17,6 +17,7 @@ rayon = "*"
 clippy = { version = "*", optional = true }
 tar = "*"
 clap = "*"
+itertools = "*"
 
 [dev-dependencies]
 quickcheck = "*"
