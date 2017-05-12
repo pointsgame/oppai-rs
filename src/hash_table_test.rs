@@ -1,7 +1,7 @@
 use quickcheck;
 use quickcheck::{Arbitrary, Gen};
 use field::Pos;
-use hash_table::{HashType, HashData};
+use hash_table::{HashType, HashData, HashTable};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct HashTypeArbitrary {
@@ -27,4 +27,26 @@ fn hash_data_check() {
       hash_data.estimation() == estimation
   }
   quickcheck::quickcheck(prop as fn(u32, HashTypeArbitrary, Pos, i32) -> bool);
+}
+
+#[test]
+fn hash_table_put_get_one_entry() {
+  let hash_table = HashTable::new(100);
+  let hash = 1234567890u64;
+  let data = HashData::new(3, HashType::Exact, 17, 1234);
+  hash_table.put(hash, data);
+  assert_eq!(hash_table.get(hash), data);
+}
+
+#[test]
+fn hash_table_collision() {
+  let hash_table = HashTable::new(100);
+  let hash1 = 123u64;
+  let hash2 = 723u64;
+  let data1 = HashData::new(3, HashType::Exact, 17, 1234);
+  let data2 = HashData::new(7, HashType::Alpha, 23, -4321);
+  hash_table.put(hash1, data1);
+  hash_table.put(hash2, data2);
+  assert_eq!(hash_table.get(hash1).hash_type(), HashType::Empty);
+  assert_eq!(hash_table.get(hash2), data2);
 }
