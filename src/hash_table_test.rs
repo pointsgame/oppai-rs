@@ -1,5 +1,5 @@
 use quickcheck;
-use quickcheck::{Arbitrary, Gen, TestResult};
+use quickcheck::{Arbitrary, Gen};
 use field::Pos;
 use hash_table::{HashType, HashData};
 
@@ -19,16 +19,12 @@ impl Arbitrary for HashTypeArbitrary {
 #[test]
 fn hash_data_check() {
   #[cfg_attr(feature="clippy", allow(needless_pass_by_value))]
-  fn prop(depth: u32, hash_type_arbitrary: HashTypeArbitrary, pos: Pos, estimation: i32) -> TestResult {
+  fn prop(depth: u32, hash_type_arbitrary: HashTypeArbitrary, pos: Pos, estimation: i32) -> bool {
     let hash_data = HashData::new(depth, hash_type_arbitrary.hash_type, pos, estimation);
-    if hash_data.depth() != depth ||
-      hash_data.hash_type() != hash_type_arbitrary.hash_type ||
-      hash_data.pos() != pos ||
-      hash_data.estimation() != estimation {
-      TestResult::failed()
-    } else {
-      TestResult::passed()
-    }
+    hash_data.depth() == depth &&
+      hash_data.hash_type() == hash_type_arbitrary.hash_type &&
+      hash_data.pos() == pos &&
+      hash_data.estimation() == estimation
   }
-  quickcheck::quickcheck(prop as fn(u32, HashTypeArbitrary, Pos, i32) -> TestResult);
+  quickcheck::quickcheck(prop as fn(u32, HashTypeArbitrary, Pos, i32) -> bool);
 }
