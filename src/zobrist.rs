@@ -1,3 +1,4 @@
+use itertools;
 use rand::Rng;
 use field::Pos;
 
@@ -8,13 +9,9 @@ pub struct Zobrist {
 
 impl Zobrist {
   pub fn new<T: Rng>(length: Pos, rng: &mut T) -> Zobrist {
-    let mut zobrist = Zobrist {
-      hashes: Vec::with_capacity(length)
-    };
-    for _ in 0 .. length {
-      zobrist.hashes.push(rng.gen());
+    Zobrist {
+      hashes: itertools::repeat_call(|| rng.gen()).take(length).collect()
     }
-    zobrist
   }
 
   pub fn get_hash(&self, pos: Pos) -> u64 {
