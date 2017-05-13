@@ -50,3 +50,25 @@ fn hash_table_collision() {
   assert_eq!(hash_table.get(hash1).hash_type(), HashType::Empty);
   assert_eq!(hash_table.get(hash2), data2);
 }
+
+#[test]
+fn hash_table_priority_replace() {
+  let hash_table = HashTable::new(100);
+  let hash = 1234567890u64;
+  let data1 = HashData::new(3, HashType::Alpha, 17, 1234);
+  let data2 = HashData::new(3, HashType::Exact, 19, 1237);
+  hash_table.put(hash, data1);
+  hash_table.put(hash, data2);
+  assert_eq!(hash_table.get(hash), data2);
+}
+
+#[test]
+fn hash_table_priority_remain() {
+let hash_table = HashTable::new(100);
+  let hash = 1234567890u64;
+  let data1 = HashData::new(3, HashType::Exact, 17, 1234);
+  let data2 = HashData::new(3, HashType::Alpha, 19, 1233);
+  hash_table.put(hash, data1);
+  hash_table.put(hash, data2);
+  assert_eq!(hash_table.get(hash), data1);
+}
