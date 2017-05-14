@@ -105,6 +105,7 @@ fn alpha_beta<T: Rng>(
       rng,
       should_stop
     );
+    field.undo();
     // We should check it before putting the best move to the hash table because
     // it's possible that current estimation is higher than real in case of time out.
     if should_stop.load(Ordering::Relaxed) {
