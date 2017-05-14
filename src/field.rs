@@ -843,6 +843,11 @@ impl Field {
   }
 
   #[inline]
+  pub fn colored_hash(&self, player: Player) -> u64 {
+    self.hash ^ player as u64
+  }
+
+  #[inline]
   pub fn hash_at(&self, move_number: usize) -> Option<u64> {
     let moves_count = self.moves_count();
     if move_number < moves_count {

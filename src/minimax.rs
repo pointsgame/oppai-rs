@@ -8,9 +8,21 @@ use config;
 use player::Player;
 use field::{Pos, Field};
 use trajectories_pruning::TrajectoriesPruning;
+use hash_table::{HashType, HashData, HashTable};
 use common;
 
 const MINIMAX_STR: &'static str = "minimax";
+
+#[inline]
+fn put_new_hash_value(hash_table: &HashTable, hash: u64, pos: Pos, depth: u32, cur_estimation: i32, beta: i32) {
+  let new_hash_type = if cur_estimation < beta {
+    HashType::Exact
+  } else {
+    HashType::Beta
+  };
+  let new_hash_value = HashData::new(depth, new_hash_type, pos, cur_estimation);
+  hash_table.put(hash, new_hash_value);
+}
 
 fn alpha_beta<T: Rng>(
   field: &mut Field,
@@ -18,12 +30,16 @@ fn alpha_beta<T: Rng>(
   last_pos: Pos,
   player: Player,
   trajectories_pruning: &TrajectoriesPruning,
-  mut alpha: i32,
+  alpha: i32,
   beta: i32,
   empty_board: &mut Vec<u32>,
+  hash_table: &HashTable,
   rng: &mut T,
   should_stop: &AtomicBool
 ) -> i32 {
+  if should_stop.load(Ordering::Relaxed) {
+    return alpha;
+  }
   let enemy = player.next();
   if common::is_last_move_stupid(field, last_pos, enemy) {
     return i32::max_value();
@@ -35,10 +51,75 @@ fn alpha_beta<T: Rng>(
   if moves.is_empty() {
     return field.score(player);
   }
-  for &pos in moves {
-    if should_stop.load(Ordering::Relaxed) {
-      break;
+  let mut cur_alpha = alpha;
+  let hash_value = hash_table.get(field.colored_hash(player));
+  let hash_type = hash_value.hash_type();
+  let hash_pos_option = match hash_type {
+    HashType::Exact | HashType::Beta => {
+      if hash_value.depth() == depth {
+        let hash_estimation = hash_value.estimation();
+        if hash_estimation > alpha {
+          cur_alpha = hash_estimation;
+          if cur_alpha >= beta {
+            return cur_alpha;
+          }
+        }
+      }
+      Some(hash_value.pos())
+    },
+    HashType::Alpha => {
+      if hash_value.depth() == depth && hash_value.estimation() <= alpha {
+        return alpha;
+      }
+      None
+    },
+    HashType::Empty => None
+  };
+  // Try the best move from the hash table.
+  if let Some(hash_pos) = hash_pos_option {
+    field.put_point(hash_pos, player);
+    if common::is_penult_move_stuped(field) {
+      field.undo();
+      return i32::max_value();
     }
+    let next_trajectories_pruning = TrajectoriesPruning::from_last(
+      field,
+      enemy,
+      depth - 1,
+      empty_board,
+      rng,
+      trajectories_pruning,
+      hash_pos,
+      should_stop
+    );
+    let cur_estimation = -alpha_beta(
+      field,
+      depth - 1,
+      hash_pos,
+      enemy,
+      &next_trajectories_pruning,
+      -beta,
+      -cur_alpha,
+      empty_board,
+      hash_table,
+      rng,
+      should_stop
+    );
+    // We should check it before putting the best move to the hash table because
+    // it's possible that current estimation is higher than real in case of time out.
+    if should_stop.load(Ordering::Relaxed) {
+      return cur_alpha;
+    }
+    if cur_estimation > cur_alpha {
+      put_new_hash_value(hash_table, field.colored_hash(player), hash_pos, depth, cur_estimation, beta);
+      cur_alpha = cur_estimation;
+      if cur_alpha >= beta {
+        return cur_alpha;
+      }
+    }
+  }
+  // For all moves instead the one from the hash table.
+  for &pos in moves.iter().filter(|&&pos| Some(pos) != hash_pos_option) {
     field.put_point(pos, player);
     if common::is_penult_move_stuped(field) {
       field.undo();
@@ -60,13 +141,14 @@ fn alpha_beta<T: Rng>(
       pos,
       enemy,
       &next_trajectories_pruning,
-      -alpha - 1,
-      -alpha,
+      -cur_alpha - 1,
+      -cur_alpha,
       empty_board,
+      hash_table,
       rng,
       should_stop
     );
-    if cur_estimation > alpha && cur_estimation < beta {
+    if cur_estimation > cur_alpha && cur_estimation < beta {
       cur_estimation = -alpha_beta(
         field,
         depth - 1,
@@ -76,19 +158,30 @@ fn alpha_beta<T: Rng>(
         -beta,
         -cur_estimation,
         empty_board,
+        hash_table,
         rng,
         should_stop
       );
     }
     field.undo();
-    if cur_estimation > alpha {
-      alpha = cur_estimation;
-      if alpha >= beta {
+    // We should check it before putting the best move to the hash table because
+    // it's possible that current estimation is higher than real in case of time out.
+    if should_stop.load(Ordering::Relaxed) {
+      return cur_alpha;
+    }
+    if cur_estimation > cur_alpha {
+      put_new_hash_value(hash_table, field.colored_hash(player), pos, depth, cur_estimation, beta);
+      cur_alpha = cur_estimation;
+      if cur_alpha >= beta {
         break;
       }
     }
   }
-  alpha
+  if cur_alpha == alpha {
+    let new_hash_value = HashData::new(depth, HashType::Alpha, 0, alpha);
+    hash_table.put(field.colored_hash(player), new_hash_value);
+  }
+  cur_alpha
 }
 
 fn alpha_beta_parallel<T: Rng>(
@@ -98,6 +191,7 @@ fn alpha_beta_parallel<T: Rng>(
   alpha: i32,
   beta: i32,
   trajectories_pruning: &TrajectoriesPruning,
+  hash_table: &HashTable,
   rng: &mut T,
   best_move: &mut Option<Pos>,
   should_stop: &AtomicBool
@@ -178,6 +272,7 @@ fn alpha_beta_parallel<T: Rng>(
             -cur_alpha - 1,
             -cur_alpha,
             &mut local_empty_board,
+            hash_table,
             &mut local_rng,
             should_stop
           );
@@ -194,6 +289,7 @@ fn alpha_beta_parallel<T: Rng>(
               -beta,
               -cur_estimation,
               &mut local_empty_board,
+              hash_table,
               &mut local_rng,
               should_stop
             );
@@ -261,6 +357,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, rng: &mut T, depth: u3
   }
   let should_stop = AtomicBool::new(false);
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let hash_table = HashTable::new(1000000);
   let trajectories_pruning = TrajectoriesPruning::new(
     field,
     player,
@@ -278,6 +375,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, rng: &mut T, depth: u3
     i32::min_value() + 1,
     i32::max_value(),
     &trajectories_pruning,
+    &hash_table,
     rng,
     &mut best_move,
     &should_stop
@@ -307,6 +405,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, rng: &mut T, depth: u3
     -estimation,
     -estimation + 1,
     &enemy_trajectories_pruning,
+    &hash_table,
     rng,
     &mut enemy_best_move,
     &should_stop
@@ -342,6 +441,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T,
     let mut cur_best_move = None;
     let mut enemy_best_move = None;
     let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+    let hash_table = HashTable::new(1000000);
     let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, rng, &should_stop);
     while !should_stop.load(Ordering::Relaxed) {
       let estimation = alpha_beta_parallel(
@@ -351,6 +451,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T,
         i32::min_value() + 1,
         i32::max_value(),
         &trajectories_pruning,
+        &hash_table,
         rng,
         &mut cur_best_move,
         &should_stop
@@ -388,6 +489,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T,
         -estimation,
         -estimation + 1,
         &enemy_trajectories_pruning,
+        &hash_table,
         rng,
         &mut enemy_best_move,
         &should_stop

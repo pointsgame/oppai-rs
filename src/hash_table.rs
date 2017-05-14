@@ -199,18 +199,3 @@ impl HashTable {
     self.entries[idx].verified(hash)
   }
 }
-
-#[derive(Clone, Debug)]
-pub struct HashTablePair<'l> {
-  pub cur_hash_table: &'l HashTable,
-  pub enemy_hash_table: &'l HashTable
-}
-
-impl<'l> HashTablePair<'l> {
-  pub fn swap(&self) -> HashTablePair<'l> {
-    HashTablePair {
-      cur_hash_table: self.enemy_hash_table,
-      enemy_hash_table: self.cur_hash_table
-    }
-  }
-}
