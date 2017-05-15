@@ -119,8 +119,9 @@ pub fn cli_parse() {
     .author(crate_authors!("\n"))
     .about(crate_description!())
     .group(ArgGroup::with_name("NegaScout")
-           .arg("moves-order"))
-    .group(ArgGroup::with_name("NegaScout")
+           .arg("moves-order")
+           .multiple(true))
+    .group(ArgGroup::with_name("UCT")
            .args(&[
              "radius",
              "depth",
@@ -133,7 +134,8 @@ pub fn cli_parse() {
              "green",
              "komi-type",
              "komi-min-iterations"
-           ]))
+           ])
+           .multiple(true))
     .arg(Arg::with_name("solver")
          .short("s")
          .long("solver")
