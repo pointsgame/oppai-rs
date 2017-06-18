@@ -21,22 +21,22 @@ Features
 Running
 ====
 
-Once you have rust installed on your system, compile with
+Once you have rust installed on your system, compile with:
 
 ```sh
-    cargo build --release
+cargo build --release
 ```
 
-Run with
+Run with:
 
 ```sh
-    cargo run --release
+cargo run --release
 ```
 
-or with
+or with:
 
 ```sh
-    ./target/release/opai-rs
+./target/release/opai-rs
 ```
 
 TODO
