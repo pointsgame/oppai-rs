@@ -16,6 +16,9 @@ struct UctNode {
   wins: AtomicUsize,
   draws: AtomicUsize,
   visits: AtomicUsize,
+  amaf_wins: AtomicUsize,
+  amaf_draws: AtomicUsize,
+  amaf_visits: AtomicUsize,
   pos: Pos,
   child: AtomicPtr<UctNode>,
   sibling: Option<Box<UctNode>>
@@ -33,6 +36,9 @@ impl UctNode {
       wins: AtomicUsize::new(0),
       draws: AtomicUsize::new(0),
       visits: AtomicUsize::new(0),
+      amaf_wins: AtomicUsize::new(0),
+      amaf_draws: AtomicUsize::new(0),
+      amaf_visits: AtomicUsize::new(0),
       pos: pos,
       child: AtomicPtr::new(ptr::null_mut()),
       sibling: None
@@ -125,6 +131,18 @@ impl UctNode {
     self.draws.load(Ordering::Relaxed)
   }
 
+  pub fn get_amaf_visits(&self) -> usize {
+    self.amaf_visits.load(Ordering::Relaxed)
+  }
+
+  pub fn get_amaf_wins(&self) -> usize {
+    self.amaf_wins.load(Ordering::Relaxed)
+  }
+
+  pub fn get_amaf_draws(&self) -> usize {
+    self.amaf_draws.load(Ordering::Relaxed)
+  }
+
   pub fn add_win(&self) {
     self.visits.fetch_add(1, Ordering::Relaxed);
     self.wins.fetch_add(1, Ordering::Relaxed);
@@ -139,16 +157,36 @@ impl UctNode {
     self.visits.fetch_add(1, Ordering::Relaxed);
   }
 
+  pub fn add_amaf_win(&self) {
+    self.amaf_visits.fetch_add(1, Ordering::Relaxed);
+    self.amaf_wins.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn add_amaf_draw(&self) {
+    self.amaf_visits.fetch_add(1, Ordering::Relaxed);
+    self.amaf_draws.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn add_amaf_loose(&self) {
+    self.amaf_visits.fetch_add(1, Ordering::Relaxed);
+  }
+
   pub fn lose_node(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
     self.visits.store(usize::max_value(), Ordering::Relaxed);
+    self.amaf_wins.store(0, Ordering::Relaxed);
+    self.amaf_draws.store(0, Ordering::Relaxed);
+    self.amaf_visits.store(0, Ordering::Relaxed);
   }
 
   pub fn clear_stats(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
     self.visits.store(0, Ordering::Relaxed);
+    self.amaf_wins.store(0, Ordering::Relaxed);
+    self.amaf_draws.store(0, Ordering::Relaxed);
+    self.amaf_visits.store(0, Ordering::Relaxed);
   }
 }
 
@@ -311,14 +349,28 @@ impl UctRoot {
     UctRoot::random_result(field, player, komi)
   }
 
-  fn ucb(parent: &UctNode, node: &UctNode, ucb_type: UcbType) -> f64 {
+  fn beta(node: &UctNode) -> f64 {
+    let visits = node.get_visits() as f64;
+    let amaf_visits = node.get_amaf_visits() as f64;
+    amaf_visits / (amaf_visits + visits + visits * amaf_visits * config::rave_bias())
+  }
+
+  fn ucb(parent: &UctNode, node: &UctNode, ucb_type: UcbType, rave: bool) -> f64 {
     let wins = node.get_wins() as f64;
     let draws = node.get_draws() as f64;
     let visits = node.get_visits() as f64;
+    let amaf_wins = node.get_amaf_wins() as f64;
+    let amaf_draws = node.get_amaf_draws() as f64;
+    let amaf_visits = node.get_amaf_visits() as f64;
     let parent_visits = parent.get_visits() as f64;
     let uct_draw_weight = config::uct_draw_weight();
     let uctk = config::uctk();
-    let win_rate = (wins + draws * uct_draw_weight) / visits;
+    let beta = UctRoot::beta(node);
+    let win_rate = if rave {
+      (wins + draws * uct_draw_weight) / visits * (1f64 - beta) + (amaf_wins + amaf_draws * uct_draw_weight) / amaf_visits * beta
+    } else {
+      (wins + draws * uct_draw_weight) / visits
+    };
     let uct = match ucb_type {
       UcbType::Winrate => 0f64,
       UcbType::Ucb1 => uctk * f64::sqrt(2.0 * f64::ln(parent_visits) / visits),
@@ -359,7 +411,7 @@ impl UctRoot {
       } else if visits == 0 {
         return Some(next_node);
       } else {
-        let uct_value = UctRoot::ucb(node, next_node, config::ucb_type());
+        let uct_value = UctRoot::ucb(node, next_node, config::ucb_type(), config::rave());
         if uct_value > best_uct {
           best_uct = uct_value;
           result = Some(next_node);
@@ -368,6 +420,26 @@ impl UctRoot {
       next = next_node.get_sibling_ref();
     }
     result
+  }
+
+  fn update_amaf_values(node: Option<&UctNode>, field: &Field, player: Player, random_result: Option<Player>) {
+    fn for_all_amaf_nodes<F: Fn(&UctNode)>(mut next: Option<&UctNode>, field: &Field, player: Player, f: F) {
+      while let Some(node) = next {
+        if node.get_visits() != usize::max_value() && field.cell(node.get_pos()).is_players_point(player) {
+          f(node);
+        }
+        next = node.get_sibling_ref();
+      }
+    }
+    if let Some(player_random_result) = random_result {
+      if player_random_result == player {
+        for_all_amaf_nodes(node, field, player, |node| node.add_amaf_win());
+      } else {
+        for_all_amaf_nodes(node, field, player, |node| node.add_amaf_loose());
+      }
+    } else {
+      for_all_amaf_nodes(node, field, player, |node| node.add_amaf_draw());
+    }
   }
 
   fn play_simulation_rec<T: Rng>(field: &mut Field, player: Player, node: &UctNode, possible_moves: &mut Vec<Pos>, rng: &mut T, komi: i32, depth: u32) -> Option<Player> {
@@ -391,7 +463,9 @@ impl UctRoot {
           node.lose_node();
           return Some(player);
         }
-        UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
+        let result = UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1);
+        UctRoot::update_amaf_values(node.get_child_ref(), field, player, result);
+        result
       } else {
         UctRoot::random_result(field, player, komi)
       }
@@ -479,9 +553,9 @@ impl UctRoot {
     if let Some(ref root) = self.node {
       let mut next = root.get_child_ref();
       while let Some(next_node) = next {
-        let uct_value = UctRoot::ucb(root, next_node, config::final_ucb_type());
+        let uct_value = UctRoot::ucb(root, next_node, config::final_ucb_type(), config::final_rave());
         let pos = next_node.get_pos();
-        info!(target: UCT_STR, "Uct for move ({0}, {1}) is {2}, {3} wins, {4} draws, {5} visits.", field.to_x(pos), field.to_y(pos), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits());
+        info!(target: UCT_STR, "Uct for move ({0}, {1}) is {2}, {3} wins, {4} draws, {5} visits, {6} amaf wins, {7} amaf draws, {8} amaf visits.", field.to_x(pos), field.to_y(pos), uct_value, next_node.get_wins(), next_node.get_draws(), next_node.get_visits(), next_node.get_amaf_wins(), next_node.get_amaf_draws(), next_node.get_amaf_visits());
         if uct_value > best_uct || uct_value == best_uct && rng.gen() {
           best_uct = uct_value;
           result = Some(pos);

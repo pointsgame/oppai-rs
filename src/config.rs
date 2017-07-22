@@ -332,6 +332,21 @@ pub fn time_gap() -> u32 {
 }
 
 #[inline]
+pub fn rave() -> bool {
+  true
+}
+
+#[inline]
+pub fn final_rave() -> bool {
+  false
+}
+
+#[inline]
+pub fn rave_bias() -> f64 {
+  0.01
+}
+
+#[inline]
 pub fn solver() -> Solver {
   config().bot.solver
 }
