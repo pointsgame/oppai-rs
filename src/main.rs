@@ -54,6 +54,8 @@ mod construct_field;
 #[cfg(test)]
 mod field_test;
 #[cfg(test)]
+mod minimax_test;
+#[cfg(test)]
 mod patterns_test;
 
 #[cfg(all(test, feature="bench"))]
