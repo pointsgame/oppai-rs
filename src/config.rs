@@ -64,7 +64,8 @@ struct UctConfig {
 
 #[derive(Clone, PartialEq, Debug)]
 struct MinimaxConfig {
-  minimax_moves_sorting: MinimaxMovesSorting
+  minimax_moves_sorting: MinimaxMovesSorting,
+  hash_table_size: usize
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -89,7 +90,8 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
 };
 
 const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
-  minimax_moves_sorting: MinimaxMovesSorting::Random
+  minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
+  hash_table_size: 10000
 };
 
 const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
@@ -158,6 +160,11 @@ pub fn cli_parse() {
                 for multithreaded CPU-s")
          .takes_value(true)
          .default_value(&num_cpus_string))
+    .arg(Arg::with_name("hash-table-size")
+         .long("hash-table-size")
+         .help("Count of elements that hash table for NegaScout can contain")
+         .takes_value(true)
+         .default_value("10000"))
     .arg(Arg::with_name("moves-order")
          .long("moves-order")
          .help("Moves sorting method for NegaScout")
@@ -179,7 +186,7 @@ pub fn cli_parse() {
          .default_value("8"))
     .arg(Arg::with_name("when-create-children")
          .long("when-create-children")
-         .help("Child nodes in the UTC tree will be created only after this number of node visits.")
+         .help("Child nodes in the UTC tree will be created only after this number of node visits")
          .takes_value(true)
          .default_value("2"))
     .arg(Arg::with_name("ucb-type")
@@ -244,7 +251,8 @@ pub fn cli_parse() {
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit())
   };
   let minimax_config = MinimaxConfig {
-    minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSorting).unwrap_or_else(|e| e.exit())
+    minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSorting).unwrap_or_else(|e| e.exit()),
+    hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit())
   };
   let bot_config = BotConfig {
     threads_count: value_t!(matches.value_of("threads-count"), usize).unwrap_or_else(|e| e.exit()),
@@ -324,6 +332,11 @@ pub fn uct_komi_min_iterations() -> usize {
 #[inline]
 pub fn minimax_moves_sorting() -> MinimaxMovesSorting {
   config().minimax.minimax_moves_sorting
+}
+
+#[inline]
+pub fn hash_table_size() -> usize {
+  config().minimax.hash_table_size
 }
 
 #[inline]
