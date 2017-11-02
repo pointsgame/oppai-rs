@@ -1,7 +1,7 @@
 Opai-rs
 ====
 
-Opai-rs an artificial intelligence for the game of points.
+Opai-rs is an artificial intelligence for the game of points.
 
 It's written in rust language and implements "points console AI protocol v6". (See /doc/PointsAIProtocol6.txt for details.)
 
@@ -14,6 +14,7 @@ Features
 * UCT caching that persists between moves.
 * Trajectories for moves pruning in the NegaScout search tree.
 * Lock-free multi-threading for both NegaScout and UCT.
+* Transposition table using Zobrist hashing for NegaScout.
 * DFA-based patterns searching.
 * DSU to optimize capturing (optional).
 * Time-based (`gen_move_with_time`) and complexity-based (`gen_move_with_complexity`) calculations.
@@ -46,7 +47,6 @@ TODO
 * Fill heuristics database.
 * Use patterns for UCT random games (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
 * Use patterns for NegaScout best move prediction.
-* Use Zobrist hashes for NegaScout (wait for concurrent hashmap implementation in rust).
 * Complex estimating function for NegaScout (see [link](https://www.gnu.org/software/gnugo/gnugo_13.html#SEC167))
 * MTD(f).
 * Smart time control for UCT (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
