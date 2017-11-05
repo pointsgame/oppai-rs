@@ -8,6 +8,7 @@ use zobrist::Zobrist;
 use field;
 use field::Field;
 use uct::UctRoot;
+use hash_table::HashTable;
 use heuristic;
 use minimax;
 use patterns::Patterns;
@@ -31,7 +32,8 @@ pub struct Bot {
   patterns: Arc<Patterns>,
   zobrist: Arc<Zobrist>,
   field: Field,
-  uct: UctRoot
+  uct: UctRoot,
+  hash_table: HashTable
 }
 
 impl Bot {
@@ -42,12 +44,14 @@ impl Bot {
     let mut rng = XorShiftRng::from_seed(seed_array);
     let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
     let field_zobrist = zobrist.clone();
+    let hash_table = HashTable::new(config::hash_table_size());
     Bot {
       rng: rng,
       patterns: patterns,
       zobrist: zobrist,
       field: Field::new(width, height, field_zobrist),
-      uct: UctRoot::new(length)
+      uct: UctRoot::new(length),
+      hash_table: hash_table
     }
   }
 
@@ -124,7 +128,7 @@ impl Bot {
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
       Solver::NegaScout => {
-        minimax::minimax_with_time(&mut self.field, player, &mut self.rng, time - config::time_gap())
+        minimax::minimax_with_time(&mut self.field, player, &self.hash_table, &mut self.rng, time - config::time_gap())
           .or_else(|| heuristic::heuristic(&self.field, player))
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },
@@ -157,7 +161,7 @@ impl Bot {
       },
       Solver::NegaScout => {
         let depth = (complexity - MIN_COMPLEXITY) * (MAX_MINIMAX_DEPTH - MIN_MINIMAX_DEPTH) / (MAX_COMPLEXITY - MIN_COMPLEXITY) + MIN_MINIMAX_DEPTH;
-        minimax::minimax(&mut self.field, player, &mut self.rng, depth)
+        minimax::minimax(&mut self.field, player, &self.hash_table, &mut self.rng, depth)
           .or_else(|| heuristic::heuristic(&self.field, player))
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       },

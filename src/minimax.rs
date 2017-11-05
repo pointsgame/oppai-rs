@@ -351,14 +351,13 @@ fn alpha_beta_parallel<T: Rng>(
   cur_alpha as i32
 }
 
-pub fn minimax<T: Rng>(field: &mut Field, player: Player, rng: &mut T, depth: u32) -> Option<Pos> {
+pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable, rng: &mut T, depth: u32) -> Option<Pos> {
   info!(target: MINIMAX_STR, "Starting minimax with depth {} and player {}.", depth, player);
   if depth == 0 {
     return None;
   }
   let should_stop = AtomicBool::new(false);
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-  let hash_table = HashTable::new(config::hash_table_size());
   let trajectories_pruning = TrajectoriesPruning::new(
     field,
     player,
@@ -428,7 +427,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, rng: &mut T, depth: u3
   }
 }
 
-pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T, time: u32) -> Option<Pos> {
+pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable, rng: &mut T, time: u32) -> Option<Pos> {
   let should_stop = AtomicBool::new(false);
   crossbeam::scope(|scope| {
     scope.spawn(|| {
@@ -442,7 +441,6 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, rng: &mut T,
     let mut cur_best_move = None;
     let mut enemy_best_move = None;
     let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-    let hash_table = HashTable::new(config::hash_table_size());
     let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, rng, &should_stop);
     while !should_stop.load(Ordering::Relaxed) {
       let estimation = alpha_beta_parallel(
