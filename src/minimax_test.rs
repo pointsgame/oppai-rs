@@ -1,5 +1,6 @@
 use rand::XorShiftRng;
 use player::Player;
+use hash_table::HashTable;
 use minimax::minimax;
 use construct_field::construct_field;
 
@@ -32,6 +33,7 @@ fn find_best_move() {
     "
   );
   let mut rng = XorShiftRng::new_unseeded();
-  let pos = minimax(&mut field, Player::Red, &mut rng, 8);
+  let hash_table = HashTable::new(1000);
+  let pos = minimax(&mut field, Player::Red, &hash_table, &mut rng, 8);
   assert_eq!(pos, Some(field.to_pos(5, 2)));
 }
