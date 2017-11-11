@@ -59,6 +59,8 @@ mod hash_table_test;
 #[cfg(test)]
 mod minimax_test;
 #[cfg(test)]
+mod uct_test;
+#[cfg(test)]
 mod patterns_test;
 
 #[cfg(all(test, feature="bench"))]

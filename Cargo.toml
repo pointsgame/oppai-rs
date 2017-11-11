@@ -33,6 +33,12 @@ lto = false
 debug = true
 panic = "unwind"
 
+[profile.test]
+opt-level = 3
+lto = false
+debug = true
+panic = "unwind"
+
 [profile.bench]
 opt-level = 3
 lto = true
