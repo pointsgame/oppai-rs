@@ -499,7 +499,7 @@ impl UctRoot {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|| {
-        thread::sleep(Duration::from_millis(time as u64));
+        thread::sleep(Duration::from_millis(u64::from(time)));
         should_stop.store(true, Ordering::Relaxed);
       });
       self.best_move_generic(field, player, rng, &should_stop, usize::max_value())

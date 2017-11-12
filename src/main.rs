@@ -230,7 +230,7 @@ fn main() {
           if split.next().is_some() {
             write_init_error(&mut output, id);
           } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
-            bot_option = Some(Bot::new(x, y, seed, patterns_arc.clone()));
+            bot_option = Some(Bot::new(x, y, seed, Arc::clone(&patterns_arc)));
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);

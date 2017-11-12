@@ -375,7 +375,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable
     i32::min_value() + 1,
     i32::max_value(),
     &trajectories_pruning,
-    &hash_table,
+    hash_table,
     rng,
     &mut best_move,
     &should_stop
@@ -405,7 +405,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable
     -estimation,
     -estimation + 1,
     &enemy_trajectories_pruning,
-    &hash_table,
+    hash_table,
     rng,
     &mut enemy_best_move,
     &should_stop
@@ -431,7 +431,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
   let should_stop = AtomicBool::new(false);
   crossbeam::scope(|scope| {
     scope.spawn(|| {
-      thread::sleep(Duration::from_millis(time as u64));
+      thread::sleep(Duration::from_millis(u64::from(time)));
       debug!(target: MINIMAX_STR, "Time-out!");
       should_stop.store(true, Ordering::Relaxed);
     });
@@ -450,7 +450,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
         i32::min_value() + 1,
         i32::max_value(),
         &trajectories_pruning,
-        &hash_table,
+        hash_table,
         rng,
         &mut cur_best_move,
         &should_stop
@@ -488,7 +488,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
         -estimation,
         -estimation + 1,
         &enemy_trajectories_pruning,
-        &hash_table,
+        hash_table,
         rng,
         &mut enemy_best_move,
         &should_stop

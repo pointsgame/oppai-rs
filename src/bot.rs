@@ -43,7 +43,7 @@ impl Bot {
     let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
     let mut rng = XorShiftRng::from_seed(seed_array);
     let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
-    let field_zobrist = zobrist.clone();
+    let field_zobrist = Arc::clone(&zobrist);
     let hash_table = HashTable::new(config::hash_table_size());
     Bot {
       rng: rng,
