@@ -1,0 +1,28 @@
+language: rust
+
+rust:
+  - stable
+  - beta
+  - nightly
+
+cache:
+  - cargo
+
+os:
+  - linux
+
+matrix:
+  allow_failures:
+  - rust: nightly
+
+env:
+  global:
+    - RUST_BACKTRACE=1
+
+script:
+  - cargo test --verbose
+  - |
+    if [[ "$TRAVIS_RUST_VERSION" == nightly ]]
+    then
+      cargo test --verbose --features "clippy"
+    fi
