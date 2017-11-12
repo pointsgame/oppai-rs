@@ -5,6 +5,7 @@ use rand::{Rng, XorShiftRng};
 use crossbeam;
 use crossbeam::sync::MsQueue;
 use config;
+use config::MinimaxType;
 use player::Player;
 use field::{Pos, Field};
 use trajectories_pruning::TrajectoriesPruning;
@@ -185,7 +186,7 @@ fn alpha_beta<T: Rng>(
   cur_alpha
 }
 
-fn alpha_beta_parallel<T: Rng>(
+pub fn alpha_beta_parallel<T: Rng>(
   field: &mut Field,
   player: Player,
   depth: u32,
@@ -280,7 +281,7 @@ fn alpha_beta_parallel<T: Rng>(
           if should_stop.load(Ordering::Relaxed) {
             break;
           }
-          if cur_estimation > cur_alpha {
+          if cur_estimation > cur_alpha && cur_estimation < beta {
             cur_estimation = -alpha_beta(
               &mut local_field,
               depth - 1,
@@ -332,7 +333,7 @@ fn alpha_beta_parallel<T: Rng>(
     }
   });
   let mut result = 0;
-  let best_alpha = atomic_alpha.load(Ordering::Relaxed) as i32;
+  let best_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
   while let Some((pos, pos_alpha)) = best_moves.try_pop() {
     if pos_alpha == best_alpha {
       result = pos;
@@ -346,9 +347,84 @@ fn alpha_beta_parallel<T: Rng>(
     info!(target: MINIMAX_STR, "Best move is ({}, {}).", field.to_x(result), field.to_y(result));
     *best_move = Some(result);
   }
-  let cur_alpha = atomic_alpha.load(Ordering::SeqCst);
-  info!(target: MINIMAX_STR, "Estimation is {}.", cur_alpha);
-  cur_alpha as i32
+  info!(target: MINIMAX_STR, "Estimation is {}.", best_alpha);
+  best_alpha
+}
+
+fn mtdf<T: Rng>(
+  field: &mut Field,
+  player: Player,
+  trajectories_pruning: &TrajectoriesPruning,
+  hash_table: &HashTable,
+  rng: &mut T,
+  depth: u32,
+  best_move: &mut Option<Pos>,
+  should_stop: &AtomicBool
+) -> i32 {
+  let mut alpha = 0;
+  let mut beta = 0;
+  for &pos in field.points_seq() {
+    if field.cell(pos).get_player() == player {
+      alpha -= 1;
+    } else {
+      beta += 1;
+    }
+  }
+  while alpha != beta {
+    if should_stop.load(Ordering::Relaxed) {
+      *best_move = None;
+      return alpha;
+    }
+    let mut cur_best_move = *best_move;
+    let center = if (alpha + beta) % 2 == -1 {
+      (alpha + beta) / 2 - 1
+    } else {
+      (alpha + beta) / 2
+    };
+    let cur_estimation = alpha_beta_parallel(
+      field,
+      player,
+      depth,
+      center,
+      center + 1,
+      trajectories_pruning,
+      hash_table,
+      rng,
+      &mut cur_best_move,
+      should_stop
+    );
+    if cur_estimation > center {
+      alpha = cur_estimation;
+    } else {
+      beta = cur_estimation;
+    }
+    *best_move = cur_best_move.or(*best_move);
+  }
+  alpha
+}
+
+fn nega_scout<T: Rng>(
+  field: &mut Field,
+  player: Player,
+  trajectories_pruning: &TrajectoriesPruning,
+  hash_table: &HashTable,
+  rng: &mut T,
+  depth: u32,
+  best_move: &mut Option<Pos>,
+  should_stop: &AtomicBool
+) -> i32 {
+  alpha_beta_parallel(
+    field,
+    player,
+    depth,
+    i32::min_value() + 1,
+    i32::max_value(),
+    trajectories_pruning,
+    hash_table,
+    rng,
+    best_move,
+    should_stop
+  )
 }
 
 pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable, rng: &mut T, depth: u32) -> Option<Pos> {
@@ -368,15 +444,17 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable
   );
   let mut best_move = None;
   info!(target: MINIMAX_STR, "Calculating of our estimation. Player is {}", player);
-  let estimation = alpha_beta_parallel(
+  let minimax_function = match config::minimax_type() {
+    MinimaxType::NegaScout => nega_scout,
+    MinimaxType::MTDF => mtdf
+  };
+  let estimation = minimax_function(
     field,
     player,
-    depth,
-    i32::min_value() + 1,
-    i32::max_value(),
     &trajectories_pruning,
     hash_table,
     rng,
+    depth,
     &mut best_move,
     &should_stop
   );
@@ -442,16 +520,18 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
     let mut enemy_best_move = None;
     let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
     let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, rng, &should_stop);
+    let minimax_function = match config::minimax_type() {
+      MinimaxType::NegaScout => nega_scout,
+      MinimaxType::MTDF => mtdf
+    };
     while !should_stop.load(Ordering::Relaxed) {
-      let estimation = alpha_beta_parallel(
+      let estimation = minimax_function(
         field,
         player,
-        depth,
-        i32::min_value() + 1,
-        i32::max_value(),
         &trajectories_pruning,
         hash_table,
         rng,
+        depth,
         &mut cur_best_move,
         &should_stop
       );

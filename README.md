@@ -12,11 +12,12 @@ You can play with it using "[missile](https://github.com/kurnevsky/missile)".
 Features
 ====
 
-* Two algorithms for searching the optimal move: UCT, NegaScout (principal variation search).
+* Two algorithms for searching the optimal move: UCT, Minimax.
+* Two implementations of Minimax search: NegaScout (principal variation search), MTD(f).
 * UCT caching that persists between moves.
-* Trajectories for moves pruning in the NegaScout search tree.
-* Lock-free multi-threading for both NegaScout and UCT.
-* Transposition table using Zobrist hashing for NegaScout.
+* Trajectories for moves pruning in the Minimax search tree.
+* Lock-free multi-threading for both Minimax and UCT.
+* Transposition table using Zobrist hashing for Minimax.
 * DFA-based patterns searching.
 * DSU to optimize capturing (optional).
 * Time-based (`gen_move_with_time`) and complexity-based (`gen_move_with_complexity`) calculations.
@@ -48,15 +49,14 @@ TODO
 * Fill debuts database.
 * Fill heuristics database.
 * Use patterns for UCT random games (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
-* Use patterns for NegaScout best move prediction.
-* Complex estimating function for NegaScout (see [link](https://www.gnu.org/software/gnugo/gnugo_13.html#SEC167))
-* MTD(f).
+* Use patterns for Minimax best move prediction.
+* Complex estimating function for Minimax (see [link](https://www.gnu.org/software/gnugo/gnugo_13.html#SEC167))
 * Smart time control for UCT (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
-* Smart time control for NegaScout.
+* Smart time control for Minimax.
 * Think on enemy's move.
 * Ladders solver.
 * Fractional komi support.
-* Split trajectories by groups for NegaScout (see [link](https://www.icsi.berkeley.edu/ftp/global/pub/techreports/1996/tr-96-030.pdf)).
+* Split trajectories by groups for Minimax (see [link](https://www.icsi.berkeley.edu/ftp/global/pub/techreports/1996/tr-96-030.pdf)).
 
 License
 ====

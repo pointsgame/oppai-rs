@@ -2,6 +2,7 @@ use rand::XorShiftRng;
 use player::Player;
 use hash_table::HashTable;
 use minimax::minimax;
+use config::{MinimaxType, set_minimax_type};
 use construct_field::construct_field;
 
 #[test]
@@ -34,6 +35,10 @@ fn find_best_move() {
   );
   let mut rng = XorShiftRng::new_unseeded();
   let hash_table = HashTable::new(1000);
+  set_minimax_type(MinimaxType::NegaScout);
+  let pos = minimax(&mut field, Player::Red, &hash_table, &mut rng, 8);
+  assert_eq!(pos, Some(field.to_pos(5, 2)));
+  set_minimax_type(MinimaxType::MTDF);
   let pos = minimax(&mut field, Player::Red, &hash_table, &mut rng, 8);
   assert_eq!(pos, Some(field.to_pos(5, 2)));
 }

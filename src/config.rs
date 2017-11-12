@@ -23,6 +23,14 @@ arg_enum! {
 
 arg_enum! {
   #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum MinimaxType {
+    NegaScout,
+    MTDF
+  }
+}
+
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
   pub enum MinimaxMovesSorting {
     None,
     Random,
@@ -35,7 +43,7 @@ arg_enum! {
   #[derive(Clone, Copy, PartialEq, Debug)]
   pub enum Solver {
     Uct,
-    NegaScout,
+    Minimax,
     Heuristic
   }
 }
@@ -64,6 +72,7 @@ struct UctConfig {
 
 #[derive(Clone, PartialEq, Debug)]
 struct MinimaxConfig {
+  minimax_type: MinimaxType,
   minimax_moves_sorting: MinimaxMovesSorting,
   hash_table_size: usize
 }
@@ -90,6 +99,7 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
 };
 
 const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
+  minimax_type: MinimaxType::NegaScout,
   minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
   hash_table_size: 10_000
 };
@@ -113,6 +123,11 @@ fn config() -> &'static Config {
   unsafe { &CONFIG }
 }
 
+#[inline]
+fn config_mut() -> &'static mut Config {
+  unsafe { &mut CONFIG }
+}
+
 pub fn cli_parse() {
   #[cfg_attr(feature="clippy", allow(zero_ptr))]
   let num_cpus_string = num_cpus::get().to_string();
@@ -120,8 +135,11 @@ pub fn cli_parse() {
     .version(crate_version!())
     .author(crate_authors!("\n"))
     .about(crate_description!())
-    .group(ArgGroup::with_name("NegaScout")
-           .arg("moves-order")
+    .group(ArgGroup::with_name("Minimax")
+           .args(&[
+             "minimax-type",
+             "moves-order"
+           ])
            .multiple(true))
     .group(ArgGroup::with_name("UCT")
            .args(&[
@@ -162,12 +180,18 @@ pub fn cli_parse() {
          .default_value(&num_cpus_string))
     .arg(Arg::with_name("hash-table-size")
          .long("hash-table-size")
-         .help("Count of elements that hash table for NegaScout can contain")
+         .help("Count of elements that hash table for Minimax can contain")
          .takes_value(true)
          .default_value("10000"))
+    .arg(Arg::with_name("minimax-type")
+         .long("minimax-type")
+         .help("Minimax type")
+         .takes_value(true)
+         .possible_values(&MinimaxType::variants())
+         .default_value("NegaScout"))
     .arg(Arg::with_name("moves-order")
          .long("moves-order")
-         .help("Moves sorting method for NegaScout")
+         .help("Moves sorting method for Minimax")
          .takes_value(true)
          .possible_values(&MinimaxMovesSorting::variants())
          .default_value("TrajectoriesCount"))
@@ -251,6 +275,7 @@ pub fn cli_parse() {
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit())
   };
   let minimax_config = MinimaxConfig {
+    minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxType).unwrap_or_else(|e| e.exit()),
     minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSorting).unwrap_or_else(|e| e.exit()),
     hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit())
   };
@@ -327,6 +352,16 @@ pub fn uct_green() -> f64 {
 #[inline]
 pub fn uct_komi_min_iterations() -> usize {
   config().uct.komi_min_iterations
+}
+
+#[inline]
+pub fn minimax_type() -> MinimaxType {
+  config().minimax.minimax_type
+}
+
+#[inline]
+pub fn set_minimax_type(minimax_type: MinimaxType) {
+  config_mut().minimax.minimax_type = minimax_type;
 }
 
 #[inline]
