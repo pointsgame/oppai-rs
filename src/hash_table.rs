@@ -29,9 +29,9 @@ const HASH_TYPE_MASK: usize = 0xFF; // 8 bits
 #[cfg(target_pointer_width = "64")]
 const DEPTH_MASK: usize = 0xFF00; // 8 bits
 #[cfg(target_pointer_width = "64")]
-const POS_MASK: usize = 0xFFFF0000; // 16 bits
+const POS_MASK: usize = 0xFFFF_0000; // 16 bits
 #[cfg(target_pointer_width = "64")]
-const ESTIMATION_MASK: usize = 0xFFFFFFFF00000000; // 32 bits
+const ESTIMATION_MASK: usize = 0xFFFF_FFFF_0000_0000; // 32 bits
 
 #[cfg(target_pointer_width = "64")]
 const HASH_TYPE_SHIFT: usize = 0;

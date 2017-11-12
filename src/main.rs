@@ -82,11 +82,11 @@ use bot::Bot;
 use patterns::Patterns;
 use config::cli_parse;
 
-const CONFIG_PATH: &'static str = "config/config.toml";
+const CONFIG_PATH: &str = "config/config.toml";
 
-const LOG_CONFIG_PATH: &'static str = "config/log.toml";
+const LOG_CONFIG_PATH: &str = "config/log.toml";
 
-const PATTERNS_PATH: &'static str = "patterns.tar";
+const PATTERNS_PATH: &str = "patterns.tar";
 
 fn write_author<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "= {0} author kurnevsky_evgeny", id).ok();

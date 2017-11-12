@@ -13,7 +13,7 @@ use heuristic;
 use minimax;
 use patterns::Patterns;
 
-const BOT_STR: &'static str = "bot";
+const BOT_STR: &str = "bot";
 
 const MIN_COMPLEXITY: u32 = 0;
 
@@ -21,7 +21,7 @@ const MAX_COMPLEXITY: u32 = 100;
 
 const MIN_UCT_ITERATIONS: usize = 0;
 
-const MAX_UCT_ITERATIONS: usize = 500000;
+const MAX_UCT_ITERATIONS: usize = 500_000;
 
 const MIN_MINIMAX_DEPTH: u32 = 0;
 

@@ -13,7 +13,7 @@ use cell::Cell;
 use field::{Pos, Field};
 use rotate::*;
 
-const PATTERNS_STR: &'static str = "patterns";
+const PATTERNS_STR: &str = "patterns";
 
 #[derive(Clone, Debug)]
 struct Move {

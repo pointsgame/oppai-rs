@@ -32,7 +32,7 @@ fn hash_data_check() {
 #[test]
 fn hash_table_put_get_one_entry() {
   let hash_table = HashTable::new(100);
-  let hash = 1234567890u64;
+  let hash = 1_234_567_890u64;
   let data = HashData::new(3, HashType::Exact, 17, 1234);
   hash_table.put(hash, data);
   assert_eq!(hash_table.get(hash), data);
@@ -54,7 +54,7 @@ fn hash_table_collision() {
 #[test]
 fn hash_table_priority_replace() {
   let hash_table = HashTable::new(100);
-  let hash = 1234567890u64;
+  let hash = 1_234_567_890u64;
   let data1 = HashData::new(3, HashType::Alpha, 17, 1234);
   let data2 = HashData::new(3, HashType::Exact, 19, 1237);
   hash_table.put(hash, data1);
@@ -65,7 +65,7 @@ fn hash_table_priority_replace() {
 #[test]
 fn hash_table_priority_remain() {
 let hash_table = HashTable::new(100);
-  let hash = 1234567890u64;
+  let hash = 1_234_567_890u64;
   let data1 = HashData::new(3, HashType::Exact, 17, 1234);
   let data2 = HashData::new(3, HashType::Alpha, 19, 1233);
   hash_table.put(hash, data1);

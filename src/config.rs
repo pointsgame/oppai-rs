@@ -1,7 +1,7 @@
 use num_cpus;
 use clap::{Arg, ArgGroup, App};
 
-const CONFIG_STR: &'static str = "config";
+const CONFIG_STR: &str = "config";
 
 arg_enum! {
   #[derive(Clone, Copy, PartialEq, Debug)]
@@ -86,12 +86,12 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
   komi_type: UctKomiType::Dynamic,
   red: 0.45,
   green: 0.5,
-  komi_min_iterations: 3000
+  komi_min_iterations: 3_000
 };
 
 const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
   minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
-  hash_table_size: 10000
+  hash_table_size: 10_000
 };
 
 const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {

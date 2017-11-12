@@ -11,7 +11,7 @@ use trajectories_pruning::TrajectoriesPruning;
 use hash_table::{HashType, HashData, HashTable};
 use common;
 
-const MINIMAX_STR: &'static str = "minimax";
+const MINIMAX_STR: &str = "minimax";
 
 #[inline]
 fn put_new_hash_value(hash_table: &HashTable, hash: u64, pos: Pos, depth: u32, cur_estimation: i32, beta: i32) {

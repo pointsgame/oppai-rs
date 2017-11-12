@@ -10,7 +10,7 @@ use field::{Pos, Field};
 use wave_pruning::WavePruning;
 use common;
 
-const UCT_STR: &'static str = "uct";
+const UCT_STR: &str = "uct";
 
 struct UctNode {
   wins: AtomicUsize,
