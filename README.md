@@ -1,6 +1,8 @@
 Opai-rs
 ====
 
+[![Travis Build Status](https://travis-ci.org/kurnevsky/opai-rs.svg?branch=master)](https://travis-ci.org/kurnevsky/opai-rs)
+
 Opai-rs is an artificial intelligence for the game of points.
 
 It's written in rust language and implements "points console AI protocol v6". (See /doc/PointsAIProtocol6.txt for details.)
