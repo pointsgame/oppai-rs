@@ -13,7 +13,7 @@ Features
 ====
 
 * Two algorithms for searching the optimal move: UCT, Minimax.
-* Two implementations of Minimax search: NegaScout (principal variation search), MTD(f).
+* Two implementations of Minimax search: NegaScout, MTD(f).
 * UCT caching that persists between moves.
 * Trajectories for moves pruning in the Minimax search tree.
 * Lock-free multi-threading for both Minimax and UCT.
@@ -72,6 +72,8 @@ cargo bench --features bench
 
 TODO
 ====
+* Parallel trajectories building.
+* Best Node Search algorithm (see [link](https://dspace.lu.lv/dspace/bitstream/handle/7/4903/38550-Dmitrijs_Rutko_2013.pdf)).
 * Cache built DFA for fast patterns loading.
 * Fill debuts database.
 * Fill heuristics database.
