@@ -43,6 +43,33 @@ or with:
 ./target/release/opai-rs
 ```
 
+If you have nightly rust and want to see clippy warnings, compile with:
+
+```sh
+cargo build --features clippy
+```
+
+Testing
+====
+
+You can run test with:
+
+```sh
+cargo test
+```
+
+If you want to see log output during tests running you can use RUST_LOG environment variable:
+
+```sh
+RUST_LOG=debug cargo test
+```
+
+Also if you have nightly rust you can run benchmarks with:
+
+```sh
+cargo bench --features bench
+```
+
 TODO
 ====
 * Cache built DFA for fast patterns loading.
