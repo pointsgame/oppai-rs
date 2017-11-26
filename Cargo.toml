@@ -21,6 +21,7 @@ itertools = "*"
 
 [dev-dependencies]
 quickcheck = "*"
+env_logger = "*"
 
 [features]
 default = ["dsu"]

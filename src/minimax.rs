@@ -137,7 +137,7 @@ fn alpha_beta<T: Rng>(
       pos,
       should_stop
     );
-    let mut cur_estimation = -alpha_beta(
+    let mut cur_estimation = -alpha_beta( //TODO: check if cur_alpha is -Inf
       field,
       depth - 1,
       pos,

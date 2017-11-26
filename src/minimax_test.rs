@@ -1,3 +1,4 @@
+use env_logger;
 use rand::XorShiftRng;
 use player::Player;
 use hash_table::HashTable;
@@ -7,6 +8,7 @@ use construct_field::construct_field;
 
 #[test]
 fn find_best_move() {
+  env_logger::init().ok();
   // 8 is the minimum depth value to detect correct move in this test.
   // With depth 7 after 3 moves we might have this position:
   // ........

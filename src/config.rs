@@ -74,7 +74,8 @@ struct UctConfig {
 struct MinimaxConfig {
   minimax_type: MinimaxType,
   minimax_moves_sorting: MinimaxMovesSorting,
-  hash_table_size: usize
+  hash_table_size: usize,
+  rebuild_trajectories: bool
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -101,7 +102,8 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
 const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
   minimax_type: MinimaxType::NegaScout,
   minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
-  hash_table_size: 10_000
+  hash_table_size: 10_000,
+  rebuild_trajectories: false
 };
 
 const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
@@ -138,7 +140,8 @@ pub fn cli_parse() {
     .group(ArgGroup::with_name("Minimax")
            .args(&[
              "minimax-type",
-             "moves-order"
+             "moves-order",
+             "rebuild-trajectories"
            ])
            .multiple(true))
     .group(ArgGroup::with_name("UCT")
@@ -195,6 +198,10 @@ pub fn cli_parse() {
          .takes_value(true)
          .possible_values(&MinimaxMovesSorting::variants())
          .default_value("TrajectoriesCount"))
+    .arg(Arg::with_name("rebuild-trajectories")
+         .long("rebuild-trajectories")
+         .help("Rebuild trajectories during minimax search. It makes minimax more precise but \
+                reduces speed dramatically"))
     .arg(Arg::with_name("radius")
          .long("radius")
          .help("Radius for points that will be considered by UCT search algorithm. \
@@ -277,7 +284,8 @@ pub fn cli_parse() {
   let minimax_config = MinimaxConfig {
     minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxType).unwrap_or_else(|e| e.exit()),
     minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSorting).unwrap_or_else(|e| e.exit()),
-    hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit())
+    hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit()),
+    rebuild_trajectories: matches.is_present("rebuild-trajectories")
   };
   let bot_config = BotConfig {
     threads_count: value_t!(matches.value_of("threads-count"), usize).unwrap_or_else(|e| e.exit()),
@@ -372,6 +380,11 @@ pub fn minimax_moves_sorting() -> MinimaxMovesSorting {
 #[inline]
 pub fn hash_table_size() -> usize {
   config().minimax.hash_table_size
+}
+
+#[inline]
+pub fn rebuild_trajectories() -> bool {
+  config().minimax.rebuild_trajectories
 }
 
 #[inline]

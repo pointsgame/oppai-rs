@@ -8,6 +8,7 @@ use config;
 use config::MinimaxMovesSorting;
 use field::{Pos, Field};
 
+#[derive(Debug)]
 struct Trajectory {
   points: Vec<Pos>,
   hash: u64,
@@ -218,13 +219,51 @@ impl TrajectoriesPruning {
     }
   }
 
+  fn last_pos_trajectory(field: &Field, player: Player, depth: u32, last_pos: Pos) -> Option<Trajectory> {
+    let mut points = Vec::with_capacity(4);
+    let mut hash = 0;
+    for &pos in &[field.n(last_pos), field.s(last_pos), field.w(last_pos), field.e(last_pos)] {
+      if field.cell(pos).is_putting_allowed() {
+        let mut neighbors_count = 0;
+        for &neighbor in &[field.n(pos), field.s(pos), field.w(pos), field.e(pos)] {
+          if field.cell(neighbor).is_players_point(player) {
+            neighbors_count += 1;
+          }
+        }
+        if neighbors_count < 3 {
+          points.push(pos);
+          hash ^= field.zobrist().get_hash(pos);
+        }
+      } else if !field.cell(pos).is_players_point(player) {
+        return None;
+      }
+    }
+    if points.len() as u32 <= (depth + 1) / 2 {
+      Some(Trajectory::new(points, hash))
+    } else {
+      None
+    }
+  }
+
   pub fn from_last<T: Rng>(field: &mut Field, player: Player, depth: u32, empty_board: &mut Vec<u32>, rng: &mut T, last: &TrajectoriesPruning, last_pos: Pos, should_stop: &AtomicBool) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty();
     }
     let mut cur_trajectories = Vec::new();
     let mut enemy_trajectories = Vec::new();
-    TrajectoriesPruning::build_trajectories(field, &mut cur_trajectories, player, (depth + 1) / 2, should_stop);
+    if config::rebuild_trajectories() {
+      TrajectoriesPruning::build_trajectories(field, &mut cur_trajectories, player, (depth + 1) / 2, should_stop);
+    } else {
+      for trajectory in &last.enemy_trajectories {
+        if trajectory.points().iter().all(|&pos| field.cell(pos).is_putting_allowed()) {
+          let new_trajectory = Trajectory::new(trajectory.points().clone(), trajectory.hash());
+          cur_trajectories.push(new_trajectory);
+        }
+      }
+      if let Some(new_cur_trajectory) = TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos) {
+        cur_trajectories.push(new_cur_trajectory);
+      }
+    }
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty();
     }

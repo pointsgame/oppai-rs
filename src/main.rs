@@ -29,6 +29,9 @@ extern crate clap;
 #[cfg(test)]
 extern crate quickcheck;
 
+#[cfg(test)]
+extern crate env_logger;
+
 #[cfg(all(test, feature="bench"))]
 extern crate test;
 

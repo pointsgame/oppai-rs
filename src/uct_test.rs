@@ -1,3 +1,4 @@
+use env_logger;
 use rand::XorShiftRng;
 use player::Player;
 use uct::UctRoot;
@@ -5,6 +6,7 @@ use construct_field::construct_field;
 
 #[test]
 fn find_best_move() {
+  env_logger::init().ok();
   let field = construct_field(
     "
     ........
