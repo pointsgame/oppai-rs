@@ -16,12 +16,12 @@ pub struct DfaState<P: Clone> {
 impl<P: Clone> DfaState<P> {
   pub fn new(empty: usize, red: usize, black: usize, bad: usize, is_final: bool, patterns: Vec<P>) -> DfaState<P> {
     DfaState {
-      empty: empty,
-      red: red,
-      black: black,
-      bad: bad,
-      is_final: is_final,
-      patterns: patterns
+      empty,
+      red,
+      black,
+      bad,
+      is_final,
+      patterns
     }
   }
 }
@@ -41,7 +41,7 @@ impl<P: Clone> Dfa<P> {
 
   pub fn new(states: Vec<DfaState<P>>) -> Dfa<P> {
     Dfa {
-      states: states
+      states
     }
   }
 
@@ -121,7 +121,7 @@ impl<P: Clone> Dfa<P> {
       states[cur_map_idx].bad = bad_map_next;
     }
     Dfa {
-      states: states
+      states
     }
   }
 

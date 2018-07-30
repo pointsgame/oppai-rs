@@ -538,7 +538,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
       if should_stop.load(Ordering::Relaxed) {
         // If we found the best move on the previous iteration then the current best move can't be worse than that move.
         // Otherwise it's possible that the current best move is just a random move.
-        if !best_move.is_none() {
+        if best_move.is_some() {
           best_move = cur_best_move;
         }
         break;
@@ -553,7 +553,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
       );
       if should_stop.load(Ordering::Relaxed) {
         // See previous comment.
-        if !best_move.is_none() {
+        if best_move.is_some() {
           best_move = cur_best_move;
         }
         break;
@@ -561,7 +561,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
       // Check if we could lose something if we don't make the current best move.
       // If we couldn't that means that the current best move is just a random move.
       // If we found the best move on previous iteration then likely the current best move is also the best one.
-      best_move = if !best_move.is_none() || -alpha_beta_parallel(
+      best_move = if best_move.is_some() || -alpha_beta_parallel(
         field,
         enemy,
         depth - 1,

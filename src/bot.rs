@@ -63,12 +63,12 @@ impl Bot {
     let field_zobrist = Arc::clone(&zobrist);
     let hash_table = HashTable::new(config::hash_table_size());
     Bot {
-      rng: rng,
-      patterns: patterns,
-      zobrist: zobrist,
+      rng,
+      patterns,
+      zobrist,
       field: Field::new(width, height, field_zobrist),
       uct: UctRoot::new(length),
-      hash_table: hash_table
+      hash_table
     }
   }
 

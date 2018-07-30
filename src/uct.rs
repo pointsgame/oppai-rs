@@ -33,7 +33,7 @@ impl UctNode {
       wins: AtomicUsize::new(0),
       draws: AtomicUsize::new(0),
       visits: AtomicUsize::new(0),
-      pos: pos,
+      pos,
       child: AtomicPtr::new(ptr::null_mut()),
       sibling: None
     }

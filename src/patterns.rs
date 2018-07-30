@@ -69,7 +69,7 @@ impl Patterns {
     Move {
       x: x as i32,
       y: y as i32,
-      p: p
+      p
     }
   }
 
@@ -207,7 +207,7 @@ impl Patterns {
         dfa = dfa.product(&cur_dfa);
       }
       Patterns {
-        dfa: dfa,
+        dfa,
         min_size: cmp::min(width, height)
       }
     } else {

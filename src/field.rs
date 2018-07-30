@@ -350,9 +350,9 @@ impl Field {
     let length = length(width, height);
     #[cfg(feature="dsu")]
     let mut field = Field {
-      width: width,
-      height: height,
-      length: length,
+      width,
+      height,
+      length,
       score_red: 0,
       score_black: 0,
       points_seq: Vec::with_capacity(length),
@@ -360,20 +360,20 @@ impl Field {
       dsu: (0 .. length).collect(),
       dsu_size: vec![1; length],
       changes: Vec::with_capacity(length),
-      zobrist: zobrist,
+      zobrist,
       hash: 0
     };
     #[cfg(not(feature="dsu"))]
     let mut field = Field {
-      width: width,
-      height: height,
-      length: length,
+      width,
+      height,
+      length,
       score_red: 0,
       score_black: 0,
       points_seq: Vec::with_capacity(length),
       points: vec![Cell::new(false); length],
       changes: Vec::with_capacity(length),
-      zobrist: zobrist,
+      zobrist,
       hash: 0
     };
     let max_pos = field.max_pos();

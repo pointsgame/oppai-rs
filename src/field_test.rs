@@ -283,10 +283,10 @@ impl Arbitrary for FieldArbitrary {
     let mut gen = XorShiftRng::from_seed(seed);
     let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut gen));
     FieldArbitrary {
-      width: width,
-      height: height,
-      moves: moves,
-      zobrist: zobrist
+      width,
+      height,
+      moves,
+      zobrist
     }
   }
   fn shrink(&self) -> Box<Iterator<Item = FieldArbitrary>> {

@@ -18,8 +18,8 @@ struct Trajectory {
 impl Trajectory {
   pub fn new(points: Vec<Pos>, hash: u64) -> Trajectory {
     Trajectory {
-      points: points,
-      hash: hash,
+      points,
+      hash,
       excluded: false
     }
   }
@@ -125,7 +125,6 @@ impl TrajectoriesPruning {
   }
 
   fn exclude_composite_trajectories(trajectories: &mut Vec<Trajectory>, zobrist: &Zobrist, empty_board: &mut Vec<u32>) {
-    #![cfg_attr(feature="cargo-clippy", allow(needless_range_loop))]
     let len = trajectories.len();
     for k in 0 .. len {
       for i in 0 .. len - 1 {
@@ -213,9 +212,9 @@ impl TrajectoriesPruning {
     }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
-      cur_trajectories: cur_trajectories,
-      enemy_trajectories: enemy_trajectories,
-      moves: moves
+      cur_trajectories,
+      enemy_trajectories,
+      moves
     }
   }
 
@@ -290,9 +289,9 @@ impl TrajectoriesPruning {
     }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
-      cur_trajectories: cur_trajectories,
-      enemy_trajectories: enemy_trajectories,
-      moves: moves
+      cur_trajectories,
+      enemy_trajectories,
+      moves
     }
   }
 
@@ -316,9 +315,9 @@ impl TrajectoriesPruning {
     }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
-      cur_trajectories: cur_trajectories,
-      enemy_trajectories: enemy_trajectories,
-      moves: moves
+      cur_trajectories,
+      enemy_trajectories,
+      moves
     }
   }
 
@@ -347,9 +346,9 @@ impl TrajectoriesPruning {
     }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, field.zobrist(), empty_board, rng);
     TrajectoriesPruning {
-      cur_trajectories: cur_trajectories,
-      enemy_trajectories: enemy_trajectories,
-      moves: moves
+      cur_trajectories,
+      enemy_trajectories,
+      moves
     }
   }
 

@@ -97,21 +97,21 @@ impl HashData {
       data: HashData::pack_hash_type(hash_type) | HashData::pack_depth(depth) | HashData::pack_pos(pos) | HashData::pack_estimation(estimation)
     }
   }
-  pub fn hash_type(&self) -> HashType {
+  pub fn hash_type(self) -> HashType {
     HashType::from((self.data & HASH_TYPE_MASK) >> HASH_TYPE_SHIFT)
   }
-  pub fn depth(&self) -> u32 {
+  pub fn depth(self) -> u32 {
     ((self.data & DEPTH_MASK) >> DEPTH_SHIFT) as u32
   }
-  pub fn pos(&self) -> Pos {
+  pub fn pos(self) -> Pos {
     ((self.data & POS_MASK) >> POS_SHIFT) as Pos
   }
   #[cfg(target_pointer_width = "64")]
-  pub fn estimation(&self) -> i32 {
+  pub fn estimation(self) -> i32 {
     ((self.data & ESTIMATION_MASK) >> ESTIMATION_SHIFT) as i32
   }
   #[cfg(target_pointer_width = "32")]
-  pub fn estimation(&self) -> i32 {
+  pub fn estimation(self) -> i32 {
     (((self.data & ESTIMATION_MASK) >> ESTIMATION_SHIFT) | (self.data & ESTIMATION_SIGN_MASK)) as i32
   }
 }
@@ -137,7 +137,7 @@ impl HashEntry {
     let data = self.data.load(Ordering::Relaxed);
     if xored_hash ^ data == hash as usize {
       HashData {
-        data: data
+        data
       }
     } else {
       HashData::default()
@@ -163,7 +163,6 @@ impl HashTable {
   pub fn len(&self) -> usize {
     self.entries.len()
   }
-  #[cfg_attr(feature="cargo-clippy", allow(if_same_then_else))]
   fn choose_best(data1: HashData, data2: HashData) -> HashData {
     if data1.hash_type() != HashType::Alpha && data2.hash_type() == HashType::Alpha {
       data1
