@@ -14,7 +14,6 @@ num_cpus = "*"
 toml = "*"
 crossbeam = "*"
 rayon = "*"
-clippy = { version = "*", optional = true }
 tar = "*"
 clap = "*"
 itertools = "*"

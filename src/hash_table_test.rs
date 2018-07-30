@@ -18,7 +18,7 @@ impl Arbitrary for HashTypeArbitrary {
 
 #[test]
 fn hash_data_check() {
-  #[cfg_attr(feature="clippy", allow(needless_pass_by_value))]
+  #[cfg_attr(feature="cargo-clippy", allow(needless_pass_by_value))]
   fn prop(depth: u32, hash_type_arbitrary: HashTypeArbitrary, pos: Pos, estimation: i32) -> bool {
     let hash_data = HashData::new(depth, hash_type_arbitrary.hash_type, pos, estimation);
     hash_data.depth() == depth &&

@@ -298,7 +298,7 @@ impl Arbitrary for FieldArbitrary {
 
 #[test]
 fn undo_check() {
-  #[cfg_attr(feature="clippy", allow(needless_pass_by_value))]
+  #[cfg_attr(feature="cargo-clippy", allow(needless_pass_by_value))]
   fn prop(field_arbitrary: FieldArbitrary) -> TestResult {
     let mut field = Field::new(field_arbitrary.width, field_arbitrary.height, Arc::clone(&field_arbitrary.zobrist));
     let mut player = Player::Red;

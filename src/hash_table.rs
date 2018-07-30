@@ -163,7 +163,7 @@ impl HashTable {
   pub fn len(&self) -> usize {
     self.entries.len()
   }
-  #[cfg_attr(feature="clippy", allow(if_same_then_else))]
+  #[cfg_attr(feature="cargo-clippy", allow(if_same_then_else))]
   fn choose_best(data1: HashData, data2: HashData) -> HashData {
     if data1.hash_type() != HashType::Alpha && data2.hash_type() == HashType::Alpha {
       data1

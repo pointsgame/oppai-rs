@@ -446,7 +446,7 @@ impl UctRoot {
   }
 
   //TODO: move this to exact place once stmt_expr_attributes gets stabilized (see #15701)
-  #[cfg_attr(feature="clippy", allow(float_cmp))]
+  #[cfg_attr(feature="cargo-clippy", allow(float_cmp))]
   fn best_move_generic<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, should_stop: &AtomicBool, max_iterations_count: usize) -> Option<Pos> {
     info!(target: UCT_STR, "Generating best move for player {0}.", player);
     debug!(target: UCT_STR, "Moves history: {:?}.", field.points_seq().iter().map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player())).collect::<Vec<(u32, u32, Player)>>());

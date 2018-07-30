@@ -131,7 +131,7 @@ fn config_mut() -> &'static mut Config {
 }
 
 pub fn cli_parse() {
-  #[cfg_attr(feature="clippy", allow(zero_ptr))]
+  #[cfg_attr(feature="cargo-clippy", allow(zero_ptr))]
   let num_cpus_string = num_cpus::get().to_string();
   let matches = App::new(crate_name!())
     .version(crate_version!())
