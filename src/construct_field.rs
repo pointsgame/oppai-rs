@@ -1,4 +1,3 @@
-use std::ascii::AsciiExt;
 use std::sync::Arc;
 use rand::XorShiftRng;
 use zobrist::Zobrist;

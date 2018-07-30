@@ -6,7 +6,7 @@ use construct_field::construct_field;
 
 #[test]
 fn find_best_move() {
-  env_logger::init().ok();
+  env_logger::try_init().ok();
   let field = construct_field(
     "
     ........

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use rand::{SeedableRng, XorShiftRng};
 use quickcheck;
 use quickcheck::{Arbitrary, Gen, TestResult};
 use zobrist::Zobrist;
@@ -276,7 +277,11 @@ impl Arbitrary for FieldArbitrary {
     let height = gen.next_u32() % 27 + 3;
     let mut moves = (field::min_pos(width) .. field::max_pos(width, height) + 1).collect::<Vec<Pos>>();
     gen.shuffle(&mut moves);
-    let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, gen));
+    // TODO: wait for quickcheck to update rand dependency and use gen directly
+    let mut seed = [0; 16];
+    gen.fill_bytes(&mut seed);
+    let mut gen = XorShiftRng::from_seed(seed);
+    let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut gen));
     FieldArbitrary {
       width: width,
       height: height,

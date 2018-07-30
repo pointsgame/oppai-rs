@@ -8,7 +8,7 @@ use construct_field::construct_field;
 
 #[test]
 fn find_best_move() {
-  env_logger::init().ok();
+  env_logger::try_init().ok();
   // 8 is the minimum depth value to detect correct move in this test.
   // With depth 7 after 3 moves we might have this position:
   // ........

@@ -1,9 +1,9 @@
 use std::{iter, thread};
 use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering};
 use std::time::Duration;
-use rand::{Rng, XorShiftRng};
+use rand::{Rng, SeedableRng, XorShiftRng};
 use crossbeam;
-use crossbeam::sync::MsQueue;
+use crossbeam::queue::MsQueue;
 use config;
 use config::MinimaxType;
 use player::Player;
@@ -235,7 +235,7 @@ pub fn alpha_beta_parallel<T: Rng>(
   let best_moves = MsQueue::new();
   crossbeam::scope(|scope| {
     for _ in 0 .. threads_count {
-      let xor_shift_rng = rng.gen::<XorShiftRng>();
+      let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
       scope.spawn(|| {
         let mut local_field = field.clone();
         let mut local_rng = xor_shift_rng;

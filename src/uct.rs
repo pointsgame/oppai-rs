@@ -1,7 +1,7 @@
 use std::{ptr, thread, mem};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, AtomicPtr, Ordering};
 use std::time::Duration;
-use rand::{Rng, XorShiftRng};
+use rand::{Rng, SeedableRng, XorShiftRng};
 use crossbeam;
 use config;
 use config::{UcbType, UctKomiType};
@@ -458,7 +458,7 @@ impl UctRoot {
     let ratched = AtomicIsize::new(isize::max_value());
     crossbeam::scope(|scope| {
       for _ in 0 .. threads_count {
-        let xor_shift_rng = rng.gen::<XorShiftRng>();
+        let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
         scope.spawn(|| {
           let mut local_field = field.clone();
           let mut local_rng = xor_shift_rng;

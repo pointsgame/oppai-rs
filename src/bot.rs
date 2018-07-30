@@ -40,7 +40,24 @@ impl Bot {
   pub fn new(width: u32, height: u32, seed: u64, patterns: Arc<Patterns>) -> Bot {
     info!(target: BOT_STR, "Initialization with width {0}, height {1}, seed {2}.", width, height, seed);
     let length = field::length(width, height);
-    let seed_array = [3, seed as u32, 7, (seed >> 32) as u32];
+    let seed_array = [
+      2,
+      (seed & 0xff) as u8,
+      3,
+      ((seed >> 8) & 0xff) as u8,
+      5,
+      ((seed >> 16) & 0xff) as u8,
+      7,
+      ((seed >> 24) & 0xff) as u8,
+      11,
+      ((seed >> 32) & 0xff) as u8,
+      13,
+      ((seed >> 40) & 0xff) as u8,
+      17,
+      ((seed >> 48) & 0xff) as u8,
+      19,
+      ((seed >> 56) & 0xff) as u8
+    ];
     let mut rng = XorShiftRng::from_seed(seed_array);
     let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
     let field_zobrist = Arc::clone(&zobrist);
