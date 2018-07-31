@@ -1,17 +1,16 @@
+use field::{self, Field, Pos};
 use std::iter;
-use field;
-use field::{Pos, Field};
 
 pub struct WavePruning {
   moves: Vec<Pos>,
-  moves_field: Vec<Pos>
+  moves_field: Vec<Pos>,
 }
 
 impl WavePruning {
   pub fn new(length: Pos) -> WavePruning {
     WavePruning {
       moves: Vec::with_capacity(length),
-      moves_field: iter::repeat(0).take(length).collect()
+      moves_field: iter::repeat(0).take(length).collect(),
     }
   }
 
@@ -33,7 +32,10 @@ impl WavePruning {
         if pos == start_pos && self.moves_field[pos] == 0 {
           self.moves_field[pos] = 1;
           true
-        } else if self.moves_field[pos] != start_pos && field.cell(pos).is_putting_allowed() && field::manhattan(width, start_pos, pos) <= radius {
+        } else if self.moves_field[pos] != start_pos
+          && field.cell(pos).is_putting_allowed()
+          && field::manhattan(width, start_pos, pos) <= radius
+        {
           if self.moves_field[pos] == 0 {
             self.moves.push(pos);
           }
@@ -65,7 +67,10 @@ impl WavePruning {
         if pos == next_pos && moves_field[pos] == 0 {
           moves_field[pos] = 1;
           true
-        } else if moves_field[pos] != next_pos && field.cell(pos).is_putting_allowed() && field::manhattan(width, next_pos, pos) <= radius {
+        } else if moves_field[pos] != next_pos
+          && field.cell(pos).is_putting_allowed()
+          && field::manhattan(width, next_pos, pos) <= radius
+        {
           if moves_field[pos] == 0 && pos != next_pos {
             moves.push(pos);
             added_moves.push(pos);

@@ -8,7 +8,7 @@ pub fn rotate(width: u32, height: u32, x: u32, y: u32, rotation: u32) -> (u32, u
     5 => (height - y - 1, x),
     6 => (y, width - x - 1),
     7 => (height - y - 1, width - x - 1),
-    r => panic!("Invalid rotation number: {}", r)
+    r => panic!("Invalid rotation number: {}", r),
   }
 }
 
@@ -16,7 +16,7 @@ pub fn rotate_back(width: u32, height: u32, x: u32, y: u32, rotation: u32) -> (u
   let back_rotation = match rotation {
     5 => 6,
     6 => 5,
-    r => r
+    r => r,
   };
   rotate(width, height, x, y, back_rotation)
 }

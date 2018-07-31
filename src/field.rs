@@ -1,8 +1,6 @@
-use std::mem;
-use std::collections::VecDeque;
-use std::sync::Arc;
-use player::Player;
 use cell::Cell;
+use player::Player;
+use std::{collections::VecDeque, mem, sync::Arc};
 use zobrist::Zobrist;
 
 pub type Pos = usize;
@@ -13,8 +11,10 @@ struct FieldChange {
   score_black: i32,
   hash: u64,
   points_changes: Vec<(Pos, Cell)>,
-  #[cfg(feature="dsu")] dsu_changes: Vec<(Pos, Pos)>,
-  #[cfg(feature="dsu")] dsu_size_change: Option<(Pos, u32)>
+  #[cfg(feature = "dsu")]
+  dsu_changes: Vec<(Pos, Pos)>,
+  #[cfg(feature = "dsu")]
+  dsu_size_change: Option<(Pos, u32)>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -22,7 +22,7 @@ enum IntersectionState {
   None,
   Up,
   Target,
-  Down
+  Down,
 }
 
 #[derive(Clone, PartialEq)]
@@ -34,11 +34,13 @@ pub struct Field {
   score_black: i32,
   points_seq: Vec<Pos>,
   points: Vec<Cell>,
-  #[cfg(feature="dsu")] dsu: Vec<Pos>,
-  #[cfg(feature="dsu")] dsu_size: Vec<u32>,
+  #[cfg(feature = "dsu")]
+  dsu: Vec<Pos>,
+  #[cfg(feature = "dsu")]
+  dsu_size: Vec<u32>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
-  hash: u64
+  hash: u64,
 }
 
 #[inline]
@@ -112,14 +114,14 @@ pub fn max_pos(width: u32, height: u32) -> Pos {
 }
 
 pub fn is_near(width: u32, pos1: Pos, pos2: Pos) -> bool {
-  n(width, pos1)  == pos2 ||
-  s(width, pos1)  == pos2 ||
-  w(pos1)         == pos2 ||
-  e(pos1)         == pos2 ||
-  nw(width, pos1) == pos2 ||
-  ne(width, pos1) == pos2 ||
-  sw(width, pos1) == pos2 ||
-  se(width, pos1) == pos2
+  n(width, pos1) == pos2
+    || s(width, pos1) == pos2
+    || w(pos1) == pos2
+    || e(pos1) == pos2
+    || nw(width, pos1) == pos2
+    || ne(width, pos1) == pos2
+    || sw(width, pos1) == pos2
+    || se(width, pos1) == pos2
 }
 
 fn get_intersection_state(width: u32, pos: Pos, next_pos: Pos) -> IntersectionState {
@@ -129,10 +131,10 @@ fn get_intersection_state(width: u32, pos: Pos, next_pos: Pos) -> IntersectionSt
   let next_pos_y = to_y(width, next_pos);
   if next_pos_x <= pos_x {
     match next_pos_y as i32 - pos_y as i32 {
-      1  => IntersectionState::Up,
-      0  => IntersectionState::Target,
+      1 => IntersectionState::Up,
+      0 => IntersectionState::Target,
       -1 => IntersectionState::Down,
-      _  => IntersectionState::None
+      _ => IntersectionState::None,
     }
   } else {
     IntersectionState::None
@@ -146,20 +148,20 @@ pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &[Pos]) -> bool {
     match get_intersection_state(width, pos, next_pos) {
       IntersectionState::None => {
         state = IntersectionState::None;
-      },
+      }
       IntersectionState::Up => {
         if state == IntersectionState::Down {
           intersections += 1;
         }
         state = IntersectionState::Up;
-      },
+      }
       IntersectionState::Down => {
         if state == IntersectionState::Up {
           intersections += 1;
         }
         state = IntersectionState::Down;
-      },
-      IntersectionState::Target => { }
+      }
+      IntersectionState::Target => {}
     }
   }
   if state == IntersectionState::Up || state == IntersectionState::Down {
@@ -168,7 +170,9 @@ pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &[Pos]) -> bool {
     while begin_state == IntersectionState::Target {
       begin_state = get_intersection_state(width, pos, *iter.next().unwrap());
     }
-    if state == IntersectionState::Up && begin_state == IntersectionState::Down || state == IntersectionState::Down && begin_state == IntersectionState::Up {
+    if state == IntersectionState::Up && begin_state == IntersectionState::Down
+      || state == IntersectionState::Down && begin_state == IntersectionState::Up
+    {
       intersections += 1;
     }
   }
@@ -208,7 +212,8 @@ pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
 
 #[inline]
 pub fn manhattan(width: u32, pos1: Pos, pos2: Pos) -> u32 {
-  (i32::abs(to_x(width, pos1) as i32 - to_x(width, pos2) as i32) + i32::abs(to_y(width, pos1) as i32 - to_y(width, pos2) as i32)) as u32
+  (i32::abs(to_x(width, pos1) as i32 - to_x(width, pos2) as i32)
+    + i32::abs(to_y(width, pos1) as i32 - to_y(width, pos2) as i32)) as u32
 }
 
 impl Field {
@@ -298,49 +303,69 @@ impl Field {
   }
 
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
-    self.points[self.n(center_pos)].is_live_players_point(player)  ||
-    self.points[self.s(center_pos)].is_live_players_point(player)  ||
-    self.points[self.w(center_pos)].is_live_players_point(player)  ||
-    self.points[self.e(center_pos)].is_live_players_point(player)  ||
-    self.points[self.nw(center_pos)].is_live_players_point(player) ||
-    self.points[self.ne(center_pos)].is_live_players_point(player) ||
-    self.points[self.sw(center_pos)].is_live_players_point(player) ||
-    self.points[self.se(center_pos)].is_live_players_point(player)
+    self.points[self.n(center_pos)].is_live_players_point(player)
+      || self.points[self.s(center_pos)].is_live_players_point(player)
+      || self.points[self.w(center_pos)].is_live_players_point(player)
+      || self.points[self.e(center_pos)].is_live_players_point(player)
+      || self.points[self.nw(center_pos)].is_live_players_point(player)
+      || self.points[self.ne(center_pos)].is_live_players_point(player)
+      || self.points[self.sw(center_pos)].is_live_players_point(player)
+      || self.points[self.se(center_pos)].is_live_players_point(player)
   }
 
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
     let mut result = 0u32;
-    if self.points[self.n(center_pos)].is_live_players_point(player) { result += 1; }
-    if self.points[self.s(center_pos)].is_live_players_point(player) { result += 1; }
-    if self.points[self.w(center_pos)].is_live_players_point(player) { result += 1; }
-    if self.points[self.e(center_pos)].is_live_players_point(player) { result += 1; }
-    if self.points[self.nw(center_pos)].is_live_players_point(player) { result += 1; }
-    if self.points[self.ne(center_pos)].is_live_players_point(player) { result += 1; }
-    if self.points[self.sw(center_pos)].is_live_players_point(player) { result += 1; }
-    if self.points[self.se(center_pos)].is_live_players_point(player) { result += 1; }
+    if self.points[self.n(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
+    if self.points[self.s(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
+    if self.points[self.w(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
+    if self.points[self.e(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
+    if self.points[self.nw(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
+    if self.points[self.ne(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
+    if self.points[self.sw(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
+    if self.points[self.se(center_pos)].is_live_players_point(player) {
+      result += 1;
+    }
     result
   }
 
   pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u32 {
     let mut result = 0u32;
-    if !self.points[self.w(center_pos)].is_live_players_point(player) &&
-      (self.points[self.nw(center_pos)].is_live_players_point(player) ||
-        self.points[self.n(center_pos)].is_live_players_point(player)) {
+    if !self.points[self.w(center_pos)].is_live_players_point(player)
+      && (self.points[self.nw(center_pos)].is_live_players_point(player)
+        || self.points[self.n(center_pos)].is_live_players_point(player))
+    {
       result += 1;
     }
-    if !self.points[self.s(center_pos)].is_live_players_point(player) &&
-      (self.points[self.sw(center_pos)].is_live_players_point(player) ||
-        self.points[self.w(center_pos)].is_live_players_point(player)) {
+    if !self.points[self.s(center_pos)].is_live_players_point(player)
+      && (self.points[self.sw(center_pos)].is_live_players_point(player)
+        || self.points[self.w(center_pos)].is_live_players_point(player))
+    {
       result += 1;
     }
-    if !self.points[self.e(center_pos)].is_live_players_point(player) &&
-      (self.points[self.se(center_pos)].is_live_players_point(player) ||
-        self.points[self.s(center_pos)].is_live_players_point(player)) {
+    if !self.points[self.e(center_pos)].is_live_players_point(player)
+      && (self.points[self.se(center_pos)].is_live_players_point(player)
+        || self.points[self.s(center_pos)].is_live_players_point(player))
+    {
       result += 1;
     }
-    if !self.points[self.n(center_pos)].is_live_players_point(player) &&
-      (self.points[self.ne(center_pos)].is_live_players_point(player) ||
-        self.points[self.e(center_pos)].is_live_players_point(player)) {
+    if !self.points[self.n(center_pos)].is_live_players_point(player)
+      && (self.points[self.ne(center_pos)].is_live_players_point(player)
+        || self.points[self.e(center_pos)].is_live_players_point(player))
+    {
       result += 1;
     }
     result
@@ -348,7 +373,7 @@ impl Field {
 
   pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Field {
     let length = length(width, height);
-    #[cfg(feature="dsu")]
+    #[cfg(feature = "dsu")]
     let mut field = Field {
       width,
       height,
@@ -361,9 +386,9 @@ impl Field {
       dsu_size: vec![1; length],
       changes: Vec::with_capacity(length),
       zobrist,
-      hash: 0
+      hash: 0,
     };
-    #[cfg(not(feature="dsu"))]
+    #[cfg(not(feature = "dsu"))]
     let mut field = Field {
       width,
       height,
@@ -374,7 +399,7 @@ impl Field {
       points: vec![Cell::new(false); length],
       changes: Vec::with_capacity(length),
       zobrist,
-      hash: 0
+      hash: 0,
     };
     let max_pos = field.max_pos();
     for x in 0 .. width as Pos + 2 {
@@ -390,16 +415,21 @@ impl Field {
 
   #[inline]
   fn save_pos_value(&mut self, pos: Pos) {
-    self.changes.last_mut().unwrap().points_changes.push((pos, self.points[pos]));
+    self
+      .changes
+      .last_mut()
+      .unwrap()
+      .points_changes
+      .push((pos, self.points[pos]));
   }
 
-  #[cfg(feature="dsu")]
+  #[cfg(feature = "dsu")]
   #[inline]
   fn save_dsu_value(&mut self, pos: Pos) {
     self.changes.last_mut().unwrap().dsu_changes.push((pos, self.dsu[pos]));
   }
 
-  #[cfg(feature="dsu")]
+  #[cfg(feature = "dsu")]
   #[inline]
   fn save_dsu_size_value(&mut self, pos: Pos) {
     self.changes.last_mut().unwrap().dsu_size_change = Some((pos, self.dsu_size[pos]));
@@ -513,7 +543,9 @@ impl Field {
         pos = self.get_next_pos(center_pos, pos);
       }
       base_square += self.square(center_pos, pos);
-      if pos == start_pos { break }
+      if pos == start_pos {
+        break;
+      }
     }
     for &pos in &chain {
       self.points[pos].clear_tag();
@@ -568,7 +600,7 @@ impl Field {
         Player::Red => {
           self.score_red += captured_count;
           self.score_black -= freed_count;
-        },
+        }
         Player::Black => {
           self.score_black += captured_count;
           self.score_red -= freed_count;
@@ -618,7 +650,7 @@ impl Field {
     }
   }
 
-  #[cfg(feature="dsu")]
+  #[cfg(feature = "dsu")]
   fn find_dsu_set(&mut self, pos: Pos) -> Pos {
     let dsu_value = self.dsu[pos];
     if dsu_value == pos {
@@ -633,7 +665,7 @@ impl Field {
     }
   }
 
-  #[cfg(feature="dsu")]
+  #[cfg(feature = "dsu")]
   fn union_dsu_sets(&mut self, sets: &[Pos]) -> Pos {
     let mut max_dsu_size = 0;
     let mut parent = 0;
@@ -654,7 +686,7 @@ impl Field {
     parent
   }
 
-  #[cfg(feature="dsu")]
+  #[cfg(feature = "dsu")]
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len();
@@ -709,7 +741,7 @@ impl Field {
     }
   }
 
-  #[cfg(not(feature="dsu"))]
+  #[cfg(not(feature = "dsu"))]
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len();
@@ -745,21 +777,21 @@ impl Field {
 
   pub fn put_point(&mut self, pos: Pos, player: Player) -> bool {
     if self.is_putting_allowed(pos) {
-      #[cfg(feature="dsu")]
+      #[cfg(feature = "dsu")]
       let change = FieldChange {
         score_red: self.score_red,
         score_black: self.score_black,
         hash: self.hash,
         points_changes: Vec::new(),
         dsu_changes: Vec::new(),
-        dsu_size_change: None
+        dsu_size_change: None,
       };
-      #[cfg(not(feature="dsu"))]
+      #[cfg(not(feature = "dsu"))]
       let change = FieldChange {
         score_red: self.score_red,
         score_black: self.score_black,
         hash: self.hash,
-        points_changes: Vec::new()
+        points_changes: Vec::new(),
       };
       self.changes.push(change);
       self.save_pos_value(pos);
@@ -784,13 +816,13 @@ impl Field {
                 if let Some(chain) = self.build_chain(bound_pos, next_player, chain_pos) {
                   if self.is_point_inside_ring(pos, &chain) {
                     self.capture(&chain, captured_pos, next_player);
-                    break 'outer
+                    break 'outer;
                   }
                 }
               }
             }
           }
-        },
+        }
         None => {
           self.points[pos].put_point(player);
           self.find_captures(pos, player);
@@ -812,7 +844,7 @@ impl Field {
       for (pos, cell) in change.points_changes.into_iter().rev() {
         self.points[pos] = cell;
       }
-      #[cfg(feature="dsu")]
+      #[cfg(feature = "dsu")]
       {
         for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
           self.dsu[pos] = dsu_value;
@@ -883,7 +915,7 @@ impl Field {
   pub fn captured_count(&self, player: Player) -> i32 {
     match player {
       Player::Red => self.score_red,
-      Player::Black => self.score_black
+      Player::Black => self.score_black,
     }
   }
 
@@ -891,17 +923,15 @@ impl Field {
   pub fn score(&self, player: Player) -> i32 {
     match player {
       Player::Red => self.score_red - self.score_black,
-      Player::Black => self.score_black - self.score_red
+      Player::Black => self.score_black - self.score_red,
     }
   }
 
   #[inline]
   pub fn get_delta_score(&self, player: Player) -> i32 {
-    self.score(player) - self.changes.last().map_or(0, |change| {
-      match player {
-        Player::Red => change.score_red - change.score_black,
-        Player::Black => change.score_black - change.score_red
-      }
+    self.score(player) - self.changes.last().map_or(0, |change| match player {
+      Player::Red => change.score_red - change.score_black,
+      Player::Black => change.score_black - change.score_red,
     })
   }
 

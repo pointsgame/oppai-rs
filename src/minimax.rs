@@ -1,16 +1,17 @@
-use std::{iter, thread};
-use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering};
-use std::time::Duration;
-use rand::{Rng, SeedableRng, XorShiftRng};
-use crossbeam;
-use crossbeam::queue::MsQueue;
-use config;
-use config::MinimaxType;
-use player::Player;
-use field::{Pos, Field};
-use trajectories_pruning::TrajectoriesPruning;
-use hash_table::{HashType, HashData, HashTable};
 use common;
+use config::{self, MinimaxType};
+use crossbeam::{self, queue::MsQueue};
+use field::{Field, Pos};
+use hash_table::{HashData, HashTable, HashType};
+use player::Player;
+use rand::{Rng, SeedableRng, XorShiftRng};
+use std::{
+  iter,
+  sync::atomic::{AtomicBool, AtomicIsize, Ordering},
+  thread,
+  time::Duration,
+};
+use trajectories_pruning::TrajectoriesPruning;
 
 const MINIMAX_STR: &str = "minimax";
 
@@ -36,7 +37,7 @@ fn alpha_beta<T: Rng>(
   empty_board: &mut Vec<u32>,
   hash_table: &HashTable,
   rng: &mut T,
-  should_stop: &AtomicBool
+  should_stop: &AtomicBool,
 ) -> i32 {
   if should_stop.load(Ordering::Relaxed) {
     return alpha;
@@ -67,14 +68,14 @@ fn alpha_beta<T: Rng>(
         }
       }
       Some(hash_value.pos())
-    },
+    }
     HashType::Alpha => {
       if hash_value.depth() == depth && hash_value.estimation() <= alpha {
         return alpha;
       }
       None
-    },
-    HashType::Empty => None
+    }
+    HashType::Empty => None,
   };
   // Try the best move from the hash table.
   if let Some(hash_pos) = hash_pos_option {
@@ -91,7 +92,7 @@ fn alpha_beta<T: Rng>(
       rng,
       trajectories_pruning,
       hash_pos,
-      should_stop
+      should_stop,
     );
     let cur_estimation = -alpha_beta(
       field,
@@ -104,16 +105,24 @@ fn alpha_beta<T: Rng>(
       empty_board,
       hash_table,
       rng,
-      should_stop
+      should_stop,
     );
     field.undo();
     // We should check it before putting the best move to the hash table because
-    // it's possible that current estimation is higher than real in case of time out.
+    // it's possible that current estimation is higher than real in case of time
+    // out.
     if should_stop.load(Ordering::Relaxed) {
       return cur_alpha;
     }
     if cur_estimation > cur_alpha {
-      put_new_hash_value(hash_table, field.colored_hash(player), hash_pos, depth, cur_estimation, beta);
+      put_new_hash_value(
+        hash_table,
+        field.colored_hash(player),
+        hash_pos,
+        depth,
+        cur_estimation,
+        beta,
+      );
       cur_alpha = cur_estimation;
       if cur_alpha >= beta {
         return cur_alpha;
@@ -135,9 +144,10 @@ fn alpha_beta<T: Rng>(
       rng,
       trajectories_pruning,
       pos,
-      should_stop
+      should_stop,
     );
-    let mut cur_estimation = -alpha_beta( //TODO: check if cur_alpha is -Inf
+    let mut cur_estimation = -alpha_beta(
+      // TODO: check if cur_alpha is -Inf
       field,
       depth - 1,
       pos,
@@ -148,7 +158,7 @@ fn alpha_beta<T: Rng>(
       empty_board,
       hash_table,
       rng,
-      should_stop
+      should_stop,
     );
     if cur_estimation > cur_alpha && cur_estimation < beta {
       cur_estimation = -alpha_beta(
@@ -162,12 +172,13 @@ fn alpha_beta<T: Rng>(
         empty_board,
         hash_table,
         rng,
-        should_stop
+        should_stop,
       );
     }
     field.undo();
     // We should check it before putting the best move to the hash table because
-    // it's possible that current estimation is higher than real in case of time out.
+    // it's possible that current estimation is higher than real in case of time
+    // out.
     if should_stop.load(Ordering::Relaxed) {
       return cur_alpha;
     }
@@ -196,7 +207,7 @@ pub fn alpha_beta_parallel<T: Rng>(
   hash_table: &HashTable,
   rng: &mut T,
   best_move: &mut Option<Pos>,
-  should_stop: &AtomicBool
+  should_stop: &AtomicBool,
 ) -> i32 {
   info!(
     target: MINIMAX_STR,
@@ -213,7 +224,10 @@ pub fn alpha_beta_parallel<T: Rng>(
   debug!(
     target: MINIMAX_STR,
     "Moves in consideration: {:?}.",
-    moves.iter().map(|&pos| (field.to_x(pos), field.to_y(pos))).collect::<Vec<(u32, u32)>>()
+    moves
+      .iter()
+      .map(|&pos| (field.to_x(pos), field.to_y(pos)))
+      .collect::<Vec<(u32, u32)>>()
   );
   if moves.is_empty() || should_stop.load(Ordering::Relaxed) {
     *best_move = None;
@@ -256,7 +270,7 @@ pub fn alpha_beta_parallel<T: Rng>(
             &mut local_rng,
             trajectories_pruning,
             pos,
-            should_stop
+            should_stop,
           );
           if should_stop.load(Ordering::Relaxed) {
             break;
@@ -276,7 +290,7 @@ pub fn alpha_beta_parallel<T: Rng>(
             &mut local_empty_board,
             hash_table,
             &mut local_rng,
-            should_stop
+            should_stop,
           );
           if should_stop.load(Ordering::Relaxed) {
             break;
@@ -293,7 +307,7 @@ pub fn alpha_beta_parallel<T: Rng>(
               &mut local_empty_board,
               hash_table,
               &mut local_rng,
-              should_stop
+              should_stop,
             );
           }
           // We should check it before the best move assignment because it's possible
@@ -317,11 +331,9 @@ pub fn alpha_beta_parallel<T: Rng>(
           }
           loop {
             let last_alpha = atomic_alpha.load(Ordering::Relaxed);
-            if cur_estimation <= last_alpha as i32 || atomic_alpha.compare_and_swap(
-              last_alpha,
-              cur_estimation as isize,
-              Ordering::Relaxed
-            ) == last_alpha {
+            if cur_estimation <= last_alpha as i32
+              || atomic_alpha.compare_and_swap(last_alpha, cur_estimation as isize, Ordering::Relaxed) == last_alpha
+            {
               break;
             }
           }
@@ -344,7 +356,12 @@ pub fn alpha_beta_parallel<T: Rng>(
     info!(target: MINIMAX_STR, "Best move is not found.");
     *best_move = None;
   } else {
-    info!(target: MINIMAX_STR, "Best move is ({}, {}).", field.to_x(result), field.to_y(result));
+    info!(
+      target: MINIMAX_STR,
+      "Best move is ({}, {}).",
+      field.to_x(result),
+      field.to_y(result)
+    );
     *best_move = Some(result);
   }
   info!(target: MINIMAX_STR, "Estimation is {}.", best_alpha);
@@ -359,7 +376,7 @@ fn mtdf<T: Rng>(
   rng: &mut T,
   depth: u32,
   best_move: &mut Option<Pos>,
-  should_stop: &AtomicBool
+  should_stop: &AtomicBool,
 ) -> i32 {
   let mut alpha = 0;
   let mut beta = 0;
@@ -391,7 +408,7 @@ fn mtdf<T: Rng>(
       hash_table,
       rng,
       &mut cur_best_move,
-      should_stop
+      should_stop,
     );
     if cur_estimation > center {
       alpha = cur_estimation;
@@ -411,7 +428,7 @@ fn nega_scout<T: Rng>(
   rng: &mut T,
   depth: u32,
   best_move: &mut Option<Pos>,
-  should_stop: &AtomicBool
+  should_stop: &AtomicBool,
 ) -> i32 {
   alpha_beta_parallel(
     field,
@@ -423,30 +440,38 @@ fn nega_scout<T: Rng>(
     hash_table,
     rng,
     best_move,
-    should_stop
+    should_stop,
   )
 }
 
-pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable, rng: &mut T, depth: u32) -> Option<Pos> {
-  info!(target: MINIMAX_STR, "Starting minimax with depth {} and player {}.", depth, player);
+pub fn minimax<T: Rng>(
+  field: &mut Field,
+  player: Player,
+  hash_table: &HashTable,
+  rng: &mut T,
+  depth: u32,
+) -> Option<Pos> {
+  info!(
+    target: MINIMAX_STR,
+    "Starting minimax with depth {} and player {}.",
+    depth,
+    player
+  );
   if depth == 0 {
     return None;
   }
   let should_stop = AtomicBool::new(false);
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-  let trajectories_pruning = TrajectoriesPruning::new(
-    field,
-    player,
-    depth,
-    &mut empty_board,
-    rng,
-    &should_stop
-  );
+  let trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, rng, &should_stop);
   let mut best_move = None;
-  info!(target: MINIMAX_STR, "Calculating of our estimation. Player is {}", player);
+  info!(
+    target: MINIMAX_STR,
+    "Calculating of our estimation. Player is {}",
+    player
+  );
   let minimax_function = match config::minimax_type() {
     MinimaxType::NegaScout => nega_scout,
-    MinimaxType::MTDF => mtdf
+    MinimaxType::MTDF => mtdf,
   };
   let estimation = minimax_function(
     field,
@@ -456,7 +481,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable
     rng,
     depth,
     &mut best_move,
-    &should_stop
+    &should_stop,
   );
   let enemy = player.next();
   let mut enemy_best_move = best_move;
@@ -466,7 +491,7 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable
     &mut empty_board,
     rng,
     &trajectories_pruning,
-    &should_stop
+    &should_stop,
   );
   info!(
     target: MINIMAX_STR,
@@ -486,8 +511,9 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable
     hash_table,
     rng,
     &mut enemy_best_move,
-    &should_stop
-  ) < estimation {
+    &should_stop,
+  ) < estimation
+  {
     info!(
       target: MINIMAX_STR,
       "Estimation is greater than enemy estimation. So the best move is {:?}, estimation is {}.",
@@ -505,7 +531,13 @@ pub fn minimax<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable
   }
 }
 
-pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: &HashTable, rng: &mut T, time: u32) -> Option<Pos> {
+pub fn minimax_with_time<T: Rng>(
+  field: &mut Field,
+  player: Player,
+  hash_table: &HashTable,
+  rng: &mut T,
+  time: u32,
+) -> Option<Pos> {
   let should_stop = AtomicBool::new(false);
   crossbeam::scope(|scope| {
     scope.spawn(|| {
@@ -522,7 +554,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
     let mut trajectories_pruning = TrajectoriesPruning::new(field, player, depth, &mut empty_board, rng, &should_stop);
     let minimax_function = match config::minimax_type() {
       MinimaxType::NegaScout => nega_scout,
-      MinimaxType::MTDF => mtdf
+      MinimaxType::MTDF => mtdf,
     };
     while !should_stop.load(Ordering::Relaxed) {
       let estimation = minimax_function(
@@ -533,11 +565,13 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
         rng,
         depth,
         &mut cur_best_move,
-        &should_stop
+        &should_stop,
       );
       if should_stop.load(Ordering::Relaxed) {
-        // If we found the best move on the previous iteration then the current best move can't be worse than that move.
-        // Otherwise it's possible that the current best move is just a random move.
+        // If we found the best move on the previous iteration then the current best
+        // move can't be worse than that move. Otherwise it's possible that the
+        // current best move is just a
+        // random move.
         if best_move.is_some() {
           best_move = cur_best_move;
         }
@@ -549,7 +583,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
         &mut empty_board,
         rng,
         &trajectories_pruning,
-        &should_stop
+        &should_stop,
       );
       if should_stop.load(Ordering::Relaxed) {
         // See previous comment.
@@ -560,19 +594,22 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
       }
       // Check if we could lose something if we don't make the current best move.
       // If we couldn't that means that the current best move is just a random move.
-      // If we found the best move on previous iteration then likely the current best move is also the best one.
-      best_move = if best_move.is_some() || -alpha_beta_parallel(
-        field,
-        enemy,
-        depth - 1,
-        -estimation,
-        -estimation + 1,
-        &enemy_trajectories_pruning,
-        hash_table,
-        rng,
-        &mut enemy_best_move,
-        &should_stop
-      ) < estimation {
+      // If we found the best move on previous iteration then likely the current best
+      // move is also the best one.
+      best_move = if best_move.is_some()
+        || -alpha_beta_parallel(
+          field,
+          enemy,
+          depth - 1,
+          -estimation,
+          -estimation + 1,
+          &enemy_trajectories_pruning,
+          hash_table,
+          rng,
+          &mut enemy_best_move,
+          &should_stop,
+        ) < estimation
+      {
         cur_best_move
       } else {
         None
@@ -588,7 +625,7 @@ pub fn minimax_with_time<T: Rng>(field: &mut Field, player: Player, hash_table: 
         &mut empty_board,
         rng,
         &trajectories_pruning,
-        &should_stop
+        &should_stop,
       );
     }
     best_move

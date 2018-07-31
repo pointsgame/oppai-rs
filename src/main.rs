@@ -1,8 +1,7 @@
-#![cfg_attr(feature="bench", feature(test))]
-
+#![cfg_attr(feature = "bench", feature(test))]
 #![allow(dead_code)]
-#![cfg_attr(feature="cargo-clippy", allow(too_many_arguments))]
-#![cfg_attr(feature="cargo-clippy", allow(cyclomatic_complexity))]
+#![cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+#![cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
 
 extern crate rand;
 
@@ -30,26 +29,26 @@ extern crate quickcheck;
 #[cfg(test)]
 extern crate env_logger;
 
-#[cfg(all(test, feature="bench"))]
+#[cfg(all(test, feature = "bench"))]
 extern crate test;
 
-mod config;
-mod player;
-mod zobrist;
-mod cell;
-mod field;
-mod wave_pruning;
-mod trajectories_pruning;
-mod common;
-mod uct;
-mod heuristic;
-mod hash_table;
-mod minimax;
 mod bot;
-mod rotate;
+mod cell;
+mod common;
+mod config;
 mod dfa;
-mod spiral;
+mod field;
+mod hash_table;
+mod heuristic;
+mod minimax;
 mod patterns;
+mod player;
+mod rotate;
+mod spiral;
+mod trajectories_pruning;
+mod uct;
+mod wave_pruning;
+mod zobrist;
 
 #[cfg(test)]
 mod construct_field;
@@ -60,28 +59,29 @@ mod hash_table_test;
 #[cfg(test)]
 mod minimax_test;
 #[cfg(test)]
-mod uct_test;
-#[cfg(test)]
 mod patterns_test;
+#[cfg(test)]
+mod uct_test;
 
-#[cfg(all(test, feature="bench"))]
+#[cfg(all(test, feature = "bench"))]
 mod field_benchmark;
-#[cfg(all(test, feature="bench"))]
-mod uct_benchmark;
-#[cfg(all(test, feature="bench"))]
+#[cfg(all(test, feature = "bench"))]
 mod minimax_benchmark;
+#[cfg(all(test, feature = "bench"))]
+mod uct_benchmark;
 
-use std::io;
-use std::io::{Write, BufReader, BufRead};
-use std::str::FromStr;
-use std::path::Path;
-use std::fs::File;
-use std::sync::Arc;
-use std::default::Default;
-use player::Player;
 use bot::Bot;
-use patterns::Patterns;
 use config::cli_parse;
+use patterns::Patterns;
+use player::Player;
+use std::{
+  default::Default,
+  fs::File,
+  io::{self, BufRead, BufReader, Write},
+  path::Path,
+  str::FromStr,
+  sync::Arc,
+};
 
 const CONFIG_PATH: &str = "config/config.toml";
 
@@ -114,7 +114,14 @@ fn write_gen_move_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_gen_move_with_complexity<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
-  writeln!(output, "= {0} gen_move_with_complexity {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
+  writeln!(
+    output,
+    "= {0} gen_move_with_complexity {1} {2} {3}",
+    id,
+    x,
+    y,
+    player.to_bool() as u32
+  ).ok();
 }
 
 fn write_gen_move_with_complexity_error<T: Write>(output: &mut T, id: u32) {
@@ -122,7 +129,14 @@ fn write_gen_move_with_complexity_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_gen_move_with_time<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
-  writeln!(output, "= {0} gen_move_with_time {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
+  writeln!(
+    output,
+    "= {0} gen_move_with_time {1} {2} {3}",
+    id,
+    x,
+    y,
+    player.to_bool() as u32
+  ).ok();
 }
 
 fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
@@ -130,7 +144,14 @@ fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn write_gen_move_with_full_time<T: Write>(output: &mut T, id: u32, x: u32, y: u32, player: Player) {
-  writeln!(output, "= {0} gen_move_with_full_time {1} {2} {3}", id, x, y, player.to_bool() as u32).ok();
+  writeln!(
+    output,
+    "= {0} gen_move_with_full_time {1} {2} {3}",
+    id,
+    x,
+    y,
+    player.to_bool() as u32
+  ).ok();
 }
 
 fn write_gen_move_with_full_time_error<T: Write>(output: &mut T, id: u32) {
@@ -217,12 +238,10 @@ fn main() {
     let mut split = s.split(' ').fuse();
     if let Some(id) = split.next().and_then(|id_str| u32::from_str(id_str).ok()) {
       match split.next() {
-        Some("author") => {
-          if split.next().is_some() {
-            write_author_error(&mut output, id);
-          } else {
-            write_author(&mut output, id);
-          }
+        Some("author") => if split.next().is_some() {
+          write_author_error(&mut output, id);
+        } else {
+          write_author(&mut output, id);
         },
         Some("init") => {
           let x_option = split.next().and_then(|x_str| u32::from_str(x_str).ok());
@@ -236,13 +255,17 @@ fn main() {
           } else {
             write_init_error(&mut output, id);
           }
-        },
+        }
         Some("gen_move") => {
-          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
-            0 => Some(Player::Red),
-            1 => Some(Player::Black),
-            _ => None
-          });
+          let player_option = split
+            .next()
+            .and_then(|player_str| u32::from_str(player_str).ok())
+            .and_then(|player_u32| match player_u32 {
+              // TODO: from_number method
+              0 => Some(Player::Red),
+              1 => Some(Player::Black),
+              _ => None,
+            });
           if split.next().is_some() {
             write_gen_move_error(&mut output, id);
           } else if let (Some(player), Some(bot)) = (player_option, bot_option.as_mut()) {
@@ -254,17 +277,25 @@ fn main() {
           } else {
             write_gen_move_error(&mut output, id);
           }
-        },
+        }
         Some("gen_move_with_complexity") => {
-          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
-            0 => Some(Player::Red),
-            1 => Some(Player::Black),
-            _ => None
-          });
-          let complexity_option = split.next().and_then(|complexity_str| u32::from_str(complexity_str).ok());
+          let player_option = split
+            .next()
+            .and_then(|player_str| u32::from_str(player_str).ok())
+            .and_then(|player_u32| match player_u32 {
+              // TODO: from_number method
+              0 => Some(Player::Red),
+              1 => Some(Player::Black),
+              _ => None,
+            });
+          let complexity_option = split
+            .next()
+            .and_then(|complexity_str| u32::from_str(complexity_str).ok());
           if split.next().is_some() {
             write_gen_move_with_complexity_error(&mut output, id);
-          } else if let (Some(player), Some(complexity), Some(bot)) = (player_option, complexity_option, bot_option.as_mut()) {
+          } else if let (Some(player), Some(complexity), Some(bot)) =
+            (player_option, complexity_option, bot_option.as_mut())
+          {
             if let Some((x, y)) = bot.best_move_with_complexity(player, complexity) {
               write_gen_move_with_complexity(&mut output, id, x, y, player);
             } else {
@@ -273,13 +304,17 @@ fn main() {
           } else {
             write_gen_move_with_complexity_error(&mut output, id);
           }
-        },
+        }
         Some("gen_move_with_time") => {
-          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
-            0 => Some(Player::Red),
-            1 => Some(Player::Black),
-            _ => None
-          });
+          let player_option = split
+            .next()
+            .and_then(|player_str| u32::from_str(player_str).ok())
+            .and_then(|player_u32| match player_u32 {
+              // TODO: from_number method
+              0 => Some(Player::Red),
+              1 => Some(Player::Black),
+              _ => None,
+            });
           let time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
@@ -292,18 +327,27 @@ fn main() {
           } else {
             write_gen_move_with_time_error(&mut output, id);
           }
-        },
+        }
         Some("gen_move_with_full_time") => {
-          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
-            0 => Some(Player::Red),
-            1 => Some(Player::Black),
-            _ => None
-          });
+          let player_option = split
+            .next()
+            .and_then(|player_str| u32::from_str(player_str).ok())
+            .and_then(|player_u32| match player_u32 {
+              // TODO: from_number method
+              0 => Some(Player::Red),
+              1 => Some(Player::Black),
+              _ => None,
+            });
           let remaining_time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
           let time_per_move_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
           if split.next().is_some() {
             write_gen_move_with_full_time_error(&mut output, id);
-          } else if let (Some(player), Some(remaining_time), Some(time_per_move), Some(bot)) = (player_option, remaining_time_option, time_per_move_option, bot_option.as_mut()) {
+          } else if let (Some(player), Some(remaining_time), Some(time_per_move), Some(bot)) = (
+            player_option,
+            remaining_time_option,
+            time_per_move_option,
+            bot_option.as_mut(),
+          ) {
             if let Some((x, y)) = bot.best_move_with_full_time(player, remaining_time, time_per_move) {
               write_gen_move_with_full_time(&mut output, id, x, y, player);
             } else {
@@ -312,39 +356,39 @@ fn main() {
           } else {
             write_gen_move_with_full_time_error(&mut output, id);
           }
+        }
+        Some("license") => if split.next().is_some() {
+          write_license_error(&mut output, id);
+        } else {
+          write_license(&mut output, id);
         },
-        Some("license") => {
-          if split.next().is_some() {
-            write_license_error(&mut output, id);
-          } else {
-            write_license(&mut output, id);
-          }
+        Some("list_commands") => if split.next().is_some() {
+          write_list_commands_error(&mut output, id);
+        } else {
+          write_list_commands(&mut output, id);
         },
-        Some("list_commands") => {
-          if split.next().is_some() {
-            write_list_commands_error(&mut output, id);
-          } else {
-            write_list_commands(&mut output, id);
-          }
-        },
-        Some("name") => {
-          if split.next().is_some() {
-            write_name_error(&mut output, id);
-          } else {
-            write_name(&mut output, id);
-          }
+        Some("name") => if split.next().is_some() {
+          write_name_error(&mut output, id);
+        } else {
+          write_name(&mut output, id);
         },
         Some("play") => {
           let x_option = split.next().and_then(|x_str| u32::from_str(x_str).ok());
           let y_option = split.next().and_then(|y_str| u32::from_str(y_str).ok());
-          let player_option = split.next().and_then(|player_str| u32::from_str(player_str).ok()).and_then(|player_u32| match player_u32 { //TODO: from_number method
-            0 => Some(Player::Red),
-            1 => Some(Player::Black),
-            _ => None
-          });
+          let player_option = split
+            .next()
+            .and_then(|player_str| u32::from_str(player_str).ok())
+            .and_then(|player_u32| match player_u32 {
+              // TODO: from_number method
+              0 => Some(Player::Red),
+              1 => Some(Player::Black),
+              _ => None,
+            });
           if split.next().is_some() {
             write_play_error(&mut output, id);
-          } else if let (Some(x), Some(y), Some(player), Some(bot)) = (x_option, y_option, player_option, bot_option.as_mut()) {
+          } else if let (Some(x), Some(y), Some(player), Some(bot)) =
+            (x_option, y_option, player_option, bot_option.as_mut())
+          {
             if bot.put_point(x, y, player) {
               write_play(&mut output, id, x, y, player);
             } else {
@@ -353,35 +397,29 @@ fn main() {
           } else {
             write_play_error(&mut output, id);
           }
+        }
+        Some("quit") => if split.next().is_some() {
+          write_quit_error(&mut output, id);
+        } else {
+          write_quit(&mut output, id);
+          output.flush().ok();
+          break;
         },
-        Some("quit") => {
-          if split.next().is_some() {
-            write_quit_error(&mut output, id);
-          } else {
-            write_quit(&mut output, id);
-            output.flush().ok();
-            break;
-          }
-        },
-        Some("undo") => {
-          if split.next().is_some() {
-            write_undo_error(&mut output, id);
-          } else if let Some(bot) = bot_option.as_mut() {
-            if bot.undo() {
-              write_undo(&mut output, id);
-            } else {
-              write_undo_error(&mut output, id);
-            }
+        Some("undo") => if split.next().is_some() {
+          write_undo_error(&mut output, id);
+        } else if let Some(bot) = bot_option.as_mut() {
+          if bot.undo() {
+            write_undo(&mut output, id);
           } else {
             write_undo_error(&mut output, id);
           }
+        } else {
+          write_undo_error(&mut output, id);
         },
-        Some("version") => {
-          if split.next().is_some() {
-            write_version_error(&mut output, id);
-          } else {
-            write_version(&mut output, id);
-          }
+        Some("version") => if split.next().is_some() {
+          write_version_error(&mut output, id);
+        } else {
+          write_version(&mut output, id);
         },
         _ => {
           write_error(&mut output, id);

@@ -1,30 +1,29 @@
-use quickcheck;
-use quickcheck::{Arbitrary, Gen};
 use field::Pos;
-use hash_table::{HashType, HashData, HashTable};
+use hash_table::{HashData, HashTable, HashType};
+use quickcheck::{self, Arbitrary, Gen};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct HashTypeArbitrary {
-  hash_type: HashType
+  hash_type: HashType,
 }
 
 impl Arbitrary for HashTypeArbitrary {
   fn arbitrary<G: Gen>(gen: &mut G) -> HashTypeArbitrary {
     HashTypeArbitrary {
-      hash_type: HashType::from((gen.next_u32() % 4) as usize)
+      hash_type: HashType::from((gen.next_u32() % 4) as usize),
     }
   }
 }
 
 #[test]
 fn hash_data_check() {
-  #[cfg_attr(feature="cargo-clippy", allow(needless_pass_by_value))]
+  #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
   fn prop(depth: u32, hash_type_arbitrary: HashTypeArbitrary, pos: Pos, estimation: i32) -> bool {
     let hash_data = HashData::new(depth, hash_type_arbitrary.hash_type, pos, estimation);
-    hash_data.depth() == depth &&
-      hash_data.hash_type() == hash_type_arbitrary.hash_type &&
-      hash_data.pos() == pos &&
-      hash_data.estimation() == estimation
+    hash_data.depth() == depth
+      && hash_data.hash_type() == hash_type_arbitrary.hash_type
+      && hash_data.pos() == pos
+      && hash_data.estimation() == estimation
   }
   quickcheck::quickcheck(prop as fn(u32, HashTypeArbitrary, Pos, i32) -> bool);
 }
@@ -64,7 +63,7 @@ fn hash_table_priority_replace() {
 
 #[test]
 fn hash_table_priority_remain() {
-let hash_table = HashTable::new(100);
+  let hash_table = HashTable::new(100);
   let hash = 1_234_567_890u64;
   let data1 = HashData::new(3, HashType::Exact, 17, 1234);
   let data2 = HashData::new(3, HashType::Alpha, 19, 1233);

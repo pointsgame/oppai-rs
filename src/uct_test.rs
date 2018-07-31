@@ -1,8 +1,8 @@
-use env_logger;
-use rand::XorShiftRng;
-use player::Player;
-use uct::UctRoot;
 use construct_field::construct_field;
+use env_logger;
+use player::Player;
+use rand::XorShiftRng;
+use uct::UctRoot;
 
 #[test]
 fn find_best_move() {
@@ -17,7 +17,7 @@ fn find_best_move() {
     ..A.A...
     ........
     ........
-    "
+    ",
   );
   let mut rng = XorShiftRng::new_unseeded();
   let mut uct = UctRoot::new(field.length());

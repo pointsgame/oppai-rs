@@ -1,7 +1,6 @@
-use std::collections::vec_deque::VecDeque;
-use std::collections::HashMap;
-use player::Player;
 use cell::Cell;
+use player::Player;
+use std::collections::{vec_deque::VecDeque, HashMap};
 
 #[derive(Clone, Debug)]
 pub struct DfaState<P: Clone> {
@@ -10,7 +9,7 @@ pub struct DfaState<P: Clone> {
   pub black: usize,
   pub bad: usize,
   pub is_final: bool,
-  pub patterns: Vec<P>
+  pub patterns: Vec<P>,
 }
 
 impl<P: Clone> DfaState<P> {
@@ -21,28 +20,24 @@ impl<P: Clone> DfaState<P> {
       black,
       bad,
       is_final,
-      patterns
+      patterns,
     }
   }
 }
 
 #[derive(Clone, Debug)]
 pub struct Dfa<P: Clone> {
-  states: Vec<DfaState<P>>
+  states: Vec<DfaState<P>>,
 }
 
 impl<P: Clone> Dfa<P> {
   pub fn empty() -> Dfa<P> {
     let state = DfaState::new(0, 0, 0, 0, true, Vec::with_capacity(0));
-    Dfa {
-      states: vec![state]
-    }
+    Dfa { states: vec![state] }
   }
 
   pub fn new(states: Vec<DfaState<P>>) -> Dfa<P> {
-    Dfa {
-      states
-    }
+    Dfa { states }
   }
 
   pub fn is_empty(&self) -> bool {
@@ -61,7 +56,7 @@ impl<P: Clone> Dfa<P> {
         black: left.black * other_len + right.black,
         bad: left.bad * other_len + right.bad,
         is_final: left.is_final && right.is_final,
-        patterns: left.patterns.iter().chain(right.patterns.iter()).cloned().collect()
+        patterns: left.patterns.iter().chain(right.patterns.iter()).cloned().collect(),
       }
     }
     if self.is_empty() {
@@ -91,28 +86,44 @@ impl<P: Clone> Dfa<P> {
         q.push_back(empty_next);
         let empty_map_next = states.len();
         map.insert(empty_next, empty_map_next);
-        states.push(build_state(other_len, &self.states[self_state.empty], &other.states[other_state.empty]));
+        states.push(build_state(
+          other_len,
+          &self.states[self_state.empty],
+          &other.states[other_state.empty],
+        ));
         empty_map_next
       });
       let red_map_next = map.get(&red_next).cloned().unwrap_or_else(|| {
         q.push_back(red_next);
         let red_map_next = states.len();
         map.insert(red_next, red_map_next);
-        states.push(build_state(other_len, &self.states[self_state.red], &other.states[other_state.red]));
+        states.push(build_state(
+          other_len,
+          &self.states[self_state.red],
+          &other.states[other_state.red],
+        ));
         red_map_next
       });
       let black_map_next = map.get(&black_next).cloned().unwrap_or_else(|| {
         q.push_back(black_next);
         let black_map_next = states.len();
         map.insert(black_next, black_map_next);
-        states.push(build_state(other_len, &self.states[self_state.black], &other.states[other_state.black]));
+        states.push(build_state(
+          other_len,
+          &self.states[self_state.black],
+          &other.states[other_state.black],
+        ));
         black_map_next
       });
       let bad_map_next = map.get(&bad_next).cloned().unwrap_or_else(|| {
         q.push_back(bad_next);
         let bad_map_next = states.len();
         map.insert(bad_next, bad_map_next);
-        states.push(build_state(other_len, &self.states[self_state.bad], &other.states[other_state.bad]));
+        states.push(build_state(
+          other_len,
+          &self.states[self_state.bad],
+          &other.states[other_state.bad],
+        ));
         bad_map_next
       });
       states[cur_map_idx].empty = empty_map_next;
@@ -120,9 +131,7 @@ impl<P: Clone> Dfa<P> {
       states[cur_map_idx].black = black_map_next;
       states[cur_map_idx].bad = bad_map_next;
     }
-    Dfa {
-      states
-    }
+    Dfa { states }
   }
 
   pub fn run<T: Iterator<Item = Cell>>(&self, iter: &mut T, inv_color: bool, first_match: bool) -> &Vec<P> {
@@ -141,7 +150,7 @@ impl<P: Clone> Dfa<P> {
         } else if let Some(player) = cell.get_owner() {
           match player {
             Player::Red => state_idx = if inv_color { state.black } else { state.red },
-            Player::Black => state_idx = if inv_color { state.red } else { state.black }
+            Player::Black => state_idx = if inv_color { state.red } else { state.black },
           }
         } else {
           state_idx = state.empty;

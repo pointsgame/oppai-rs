@@ -1,9 +1,9 @@
+use construct_field::construct_field;
+use field;
+use player::Player;
 use rand::XorShiftRng;
 use test::Bencher;
-use player::Player;
-use field;
 use uct::UctRoot;
-use construct_field::construct_field;
 
 #[bench]
 fn find_best_move(bencher: &mut Bencher) {
@@ -17,7 +17,7 @@ fn find_best_move(bencher: &mut Bencher) {
     ..A.A...
     ........
     ........
-    "
+    ",
   );
   let length = field::length(field.width(), field.height());
   bencher.iter(|| {

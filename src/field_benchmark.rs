@@ -1,10 +1,9 @@
-use std::sync::Arc;
-use rand::{Rng, XorShiftRng, SeedableRng};
-use test::Bencher;
+use field::{self, Field, Pos};
 use player::Player;
+use rand::{Rng, SeedableRng, XorShiftRng};
+use std::sync::Arc;
+use test::Bencher;
 use zobrist::Zobrist;
-use field;
-use field::{Pos, Field};
 
 fn random_game(bencher: &mut Bencher, width: u32, height: u32, seed_array: [u32; 4]) {
   let mut rng = XorShiftRng::from_seed(seed_array);

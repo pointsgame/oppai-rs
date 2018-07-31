@@ -1,5 +1,5 @@
+use field::{Field, Pos};
 use player::Player;
-use field::{Pos, Field};
 
 static CG_SUM: [i32; 9] = [-5, -1, 0, 0, 1, 2, 5, 20, 30];
 
@@ -24,7 +24,8 @@ pub fn heuristic(field: &Field, player: Player) -> Option<Pos> {
   for pos in field.min_pos() .. field.max_pos() + 1 {
     if field.cell(pos).is_putting_allowed() {
       let cur_estimation = heuristic_estimation(field, pos, player);
-      if cur_estimation > best_estimation { //TODO: check for stupid move.
+      if cur_estimation > best_estimation {
+        // TODO: check for stupid move.
         best_estimation = cur_estimation;
         result = Some(pos);
       }

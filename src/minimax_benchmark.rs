@@ -1,10 +1,10 @@
-use rand::XorShiftRng;
-use test::Bencher;
-use player::Player;
+use config::{set_minimax_type, MinimaxType};
+use construct_field::construct_field;
 use hash_table::HashTable;
 use minimax::minimax;
-use config::{MinimaxType, set_minimax_type};
-use construct_field::construct_field;
+use player::Player;
+use rand::XorShiftRng;
+use test::Bencher;
 
 #[bench]
 fn negascout_find_best_move(bencher: &mut Bencher) {
@@ -18,7 +18,7 @@ fn negascout_find_best_move(bencher: &mut Bencher) {
     ..A.A...
     ........
     ........
-    "
+    ",
   );
   set_minimax_type(MinimaxType::NegaScout);
   bencher.iter(|| {
@@ -41,7 +41,7 @@ fn mtdf_find_best_move(bencher: &mut Bencher) {
     ..A.A...
     ........
     ........
-    "
+    ",
   );
   set_minimax_type(MinimaxType::MTDF);
   bencher.iter(|| {
@@ -51,4 +51,3 @@ fn mtdf_find_best_move(bencher: &mut Bencher) {
     minimax(&mut local_field, Player::Red, &hash_table, &mut rng, 8)
   });
 }
-

@@ -1,12 +1,10 @@
-use std::sync::Arc;
-use rand::{SeedableRng, XorShiftRng};
-use quickcheck;
-use quickcheck::{Arbitrary, Gen, TestResult};
-use zobrist::Zobrist;
-use player::Player;
-use field;
-use field::{Pos, Field};
 use construct_field::construct_field;
+use field::{self, Field, Pos};
+use player::Player;
+use quickcheck::{self, Arbitrary, Gen, TestResult};
+use rand::{SeedableRng, XorShiftRng};
+use std::sync::Arc;
+use zobrist::Zobrist;
 
 #[test]
 fn simple_surround() {
@@ -15,7 +13,7 @@ fn simple_surround() {
     .a.
     cBa
     .a.
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -33,13 +31,16 @@ fn surround_empty_territory() {
     .a.
     a.a
     .a.
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 0);
   assert_eq!(field.captured_count(Player::Black), 0);
   assert!(field.cell(field.to_pos(1, 1)).is_putting_allowed());
   assert!(field.cell(field.to_pos(1, 1)).is_empty_base());
-  assert_eq!(field.cell(field.to_pos(1, 1)).get_empty_base_player(), Some(Player::Red));
+  assert_eq!(
+    field.cell(field.to_pos(1, 1)).get_empty_base_player(),
+    Some(Player::Red)
+  );
   assert!(!field.cell(field.to_pos(0, 1)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(1, 0)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(1, 2)).is_putting_allowed());
@@ -53,7 +54,7 @@ fn move_priority() {
     .aB.
     aCaB
     .aB.
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 0);
   assert_eq!(field.captured_count(Player::Black), 1);
@@ -67,7 +68,7 @@ fn move_priority_big() {
     BaB.
     aCaB
     .aB.
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 0);
   assert_eq!(field.captured_count(Player::Black), 2);
@@ -82,7 +83,7 @@ fn onion_surroundings() {
     .cBaBc.
     ..cBc..
     ...c...
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 4);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -95,7 +96,7 @@ fn apply_control_surrounding_in_same_turn() {
     .a.
     aBa
     .a.
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -108,7 +109,7 @@ fn double_surround() {
     .a.a.
     aAbAa
     .a.a.
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 2);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -121,7 +122,7 @@ fn double_surround_with_empty_part() {
     .b.b..
     b.zAb.
     .b.b..
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -140,7 +141,7 @@ fn should_not_leave_empty_inside() {
     a.b...a
     a....a.
     .aaaa..
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -165,7 +166,7 @@ fn a_hole_inside_a_surrounding() {
     ..c...c..
     ...cBc...
     ....d....
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -186,7 +187,7 @@ fn a_hole_inside_a_surrounding_after_control_surrounding() {
     ..b...b..
     ...bCb...
     ....b....
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -207,7 +208,7 @@ fn surrounding_does_not_expand() {
     ..a.a.a..
     ...a.a...
     ....a....
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -226,7 +227,7 @@ fn two_surroundings_with_common_border() {
     aAa.
     .bAa
     ..a.
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 2);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -241,7 +242,7 @@ fn three_surroundings_with_common_borders() {
     ..bAa
     .aAa.
     ..a..
-    "
+    ",
   );
   assert_eq!(field.captured_count(Player::Red), 3);
   assert_eq!(field.captured_count(Player::Black), 0);
@@ -252,11 +253,12 @@ struct FieldArbitrary {
   width: u32,
   height: u32,
   moves: Vec<Pos>,
-  zobrist: Arc<Zobrist>
+  zobrist: Arc<Zobrist>,
 }
 
 impl Iterator for FieldArbitrary {
   type Item = FieldArbitrary;
+
   fn next(&mut self) -> Option<FieldArbitrary> {
     if self.moves.is_empty() {
       None
@@ -266,6 +268,7 @@ impl Iterator for FieldArbitrary {
       Some(result)
     }
   }
+
   fn count(self) -> usize {
     self.moves.len()
   }
@@ -286,9 +289,10 @@ impl Arbitrary for FieldArbitrary {
       width,
       height,
       moves,
-      zobrist
+      zobrist,
     }
   }
+
   fn shrink(&self) -> Box<Iterator<Item = FieldArbitrary>> {
     let mut result = self.clone();
     result.moves.pop();
@@ -298,9 +302,13 @@ impl Arbitrary for FieldArbitrary {
 
 #[test]
 fn undo_check() {
-  #[cfg_attr(feature="cargo-clippy", allow(needless_pass_by_value))]
+  #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
   fn prop(field_arbitrary: FieldArbitrary) -> TestResult {
-    let mut field = Field::new(field_arbitrary.width, field_arbitrary.height, Arc::clone(&field_arbitrary.zobrist));
+    let mut field = Field::new(
+      field_arbitrary.width,
+      field_arbitrary.height,
+      Arc::clone(&field_arbitrary.zobrist),
+    );
     let mut player = Player::Red;
     for &pos in &field_arbitrary.moves {
       if field.is_putting_allowed(pos) {

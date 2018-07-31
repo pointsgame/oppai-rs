@@ -17,14 +17,14 @@ const BAD_BIT: CellValue = 32;
 const TAG_BIT: CellValue = 64;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Cell { 
-  value: CellValue
+pub struct Cell {
+  value: CellValue,
 }
 
 impl Cell {
   pub fn new(bad: bool) -> Cell {
     Cell {
-      value: if bad { BAD_BIT } else { 0 }
+      value: if bad { BAD_BIT } else { 0 },
     }
   }
 
@@ -155,7 +155,11 @@ impl Cell {
   }
 
   pub fn get_empty_base_player(self) -> Option<Player> {
-    if self.is_empty_base() { Some(self.get_player()) } else { None }
+    if self.is_empty_base() {
+      Some(self.get_player())
+    } else {
+      None
+    }
   }
 
   pub fn put_point(&mut self, player: Player) {

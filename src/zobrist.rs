@@ -1,16 +1,16 @@
+use field::Pos;
 use itertools;
 use rand::Rng;
-use field::Pos;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Zobrist {
-  hashes: Vec<u64>
+  hashes: Vec<u64>,
 }
 
 impl Zobrist {
   pub fn new<T: Rng>(length: Pos, rng: &mut T) -> Zobrist {
     Zobrist {
-      hashes: itertools::repeat_call(|| rng.gen()).take(length).collect()
+      hashes: itertools::repeat_call(|| rng.gen()).take(length).collect(),
     }
   }
 

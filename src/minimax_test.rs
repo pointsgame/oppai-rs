@@ -1,10 +1,10 @@
+use config::{set_minimax_type, MinimaxType};
+use construct_field::construct_field;
 use env_logger;
-use rand::XorShiftRng;
-use player::Player;
 use hash_table::HashTable;
 use minimax::minimax;
-use config::{MinimaxType, set_minimax_type};
-use construct_field::construct_field;
+use player::Player;
+use rand::XorShiftRng;
 
 #[test]
 fn find_best_move() {
@@ -33,7 +33,7 @@ fn find_best_move() {
     ..A.A...
     ........
     ........
-    "
+    ",
   );
   let mut rng = XorShiftRng::new_unseeded();
   let hash_table = HashTable::new(1000);

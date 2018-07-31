@@ -3,19 +3,23 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Player {
   Red,
-  Black
+  Black,
 }
 
 impl Player {
   pub fn next(self) -> Player {
     match self {
       Player::Red => Player::Black,
-      Player::Black => Player::Red
+      Player::Black => Player::Red,
     }
   }
 
   pub fn from_bool(b: bool) -> Player {
-    if b { Player::Black } else { Player::Red }
+    if b {
+      Player::Black
+    } else {
+      Player::Red
+    }
   }
 
   pub fn to_bool(self) -> bool {
@@ -27,7 +31,7 @@ impl Display for Player {
   fn fmt(&self, f: &mut Formatter) -> Result {
     match *self {
       Player::Red => write!(f, "Red"),
-      Player::Black => write!(f, "Black")
+      Player::Black => write!(f, "Black"),
     }
   }
 }
