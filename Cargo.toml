@@ -18,8 +18,8 @@ clap = "2.32"
 itertools = "0.7"
 
 [dev-dependencies]
-quickcheck = "*"
-env_logger = "*"
+quickcheck = "0.6"
+env_logger = "0.5"
 
 [features]
 default = ["dsu"]
