@@ -6,17 +6,16 @@ license = "AGPL-3.0+"
 description = "Open Points Artificial Intelligence"
 
 [dependencies]
-rand = "*"
-time = "*"
-log = "*"
-log4rs = { version = "*", features = ["toml"] }
-num_cpus = "*"
-toml = "*"
-crossbeam = "*"
-rayon = "*"
-tar = "*"
-clap = "*"
-itertools = "*"
+rand = "0.5"
+time = "0.1"
+log = "0.4"
+log4rs = { version = "0.8", features = ["toml"] }
+num_cpus = "1.8"
+crossbeam = "0.4"
+rayon = "1.0"
+tar = "0.4"
+clap = "2.32"
+itertools = "0.7"
 
 [dev-dependencies]
 quickcheck = "*"
