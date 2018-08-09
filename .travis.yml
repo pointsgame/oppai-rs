@@ -19,7 +19,7 @@ env:
   global:
     - RUST_BACKTRACE=1
 
-before_script:
+install:
   - |
     if [[ "$TRAVIS_RUST_VERSION" == nightly ]]
     then
