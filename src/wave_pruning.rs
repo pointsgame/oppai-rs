@@ -1,4 +1,4 @@
-use field::{self, Field, Pos};
+use crate::field::{self, Field, Pos};
 use std::iter;
 
 pub struct WavePruning {

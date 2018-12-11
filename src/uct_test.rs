@@ -1,8 +1,8 @@
-use construct_field::construct_field;
+use crate::construct_field::construct_field;
+use crate::player::Player;
+use crate::uct::UctRoot;
 use env_logger;
-use player::Player;
 use rand::XorShiftRng;
-use uct::UctRoot;
 
 #[test]
 fn find_best_move() {

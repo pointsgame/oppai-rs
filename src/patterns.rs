@@ -1,11 +1,11 @@
-use cell::Cell;
-use dfa::{Dfa, DfaState};
-use field::{Field, Pos};
-use player::Player;
+use crate::cell::Cell;
+use crate::dfa::{Dfa, DfaState};
+use crate::field::{Field, Pos};
+use crate::player::Player;
+use crate::rotate::*;
+use crate::spiral::Spiral;
 use rand::Rng;
 use rayon;
-use rotate::*;
-use spiral::Spiral;
 use std::{
   cmp,
   collections::{HashMap, HashSet},
@@ -167,7 +167,8 @@ impl Patterns {
           y: y as i32 - center_y as i32,
           p: m.p,
         }
-      }).collect();
+      })
+      .collect();
     states.push(DfaState::new(new_fs, new_fs, new_fs, new_fs, true, rotated_moves));
     states.push(DfaState::new(
       new_nfs,
@@ -208,7 +209,7 @@ impl Patterns {
       let (width, height, priority) = Patterns::parse_header(name, header_str);
       // Read pattern from input string.
       let mut pattern_str = String::new();
-      for _ in 0 .. height {
+      for _ in 0..height {
         let s = split
           .next()
           .unwrap_or_else(|| panic!("Unexpected end of pattern '{}'.", name));
@@ -235,7 +236,7 @@ impl Patterns {
       }
       // Build DFA for each rotation.
       let mut dfa = Dfa::empty();
-      for rotation in 0 .. 8 {
+      for rotation in 0..8 {
         let cur_dfa = Patterns::build_dfa(name, width, height, &moves, rotation, &pattern_str);
         dfa = dfa.product(&cur_dfa);
       }
@@ -254,8 +255,8 @@ impl Patterns {
       Patterns::from_str(name, pattern_str)
     } else {
       let split_idx = len / 2;
-      let left = &strings[0 .. split_idx];
-      let right = &strings[split_idx .. len];
+      let left = &strings[0..split_idx];
+      let right = &strings[split_idx..len];
       let (left_patterns, right_patterns) =
         rayon::join(|| Patterns::from_strings(left), || Patterns::from_strings(right));
       left_patterns.union(&right_patterns)
@@ -296,8 +297,8 @@ impl Patterns {
     let left_border = (self.min_size as i32 - 1) / 2 - 1;
     let right_border = self.min_size as i32 / 2 - 1;
     let inv_color = player == Player::Black;
-    for y in left_border .. field.height() as i32 - right_border {
-      for x in left_border .. field.width() as i32 - right_border {
+    for y in left_border..field.height() as i32 - right_border {
+      for x in left_border..field.width() as i32 - right_border {
         let moves = self.dfa.run(
           &mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
             let cur_x = x + shift_x;

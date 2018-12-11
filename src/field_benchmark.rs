@@ -7,7 +7,7 @@ use zobrist::Zobrist;
 
 fn random_game(bencher: &mut Bencher, width: u32, height: u32, seed_array: [u32; 4]) {
   let mut rng = XorShiftRng::from_seed(seed_array);
-  let mut moves = (field::min_pos(width) .. field::max_pos(width, height) + 1).collect::<Vec<Pos>>();
+  let mut moves = (field::min_pos(width)..field::max_pos(width, height) + 1).collect::<Vec<Pos>>();
   rng.shuffle(&mut moves);
   let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
   bencher.iter(|| {
@@ -19,7 +19,7 @@ fn random_game(bencher: &mut Bencher, width: u32, height: u32, seed_array: [u32;
         player = player.next();
       }
     }
-    for _ in 0 .. field.moves_count() {
+    for _ in 0..field.moves_count() {
       field.undo();
     }
     field

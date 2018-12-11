@@ -70,10 +70,10 @@ mod minimax_benchmark;
 #[cfg(all(test, feature = "bench"))]
 mod uct_benchmark;
 
-use bot::Bot;
-use config::cli_parse;
-use patterns::Patterns;
-use player::Player;
+use crate::bot::Bot;
+use crate::config::cli_parse;
+use crate::patterns::Patterns;
+use crate::player::Player;
 use std::{
   default::Default,
   fs::File,
@@ -121,7 +121,8 @@ fn write_gen_move_with_complexity<T: Write>(output: &mut T, id: u32, x: u32, y: 
     x,
     y,
     player.to_bool() as u32
-  ).ok();
+  )
+  .ok();
 }
 
 fn write_gen_move_with_complexity_error<T: Write>(output: &mut T, id: u32) {
@@ -136,7 +137,8 @@ fn write_gen_move_with_time<T: Write>(output: &mut T, id: u32, x: u32, y: u32, p
     x,
     y,
     player.to_bool() as u32
-  ).ok();
+  )
+  .ok();
 }
 
 fn write_gen_move_with_time_error<T: Write>(output: &mut T, id: u32) {
@@ -151,7 +153,8 @@ fn write_gen_move_with_full_time<T: Write>(output: &mut T, id: u32, x: u32, y: u
     x,
     y,
     player.to_bool() as u32
-  ).ok();
+  )
+  .ok();
 }
 
 fn write_gen_move_with_full_time_error<T: Write>(output: &mut T, id: u32) {
@@ -238,11 +241,13 @@ fn main() {
     let mut split = s.split(' ').fuse();
     if let Some(id) = split.next().and_then(|id_str| u32::from_str(id_str).ok()) {
       match split.next() {
-        Some("author") => if split.next().is_some() {
-          write_author_error(&mut output, id);
-        } else {
-          write_author(&mut output, id);
-        },
+        Some("author") => {
+          if split.next().is_some() {
+            write_author_error(&mut output, id);
+          } else {
+            write_author(&mut output, id);
+          }
+        }
         Some("init") => {
           let x_option = split.next().and_then(|x_str| u32::from_str(x_str).ok());
           let y_option = split.next().and_then(|y_str| u32::from_str(y_str).ok());
@@ -357,21 +362,27 @@ fn main() {
             write_gen_move_with_full_time_error(&mut output, id);
           }
         }
-        Some("license") => if split.next().is_some() {
-          write_license_error(&mut output, id);
-        } else {
-          write_license(&mut output, id);
-        },
-        Some("list_commands") => if split.next().is_some() {
-          write_list_commands_error(&mut output, id);
-        } else {
-          write_list_commands(&mut output, id);
-        },
-        Some("name") => if split.next().is_some() {
-          write_name_error(&mut output, id);
-        } else {
-          write_name(&mut output, id);
-        },
+        Some("license") => {
+          if split.next().is_some() {
+            write_license_error(&mut output, id);
+          } else {
+            write_license(&mut output, id);
+          }
+        }
+        Some("list_commands") => {
+          if split.next().is_some() {
+            write_list_commands_error(&mut output, id);
+          } else {
+            write_list_commands(&mut output, id);
+          }
+        }
+        Some("name") => {
+          if split.next().is_some() {
+            write_name_error(&mut output, id);
+          } else {
+            write_name(&mut output, id);
+          }
+        }
         Some("play") => {
           let x_option = split.next().and_then(|x_str| u32::from_str(x_str).ok());
           let y_option = split.next().and_then(|y_str| u32::from_str(y_str).ok());
@@ -398,29 +409,35 @@ fn main() {
             write_play_error(&mut output, id);
           }
         }
-        Some("quit") => if split.next().is_some() {
-          write_quit_error(&mut output, id);
-        } else {
-          write_quit(&mut output, id);
-          output.flush().ok();
-          break;
-        },
-        Some("undo") => if split.next().is_some() {
-          write_undo_error(&mut output, id);
-        } else if let Some(bot) = bot_option.as_mut() {
-          if bot.undo() {
-            write_undo(&mut output, id);
+        Some("quit") => {
+          if split.next().is_some() {
+            write_quit_error(&mut output, id);
+          } else {
+            write_quit(&mut output, id);
+            output.flush().ok();
+            break;
+          }
+        }
+        Some("undo") => {
+          if split.next().is_some() {
+            write_undo_error(&mut output, id);
+          } else if let Some(bot) = bot_option.as_mut() {
+            if bot.undo() {
+              write_undo(&mut output, id);
+            } else {
+              write_undo_error(&mut output, id);
+            }
           } else {
             write_undo_error(&mut output, id);
           }
-        } else {
-          write_undo_error(&mut output, id);
-        },
-        Some("version") => if split.next().is_some() {
-          write_version_error(&mut output, id);
-        } else {
-          write_version(&mut output, id);
-        },
+        }
+        Some("version") => {
+          if split.next().is_some() {
+            write_version_error(&mut output, id);
+          } else {
+            write_version(&mut output, id);
+          }
+        }
         _ => {
           write_error(&mut output, id);
         }

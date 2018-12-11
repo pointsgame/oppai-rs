@@ -1,8 +1,8 @@
-use field::{self, Field};
-use player::Player;
+use crate::field::{self, Field};
+use crate::player::Player;
+use crate::zobrist::Zobrist;
 use rand::XorShiftRng;
 use std::sync::Arc;
-use zobrist::Zobrist;
 
 pub fn construct_field(image: &str) -> Field {
   let lines = image
@@ -23,7 +23,8 @@ pub fn construct_field(image: &str) -> Field {
         .enumerate()
         .filter(|&(_, c)| c.to_ascii_lowercase() != c.to_ascii_uppercase())
         .map(move |(x, c)| (c, x as u32, y as u32))
-    }).collect::<Vec<(char, u32, u32)>>();
+    })
+    .collect::<Vec<(char, u32, u32)>>();
   moves.sort_by(|&(c1, ..), &(c2, ..)| {
     (c1.to_ascii_lowercase(), c1.is_lowercase()).cmp(&(c2.to_ascii_lowercase(), c2.is_lowercase()))
   });

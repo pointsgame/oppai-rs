@@ -1,9 +1,9 @@
-use config::{set_minimax_type, MinimaxType};
-use construct_field::construct_field;
+use crate::config::{set_minimax_type, MinimaxType};
+use crate::construct_field::construct_field;
+use crate::hash_table::HashTable;
+use crate::minimax::minimax;
+use crate::player::Player;
 use env_logger;
-use hash_table::HashTable;
-use minimax::minimax;
-use player::Player;
 use rand::XorShiftRng;
 
 #[test]

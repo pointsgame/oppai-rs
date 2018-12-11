@@ -1,10 +1,10 @@
-use construct_field::construct_field;
-use field::{self, Field, Pos};
-use player::Player;
+use crate::construct_field::construct_field;
+use crate::field::{self, Field, Pos};
+use crate::player::Player;
+use crate::zobrist::Zobrist;
 use quickcheck::{self, Arbitrary, Gen, TestResult};
 use rand::{SeedableRng, XorShiftRng};
 use std::sync::Arc;
-use zobrist::Zobrist;
 
 #[test]
 fn simple_surround() {
@@ -278,7 +278,7 @@ impl Arbitrary for FieldArbitrary {
   fn arbitrary<G: Gen>(gen: &mut G) -> FieldArbitrary {
     let width = gen.next_u32() % 27 + 3;
     let height = gen.next_u32() % 27 + 3;
-    let mut moves = (field::min_pos(width) .. field::max_pos(width, height) + 1).collect::<Vec<Pos>>();
+    let mut moves = (field::min_pos(width)..field::max_pos(width, height) + 1).collect::<Vec<Pos>>();
     gen.shuffle(&mut moves);
     // TODO: wait for quickcheck to update rand dependency and use gen directly
     let mut seed = [0; 16];

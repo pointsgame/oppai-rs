@@ -1,14 +1,14 @@
-use config::{self, Solver};
-use field::{self, Field};
-use hash_table::HashTable;
-use heuristic;
-use minimax;
-use patterns::Patterns;
-use player::Player;
+use crate::config::{self, Solver};
+use crate::field::{self, Field};
+use crate::hash_table::HashTable;
+use crate::heuristic;
+use crate::minimax;
+use crate::patterns::Patterns;
+use crate::player::Player;
+use crate::uct::UctRoot;
+use crate::zobrist::Zobrist;
 use rand::{SeedableRng, XorShiftRng};
 use std::{cmp, sync::Arc};
-use uct::UctRoot;
-use zobrist::Zobrist;
 
 const BOT_STR: &str = "bot";
 
@@ -37,10 +37,7 @@ impl Bot {
   pub fn new(width: u32, height: u32, seed: u64, patterns: Arc<Patterns>) -> Bot {
     info!(
       target: BOT_STR,
-      "Initialization with width {0}, height {1}, seed {2}.",
-      width,
-      height,
-      seed
+      "Initialization with width {0}, height {1}, seed {2}.", width, height, seed
     );
     let length = field::length(width, height);
     let seed_array = [
@@ -119,7 +116,7 @@ impl Bot {
   }
 
   fn is_field_occupied(field: &Field) -> bool {
-    for pos in field.min_pos() .. field.max_pos() + 1 {
+    for pos in field.min_pos()..field.max_pos() + 1 {
       if field.cell(pos).is_putting_allowed() {
         return false;
       }
@@ -153,10 +150,12 @@ impl Bot {
         &self.hash_table,
         &mut self.rng,
         time - config::time_gap(),
-      ).or_else(|| heuristic::heuristic(&self.field, player))
+      )
+      .or_else(|| heuristic::heuristic(&self.field, player))
       .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
-      Solver::Heuristic =>
-        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
+      Solver::Heuristic => {
+        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      }
     }
   }
 
@@ -198,8 +197,9 @@ impl Bot {
           .or_else(|| heuristic::heuristic(&self.field, player))
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       }
-      Solver::Heuristic =>
-        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
+      Solver::Heuristic => {
+        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+      }
     }
   }
 

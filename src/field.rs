@@ -1,7 +1,7 @@
-use cell::Cell;
-use player::Player;
+use crate::cell::Cell;
+use crate::player::Player;
+use crate::zobrist::Zobrist;
 use std::{collections::VecDeque, mem, sync::Arc};
-use zobrist::Zobrist;
 
 pub type Pos = usize;
 
@@ -382,7 +382,7 @@ impl Field {
       score_black: 0,
       points_seq: Vec::with_capacity(length),
       points: vec![Cell::new(false); length],
-      dsu: (0 .. length).collect(),
+      dsu: (0..length).collect(),
       dsu_size: vec![1; length],
       changes: Vec::with_capacity(length),
       zobrist,
@@ -402,11 +402,11 @@ impl Field {
       hash: 0,
     };
     let max_pos = field.max_pos();
-    for x in 0 .. width as Pos + 2 {
+    for x in 0..width as Pos + 2 {
       field.points[x].set_bad();
       field.points[max_pos + 2 + x].set_bad();
     }
-    for y in 1 .. height as Pos + 1 {
+    for y in 1..height as Pos + 1 {
       field.points[y * (width as Pos + 2)].set_bad();
       field.points[(y + 1) * (width as Pos + 2) - 1].set_bad();
     }
@@ -699,7 +699,7 @@ impl Field {
       let mut result = false;
       for (i, &set) in sets.iter().enumerate() {
         group.clear();
-        for j in i .. input_points_count {
+        for j in i..input_points_count {
           if sets[j] == set {
             group.push(input_points[j]);
           }
@@ -929,10 +929,11 @@ impl Field {
 
   #[inline]
   pub fn get_delta_score(&self, player: Player) -> i32 {
-    self.score(player) - self.changes.last().map_or(0, |change| match player {
-      Player::Red => change.score_red - change.score_black,
-      Player::Black => change.score_black - change.score_red,
-    })
+    self.score(player)
+      - self.changes.last().map_or(0, |change| match player {
+        Player::Red => change.score_red - change.score_black,
+        Player::Black => change.score_black - change.score_red,
+      })
   }
 
   #[inline]

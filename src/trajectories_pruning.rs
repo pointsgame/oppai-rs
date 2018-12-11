@@ -1,13 +1,13 @@
-use config::{self, MinimaxMovesSorting};
-use field::{Field, Pos};
-use player::Player;
+use crate::config::{self, MinimaxMovesSorting};
+use crate::field::{Field, Pos};
+use crate::player::Player;
+use crate::zobrist::Zobrist;
 use rand::Rng;
 use std::{
   collections::HashSet,
   ops::Index,
   sync::atomic::{AtomicBool, Ordering},
 };
-use zobrist::Zobrist;
 
 #[derive(Debug)]
 struct Trajectory {
@@ -85,7 +85,7 @@ impl TrajectoriesPruning {
     depth: u32,
     should_stop: &AtomicBool,
   ) {
-    for pos in field.min_pos() .. field.max_pos() + 1 {
+    for pos in field.min_pos()..field.max_pos() + 1 {
       // TODO: try to reduce area
       let cell = field.cell(pos);
       if cell.is_putting_allowed() && field.has_near_points(pos, player) && !cell.is_players_empty_base(player) {
@@ -100,7 +100,7 @@ impl TrajectoriesPruning {
               trajectories,
               field
                 .points_seq()
-                .index(field.moves_count() - cur_depth as usize .. field.moves_count()),
+                .index(field.moves_count() - cur_depth as usize..field.moves_count()),
               player,
             );
           }
@@ -113,7 +113,7 @@ impl TrajectoriesPruning {
               trajectories,
               field
                 .points_seq()
-                .index(field.moves_count() - cur_depth as usize .. field.moves_count()),
+                .index(field.moves_count() - cur_depth as usize..field.moves_count()),
               player,
             );
           } else if depth > 0 {
@@ -167,10 +167,10 @@ impl TrajectoriesPruning {
 
   fn exclude_composite_trajectories(trajectories: &mut Vec<Trajectory>, zobrist: &Zobrist, empty_board: &mut Vec<u32>) {
     let len = trajectories.len();
-    for k in 0 .. len {
-      for i in 0 .. len - 1 {
+    for k in 0..len {
+      for i in 0..len - 1 {
         if trajectories[k].len() > trajectories[i].len() {
-          for j in i + 1 .. len {
+          for j in i + 1..len {
             if trajectories[k].len() > trajectories[j].len()
               && trajectories[k].hash()
                 == TrajectoriesPruning::intersection_hash(&trajectories[i], &trajectories[j], zobrist, empty_board)
@@ -245,8 +245,9 @@ impl TrajectoriesPruning {
     match config::minimax_moves_sorting() {
       MinimaxMovesSorting::None => {}
       MinimaxMovesSorting::Random => rng.shuffle(&mut result),
-      MinimaxMovesSorting::TrajectoriesCount =>
-        result.sort_by(|&pos1, &pos2| empty_board[pos2].cmp(&empty_board[pos1])),
+      MinimaxMovesSorting::TrajectoriesCount => {
+        result.sort_by(|&pos1, &pos2| empty_board[pos2].cmp(&empty_board[pos1]))
+      }
     }
     TrajectoriesPruning::deproject(trajectories1, empty_board);
     TrajectoriesPruning::deproject(trajectories2, empty_board);
@@ -368,10 +369,11 @@ impl TrajectoriesPruning {
       for trajectory in &last.cur_trajectories {
         let len = trajectory.len() as u32;
         let contains_pos = trajectory.points().contains(&last_pos);
-        if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos) && trajectory
-          .points()
-          .iter()
-          .all(|&pos| field.cell(pos).is_putting_allowed() || pos == last_pos)
+        if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos)
+          && trajectory
+            .points()
+            .iter()
+            .all(|&pos| field.cell(pos).is_putting_allowed() || pos == last_pos)
         {
           let new_trajectory = if contains_pos {
             if len == 1 {

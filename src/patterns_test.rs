@@ -1,6 +1,6 @@
-use construct_field::construct_field;
-use patterns::Patterns;
-use player::Player;
+use crate::construct_field::construct_field;
+use crate::patterns::Patterns;
+use crate::player::Player;
 
 fn construct_patterns(strings: &[&str]) -> Patterns {
   let mut p = Patterns::empty();

@@ -1,5 +1,5 @@
-use field::Pos;
-use hash_table::{HashData, HashTable, HashType};
+use crate::field::Pos;
+use crate::hash_table::{HashData, HashTable, HashType};
 use quickcheck::{self, Arbitrary, Gen};
 
 #[derive(Clone, Copy, PartialEq, Debug)]

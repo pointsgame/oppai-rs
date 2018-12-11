@@ -1,9 +1,10 @@
-use common;
-use config::{self, MinimaxType};
+use crate::common;
+use crate::config::{self, MinimaxType};
+use crate::field::{Field, Pos};
+use crate::hash_table::{HashData, HashTable, HashType};
+use crate::player::Player;
+use crate::trajectories_pruning::TrajectoriesPruning;
 use crossbeam::{self, queue::MsQueue};
-use field::{Field, Pos};
-use hash_table::{HashData, HashTable, HashType};
-use player::Player;
 use rand::{Rng, SeedableRng, XorShiftRng};
 use std::{
   iter,
@@ -11,7 +12,6 @@ use std::{
   thread,
   time::Duration,
 };
-use trajectories_pruning::TrajectoriesPruning;
 
 const MINIMAX_STR: &str = "minimax";
 
@@ -211,10 +211,7 @@ pub fn alpha_beta_parallel<T: Rng>(
 ) -> i32 {
   info!(
     target: MINIMAX_STR,
-    "Starting parellel alpha beta with depth {}, player {} and beta {}.",
-    depth,
-    player,
-    beta
+    "Starting parellel alpha beta with depth {}, player {} and beta {}.", depth, player, beta
   );
   if depth == 0 || should_stop.load(Ordering::Relaxed) {
     *best_move = None;
@@ -248,7 +245,7 @@ pub fn alpha_beta_parallel<T: Rng>(
   let atomic_alpha = AtomicIsize::new(alpha as isize);
   let best_moves = MsQueue::new();
   crossbeam::scope(|scope| {
-    for _ in 0 .. threads_count {
+    for _ in 0..threads_count {
       let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
       scope.spawn(|| {
         let mut local_field = field.clone();
@@ -453,9 +450,7 @@ pub fn minimax<T: Rng>(
 ) -> Option<Pos> {
   info!(
     target: MINIMAX_STR,
-    "Starting minimax with depth {} and player {}.",
-    depth,
-    player
+    "Starting minimax with depth {} and player {}.", depth, player
   );
   if depth == 0 {
     return None;
@@ -466,8 +461,7 @@ pub fn minimax<T: Rng>(
   let mut best_move = None;
   info!(
     target: MINIMAX_STR,
-    "Calculating of our estimation. Player is {}",
-    player
+    "Calculating of our estimation. Player is {}", player
   );
   let minimax_function = match config::minimax_type() {
     MinimaxType::NegaScout => nega_scout,
@@ -524,8 +518,7 @@ pub fn minimax<T: Rng>(
   } else {
     info!(
       target: MINIMAX_STR,
-      "Estimation is less than or equal enemy estimation. So all moves have the same estimation {}.",
-      estimation
+      "Estimation is less than or equal enemy estimation. So all moves have the same estimation {}.", estimation
     );
     None
   }

@@ -1,4 +1,4 @@
-use field::Pos;
+use crate::field::Pos;
 use itertools;
 use rand::Rng;
 

@@ -140,7 +140,8 @@ pub fn cli_parse() {
       ArgGroup::with_name("Minimax")
         .args(&["minimax-type", "moves-order", "rebuild-trajectories"])
         .multiple(true),
-    ).group(
+    )
+    .group(
       ArgGroup::with_name("UCT")
         .args(&[
           "radius",
@@ -154,8 +155,10 @@ pub fn cli_parse() {
           "green",
           "komi-type",
           "komi-min-iterations",
-        ]).multiple(true),
-    ).arg(
+        ])
+        .multiple(true),
+    )
+    .arg(
       Arg::with_name("solver")
         .short("s")
         .long("solver")
@@ -163,14 +166,16 @@ pub fn cli_parse() {
         .takes_value(true)
         .possible_values(&Solver::variants())
         .default_value("Uct"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("time-gap")
         .short("g")
         .long("time-gap")
         .help("Number of milliseconds that is given to IO plus internal delay")
         .takes_value(true)
         .default_value("100"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("threads-count")
         .short("t")
         .long("threads-count")
@@ -179,36 +184,42 @@ pub fn cli_parse() {
            the number of physical CPU cores on the target computer. Will be determined \
            automatically if not specified, but automatic resolution is prone to errors \
            for multithreaded CPU-s",
-        ).takes_value(true)
+        )
+        .takes_value(true)
         .default_value(&num_cpus_string),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("hash-table-size")
         .long("hash-table-size")
         .help("Count of elements that hash table for Minimax can contain")
         .takes_value(true)
         .default_value("10000"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("minimax-type")
         .long("minimax-type")
         .help("Minimax type")
         .takes_value(true)
         .possible_values(&MinimaxType::variants())
         .default_value("NegaScout"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("moves-order")
         .long("moves-order")
         .help("Moves sorting method for Minimax")
         .takes_value(true)
         .possible_values(&MinimaxMovesSorting::variants())
         .default_value("TrajectoriesCount"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("rebuild-trajectories")
         .long("rebuild-trajectories")
         .help(
           "Rebuild trajectories during minimax search. It makes minimax more precise but \
            reduces speed dramatically",
         ),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("radius")
         .long("radius")
         .help(
@@ -216,79 +227,94 @@ pub fn cli_parse() {
            The initial points are fixed once the UCT search algorithm starts. After \
            that, only points that are close enough to staring ones are considered. \
            Points that are more distant to any of the starting points are discarted",
-        ).takes_value(true)
+        )
+        .takes_value(true)
         .default_value("3"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("depth")
         .long("depth")
         .help("Maximum depth of the UCT tree")
         .takes_value(true)
         .default_value("8"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("when-create-children")
         .long("when-create-children")
         .help("Child nodes in the UTC tree will be created only after this number of node visits")
         .takes_value(true)
         .default_value("2"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("ucb-type")
         .long("ucb-type")
         .help("Formula of the UCT value")
         .takes_value(true)
         .possible_values(&UcbType::variants())
         .default_value("Ucb1Tuned"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("final-ucb-type")
         .long("final-ucb-type")
         .help("Formula of the UCT value that will be used for best move choosing")
         .takes_value(true)
         .possible_values(&UcbType::variants())
         .default_value("Winrate"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("uctk")
         .long("uctk")
         .help("UCT constant. Larger values give uniform search. Smaller values give very selective search")
         .takes_value(true)
         .default_value("1.0"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("draw-weight")
         .long("draw-weight")
         .help(
           "Draw weight for UCT formula. Should be fractional number between 0 \
            (weight of the defeat) and 1 (weight of the win). Smaller values give \
            more aggressive game",
-        ).takes_value(true)
+        )
+        .takes_value(true)
         .default_value("0.4"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("red")
         .long("red")
         .help(
           "Red zone for dynamic komi for UCT. Should be fractional number \
            between 0 and 1. Should also be less than green zone",
-        ).takes_value(true)
+        )
+        .takes_value(true)
         .default_value("0.45"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("green")
         .long("green")
         .help(
           "Green zone for dynamic komi for UCT. Should be fractional number \
            between 0 and 1. Should also be more than red zone.",
-        ).takes_value(true)
+        )
+        .takes_value(true)
         .default_value("0.5"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("komi-type")
         .long("komi-type")
         .help("Type of komi evaluation for UTC during the game")
         .takes_value(true)
         .possible_values(&UctKomiType::variants())
         .default_value("Dynamic"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("komi-min-iterations")
         .long("komi-min-iterations")
         .help("Dynamic komi for UCT will be updated after this number of iterations")
         .takes_value(true)
         .default_value("3000"),
-    ).get_matches();
+    )
+    .get_matches();
   let uct_config = UctConfig {
     radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
     ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),

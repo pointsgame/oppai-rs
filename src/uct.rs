@@ -1,17 +1,16 @@
-use common;
-use config::{self, UcbType, UctKomiType};
+use crate::common;
+use crate::config::{self, UcbType, UctKomiType};
+use crate::field::{Field, Pos};
+use crate::player::Player;
+use crate::wave_pruning::WavePruning;
 use crossbeam;
-use field::{Field, Pos};
-use player::Player;
 use rand::{Rng, SeedableRng, XorShiftRng};
 use std::{
-  mem,
-  ptr,
+  mem, ptr,
   sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
   thread,
   time::Duration,
 };
-use wave_pruning::WavePruning;
 
 const UCT_STR: &str = "uct";
 
@@ -551,7 +550,7 @@ impl UctRoot {
     let iterations = AtomicUsize::new(0);
     let ratched = AtomicIsize::new(isize::max_value());
     crossbeam::scope(|scope| {
-      for _ in 0 .. threads_count {
+      for _ in 0..threads_count {
         let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
         scope.spawn(|| {
           let mut local_field = field.clone();
@@ -559,7 +558,7 @@ impl UctRoot {
           let mut possible_moves = self.wave_pruning.moves().clone();
           while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
             self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
-            for _ in 0 .. local_field.moves_count() - self.moves_count {
+            for _ in 0..local_field.moves_count() - self.moves_count {
               local_field.undo();
             }
             iterations.fetch_add(1, Ordering::Relaxed);

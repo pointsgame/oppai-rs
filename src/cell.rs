@@ -1,4 +1,4 @@
-use player::Player;
+use crate::player::Player;
 
 type CellValue = u8;
 
