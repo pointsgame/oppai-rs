@@ -1,10 +1,10 @@
 use crate::config::{set_minimax_type, MinimaxType};
-use crate::construct_field::construct_field;
+use crate::construct_field::{construct_field, DEFAULT_SEED};
 use crate::hash_table::HashTable;
 use crate::minimax::minimax;
 use crate::player::Player;
 use env_logger;
-use rand::XorShiftRng;
+use rand::{SeedableRng, XorShiftRng};
 
 #[test]
 fn find_best_move() {
@@ -35,7 +35,7 @@ fn find_best_move() {
     ........
     ",
   );
-  let mut rng = XorShiftRng::new_unseeded();
+  let mut rng = XorShiftRng::from_seed(DEFAULT_SEED);
   let hash_table = HashTable::new(1000);
   set_minimax_type(MinimaxType::NegaScout);
   let pos = minimax(&mut field, Player::Red, &hash_table, &mut rng, 8);
