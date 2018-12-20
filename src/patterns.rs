@@ -102,7 +102,7 @@ impl Patterns {
     let fs = spiral_length; // "Found" state.
     let nfs = spiral_length + 1; // "Not found" state.
     let s_bytes = s.as_bytes();
-    for (i, (shift_x, shift_y)) in Spiral::new().into_iter().take(spiral_length).enumerate() {
+    for (i, (shift_x, shift_y)) in Spiral::new().take(spiral_length).enumerate() {
       let nxt = i + 1;
       let rotated_x = center_x as i32 + shift_x;
       let rotated_y = center_y as i32 + shift_y;
@@ -269,7 +269,6 @@ impl Patterns {
     let iter = archive
       .entries()
       .expect("Reading of tar archive is failed.")
-      .into_iter()
       .map(|file| file.expect("Reading of file in tar archive is failed."));
     for mut file in iter.filter(|file| file.header().entry_type().is_file()) {
       let name = file
@@ -300,7 +299,7 @@ impl Patterns {
     for y in left_border..field.height() as i32 - right_border {
       for x in left_border..field.width() as i32 - right_border {
         let moves = self.dfa.run(
-          &mut Spiral::new().into_iter().map(|(shift_x, shift_y)| {
+          &mut Spiral::new().map(|(shift_x, shift_y)| {
             let cur_x = x + shift_x;
             let cur_y = y + shift_y;
             if cur_x >= 0 && cur_x < field.width() as i32 && cur_y >= 0 && cur_y < field.height() as i32 {

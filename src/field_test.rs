@@ -278,7 +278,7 @@ impl Arbitrary for FieldArbitrary {
   fn arbitrary<G: Gen>(gen: &mut G) -> FieldArbitrary {
     let width = gen.next_u32() % 27 + 3;
     let height = gen.next_u32() % 27 + 3;
-    let mut moves = (field::min_pos(width)..field::max_pos(width, height) + 1).collect::<Vec<Pos>>();
+    let mut moves = (field::min_pos(width)..=field::max_pos(width, height)).collect::<Vec<Pos>>();
     moves.shuffle(gen);
     let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, gen));
     FieldArbitrary {
@@ -298,7 +298,7 @@ impl Arbitrary for FieldArbitrary {
 
 #[test]
 fn undo_check() {
-  #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+  #[allow(clippy::needless_pass_by_value)]
   fn prop(field_arbitrary: FieldArbitrary) -> TestResult {
     let mut field = Field::new(
       field_arbitrary.width,

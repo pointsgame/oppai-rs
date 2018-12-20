@@ -117,7 +117,7 @@ impl Bot {
   }
 
   fn is_field_occupied(field: &Field) -> bool {
-    for pos in field.min_pos()..field.max_pos() + 1 {
+    for pos in field.min_pos()..=field.max_pos() {
       if field.cell(pos).is_putting_allowed() {
         return false;
       }

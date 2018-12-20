@@ -21,7 +21,7 @@ fn heuristic_estimation(field: &Field, pos: Pos, player: Player) -> i32 {
 pub fn heuristic(field: &Field, player: Player) -> Option<Pos> {
   let mut best_estimation = i32::min_value();
   let mut result = None;
-  for pos in field.min_pos()..field.max_pos() + 1 {
+  for pos in field.min_pos()..=field.max_pos() {
     if field.cell(pos).is_putting_allowed() {
       let cur_estimation = heuristic_estimation(field, pos, player);
       if cur_estimation > best_estimation {

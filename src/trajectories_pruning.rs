@@ -86,7 +86,7 @@ impl TrajectoriesPruning {
     depth: u32,
     should_stop: &AtomicBool,
   ) {
-    for pos in field.min_pos()..field.max_pos() + 1 {
+    for pos in field.min_pos()..=field.max_pos() {
       // TODO: try to reduce area
       let cell = field.cell(pos);
       if cell.is_putting_allowed() && field.has_near_points(pos, player) && !cell.is_players_empty_base(player) {

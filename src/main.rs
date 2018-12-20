@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "bench", feature(test))]
 #![allow(dead_code)]
-#![cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
-#![cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::cyclomatic_complexity)]
 
 extern crate rand;
 

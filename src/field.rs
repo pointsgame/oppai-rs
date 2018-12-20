@@ -406,7 +406,7 @@ impl Field {
       field.points[x].set_bad();
       field.points[max_pos + 2 + x].set_bad();
     }
-    for y in 1..height as Pos + 1 {
+    for y in 1..=height as Pos {
       field.points[y * (width as Pos + 2)].set_bad();
       field.points[(y + 1) * (width as Pos + 2) - 1].set_bad();
     }

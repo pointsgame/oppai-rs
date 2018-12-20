@@ -521,7 +521,7 @@ impl UctRoot {
 
   // TODO: move this to exact place once stmt_expr_attributes gets stabilized
   // (see #15701)
-  #[cfg_attr(feature = "cargo-clippy", allow(float_cmp))]
+  #[allow(clippy::float_cmp)]
   fn best_move_generic<T: Rng>(
     &mut self,
     field: &Field,
