@@ -7,7 +7,8 @@ use crate::patterns::Patterns;
 use crate::player::Player;
 use crate::uct::UctRoot;
 use crate::zobrist::Zobrist;
-use rand::{SeedableRng, XorShiftRng};
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 use std::{cmp, sync::Arc};
 
 const BOT_STR: &str = "bot";

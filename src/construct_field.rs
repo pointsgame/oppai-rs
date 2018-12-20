@@ -1,7 +1,8 @@
 use crate::field::{self, Field};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
-use rand::{SeedableRng, XorShiftRng};
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 use std::sync::Arc;
 
 pub const DEFAULT_SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];

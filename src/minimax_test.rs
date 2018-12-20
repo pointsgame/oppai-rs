@@ -4,7 +4,8 @@ use crate::hash_table::HashTable;
 use crate::minimax::minimax;
 use crate::player::Player;
 use env_logger;
-use rand::{SeedableRng, XorShiftRng};
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 
 #[test]
 fn find_best_move() {

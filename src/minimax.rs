@@ -5,7 +5,8 @@ use crate::hash_table::{HashData, HashTable, HashType};
 use crate::player::Player;
 use crate::trajectories_pruning::TrajectoriesPruning;
 use crossbeam::{self, queue::MsQueue};
-use rand::{Rng, SeedableRng, XorShiftRng};
+use rand::{Rng, SeedableRng};
+use rand_xorshift::XorShiftRng;
 use std::{
   iter,
   sync::atomic::{AtomicBool, AtomicIsize, Ordering},
@@ -247,7 +248,7 @@ pub fn alpha_beta_parallel<T: Rng>(
   crossbeam::scope(|scope| {
     for _ in 0..threads_count {
       let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
-      scope.spawn(|| {
+      scope.spawn(|_| {
         let mut local_field = field.clone();
         let mut local_rng = xor_shift_rng;
         let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect();
@@ -340,7 +341,8 @@ pub fn alpha_beta_parallel<T: Rng>(
         }
       });
     }
-  });
+  })
+  .expect("Minimax alpha_beta_parallel panic");
   let mut result = 0;
   let best_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
   while let Some((pos, pos_alpha)) = best_moves.try_pop() {
@@ -533,7 +535,7 @@ pub fn minimax_with_time<T: Rng>(
 ) -> Option<Pos> {
   let should_stop = AtomicBool::new(false);
   crossbeam::scope(|scope| {
-    scope.spawn(|| {
+    scope.spawn(|_| {
       thread::sleep(Duration::from_millis(u64::from(time)));
       debug!(target: MINIMAX_STR, "Time-out!");
       should_stop.store(true, Ordering::Relaxed);
@@ -623,4 +625,5 @@ pub fn minimax_with_time<T: Rng>(
     }
     best_move
   })
+  .expect("Minimax minimax_with_time panic")
 }

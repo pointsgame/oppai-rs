@@ -7,20 +7,20 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
-rand = "0.5"
+rand = "0.6"
+rand_xorshift = "0.1"
 time = "0.1"
 log = "0.4"
 log4rs = { version = "0.8", features = ["toml"] }
-num_cpus = "1.8"
-crossbeam = "0.4"
+num_cpus = "1.9"
+crossbeam = "0.6"
 rayon = "1.0"
 tar = "0.4"
 clap = "2.32"
-itertools = "0.7"
 
 [dev-dependencies]
-quickcheck = "0.6"
-env_logger = "0.5"
+quickcheck = "0.7"
+env_logger = "0.6"
 
 [features]
 default = ["dsu"]

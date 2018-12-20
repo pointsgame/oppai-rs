@@ -2,7 +2,8 @@ use crate::construct_field::{construct_field, DEFAULT_SEED};
 use crate::player::Player;
 use crate::uct::UctRoot;
 use env_logger;
-use rand::{SeedableRng, XorShiftRng};
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 
 #[test]
 fn find_best_move() {

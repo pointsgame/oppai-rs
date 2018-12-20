@@ -2,6 +2,7 @@ use crate::config::{self, MinimaxMovesSorting};
 use crate::field::{Field, Pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
+use rand::seq::SliceRandom;
 use rand::Rng;
 use std::{
   collections::HashSet,
@@ -244,7 +245,7 @@ impl TrajectoriesPruning {
     let mut result = result_set.into_iter().collect::<Vec<Pos>>();
     match config::minimax_moves_sorting() {
       MinimaxMovesSorting::None => {}
-      MinimaxMovesSorting::Random => rng.shuffle(&mut result),
+      MinimaxMovesSorting::Random => result.shuffle(rng),
       MinimaxMovesSorting::TrajectoriesCount => {
         result.sort_by(|&pos1, &pos2| empty_board[pos2].cmp(&empty_board[pos1]))
       }

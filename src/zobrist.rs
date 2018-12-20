@@ -1,6 +1,6 @@
 use crate::field::Pos;
-use itertools;
 use rand::Rng;
+use std::iter;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Zobrist {
@@ -10,7 +10,7 @@ pub struct Zobrist {
 impl Zobrist {
   pub fn new<T: Rng>(length: Pos, rng: &mut T) -> Zobrist {
     Zobrist {
-      hashes: itertools::repeat_call(|| rng.gen()).take(length).collect(),
+      hashes: iter::repeat_with(|| rng.gen()).take(length).collect(),
     }
   }
 

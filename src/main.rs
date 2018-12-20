@@ -5,14 +5,14 @@
 
 extern crate rand;
 
+extern crate rand_xorshift;
+
 #[macro_use]
 extern crate log;
 
 extern crate log4rs;
 
 extern crate num_cpus;
-
-extern crate itertools;
 
 extern crate crossbeam;
 

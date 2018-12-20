@@ -1,8 +1,8 @@
 use crate::field::Pos;
-use itertools;
 use std::{
   convert::From,
   default::Default,
+  iter,
   sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -169,7 +169,7 @@ impl HashTable {
 
   pub fn new(length: usize) -> HashTable {
     HashTable {
-      entries: itertools::repeat_call(HashEntry::default).take(length).collect(),
+      entries: iter::repeat_with(HashEntry::default).take(length).collect(),
     }
   }
 

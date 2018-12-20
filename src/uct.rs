@@ -4,7 +4,9 @@ use crate::field::{Field, Pos};
 use crate::player::Player;
 use crate::wave_pruning::WavePruning;
 use crossbeam;
-use rand::{Rng, SeedableRng, XorShiftRng};
+use rand::seq::SliceRandom;
+use rand::{Rng, SeedableRng};
+use rand_xorshift::XorShiftRng;
 use std::{
   mem, ptr,
   sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
@@ -207,7 +209,7 @@ impl UctRoot {
         next = next.unwrap().get_sibling_mut();
       }
       UctRoot::expand_node(*next.as_mut().unwrap(), moves, rng);
-      rng.shuffle(moves);
+      moves.shuffle(rng);
       for &pos in moves.iter() {
         next.as_mut().unwrap().set_sibling(Box::new(UctNode::new(pos)));
         next = next.unwrap().get_sibling_mut();
@@ -329,7 +331,7 @@ impl UctRoot {
     possible_moves: &mut Vec<Pos>,
     komi: i32,
   ) -> Option<Player> {
-    rng.shuffle(possible_moves);
+    possible_moves.shuffle(rng);
     let mut cur_player = player;
     for &pos in possible_moves.iter() {
       let cell = field.cell(pos);
@@ -362,7 +364,7 @@ impl UctRoot {
   }
 
   fn create_children<T: Rng>(field: &Field, possible_moves: &mut Vec<Pos>, node: &UctNode, rng: &mut T) {
-    rng.shuffle(possible_moves);
+    possible_moves.shuffle(rng);
     let mut children = None;
     for &pos in possible_moves.iter() {
       if field.cell(pos).is_putting_allowed() {
@@ -552,7 +554,7 @@ impl UctRoot {
     crossbeam::scope(|scope| {
       for _ in 0..threads_count {
         let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
-        scope.spawn(|| {
+        scope.spawn(|_| {
           let mut local_field = field.clone();
           let mut local_rng = xor_shift_rng;
           let mut possible_moves = self.wave_pruning.moves().clone();
@@ -565,7 +567,8 @@ impl UctRoot {
           }
         });
       }
-    });
+    })
+    .expect("UCT best_move_generic panic");
     info!(
       target: UCT_STR,
       "Iterations count: {0}.",
@@ -610,12 +613,13 @@ impl UctRoot {
   pub fn best_move_with_time<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: u32) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
-      scope.spawn(|| {
+      scope.spawn(|_| {
         thread::sleep(Duration::from_millis(u64::from(time)));
         should_stop.store(true, Ordering::Relaxed);
       });
       self.best_move_generic(field, player, rng, &should_stop, usize::max_value())
     })
+    .expect("UCT best_move_with_time panic")
   }
 
   pub fn best_move_with_iterations_count<T: Rng>(
