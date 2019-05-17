@@ -1,9 +1,10 @@
-use crate::construct_field::construct_field;
+use crate::construct_field::{construct_field, DEFAULT_SEED};
 use crate::field::{self, Field, Pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
-use quickcheck::{self, Arbitrary, Gen, TestResult};
 use rand::seq::SliceRandom;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 use std::sync::Arc;
 
 #[test]
@@ -248,77 +249,24 @@ fn three_surroundings_with_common_borders() {
   assert_eq!(field.captured_count(Player::Black), 0);
 }
 
-#[derive(Clone, PartialEq, Debug)]
-struct FieldArbitrary {
-  width: u32,
-  height: u32,
-  moves: Vec<Pos>,
-  zobrist: Arc<Zobrist>,
-}
-
-impl Iterator for FieldArbitrary {
-  type Item = FieldArbitrary;
-
-  fn next(&mut self) -> Option<FieldArbitrary> {
-    if self.moves.is_empty() {
-      None
-    } else {
-      let result = self.clone();
-      self.moves.pop();
-      Some(result)
-    }
-  }
-
-  fn count(self) -> usize {
-    self.moves.len()
-  }
-}
-
-impl Arbitrary for FieldArbitrary {
-  fn arbitrary<G: Gen>(gen: &mut G) -> FieldArbitrary {
-    let width = gen.next_u32() % 27 + 3;
-    let height = gen.next_u32() % 27 + 3;
-    let mut moves = (field::min_pos(width)..=field::max_pos(width, height)).collect::<Vec<Pos>>();
-    moves.shuffle(gen);
-    let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, gen));
-    FieldArbitrary {
-      width,
-      height,
-      moves,
-      zobrist,
-    }
-  }
-
-  fn shrink(&self) -> Box<Iterator<Item = FieldArbitrary>> {
-    let mut result = self.clone();
-    result.moves.pop();
-    Box::new(result)
-  }
-}
-
 #[test]
 fn undo_check() {
-  #[allow(clippy::needless_pass_by_value)]
-  fn prop(field_arbitrary: FieldArbitrary) -> TestResult {
-    let mut field = Field::new(
-      field_arbitrary.width,
-      field_arbitrary.height,
-      Arc::clone(&field_arbitrary.zobrist),
-    );
-    let mut player = Player::Red;
-    for &pos in &field_arbitrary.moves {
-      if field.is_putting_allowed(pos) {
-        let field_before = field.clone();
-        field.put_point(pos, player);
-        field.undo();
-        if field_before != field {
-          return TestResult::failed();
-        }
-        field.put_point(pos, player);
-        player = player.next();
-      }
+  let width = 20;
+  let height = 20;
+  let mut rng = XorShiftRng::from_seed(DEFAULT_SEED);
+  let zobrist = Zobrist::new(field::length(width, height) * 2, &mut rng);
+  let mut field = Field::new(width, height, Arc::new(zobrist));
+  let mut moves = (field::min_pos(width)..=field::max_pos(width, height)).collect::<Vec<Pos>>();
+  moves.shuffle(&mut rng);
+  let mut player = Player::Red;
+  for &pos in &moves {
+    if field.is_putting_allowed(pos) {
+      let field_before = field.clone();
+      field.put_point(pos, player);
+      field.undo();
+      assert!(field_before == field);
+      field.put_point(pos, player);
+      player = player.next();
     }
-    TestResult::passed()
   }
-  quickcheck::quickcheck(prop as fn(FieldArbitrary) -> TestResult);
 }
