@@ -12,11 +12,11 @@ rand_xorshift = "0.1"
 time = "0.1"
 log = "0.4"
 log4rs = { version = "0.8", features = ["toml"] }
-num_cpus = "1.9"
-crossbeam = "0.6"
+num_cpus = "1.10"
+crossbeam = "0.7"
 rayon = "1.0"
 tar = "0.4"
-clap = "2.32"
+clap = "2.33"
 
 [dev-dependencies]
 env_logger = "0.6"

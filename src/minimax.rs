@@ -4,7 +4,7 @@ use crate::field::{Field, Pos};
 use crate::hash_table::{HashData, HashTable, HashType};
 use crate::player::Player;
 use crate::trajectories_pruning::TrajectoriesPruning;
-use crossbeam::{self, queue::MsQueue};
+use crossbeam::{self, queue::SegQueue};
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use std::{
@@ -231,7 +231,7 @@ pub fn alpha_beta_parallel<T: Rng>(
     *best_move = None;
     return field.score(player);
   }
-  let queue = MsQueue::new();
+  let queue = SegQueue::new();
   if let Some(best_pos) = *best_move {
     queue.push(best_pos);
     for &pos in moves.iter().filter(|&&pos| pos != best_pos) {
@@ -244,7 +244,7 @@ pub fn alpha_beta_parallel<T: Rng>(
   }
   let threads_count = config::threads_count();
   let atomic_alpha = AtomicIsize::new(alpha as isize);
-  let best_moves = MsQueue::new();
+  let best_moves = SegQueue::new();
   crossbeam::scope(|scope| {
     for _ in 0..threads_count {
       let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
@@ -255,7 +255,7 @@ pub fn alpha_beta_parallel<T: Rng>(
         let mut local_best_move = 0;
         let mut local_alpha = alpha;
         let enemy = player.next();
-        while let Some(pos) = queue.try_pop() {
+        while let Ok(pos) = queue.pop() {
           if should_stop.load(Ordering::Relaxed) {
             break;
           }
@@ -345,7 +345,7 @@ pub fn alpha_beta_parallel<T: Rng>(
   .expect("Minimax alpha_beta_parallel panic");
   let mut result = 0;
   let best_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
-  while let Some((pos, pos_alpha)) = best_moves.try_pop() {
+  while let Ok((pos, pos_alpha)) = best_moves.pop() {
     if pos_alpha == best_alpha {
       result = pos;
       break;
