@@ -202,7 +202,7 @@ impl Patterns {
   pub fn from_str(name: &str, string: &str) -> Patterns {
     let mut split = string
       .split('\n')
-      .map(|line| line.trim())
+      .map(str::trim)
       .filter(|line| !line.is_empty());
     if let Some(header_str) = split.next() {
       // Read header from input string.
@@ -275,7 +275,7 @@ impl Patterns {
         .header()
         .path()
         .ok()
-        .and_then(|path| path.to_str().map(|s| s.to_owned()))
+        .and_then(|path| path.to_str().map(ToOwned::to_owned))
         .unwrap_or_else(|| "<unknown>".to_owned());
       info!(target: PATTERNS_STR, "Loading pattern '{}'", name);
       let mut s = String::new();
