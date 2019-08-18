@@ -1,9 +1,9 @@
-Opai-rs
+Oppai-rs
 ====
 
-[![Travis Build Status](https://travis-ci.org/kurnevsky/opai-rs.svg?branch=master)](https://travis-ci.org/kurnevsky/opai-rs)
+[![Travis Build Status](https://travis-ci.org/kurnevsky/oppai-rs.svg?branch=master)](https://travis-ci.org/kurnevsky/oppai-rs)
 
-Opai-rs is an artificial intelligence for the game of points.
+Oppai-rs is an artificial intelligence for the game of points.
 
 It's written in rust language and implements "points console AI protocol v6". (See /doc/PointsAIProtocol6.txt for details.)
 
@@ -40,7 +40,7 @@ cargo run --release
 or with:
 
 ```sh
-./target/release/opai-rs
+./target/release/oppai-rs
 ```
 
 If you have nightly rust and want to see clippy warnings, compile with:
