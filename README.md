@@ -1,13 +1,15 @@
 Oppai-rs
 ====
 
-[![Travis Build Status](https://travis-ci.org/kurnevsky/oppai-rs.svg?branch=master)](https://travis-ci.org/kurnevsky/oppai-rs)
+[![Travis Build Status](https://travis-ci.org/pointsgame/oppai-rs.svg?branch=master)](https://travis-ci.org/pointsgame/oppai-rs)
 
-Oppai-rs is an artificial intelligence for the game of points.
+![Logo](/Logo.svg)
+
+Oppai-rs (acronym for "OPen Points Artificial Intelligence") is an artificial intelligence for the game of points.
 
 It's written in rust language and implements "points console AI protocol v6". (See /doc/PointsAIProtocol6.txt for details.)
 
-You can play with it using "[missile](https://github.com/kurnevsky/missile)".
+You can play with it using "[missile](https://github.com/pointsgame/missile)".
 
 Features
 ====
