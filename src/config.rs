@@ -59,7 +59,6 @@ struct Config {
 struct UctConfig {
   radius: u32,
   ucb_type: UcbType,
-  final_ucb_type: UcbType,
   draw_weight: f64,
   uctk: f64,
   when_create_children: usize,
@@ -88,7 +87,6 @@ struct BotConfig {
 const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
   radius: 3,
   ucb_type: UcbType::Ucb1Tuned,
-  final_ucb_type: UcbType::Winrate,
   draw_weight: 0.4,
   uctk: 1.0,
   when_create_children: 2,
@@ -148,7 +146,6 @@ pub fn cli_parse() {
           "depth",
           "when-create-children",
           "ucb-type",
-          "final-ucb-type",
           "uctk",
           "draw-weight",
           "red",
@@ -254,14 +251,6 @@ pub fn cli_parse() {
         .default_value("Ucb1Tuned"),
     )
     .arg(
-      Arg::with_name("final-ucb-type")
-        .long("final-ucb-type")
-        .help("Formula of the UCT value that will be used for best move choosing")
-        .takes_value(true)
-        .possible_values(&UcbType::variants())
-        .default_value("Winrate"),
-    )
-    .arg(
       Arg::with_name("uctk")
         .long("uctk")
         .help("UCT constant. Larger values give uniform search. Smaller values give very selective search")
@@ -318,7 +307,6 @@ pub fn cli_parse() {
   let uct_config = UctConfig {
     radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
     ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
-    final_ucb_type: value_t!(matches.value_of("final-ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
     draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
     uctk: value_t!(matches.value_of("uctk"), f64).unwrap_or_else(|e| e.exit()),
     when_create_children: value_t!(matches.value_of("when-create-children"), usize).unwrap_or_else(|e| e.exit()),
@@ -357,11 +345,6 @@ pub fn uct_radius() -> u32 {
 #[inline]
 pub fn ucb_type() -> UcbType {
   config().uct.ucb_type
-}
-
-#[inline]
-pub fn final_ucb_type() -> UcbType {
-  config().uct.final_ucb_type
 }
 
 #[inline]

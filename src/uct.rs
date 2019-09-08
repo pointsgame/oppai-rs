@@ -579,7 +579,7 @@ impl UctRoot {
     if let Some(ref root) = self.node {
       let mut next = root.get_child_ref();
       while let Some(next_node) = next {
-        let uct_value = UctRoot::ucb(root, next_node, config::final_ucb_type());
+        let uct_value = UctRoot::ucb(root, next_node, UcbType::Winrate);
         let pos = next_node.get_pos();
         info!(
           target: UCT_STR,
