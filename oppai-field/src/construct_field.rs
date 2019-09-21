@@ -1,10 +1,10 @@
-use crate::field::{self, Field};
+use crate::field::{self, to_pos, Field, Pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
 use rand::Rng;
 use std::sync::Arc;
 
-pub fn construct_field<T: Rng>(rng: &mut T, image: &str) -> Field {
+pub fn construct_moves(image: &str) -> (u32, u32, Vec<(Player, Pos)>) {
   let lines = image
     .split('\n')
     .map(|line| line.trim_matches(' '))
@@ -22,17 +22,27 @@ pub fn construct_field<T: Rng>(rng: &mut T, image: &str) -> Field {
         .chars()
         .enumerate()
         .filter(|&(_, c)| c.to_ascii_lowercase() != c.to_ascii_uppercase())
-        .map(move |(x, c)| (c, x as u32, y as u32))
+        .map(move |(x, c)| (c, to_pos(width, x as u32, y as u32)))
     })
-    .collect::<Vec<(char, u32, u32)>>();
+    .collect::<Vec<_>>();
   moves.sort_by(|&(c1, ..), &(c2, ..)| {
     (c1.to_ascii_lowercase(), c1.is_lowercase()).cmp(&(c2.to_ascii_lowercase(), c2.is_lowercase()))
   });
+  (
+    width,
+    height,
+    moves
+      .into_iter()
+      .map(|(c, pos)| (Player::from_bool(c.is_uppercase()), pos))
+      .collect(),
+  )
+}
+
+pub fn construct_field<T: Rng>(rng: &mut T, image: &str) -> Field {
+  let (width, height, moves) = construct_moves(image);
   let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, rng));
   let mut field = Field::new(width, height, zobrist);
-  for (c, x, y) in moves {
-    let player = Player::from_bool(c.is_uppercase());
-    let pos = field.to_pos(x, y);
+  for (player, pos) in moves {
     field.put_point(pos, player);
   }
   field

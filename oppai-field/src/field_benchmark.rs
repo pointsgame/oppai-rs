@@ -5,6 +5,7 @@ extern crate oppai_field;
 use criterion::black_box;
 use criterion::Bencher;
 use criterion::Criterion;
+use oppai_field::construct_field::construct_moves;
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
@@ -38,23 +39,68 @@ fn random_game(bencher: &mut Bencher, width: u32, height: u32, seed_array: [u8; 
   });
 }
 
-pub fn random_game_1(c: &mut Criterion) {
-  c.bench_function("random_game_1", |bencher| {
-    random_game(bencher, 30, 30, SEED_1)
+fn random_game_1(c: &mut Criterion) {
+  c.bench_function("random_game_1", |bencher| random_game(bencher, 30, 30, SEED_1));
+}
+
+fn random_game_2(c: &mut Criterion) {
+  c.bench_function("random_game_2", |bencher| random_game(bencher, 30, 30, SEED_2));
+}
+
+fn random_game_3(c: &mut Criterion) {
+  c.bench_function("random_game_3", |bencher| random_game(bencher, 30, 30, SEED_3));
+}
+
+fn game(bencher: &mut Bencher, width: u32, height: u32, moves: Vec<(Player, Pos)>) {
+  let mut rng = XorShiftRng::from_seed(SEED_1);
+  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
+  bencher.iter(|| {
+    let mut field = Field::new(width, height, zobrist.clone());
+    for &(player, pos) in black_box(&moves) {
+      if field.is_putting_allowed(pos) {
+        field.put_point(pos, player);
+      }
+    }
+    for _ in 0..field.moves_count() {
+      field.undo();
+    }
+    field
   });
 }
 
-pub fn random_game_2(c: &mut Criterion) {
-  c.bench_function("random_game_2", |bencher| {
-    random_game(bencher, 30, 30, SEED_2)
+fn game_without_surroundings(c: &mut Criterion) {
+  let (width, height, moves) = construct_moves(
+    "
+    ..............
+    .aDFgjMOprUWx.
+    .BceHKlnQStvY.
+    ..............
+    ",
+  );
+  c.bench_function("game_without_surroundings", |bencher| {
+    game(bencher, width, height, moves.clone())
   });
 }
 
-pub fn random_game_3(c: &mut Criterion) {
-  c.bench_function("random_game_3", |bencher| {
-    random_game(bencher, 30, 30, SEED_3)
+fn game_with_surroundings(c: &mut Criterion) {
+  let (width, height, moves) = construct_moves(
+    "
+    .........
+    ....R....
+    ...QhS...
+    ..PgCjT..
+    .OfBaDkU.
+    ..ZnElV..
+    ...YmW...
+    ....X....
+    .........
+    ",
+  );
+  c.bench_function("game_with_surroundings", |bencher| {
+    game(bencher, width, height, moves.clone())
   });
 }
 
 criterion_group!(random_games, random_game_1, random_game_2, random_game_3);
-criterion_main!(random_games);
+criterion_group!(games, game_without_surroundings, game_with_surroundings);
+criterion_main!(random_games, games);
