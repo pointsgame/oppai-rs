@@ -1,3 +1,12 @@
+#[macro_use]
+extern crate criterion;
+extern crate oppai;
+
+use criterion::black_box;
+use criterion::Criterion;
+
+use oppai::fibonacci;
+
 use field::{self, Field, Pos};
 use player::Player;
 use rand::{Rng, SeedableRng, XorShiftRng};

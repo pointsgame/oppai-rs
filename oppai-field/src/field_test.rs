@@ -1,4 +1,4 @@
-use crate::construct_field::{construct_field, DEFAULT_SEED};
+use crate::construct_field::construct_field;
 use crate::field::{self, Field, Pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
@@ -7,9 +7,12 @@ use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::sync::Arc;
 
+const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
+
 #[test]
 fn simple_surround() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .a.
     cBa
@@ -28,6 +31,7 @@ fn simple_surround() {
 #[test]
 fn surround_empty_territory() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .a.
     a.a
@@ -51,6 +55,7 @@ fn surround_empty_territory() {
 #[test]
 fn move_priority() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .aB.
     aCaB
@@ -64,6 +69,7 @@ fn move_priority() {
 #[test]
 fn move_priority_big() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .B..
     BaB.
@@ -78,6 +84,7 @@ fn move_priority_big() {
 #[test]
 fn onion_surroundings() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...c...
     ..cBc..
@@ -93,6 +100,7 @@ fn onion_surroundings() {
 #[test]
 fn apply_control_surrounding_in_same_turn() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .a.
     aBa
@@ -106,6 +114,7 @@ fn apply_control_surrounding_in_same_turn() {
 #[test]
 fn double_surround() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .a.a.
     aAbAa
@@ -119,6 +128,7 @@ fn double_surround() {
 #[test]
 fn double_surround_with_empty_part() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .b.b..
     b.zAb.
@@ -134,6 +144,7 @@ fn double_surround_with_empty_part() {
 #[test]
 fn should_not_leave_empty_inside() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .aaaa..
     a....a.
@@ -157,6 +168,7 @@ fn should_not_leave_empty_inside() {
 #[test]
 fn a_hole_inside_a_surrounding() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ....c....
     ...c.c...
@@ -178,6 +190,7 @@ fn a_hole_inside_a_surrounding() {
 #[test]
 fn a_hole_inside_a_surrounding_after_control_surrounding() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ....b....
     ...b.b...
@@ -199,6 +212,7 @@ fn a_hole_inside_a_surrounding_after_control_surrounding() {
 #[test]
 fn surrounding_does_not_expand() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ....a....
     ...a.a...
@@ -223,6 +237,7 @@ fn surrounding_does_not_expand() {
 #[test]
 fn two_surroundings_with_common_border() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .a..
     aAa.
@@ -237,6 +252,7 @@ fn two_surroundings_with_common_border() {
 #[test]
 fn three_surroundings_with_common_borders() {
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ..a..
     .aAa.
@@ -253,7 +269,7 @@ fn three_surroundings_with_common_borders() {
 fn undo_check() {
   let width = 20;
   let height = 20;
-  let mut rng = XorShiftRng::from_seed(DEFAULT_SEED);
+  let mut rng = XorShiftRng::from_seed(SEED);
   let zobrist = Zobrist::new(field::length(width, height) * 2, &mut rng);
   let mut field = Field::new(width, height, Arc::new(zobrist));
   let mut moves = (field::min_pos(width)..=field::max_pos(width, height)).collect::<Vec<Pos>>();

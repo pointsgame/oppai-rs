@@ -1,5 +1,5 @@
-use crate::field::{Field, Pos};
-use crate::player::Player;
+use oppai_field::field::{Field, Pos};
+use oppai_field::player::Player;
 
 pub fn is_last_move_stupid(field: &Field, pos: Pos, player: Player) -> bool {
   let delta_score = field.get_delta_score(player);

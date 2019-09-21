@@ -1,4 +1,4 @@
-use crate::field::Pos;
+use oppai_field::field::Pos;
 use std::{
   convert::From,
   default::Default,

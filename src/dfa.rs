@@ -1,5 +1,5 @@
-use crate::cell::Cell;
-use crate::player::Player;
+use oppai_field::cell::Cell;
+use oppai_field::player::Player;
 use std::collections::{vec_deque::VecDeque, HashMap};
 
 #[derive(Clone, Debug)]

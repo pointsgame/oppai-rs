@@ -1,5 +1,5 @@
-use crate::field::{Field, Pos};
-use crate::player::Player;
+use oppai_field::field::{Field, Pos};
+use oppai_field::player::Player;
 
 static CG_SUM: [i32; 9] = [-5, -1, 0, 0, 1, 2, 5, 20, 30];
 

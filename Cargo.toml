@@ -1,5 +1,5 @@
 [package]
-name = "oppai-rs"
+name = "oppai"
 version = "0.1.0"
 authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
 license = "AGPL-3.0+"
@@ -17,14 +17,14 @@ crossbeam = "0.7"
 rayon = "1.2"
 tar = "0.4"
 clap = "2.33"
+oppai-field = { path = "oppai-field" }
 
 [dev-dependencies]
 env_logger = "0.6"
 
 [features]
 default = ["dsu"]
-dsu = []
-bench = []
+dsu = ["oppai-field/dsu"]
 
 [profile.dev]
 opt-level = 0
@@ -48,3 +48,8 @@ lto = true
 debug = false
 panic = "abort"
 codegen-units = 1
+
+[workspace]
+members = [
+  "oppai-field",
+]

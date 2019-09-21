@@ -1,9 +1,9 @@
 use crate::common;
 use crate::config::{self, UcbType, UctKomiType};
-use crate::field::{Field, Pos};
-use crate::player::Player;
 use crate::wave_pruning::WavePruning;
 use crossbeam;
+use oppai_field::field::{Field, Pos};
+use oppai_field::player::Player;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;

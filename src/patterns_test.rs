@@ -1,6 +1,10 @@
-use crate::construct_field::construct_field;
 use crate::patterns::Patterns;
-use crate::player::Player;
+use oppai_field::construct_field::construct_field;
+use oppai_field::player::Player;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
+
+const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
 
 fn construct_patterns(strings: &[&str]) -> Patterns {
   let mut p = Patterns::empty();
@@ -60,6 +64,7 @@ fn pattern_empty_doesnt_match() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...
     aA.
@@ -81,6 +86,7 @@ fn pattern_borders_matches() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...
     aA.
@@ -102,6 +108,7 @@ fn pattern_borders_doesnt_match() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ....
     .aA.
@@ -123,6 +130,7 @@ fn pattern_any_matches() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...
     aA.
@@ -144,6 +152,7 @@ fn pattern_any_except_border_matches() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...
     aA.
@@ -165,6 +174,7 @@ fn pattern_any_except_border_doesnt_match() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...
     aA.
@@ -186,6 +196,7 @@ fn pattern_red_black_or_none_matches() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...
     aA.
@@ -207,6 +218,7 @@ fn pattern_red_black_or_none_doesnt_match() {
     2 3 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     ...
     aA.
@@ -229,6 +241,7 @@ fn pattern_rotation_0() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .aA..
@@ -252,6 +265,7 @@ fn pattern_rotation_1() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     ...a.
@@ -275,6 +289,7 @@ fn pattern_rotation_2() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .a.A.
@@ -298,6 +313,7 @@ fn pattern_rotation_3() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .AAa.
@@ -321,6 +337,7 @@ fn pattern_rotation_4() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     ..Aa.
@@ -344,6 +361,7 @@ fn pattern_rotation_5() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .aAA.
@@ -367,6 +385,7 @@ fn pattern_rotation_6() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .A.a.
@@ -390,6 +409,7 @@ fn pattern_rotation_7() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .a...
@@ -413,6 +433,7 @@ fn pattern_inversion_doesnt_match() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .aA..
@@ -436,6 +457,7 @@ fn pattern_inversion_matches() {
     0 1 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .Aa..
@@ -460,6 +482,7 @@ fn pattern_multiple_moves() {
     1 0 1.0
     "]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .aA..
@@ -500,6 +523,7 @@ fn multiple_patterns() {
     ",
   ]);
   let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
     "
     .....
     .aA..

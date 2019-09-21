@@ -1,13 +1,10 @@
 use crate::field::{self, Field};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
-use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
+use rand::Rng;
 use std::sync::Arc;
 
-pub const DEFAULT_SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
-
-pub fn construct_field(image: &str) -> Field {
+pub fn construct_field<T: Rng>(rng: &mut T, image: &str) -> Field {
   let lines = image
     .split('\n')
     .map(|line| line.trim_matches(' '))
@@ -31,8 +28,7 @@ pub fn construct_field(image: &str) -> Field {
   moves.sort_by(|&(c1, ..), &(c2, ..)| {
     (c1.to_ascii_lowercase(), c1.is_lowercase()).cmp(&(c2.to_ascii_lowercase(), c2.is_lowercase()))
   });
-  let mut rng = XorShiftRng::from_seed(DEFAULT_SEED);
-  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
+  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, rng));
   let mut field = Field::new(width, height, zobrist);
   for (c, x, y) in moves {
     let player = Player::from_bool(c.is_uppercase());

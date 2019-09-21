@@ -29,28 +29,22 @@ extern crate env_logger;
 #[cfg(all(test, feature = "bench"))]
 extern crate test;
 
+extern crate oppai_field;
+
 mod bot;
-mod cell;
 mod common;
 mod config;
 mod dfa;
-mod field;
 mod hash_table;
 mod heuristic;
 mod minimax;
 mod patterns;
-mod player;
 mod rotate;
 mod spiral;
 mod trajectories_pruning;
 mod uct;
 mod wave_pruning;
-mod zobrist;
 
-#[cfg(test)]
-mod construct_field;
-#[cfg(test)]
-mod field_test;
 #[cfg(test)]
 mod hash_table_test;
 #[cfg(test)]
@@ -61,8 +55,6 @@ mod patterns_test;
 mod uct_test;
 
 #[cfg(all(test, feature = "bench"))]
-mod field_benchmark;
-#[cfg(all(test, feature = "bench"))]
 mod minimax_benchmark;
 #[cfg(all(test, feature = "bench"))]
 mod uct_benchmark;
@@ -70,7 +62,7 @@ mod uct_benchmark;
 use crate::bot::Bot;
 use crate::config::cli_parse;
 use crate::patterns::Patterns;
-use crate::player::Player;
+use oppai_field::player::Player;
 use std::{
   default::Default,
   fs::File,

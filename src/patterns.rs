@@ -1,9 +1,9 @@
-use crate::cell::Cell;
 use crate::dfa::{Dfa, DfaState};
-use crate::field::{Field, Pos};
-use crate::player::Player;
 use crate::rotate::*;
 use crate::spiral::Spiral;
+use oppai_field::cell::Cell;
+use oppai_field::field::{Field, Pos};
+use oppai_field::player::Player;
 use rand::Rng;
 use rayon;
 use std::{
@@ -200,10 +200,7 @@ impl Patterns {
   }
 
   pub fn from_str(name: &str, string: &str) -> Patterns {
-    let mut split = string
-      .split('\n')
-      .map(str::trim)
-      .filter(|line| !line.is_empty());
+    let mut split = string.split('\n').map(str::trim).filter(|line| !line.is_empty());
     if let Some(header_str) = split.next() {
       // Read header from input string.
       let (width, height, priority) = Patterns::parse_header(name, header_str);

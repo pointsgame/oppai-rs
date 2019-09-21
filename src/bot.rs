@@ -1,12 +1,12 @@
 use crate::config::{self, Solver};
-use crate::field::{self, Field};
 use crate::hash_table::HashTable;
 use crate::heuristic;
 use crate::minimax;
 use crate::patterns::Patterns;
-use crate::player::Player;
 use crate::uct::UctRoot;
-use crate::zobrist::Zobrist;
+use oppai_field::field::{self, Field};
+use oppai_field::player::Player;
+use oppai_field::zobrist::Zobrist;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::{cmp, sync::Arc};

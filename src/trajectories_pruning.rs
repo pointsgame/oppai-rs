@@ -1,7 +1,7 @@
 use crate::config::{self, MinimaxMovesSorting};
-use crate::field::{Field, Pos};
-use crate::player::Player;
-use crate::zobrist::Zobrist;
+use oppai_field::field::{Field, Pos};
+use oppai_field::player::Player;
+use oppai_field::zobrist::Zobrist;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use std::{

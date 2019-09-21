@@ -1,10 +1,10 @@
 use crate::common;
 use crate::config::{self, MinimaxType};
-use crate::field::{Field, Pos};
 use crate::hash_table::{HashData, HashTable, HashType};
-use crate::player::Player;
 use crate::trajectories_pruning::TrajectoriesPruning;
 use crossbeam::{self, queue::SegQueue};
+use oppai_field::field::{Field, Pos};
+use oppai_field::player::Player;
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use std::{
