@@ -68,7 +68,7 @@ impl Bot {
       patterns,
       zobrist,
       field: Field::new(width, height, field_zobrist),
-      uct: UctRoot::new(length),
+      uct: UctRoot::new(config::config().uct.clone(), length),
       hash_table,
     }
   }

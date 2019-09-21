@@ -1,5 +1,4 @@
 use crate::common;
-use crate::config::{self, UcbType, UctKomiType};
 use crate::wave_pruning::WavePruning;
 use crossbeam;
 use oppai_field::field::{Field, Pos};
@@ -15,6 +14,39 @@ use std::{
 };
 
 const UCT_STR: &str = "uct";
+
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum UcbType {
+    Winrate,
+    Ucb1,
+    Ucb1Tuned
+  }
+}
+
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum UctKomiType {
+    None,
+    Static,
+    Dynamic
+  }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct UctConfig {
+  pub threads_count: usize,
+  pub radius: u32,
+  pub ucb_type: UcbType,
+  pub draw_weight: f64,
+  pub uctk: f64,
+  pub when_create_children: usize,
+  pub depth: u32,
+  pub komi_type: UctKomiType,
+  pub red: f64,
+  pub green: f64,
+  pub komi_min_iterations: usize,
+}
 
 struct UctNode {
   wins: AtomicUsize,
@@ -161,6 +193,7 @@ impl UctNode {
 }
 
 pub struct UctRoot {
+  config: UctConfig,
   node: Option<Box<UctNode>>,
   player: Player,
   moves_count: usize,
@@ -191,10 +224,10 @@ impl UctRoot {
     self.player = player;
     self.moves_count = field.moves_count();
     self.hash = field.hash();
-    if config::uct_komi_type() != UctKomiType::None {
+    if self.config.komi_type != UctKomiType::None {
       self.komi = AtomicIsize::new(field.score(player) as isize);
     }
-    self.wave_pruning.init(field, config::uct_radius());
+    self.wave_pruning.init(field, self.config.radius);
   }
 
   fn expand_node<T: Rng>(node: &mut UctNode, moves: &mut Vec<Pos>, rng: &mut T) {
@@ -234,7 +267,7 @@ impl UctRoot {
             self.clear();
             self.init(field, player);
           } else if let Some(node) = self.node.as_mut() {
-            let mut added_moves = self.wave_pruning.update(field, last_moves_count, config::uct_radius());
+            let mut added_moves = self.wave_pruning.update(field, last_moves_count, self.config.radius);
             debug!(
               target: UCT_STR,
               "Added  into consideration moves: {:?}.",
@@ -244,7 +277,7 @@ impl UctRoot {
                 .collect::<Vec<(u32, u32)>>()
             );
             UctRoot::expand_node(node, &mut added_moves, rng);
-            match config::uct_komi_type() {
+            match self.config.komi_type {
               UctKomiType::Static => self.komi = AtomicIsize::new(field.score(self.player) as isize),
               UctKomiType::Dynamic => {
                 self.komi_visits = AtomicUsize::new(node.get_visits());
@@ -291,15 +324,16 @@ impl UctRoot {
         self.moves_count += 1;
         self.player = self.player.next();
         self.hash = field.hash();
-        if config::uct_komi_type() == UctKomiType::Dynamic {
+        if self.config.komi_type == UctKomiType::Dynamic {
           self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
         }
       }
     }
   }
 
-  pub fn new(length: Pos) -> UctRoot {
+  pub fn new(config: UctConfig, length: Pos) -> UctRoot {
     UctRoot {
+      config,
       node: None,
       player: Player::Red,
       moves_count: 0,
@@ -343,21 +377,19 @@ impl UctRoot {
     UctRoot::random_result(field, player, komi)
   }
 
-  fn ucb(parent: &UctNode, node: &UctNode, ucb_type: UcbType) -> f64 {
+  fn ucb(&self, parent: &UctNode, node: &UctNode, ucb_type: UcbType) -> f64 {
     let wins = node.get_wins() as f64;
     let draws = node.get_draws() as f64;
     let visits = node.get_visits() as f64;
     let parent_visits = parent.get_visits() as f64;
-    let uct_draw_weight = config::uct_draw_weight();
-    let uctk = config::uctk();
-    let win_rate = (wins + draws * uct_draw_weight) / visits;
+    let win_rate = (wins + draws * self.config.draw_weight) / visits;
     let uct = match ucb_type {
       UcbType::Winrate => 0f64,
-      UcbType::Ucb1 => uctk * f64::sqrt(2.0 * f64::ln(parent_visits) / visits),
+      UcbType::Ucb1 => self.config.uctk * f64::sqrt(2.0 * f64::ln(parent_visits) / visits),
       UcbType::Ucb1Tuned => {
-        let v = (wins + draws * uct_draw_weight * uct_draw_weight) / visits - win_rate * win_rate
+        let v = (wins + draws * self.config.draw_weight * self.config.draw_weight) / visits - win_rate * win_rate
           + f64::sqrt(2.0 * f64::ln(parent_visits) / visits);
-        uctk * f64::sqrt(v.min(0.25) * f64::ln(parent_visits) / visits)
+        self.config.uctk * f64::sqrt(v.min(0.25) * f64::ln(parent_visits) / visits)
       }
     };
     win_rate + uct
@@ -378,7 +410,7 @@ impl UctRoot {
     }
   }
 
-  fn uct_select(node: &UctNode) -> Option<&UctNode> {
+  fn uct_select<'a>(&self, node: &'a UctNode) -> Option<&'a UctNode> {
     let mut best_uct = 0f64;
     let mut result = None;
     let mut next = node.get_child_ref();
@@ -392,7 +424,7 @@ impl UctRoot {
       } else if visits == 0 {
         return Some(next_node);
       } else {
-        let uct_value = UctRoot::ucb(node, next_node, config::ucb_type());
+        let uct_value = self.ucb(node, next_node, self.config.ucb_type);
         if uct_value > best_uct {
           best_uct = uct_value;
           result = Some(next_node);
@@ -404,6 +436,7 @@ impl UctRoot {
   }
 
   fn play_simulation_rec<T: Rng>(
+    &self,
     field: &mut Field,
     player: Player,
     node: &UctNode,
@@ -412,19 +445,19 @@ impl UctRoot {
     komi: i32,
     depth: u32,
   ) -> Option<Player> {
-    let random_result = if node.get_visits() < config::uct_when_create_children() || depth == config::uct_depth() {
+    let random_result = if node.get_visits() < self.config.when_create_children || depth == self.config.depth {
       UctRoot::play_random_game(field, player, rng, possible_moves, komi)
     } else {
       if node.get_child_ref().is_none() {
         UctRoot::create_children(field, possible_moves, node, rng)
       }
-      if let Some(next) = UctRoot::uct_select(node) {
+      if let Some(next) = self.uct_select(node) {
         let pos = next.get_pos();
         field.put_point(pos, player);
         if common::is_last_move_stupid(field, pos, player) {
           field.undo();
           next.lose_node();
-          return UctRoot::play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);
+          return self.play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);
         }
         if common::is_penult_move_stuped(field) {
           // Theoretically, visits in this node may be overflowed by another thread, but
@@ -435,7 +468,7 @@ impl UctRoot {
           node.lose_node();
           return Some(player);
         }
-        UctRoot::play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
+        self.play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
       } else {
         UctRoot::random_result(field, player, komi)
       }
@@ -461,7 +494,7 @@ impl UctRoot {
     ratched: &AtomicIsize,
   ) {
     if let Some(node) = self.node.as_ref() {
-      UctRoot::play_simulation_rec(
+      self.play_simulation_rec(
         field,
         player,
         node,
@@ -470,27 +503,26 @@ impl UctRoot {
         self.komi.load(Ordering::Relaxed) as i32,
         0,
       );
-      if config::uct_komi_type() == UctKomiType::Dynamic {
+      if self.config.komi_type == UctKomiType::Dynamic {
         let visits = node.get_visits();
         let komi_visits = self.komi_visits.load(Ordering::Relaxed);
         let delta_visits = visits - komi_visits;
-        if delta_visits > config::uct_komi_min_iterations() {
+        if delta_visits > self.config.komi_min_iterations {
           let wins = node.get_wins();
           let delta_wins = wins - self.komi_wins.load(Ordering::Relaxed);
           let draws = node.get_draws();
           let delta_draws = draws - self.komi_draws.load(Ordering::Relaxed);
           let win_rate =
-            1f64 - (delta_wins as f64 + delta_draws as f64 * config::uct_draw_weight()) / delta_visits as f64;
+            1f64 - (delta_wins as f64 + delta_draws as f64 * self.config.draw_weight) / delta_visits as f64;
           let komi = self.komi.load(Ordering::Relaxed);
-          let red = config::uct_red();
-          if win_rate < red || win_rate > config::uct_green() && komi < ratched.load(Ordering::Relaxed) {
+          if win_rate < self.config.red || win_rate > self.config.green && komi < ratched.load(Ordering::Relaxed) {
             let old_komi_visits = self
               .komi_visits
               .compare_and_swap(komi_visits, visits, Ordering::Relaxed);
             if old_komi_visits == komi_visits {
               self.komi_wins.store(wins, Ordering::Relaxed);
               self.komi_draws.store(draws, Ordering::Relaxed);
-              if win_rate < red {
+              if win_rate < self.config.red {
                 if komi > 0 {
                   ratched.store(komi - 1, Ordering::Relaxed);
                 }
@@ -546,13 +578,12 @@ impl UctRoot {
       target: UCT_STR,
       "Komi is {0}, type is {1}.",
       self.komi.load(Ordering::Relaxed),
-      config::uct_komi_type()
+      self.config.komi_type
     );
-    let threads_count = config::threads_count();
     let iterations = AtomicUsize::new(0);
     let ratched = AtomicIsize::new(isize::max_value());
     crossbeam::scope(|scope| {
-      for _ in 0..threads_count {
+      for _ in 0..self.config.threads_count {
         let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
         scope.spawn(|_| {
           let mut local_field = field.clone();
@@ -579,7 +610,7 @@ impl UctRoot {
     if let Some(ref root) = self.node {
       let mut next = root.get_child_ref();
       while let Some(next_node) = next {
-        let uct_value = UctRoot::ucb(root, next_node, UcbType::Winrate);
+        let uct_value = self.ucb(root, next_node, UcbType::Winrate);
         let pos = next_node.get_pos();
         info!(
           target: UCT_STR,

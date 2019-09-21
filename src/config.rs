@@ -1,25 +1,8 @@
+use crate::uct::{UcbType, UctConfig, UctKomiType};
 use clap::{App, Arg, ArgGroup};
 use num_cpus;
 
 const CONFIG_STR: &str = "config";
-
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum UcbType {
-    Winrate,
-    Ucb1,
-    Ucb1Tuned
-  }
-}
-
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum UctKomiType {
-    None,
-    Static,
-    Dynamic
-  }
-}
 
 arg_enum! {
   #[derive(Clone, Copy, PartialEq, Debug)]
@@ -49,24 +32,10 @@ arg_enum! {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct Config {
-  uct: UctConfig,
+pub struct Config {
+  pub uct: UctConfig,
   minimax: MinimaxConfig,
   bot: BotConfig,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-struct UctConfig {
-  radius: u32,
-  ucb_type: UcbType,
-  draw_weight: f64,
-  uctk: f64,
-  when_create_children: usize,
-  depth: u32,
-  komi_type: UctKomiType,
-  red: f64,
-  green: f64,
-  komi_min_iterations: usize,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -85,6 +54,7 @@ struct BotConfig {
 }
 
 const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
+  threads_count: 4,
   radius: 3,
   ucb_type: UcbType::Ucb1Tuned,
   draw_weight: 0.4,
@@ -119,7 +89,7 @@ const DEFAULT_CONFIG: Config = Config {
 static mut CONFIG: Config = DEFAULT_CONFIG;
 
 #[inline]
-fn config() -> &'static Config {
+pub fn config() -> &'static Config {
   unsafe { &CONFIG }
 }
 
@@ -304,7 +274,9 @@ pub fn cli_parse() {
         .default_value("3000"),
     )
     .get_matches();
+  let threads_count = value_t!(matches.value_of("threads-count"), usize).unwrap_or_else(|e| e.exit());
   let uct_config = UctConfig {
+    threads_count,
     radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
     ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
     draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
@@ -323,7 +295,7 @@ pub fn cli_parse() {
     rebuild_trajectories: matches.is_present("rebuild-trajectories"),
   };
   let bot_config = BotConfig {
-    threads_count: value_t!(matches.value_of("threads-count"), usize).unwrap_or_else(|e| e.exit()),
+    threads_count,
     time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
   };
@@ -338,58 +310,8 @@ pub fn cli_parse() {
 }
 
 #[inline]
-pub fn uct_radius() -> u32 {
-  config().uct.radius
-}
-
-#[inline]
-pub fn ucb_type() -> UcbType {
-  config().uct.ucb_type
-}
-
-#[inline]
-pub fn uct_draw_weight() -> f64 {
-  config().uct.draw_weight
-}
-
-#[inline]
-pub fn uctk() -> f64 {
-  config().uct.uctk
-}
-
-#[inline]
-pub fn uct_when_create_children() -> usize {
-  config().uct.when_create_children
-}
-
-#[inline]
-pub fn uct_depth() -> u32 {
-  config().uct.depth
-}
-
-#[inline]
 pub fn threads_count() -> usize {
   config().bot.threads_count
-}
-
-#[inline]
-pub fn uct_komi_type() -> UctKomiType {
-  config().uct.komi_type
-}
-
-#[inline]
-pub fn uct_red() -> f64 {
-  config().uct.red
-}
-
-#[inline]
-pub fn uct_green() -> f64 {
-  config().uct.green
-}
-
-#[inline]
-pub fn uct_komi_min_iterations() -> usize {
-  config().uct.komi_min_iterations
 }
 
 #[inline]
