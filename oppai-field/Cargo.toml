@@ -10,7 +10,13 @@ edition = "2018"
 rand = "0.7"
 
 [dev-dependencies]
+criterion = "0.3"
 rand_xorshift = "0.2"
 
 [features]
 dsu = []
+
+[[bench]]
+name = "field_benchmark"
+path = "src/field_benchmark.rs"
+harness = false
