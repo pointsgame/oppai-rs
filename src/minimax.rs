@@ -1,8 +1,8 @@
-use crate::common;
 use crate::config::{self, MinimaxType};
 use crate::hash_table::{HashData, HashTable, HashType};
 use crate::trajectories_pruning::TrajectoriesPruning;
 use crossbeam::{self, queue::SegQueue};
+use oppai_common::common;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
 use rand::{Rng, SeedableRng};

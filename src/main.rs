@@ -32,7 +32,6 @@ extern crate test;
 extern crate oppai_field;
 
 mod bot;
-mod common;
 mod config;
 mod dfa;
 mod hash_table;
@@ -42,8 +41,6 @@ mod patterns;
 mod rotate;
 mod spiral;
 mod trajectories_pruning;
-mod uct;
-mod wave_pruning;
 
 #[cfg(test)]
 mod hash_table_test;
@@ -51,13 +48,9 @@ mod hash_table_test;
 mod minimax_test;
 #[cfg(test)]
 mod patterns_test;
-#[cfg(test)]
-mod uct_test;
 
 #[cfg(all(test, feature = "bench"))]
 mod minimax_benchmark;
-#[cfg(all(test, feature = "bench"))]
-mod uct_benchmark;
 
 use crate::bot::Bot;
 use crate::config::cli_parse;

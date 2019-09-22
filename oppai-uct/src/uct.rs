@@ -1,11 +1,11 @@
-use crate::common;
 use crate::wave_pruning::WavePruning;
 use crossbeam;
+use oppai_common::common;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
+use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use rand_xorshift::XorShiftRng;
 use std::{
   mem, ptr,
   sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
@@ -15,22 +15,18 @@ use std::{
 
 const UCT_STR: &str = "uct";
 
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum UcbType {
-    Winrate,
-    Ucb1,
-    Ucb1Tuned
-  }
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum UcbType {
+  Winrate,
+  Ucb1,
+  Ucb1Tuned,
 }
 
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum UctKomiType {
-    None,
-    Static,
-    Dynamic
-  }
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum UctKomiType {
+  None,
+  Static,
+  Dynamic,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -79,10 +75,6 @@ impl UctNode {
 
   pub fn get_pos(&self) -> Pos {
     self.pos
-  }
-
-  pub fn set_pos(&mut self, pos: Pos) {
-    self.pos = pos;
   }
 
   pub fn get_sibling(&mut self) -> Option<Box<UctNode>> {
@@ -230,7 +222,7 @@ impl UctRoot {
     self.wave_pruning.init(field, self.config.radius);
   }
 
-  fn expand_node<T: Rng>(node: &mut UctNode, moves: &mut Vec<Pos>, rng: &mut T) {
+  fn expand_node<R: Rng>(node: &mut UctNode, moves: &mut Vec<Pos>, rng: &mut R) {
     if node.get_child_ref().is_none() {
       if node.get_visits() == usize::max_value() {
         node.clear_stats();
@@ -250,7 +242,7 @@ impl UctRoot {
     }
   }
 
-  fn update<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T) {
+  fn update<R: Rng>(&mut self, field: &Field, player: Player, rng: &mut R) {
     if self.node.is_some() && field.hash_at(self.moves_count) != Some(self.hash) {
       self.clear();
     }
@@ -292,7 +284,7 @@ impl UctRoot {
         let next_pos = points_seq[self.moves_count];
         debug!(
           target: UCT_STR,
-          "Next move is ({0}, {1}), player {2}.",
+          "Next move is ({}, {}), player {}.",
           field.to_x(next_pos),
           field.to_y(next_pos),
           self.player
@@ -310,7 +302,7 @@ impl UctRoot {
           let pos = node.get_pos();
           debug!(
             target: UCT_STR,
-            "Node found for move ({0}, {1}).",
+            "Node found for move ({}, {}).",
             field.to_x(pos),
             field.to_y(pos)
           );
@@ -358,10 +350,10 @@ impl UctRoot {
     }
   }
 
-  fn play_random_game<T: Rng>(
+  fn play_random_game<R: Rng>(
     field: &mut Field,
     player: Player,
-    rng: &mut T,
+    rng: &mut R,
     possible_moves: &mut Vec<Pos>,
     komi: i32,
   ) -> Option<Player> {
@@ -395,7 +387,7 @@ impl UctRoot {
     win_rate + uct
   }
 
-  fn create_children<T: Rng>(field: &Field, possible_moves: &mut Vec<Pos>, node: &UctNode, rng: &mut T) {
+  fn create_children<R: Rng>(field: &Field, possible_moves: &mut Vec<Pos>, node: &UctNode, rng: &mut R) {
     possible_moves.shuffle(rng);
     let mut children = None;
     for &pos in possible_moves.iter() {
@@ -435,13 +427,13 @@ impl UctRoot {
     result
   }
 
-  fn play_simulation_rec<T: Rng>(
+  fn play_simulation_rec<R: Rng>(
     &self,
     field: &mut Field,
     player: Player,
     node: &UctNode,
     possible_moves: &mut Vec<Pos>,
-    rng: &mut T,
+    rng: &mut R,
     komi: i32,
     depth: u32,
   ) -> Option<Player> {
@@ -485,12 +477,12 @@ impl UctRoot {
     random_result
   }
 
-  fn play_simulation<T: Rng>(
+  fn play_simulation<R: Rng>(
     &self,
     field: &mut Field,
     player: Player,
     possible_moves: &mut Vec<Pos>,
-    rng: &mut T,
+    rng: &mut R,
     ratched: &AtomicIsize,
   ) {
     if let Some(node) = self.node.as_ref() {
@@ -529,18 +521,18 @@ impl UctRoot {
                 self.komi.fetch_sub(1, Ordering::Relaxed);
                 info!(
                   target: UCT_STR,
-                  "Komi decreased after {1} visits: {0}. Winrate is {2}.",
-                  komi - 1,
+                  "Komi decreased after {} visits: {}. Winrate is {}.",
                   visits,
+                  komi - 1,
                   win_rate
                 );
               } else {
                 self.komi.fetch_add(1, Ordering::Relaxed);
                 info!(
                   target: UCT_STR,
-                  "Komi increased after {1} visits: {0}. Winrate is {2}.",
-                  komi + 1,
+                  "Komi increased after {} visits: {}. Winrate is {}.",
                   visits,
+                  komi + 1,
                   win_rate
                 );
               }
@@ -554,15 +546,20 @@ impl UctRoot {
   // TODO: move this to exact place once stmt_expr_attributes gets stabilized
   // (see #15701)
   #[allow(clippy::float_cmp)]
-  fn best_move_generic<T: Rng>(
+  fn best_move_generic<S, R>(
     &mut self,
     field: &Field,
     player: Player,
-    rng: &mut T,
+    rng: &mut R,
     should_stop: &AtomicBool,
     max_iterations_count: usize,
-  ) -> Option<Pos> {
-    info!(target: UCT_STR, "Generating best move for player {0}.", player);
+  ) -> Option<Pos>
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
+    info!(target: UCT_STR, "Generating best move for player {}.", player);
     debug!(
       target: UCT_STR,
       "Moves history: {:?}.",
@@ -572,11 +569,11 @@ impl UctRoot {
         .map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player()))
         .collect::<Vec<(u32, u32, Player)>>()
     );
-    debug!(target: UCT_STR, "Next random u64: {0}.", rng.gen::<u64>());
+    debug!(target: UCT_STR, "Next random u64: {}.", rng.gen::<u64>());
     self.update(field, player, rng);
     info!(
       target: UCT_STR,
-      "Komi is {0}, type is {1}.",
+      "Komi is {}, type is {:?}.",
       self.komi.load(Ordering::Relaxed),
       self.config.komi_type
     );
@@ -584,10 +581,10 @@ impl UctRoot {
     let ratched = AtomicIsize::new(isize::max_value());
     crossbeam::scope(|scope| {
       for _ in 0..self.config.threads_count {
-        let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
+        let new_rng = R::from_seed(rng.gen());
         scope.spawn(|_| {
           let mut local_field = field.clone();
-          let mut local_rng = xor_shift_rng;
+          let mut local_rng = new_rng;
           let mut possible_moves = self.wave_pruning.moves().clone();
           while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
             self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
@@ -602,7 +599,7 @@ impl UctRoot {
     .expect("UCT best_move_generic panic");
     info!(
       target: UCT_STR,
-      "Iterations count: {0}.",
+      "Iterations count: {}.",
       iterations.load(Ordering::Relaxed)
     );
     let mut best_uct = 0f64;
@@ -614,7 +611,7 @@ impl UctRoot {
         let pos = next_node.get_pos();
         info!(
           target: UCT_STR,
-          "Uct for move ({0}, {1}) is {2}, {3} wins, {4} draws, {5} visits.",
+          "Uct for move ({}, {}) is {}, {} wins, {} draws, {} visits.",
           field.to_x(pos),
           field.to_y(pos),
           uct_value,
@@ -622,7 +619,7 @@ impl UctRoot {
           next_node.get_draws(),
           next_node.get_visits()
         );
-        if uct_value > best_uct || uct_value == best_uct && rng.gen() {
+        if uct_value > best_uct || uct_value == best_uct && rng.gen::<bool>() {
           best_uct = uct_value;
           result = Some(pos);
         }
@@ -632,7 +629,7 @@ impl UctRoot {
     if let Some(pos) = result {
       info!(
         target: UCT_STR,
-        "Best move is ({0}, {1}), uct is {2}.",
+        "Best move is ({}, {}), uct is {}.",
         field.to_x(pos),
         field.to_y(pos),
         best_uct
@@ -641,7 +638,12 @@ impl UctRoot {
     result
   }
 
-  pub fn best_move_with_time<T: Rng>(&mut self, field: &Field, player: Player, rng: &mut T, time: u32) -> Option<Pos> {
+  pub fn best_move_with_time<S, R>(&mut self, field: &Field, player: Player, rng: &mut R, time: u32) -> Option<Pos>
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|_| {
@@ -653,13 +655,18 @@ impl UctRoot {
     .expect("UCT best_move_with_time panic")
   }
 
-  pub fn best_move_with_iterations_count<T: Rng>(
+  pub fn best_move_with_iterations_count<S, R>(
     &mut self,
     field: &Field,
     player: Player,
-    rng: &mut T,
+    rng: &mut R,
     iterations: usize,
-  ) -> Option<Pos> {
+  ) -> Option<Pos>
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
     let should_stop = AtomicBool::new(false);
     self.best_move_generic(field, player, rng, &should_stop, iterations)
   }

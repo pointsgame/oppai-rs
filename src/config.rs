@@ -1,8 +1,70 @@
-use crate::uct::{UcbType, UctConfig, UctKomiType};
 use clap::{App, Arg, ArgGroup};
 use num_cpus;
+use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
+use std::fmt;
+use std::str;
 
 const CONFIG_STR: &str = "config";
+
+const UCB_TYPE_VARIANTS: [&'static str; 3] = ["Winrate", "Ucb1", "Ucb1Tuned"];
+
+const UCT_KOMI_TYPE_VARIANTS: [&'static str; 3] = ["None", "Static", "Dynamic"];
+
+struct UcbTypeArg(UcbType);
+
+impl fmt::Display for UcbTypeArg {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self.0 {
+      UcbType::Winrate => write!(f, "Winrate"),
+      UcbType::Ucb1 => write!(f, "Ucb1"),
+      UcbType::Ucb1Tuned => write!(f, "Ucb1Tuned"),
+    }
+  }
+}
+
+impl str::FromStr for UcbTypeArg {
+  type Err = String;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    if s.eq_ignore_ascii_case("Winrate") {
+      Ok(UcbTypeArg(UcbType::Winrate))
+    } else if s.eq_ignore_ascii_case("Ucb1") {
+      Ok(UcbTypeArg(UcbType::Ucb1))
+    } else if s.eq_ignore_ascii_case("Ucb1Tuned") {
+      Ok(UcbTypeArg(UcbType::Ucb1Tuned))
+    } else {
+      Err(format!("valid values: {}", UCB_TYPE_VARIANTS.join(", ")))
+    }
+  }
+}
+
+struct UctKomiTypeArg(UctKomiType);
+
+impl fmt::Display for UctKomiTypeArg {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self.0 {
+      UctKomiType::None => write!(f, "None"),
+      UctKomiType::Static => write!(f, "Static"),
+      UctKomiType::Dynamic => write!(f, "Dynamic"),
+    }
+  }
+}
+
+impl str::FromStr for UctKomiTypeArg {
+  type Err = String;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    if s.eq_ignore_ascii_case("None") {
+      Ok(UctKomiTypeArg(UctKomiType::None))
+    } else if s.eq_ignore_ascii_case("Static") {
+      Ok(UctKomiTypeArg(UctKomiType::Static))
+    } else if s.eq_ignore_ascii_case("Dynamic") {
+      Ok(UctKomiTypeArg(UctKomiType::Dynamic))
+    } else {
+      Err(format!("valid values: {}", UCT_KOMI_TYPE_VARIANTS.join(", ")))
+    }
+  }
+}
 
 arg_enum! {
   #[derive(Clone, Copy, PartialEq, Debug)]
@@ -132,6 +194,7 @@ pub fn cli_parse() {
         .help("Engine type for position estimation and the best move choosing")
         .takes_value(true)
         .possible_values(&Solver::variants())
+        .case_insensitive(true)
         .default_value("Uct"),
     )
     .arg(
@@ -168,6 +231,7 @@ pub fn cli_parse() {
         .help("Minimax type")
         .takes_value(true)
         .possible_values(&MinimaxType::variants())
+        .case_insensitive(true)
         .default_value("NegaScout"),
     )
     .arg(
@@ -176,6 +240,7 @@ pub fn cli_parse() {
         .help("Moves sorting method for Minimax")
         .takes_value(true)
         .possible_values(&MinimaxMovesSorting::variants())
+        .case_insensitive(true)
         .default_value("TrajectoriesCount"),
     )
     .arg(
@@ -217,7 +282,8 @@ pub fn cli_parse() {
         .long("ucb-type")
         .help("Formula of the UCT value")
         .takes_value(true)
-        .possible_values(&UcbType::variants())
+        .possible_values(&UCB_TYPE_VARIANTS)
+        .case_insensitive(true)
         .default_value("Ucb1Tuned"),
     )
     .arg(
@@ -263,7 +329,8 @@ pub fn cli_parse() {
         .long("komi-type")
         .help("Type of komi evaluation for UTC during the game")
         .takes_value(true)
-        .possible_values(&UctKomiType::variants())
+        .possible_values(&UCT_KOMI_TYPE_VARIANTS)
+        .case_insensitive(true)
         .default_value("Dynamic"),
     )
     .arg(
@@ -278,12 +345,16 @@ pub fn cli_parse() {
   let uct_config = UctConfig {
     threads_count,
     radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
-    ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
+    ucb_type: value_t!(matches.value_of("ucb-type"), UcbTypeArg)
+      .unwrap_or_else(|e| e.exit())
+      .0,
     draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
     uctk: value_t!(matches.value_of("uctk"), f64).unwrap_or_else(|e| e.exit()),
     when_create_children: value_t!(matches.value_of("when-create-children"), usize).unwrap_or_else(|e| e.exit()),
     depth: value_t!(matches.value_of("depth"), u32).unwrap_or_else(|e| e.exit()),
-    komi_type: value_t!(matches.value_of("komi-type"), UctKomiType).unwrap_or_else(|e| e.exit()),
+    komi_type: value_t!(matches.value_of("komi-type"), UctKomiTypeArg)
+      .unwrap_or_else(|e| e.exit())
+      .0,
     red: value_t!(matches.value_of("red"), f64).unwrap_or_else(|e| e.exit()),
     green: value_t!(matches.value_of("green"), f64).unwrap_or_else(|e| e.exit()),
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit()),
