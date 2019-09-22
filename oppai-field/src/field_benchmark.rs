@@ -1,10 +1,7 @@
 #[macro_use]
 extern crate criterion;
-extern crate oppai_field;
 
-use criterion::black_box;
-use criterion::Bencher;
-use criterion::Criterion;
+use criterion::{black_box, Bencher, Criterion};
 use oppai_field::construct_field::construct_moves;
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;

@@ -1,13 +1,34 @@
-use construct_field::construct_field;
-use field;
-use player::Player;
-use rand::XorShiftRng;
-use test::Bencher;
-use uct::UctRoot;
+#[macro_use]
+extern crate criterion;
 
-#[bench]
+use criterion::{Bencher, Criterion};
+use oppai_field::construct_field::construct_field;
+use oppai_field::field;
+use oppai_field::player::Player;
+use oppai_uct::uct::{UcbType, UctConfig, UctKomiType, UctRoot};
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
+
+const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
+
+const UCT_CONFIG: UctConfig = UctConfig {
+  threads_count: 1,
+  radius: 3,
+  ucb_type: UcbType::Ucb1Tuned,
+  draw_weight: 0.4,
+  uctk: 1.0,
+  when_create_children: 2,
+  depth: 8,
+  komi_type: UctKomiType::Dynamic,
+  red: 0.45,
+  green: 0.5,
+  komi_min_iterations: 3_000,
+};
+
 fn find_best_move(bencher: &mut Bencher) {
+  let mut rng = XorShiftRng::from_seed(SEED);
   let field = construct_field(
+    &mut rng,
     "
     ........
     ........
@@ -21,8 +42,14 @@ fn find_best_move(bencher: &mut Bencher) {
   );
   let length = field::length(field.width(), field.height());
   bencher.iter(|| {
-    let mut rng = XorShiftRng::new_unseeded();
-    let mut uct = UctRoot::new(length);
-    uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, 500000)
+    let mut uct = UctRoot::new(UCT_CONFIG, length);
+    uct.best_move_with_iterations_count(&field, Player::Red, &mut rng.clone(), 100_000)
   });
 }
+
+fn uct() {
+  let mut c = Criterion::default().sample_size(10).configure_from_args();
+  c.bench_function("find_best_move", find_best_move);
+}
+
+criterion_main!(uct);

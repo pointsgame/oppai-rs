@@ -39,6 +39,6 @@ fn find_best_move() {
     ",
   );
   let mut uct = UctRoot::new(UCT_CONFIG, field.length());
-  let pos = uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, 500_000);
+  let pos = uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, 100_000);
   assert_eq!(pos, Some(field.to_pos(5, 2)));
 }
