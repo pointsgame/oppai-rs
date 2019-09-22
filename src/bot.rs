@@ -1,7 +1,7 @@
 use crate::config::{self, Solver};
 use crate::hash_table::HashTable;
 use crate::heuristic;
-use crate::minimax;
+use crate::minimax::Minimax;
 use crate::patterns::Patterns;
 use oppai_field::field::{self, Field};
 use oppai_field::player::Player;
@@ -31,6 +31,7 @@ pub struct Bot {
   zobrist: Arc<Zobrist>,
   field: Field,
   uct: UctRoot,
+  minimax: Minimax,
   hash_table: HashTable,
 }
 
@@ -69,6 +70,7 @@ impl Bot {
       zobrist,
       field: Field::new(width, height, field_zobrist),
       uct: UctRoot::new(config::config().uct.clone(), length),
+      minimax: Minimax::new(config::config().minimax.clone()),
       hash_table,
     }
   }
@@ -145,15 +147,17 @@ impl Bot {
         .best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap())
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
-      Solver::Minimax => minimax::minimax_with_time(
-        &mut self.field,
-        player,
-        &self.hash_table,
-        &mut self.rng,
-        time - config::time_gap(),
-      )
-      .or_else(|| heuristic::heuristic(&self.field, player))
-      .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
+      Solver::Minimax => self
+        .minimax
+        .minimax_with_time(
+          &mut self.field,
+          player,
+          &self.hash_table,
+          &mut self.rng,
+          time - config::time_gap(),
+        )
+        .or_else(|| heuristic::heuristic(&self.field, player))
+        .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
       Solver::Heuristic => {
         heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       }
@@ -194,7 +198,9 @@ impl Bot {
         let depth = (complexity - MIN_COMPLEXITY) * (MAX_MINIMAX_DEPTH - MIN_MINIMAX_DEPTH)
           / (MAX_COMPLEXITY - MIN_COMPLEXITY)
           + MIN_MINIMAX_DEPTH;
-        minimax::minimax(&mut self.field, player, &self.hash_table, &mut self.rng, depth)
+        self
+          .minimax
+          .minimax(&mut self.field, player, &self.hash_table, &mut self.rng, depth)
           .or_else(|| heuristic::heuristic(&self.field, player))
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       }

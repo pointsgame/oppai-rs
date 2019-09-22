@@ -1,3 +1,4 @@
+use crate::minimax::{MinimaxConfig, MinimaxMovesSorting, MinimaxType};
 use clap::{App, Arg, ArgGroup};
 use num_cpus;
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
@@ -68,24 +69,6 @@ impl str::FromStr for UctKomiTypeArg {
 
 arg_enum! {
   #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum MinimaxType {
-    NegaScout,
-    MTDF
-  }
-}
-
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum MinimaxMovesSorting {
-    None,
-    Random,
-    TrajectoriesCount
-    // Heuristic
-  }
-}
-
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
   pub enum Solver {
     Uct,
     Minimax,
@@ -96,21 +79,12 @@ arg_enum! {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Config {
   pub uct: UctConfig,
-  minimax: MinimaxConfig,
+  pub minimax: MinimaxConfig,
   bot: BotConfig,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct MinimaxConfig {
-  minimax_type: MinimaxType,
-  minimax_moves_sorting: MinimaxMovesSorting,
-  hash_table_size: usize,
-  rebuild_trajectories: bool,
-}
-
-#[derive(Clone, PartialEq, Debug)]
 struct BotConfig {
-  threads_count: usize,
   time_gap: u32,
   solver: Solver,
 }
@@ -130,6 +104,7 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
 };
 
 const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
+  threads_count: 4,
   minimax_type: MinimaxType::NegaScout,
   minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
   hash_table_size: 10_000,
@@ -137,7 +112,6 @@ const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
 };
 
 const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
-  threads_count: 4,
   time_gap: 100,
   solver: Solver::Uct,
 };
@@ -360,13 +334,13 @@ pub fn cli_parse() {
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit()),
   };
   let minimax_config = MinimaxConfig {
+    threads_count,
     minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxType).unwrap_or_else(|e| e.exit()),
     minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSorting).unwrap_or_else(|e| e.exit()),
     hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit()),
     rebuild_trajectories: matches.is_present("rebuild-trajectories"),
   };
   let bot_config = BotConfig {
-    threads_count,
     time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
   };
@@ -381,33 +355,8 @@ pub fn cli_parse() {
 }
 
 #[inline]
-pub fn threads_count() -> usize {
-  config().bot.threads_count
-}
-
-#[inline]
-pub fn minimax_type() -> MinimaxType {
-  config().minimax.minimax_type
-}
-
-#[inline]
-pub fn set_minimax_type(minimax_type: MinimaxType) {
-  config_mut().minimax.minimax_type = minimax_type;
-}
-
-#[inline]
-pub fn minimax_moves_sorting() -> MinimaxMovesSorting {
-  config().minimax.minimax_moves_sorting
-}
-
-#[inline]
 pub fn hash_table_size() -> usize {
   config().minimax.hash_table_size
-}
-
-#[inline]
-pub fn rebuild_trajectories() -> bool {
-  config().minimax.rebuild_trajectories
 }
 
 #[inline]
