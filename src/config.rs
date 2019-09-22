@@ -7,9 +7,9 @@ use std::str;
 
 const CONFIG_STR: &str = "config";
 
-const UCB_TYPE_VARIANTS: [&'static str; 3] = ["Winrate", "Ucb1", "Ucb1Tuned"];
+const UCB_TYPE_VARIANTS: [&str; 3] = ["Winrate", "Ucb1", "Ucb1Tuned"];
 
-const UCT_KOMI_TYPE_VARIANTS: [&'static str; 3] = ["None", "Static", "Dynamic"];
+const UCT_KOMI_TYPE_VARIANTS: [&str; 3] = ["None", "Static", "Dynamic"];
 
 struct UcbTypeArg(UcbType);
 
@@ -352,11 +352,6 @@ pub fn cli_parse() {
   unsafe {
     CONFIG = config;
   }
-}
-
-#[inline]
-pub fn hash_table_size() -> usize {
-  config().minimax.hash_table_size
 }
 
 #[inline]

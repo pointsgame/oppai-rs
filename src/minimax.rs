@@ -43,11 +43,13 @@ pub struct MinimaxConfig {
 
 pub struct Minimax {
   config: MinimaxConfig,
+  hash_table: HashTable,
 }
 
 impl Minimax {
   pub fn new(config: MinimaxConfig) -> Minimax {
-    Minimax { config }
+    let hash_table = HashTable::new(config.hash_table_size);
+    Minimax { config, hash_table }
   }
 
   #[inline]
@@ -224,7 +226,6 @@ impl Minimax {
     alpha: i32,
     beta: i32,
     trajectories_pruning: &TrajectoriesPruning,
-    hash_table: &HashTable,
     rng: &mut R,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
@@ -303,7 +304,7 @@ impl Minimax {
               -cur_alpha - 1,
               -cur_alpha,
               &mut local_empty_board,
-              hash_table,
+              &self.hash_table,
               &mut local_rng,
               should_stop,
             );
@@ -320,7 +321,7 @@ impl Minimax {
                 -beta,
                 -cur_estimation,
                 &mut local_empty_board,
-                hash_table,
+                &self.hash_table,
                 &mut local_rng,
                 should_stop,
               );
@@ -389,7 +390,6 @@ impl Minimax {
     field: &mut Field,
     player: Player,
     trajectories_pruning: &TrajectoriesPruning,
-    hash_table: &HashTable,
     rng: &mut R,
     depth: u32,
     best_move: &mut Option<Pos>,
@@ -422,7 +422,6 @@ impl Minimax {
         center,
         center + 1,
         trajectories_pruning,
-        hash_table,
         rng,
         &mut cur_best_move,
         should_stop,
@@ -442,7 +441,6 @@ impl Minimax {
     field: &mut Field,
     player: Player,
     trajectories_pruning: &TrajectoriesPruning,
-    hash_table: &HashTable,
     rng: &mut R,
     depth: u32,
     best_move: &mut Option<Pos>,
@@ -455,21 +453,13 @@ impl Minimax {
       i32::min_value() + 1,
       i32::max_value(),
       trajectories_pruning,
-      hash_table,
       rng,
       best_move,
       should_stop,
     )
   }
 
-  pub fn minimax<R: Rng>(
-    &self,
-    field: &mut Field,
-    player: Player,
-    hash_table: &HashTable,
-    rng: &mut R,
-    depth: u32,
-  ) -> Option<Pos> {
+  pub fn minimax<R: Rng>(&self, field: &mut Field, player: Player, rng: &mut R, depth: u32) -> Option<Pos> {
     info!(
       target: MINIMAX_STR,
       "Starting minimax with depth {} and player {}.", depth, player
@@ -503,7 +493,6 @@ impl Minimax {
       field,
       player,
       &trajectories_pruning,
-      hash_table,
       rng,
       depth,
       &mut best_move,
@@ -528,7 +517,6 @@ impl Minimax {
       -estimation,
       -estimation + 1,
       &enemy_trajectories_pruning,
-      hash_table,
       rng,
       &mut enemy_best_move,
       &should_stop,
@@ -550,14 +538,7 @@ impl Minimax {
     }
   }
 
-  pub fn minimax_with_time<R: Rng>(
-    &self,
-    field: &mut Field,
-    player: Player,
-    hash_table: &HashTable,
-    rng: &mut R,
-    time: u32,
-  ) -> Option<Pos> {
+  pub fn minimax_with_time<R: Rng>(&self, field: &mut Field, player: Player, rng: &mut R, time: u32) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|_| {
@@ -591,7 +572,6 @@ impl Minimax {
           field,
           player,
           &trajectories_pruning,
-          hash_table,
           rng,
           depth,
           &mut cur_best_move,
@@ -628,7 +608,6 @@ impl Minimax {
             -estimation,
             -estimation + 1,
             &enemy_trajectories_pruning,
-            hash_table,
             rng,
             &mut enemy_best_move,
             &should_stop,

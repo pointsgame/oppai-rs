@@ -1,5 +1,4 @@
 use crate::config::{self, Solver};
-use crate::hash_table::HashTable;
 use crate::heuristic;
 use crate::minimax::Minimax;
 use crate::patterns::Patterns;
@@ -32,7 +31,6 @@ pub struct Bot {
   field: Field,
   uct: UctRoot,
   minimax: Minimax,
-  hash_table: HashTable,
 }
 
 impl Bot {
@@ -63,7 +61,6 @@ impl Bot {
     let mut rng = XorShiftRng::from_seed(seed_array);
     let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
     let field_zobrist = Arc::clone(&zobrist);
-    let hash_table = HashTable::new(config::hash_table_size());
     Bot {
       rng,
       patterns,
@@ -71,7 +68,6 @@ impl Bot {
       field: Field::new(width, height, field_zobrist),
       uct: UctRoot::new(config::config().uct.clone(), length),
       minimax: Minimax::new(config::config().minimax.clone()),
-      hash_table,
     }
   }
 
@@ -149,13 +145,7 @@ impl Bot {
         .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
       Solver::Minimax => self
         .minimax
-        .minimax_with_time(
-          &mut self.field,
-          player,
-          &self.hash_table,
-          &mut self.rng,
-          time - config::time_gap(),
-        )
+        .minimax_with_time(&mut self.field, player, &mut self.rng, time - config::time_gap())
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
       Solver::Heuristic => {
@@ -200,7 +190,7 @@ impl Bot {
           + MIN_MINIMAX_DEPTH;
         self
           .minimax
-          .minimax(&mut self.field, player, &self.hash_table, &mut self.rng, depth)
+          .minimax(&mut self.field, player, &mut self.rng, depth)
           .or_else(|| heuristic::heuristic(&self.field, player))
           .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
       }
