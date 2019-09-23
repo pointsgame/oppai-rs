@@ -18,14 +18,14 @@ const MINIMAX_STR: &str = "minimax";
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MinimaxType {
   NegaScout,
-  MTDF
+  MTDF,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MinimaxMovesSorting {
   None,
   Random,
-  TrajectoriesCount
+  TrajectoriesCount,
 }
 
 #[derive(Clone, PartialEq, Debug)]

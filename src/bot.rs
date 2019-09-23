@@ -1,10 +1,10 @@
 use crate::config::{self, Solver};
 use crate::heuristic;
-use oppai_minimax::minimax::Minimax;
 use crate::patterns::Patterns;
 use oppai_field::field::{self, Field};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
+use oppai_minimax::minimax::Minimax;
 use oppai_uct::uct::UctRoot;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;

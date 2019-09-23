@@ -42,9 +42,6 @@ mod spiral;
 #[cfg(test)]
 mod patterns_test;
 
-#[cfg(all(test, feature = "bench"))]
-mod minimax_benchmark;
-
 use crate::bot::Bot;
 use crate::config::cli_parse;
 use crate::patterns::Patterns;

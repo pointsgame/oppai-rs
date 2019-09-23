@@ -49,7 +49,7 @@ fn find_best_move(bencher: &mut Bencher) {
 
 fn uct() {
   let mut c = Criterion::default().sample_size(10).configure_from_args();
-  c.bench_function("find_best_move", find_best_move);
+  c.bench_function("uct", find_best_move);
 }
 
 criterion_main!(uct);

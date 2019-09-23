@@ -1,6 +1,6 @@
-use oppai_minimax::minimax::{MinimaxConfig, MinimaxMovesSorting, MinimaxType};
 use clap::{App, Arg, ArgGroup};
 use num_cpus;
+use oppai_minimax::minimax::{MinimaxConfig, MinimaxMovesSorting, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
 use std::fmt;
 use std::str;
@@ -392,8 +392,12 @@ pub fn cli_parse() {
   };
   let minimax_config = MinimaxConfig {
     threads_count,
-    minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxTypeArg).unwrap_or_else(|e| e.exit()).0,
-    minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSortingArg).unwrap_or_else(|e| e.exit()).0,
+    minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxTypeArg)
+      .unwrap_or_else(|e| e.exit())
+      .0,
+    minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSortingArg)
+      .unwrap_or_else(|e| e.exit())
+      .0,
     hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit()),
     rebuild_trajectories: matches.is_present("rebuild-trajectories"),
   };
