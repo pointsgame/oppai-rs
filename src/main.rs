@@ -34,18 +34,11 @@ extern crate oppai_field;
 mod bot;
 mod config;
 mod dfa;
-mod hash_table;
 mod heuristic;
-mod minimax;
 mod patterns;
 mod rotate;
 mod spiral;
-mod trajectories_pruning;
 
-#[cfg(test)]
-mod hash_table_test;
-#[cfg(test)]
-mod minimax_test;
 #[cfg(test)]
 mod patterns_test;
 

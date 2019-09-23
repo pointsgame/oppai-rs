@@ -4,8 +4,8 @@ use crossbeam::{self, queue::SegQueue};
 use oppai_common::common;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
+use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
-use rand_xorshift::XorShiftRng;
 use std::{
   iter,
   sync::atomic::{AtomicBool, AtomicIsize, Ordering},
@@ -15,21 +15,17 @@ use std::{
 
 const MINIMAX_STR: &str = "minimax";
 
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum MinimaxType {
-    NegaScout,
-    MTDF
-  }
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MinimaxType {
+  NegaScout,
+  MTDF
 }
 
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum MinimaxMovesSorting {
-    None,
-    Random,
-    TrajectoriesCount
-  }
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MinimaxMovesSorting {
+  None,
+  Random,
+  TrajectoriesCount
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -218,7 +214,7 @@ impl Minimax {
     cur_alpha
   }
 
-  pub fn alpha_beta_parallel<R: Rng>(
+  pub fn alpha_beta_parallel<S, R>(
     &self,
     field: &mut Field,
     player: Player,
@@ -229,7 +225,12 @@ impl Minimax {
     rng: &mut R,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
-  ) -> i32 {
+  ) -> i32
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
     info!(
       target: MINIMAX_STR,
       "Starting parellel alpha beta with depth {}, player {} and beta {}.", depth, player, beta
@@ -266,10 +267,10 @@ impl Minimax {
     let best_moves = SegQueue::new();
     crossbeam::scope(|scope| {
       for _ in 0..self.config.threads_count {
-        let xor_shift_rng = XorShiftRng::from_seed(rng.gen());
+        let new_rng = R::from_seed(rng.gen());
         scope.spawn(|_| {
           let mut local_field = field.clone();
-          let mut local_rng = xor_shift_rng;
+          let mut local_rng = new_rng;
           let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect();
           let mut local_best_move = 0;
           let mut local_alpha = alpha;
@@ -385,7 +386,7 @@ impl Minimax {
     best_alpha
   }
 
-  fn mtdf<R: Rng>(
+  fn mtdf<S, R>(
     &self,
     field: &mut Field,
     player: Player,
@@ -394,7 +395,12 @@ impl Minimax {
     depth: u32,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
-  ) -> i32 {
+  ) -> i32
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
     let mut alpha = 0;
     let mut beta = 0;
     for &pos in field.points_seq() {
@@ -436,7 +442,7 @@ impl Minimax {
     alpha
   }
 
-  fn nega_scout<R: Rng>(
+  fn nega_scout<S, R>(
     &self,
     field: &mut Field,
     player: Player,
@@ -445,7 +451,12 @@ impl Minimax {
     depth: u32,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
-  ) -> i32 {
+  ) -> i32
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
     self.alpha_beta_parallel(
       field,
       player,
@@ -459,7 +470,12 @@ impl Minimax {
     )
   }
 
-  pub fn minimax<R: Rng>(&self, field: &mut Field, player: Player, rng: &mut R, depth: u32) -> Option<Pos> {
+  pub fn minimax<S, R>(&self, field: &mut Field, player: Player, rng: &mut R, depth: u32) -> Option<Pos>
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
     info!(
       target: MINIMAX_STR,
       "Starting minimax with depth {} and player {}.", depth, player
@@ -538,7 +554,12 @@ impl Minimax {
     }
   }
 
-  pub fn minimax_with_time<R: Rng>(&self, field: &mut Field, player: Player, rng: &mut R, time: u32) -> Option<Pos> {
+  pub fn minimax_with_time<S, R>(&self, field: &mut Field, player: Player, rng: &mut R, time: u32) -> Option<Pos>
+  where
+    S: Sized + Default + AsMut<[u8]>,
+    R: Rng + SeedableRng<Seed = S> + Send,
+    Standard: Distribution<S>,
+  {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|_| {

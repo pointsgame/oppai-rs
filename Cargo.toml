@@ -20,6 +20,7 @@ clap = "2.33"
 oppai-field = { path = "oppai-field" }
 oppai-common = { path = "oppai-common" }
 oppai-uct = { path = "oppai-uct" }
+oppai-minimax = { path = "oppai-minimax" }
 
 [dev-dependencies]
 env_logger = "0.6"
@@ -56,4 +57,5 @@ members = [
   "oppai-field",
   "oppai-common",
   "oppai-uct",
+  "oppai-minimax",
 ]

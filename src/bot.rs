@@ -1,6 +1,6 @@
 use crate::config::{self, Solver};
 use crate::heuristic;
-use crate::minimax::Minimax;
+use oppai_minimax::minimax::Minimax;
 use crate::patterns::Patterns;
 use oppai_field::field::{self, Field};
 use oppai_field::player::Player;
