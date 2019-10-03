@@ -17,6 +17,7 @@ oppai-common = { path = "../oppai-common" }
 criterion = "0.3"
 rand_xorshift = "0.2"
 env_logger = "0.6"
+oppai-test-images = { path = "../oppai-test-images" }
 
 [[bench]]
 name = "minimax_benchmark"

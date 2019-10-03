@@ -62,7 +62,7 @@ impl Minimax {
   fn alpha_beta<R: Rng>(
     field: &mut Field,
     depth: u32,
-    last_pos: Pos,
+    last_pos: Option<Pos>,
     player: Player,
     trajectories_pruning: &TrajectoriesPruning,
     alpha: i32,
@@ -76,8 +76,10 @@ impl Minimax {
       return alpha;
     }
     let enemy = player.next();
-    if common::is_last_move_stupid(field, last_pos, enemy) {
-      return i32::max_value();
+    if let Some(last_pos) = last_pos {
+      if common::is_last_move_stupid(field, last_pos, enemy) {
+        return i32::max_value();
+      }
     }
     if depth == 0 {
       return field.score(player);
@@ -110,6 +112,26 @@ impl Minimax {
       }
       HashType::Empty => None,
     };
+    if last_pos.is_some() && beta - alpha > 1 {
+      let enemy_trajectories_pruning =
+        trajectories_pruning.dec_and_swap_exists(field, depth - 1, empty_board, rng, &should_stop);
+      let cur_estimation = -Minimax::alpha_beta(
+        field,
+        depth - 1,
+        None,
+        enemy,
+        &enemy_trajectories_pruning,
+        -beta,
+        -beta + 1,
+        empty_board,
+        hash_table,
+        rng,
+        should_stop,
+      );
+      if cur_estimation >= beta {
+        return cur_estimation;
+      }
+    }
     // Try the best move from the hash table.
     if let Some(hash_pos) = hash_pos_option {
       field.put_point(hash_pos, player);
@@ -122,7 +144,7 @@ impl Minimax {
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
-        hash_pos,
+        Some(hash_pos),
         enemy,
         &next_trajectories_pruning,
         -beta,
@@ -167,7 +189,7 @@ impl Minimax {
         // TODO: check if cur_alpha is -Inf
         field,
         depth - 1,
-        pos,
+        Some(pos),
         enemy,
         &next_trajectories_pruning,
         -cur_alpha - 1,
@@ -181,7 +203,7 @@ impl Minimax {
         cur_estimation = -Minimax::alpha_beta(
           field,
           depth - 1,
-          pos,
+          Some(pos),
           enemy,
           &next_trajectories_pruning,
           -beta,
@@ -299,7 +321,7 @@ impl Minimax {
             let mut cur_estimation = -Minimax::alpha_beta(
               &mut local_field,
               depth - 1,
-              pos,
+              Some(pos),
               enemy,
               &next_trajectories_pruning,
               -cur_alpha - 1,
@@ -316,7 +338,7 @@ impl Minimax {
               cur_estimation = -Minimax::alpha_beta(
                 &mut local_field,
                 depth - 1,
-                pos,
+                Some(pos),
                 enemy,
                 &next_trajectories_pruning,
                 -beta,

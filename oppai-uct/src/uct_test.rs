@@ -2,6 +2,7 @@ use crate::uct::{UcbType, UctConfig, UctKomiType, UctRoot};
 use env_logger;
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
+use oppai_test_images::*;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
@@ -21,24 +22,63 @@ const UCT_CONFIG: UctConfig = UctConfig {
   komi_min_iterations: 3_000,
 };
 
-#[test]
-fn find_best_move() {
-  env_logger::try_init().ok();
-  let mut rng = XorShiftRng::from_seed(SEED);
-  let field = construct_field(
-    &mut rng,
-    "
-    ........
-    ........
-    ...a....
-    ..AaA...
-    ...Aaa..
-    ..A.A...
-    ........
-    ........
-    ",
-  );
-  let mut uct = UctRoot::new(UCT_CONFIG, field.length());
-  let pos = uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, 100_000);
-  assert_eq!(pos, Some(field.to_pos(5, 2)));
+macro_rules! uct_test {
+  ($(#[$($attr:meta),+])* $name:ident, $image:ident, $iterations:expr) => {
+    #[test]
+    $(#[$($attr),+])*
+    fn $name() {
+      env_logger::try_init().ok();
+      let mut rng = XorShiftRng::from_seed(SEED);
+      let field = construct_field(&mut rng, $image.image);
+      let mut uct = UctRoot::new(UCT_CONFIG, field.length());
+      let pos = uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, $iterations);
+      assert_eq!(pos, Some(field.to_pos($image.solution.0, $image.solution.1)));
+    }
+  }
 }
+
+uct_test!(uct_1, IMAGE_1, 100_000);
+uct_test!(uct_2, IMAGE_2, 100_000);
+uct_test!(
+  #[ignore]
+  uct_3,
+  IMAGE_3,
+  1_000_000
+);
+uct_test!(uct_4, IMAGE_4, 100_000);
+uct_test!(uct_5, IMAGE_5, 100_000);
+uct_test!(
+  #[ignore]
+  uct_6,
+  IMAGE_6,
+  1_000_000
+);
+uct_test!(
+  #[ignore]
+  uct_7,
+  IMAGE_7,
+  1_000_000
+);
+uct_test!(
+  #[ignore]
+  uct_8,
+  IMAGE_8,
+  1_000_000
+);
+uct_test!(uct_9, IMAGE_9, 100_000);
+uct_test!(
+  #[ignore]
+  uct_10,
+  IMAGE_10,
+  1_000_000
+);
+// uct can't solve it with 100_000_000 iterations
+// uct_test!(uct_11, IMAGE_11, 100_000_000);
+uct_test!(uct_12, IMAGE_12, 100_000);
+uct_test!(uct_13, IMAGE_13, 100_000);
+uct_test!(
+  #[ignore]
+  uct_14,
+  IMAGE_14,
+  1_000_000
+);
