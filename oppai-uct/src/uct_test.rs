@@ -72,8 +72,8 @@ uct_test!(
   IMAGE_10,
   1_000_000
 );
-// uct can't solve it with 100_000_000 iterations
-// uct_test!(uct_11, IMAGE_11, 100_000_000);
+// uct suggests (7, 6) after 1_000_000_000 iterations
+// uct_test!(uct_11, IMAGE_11, 1_000_000_000);
 uct_test!(uct_12, IMAGE_12, 100_000);
 uct_test!(uct_13, IMAGE_13, 100_000);
 uct_test!(
