@@ -1,6 +1,6 @@
 use clap::{App, Arg, ArgGroup};
 use num_cpus;
-use oppai_minimax::minimax::{MinimaxConfig, MinimaxMovesSorting, MinimaxType};
+use oppai_minimax::minimax::{MinimaxConfig, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
 use std::fmt;
 use std::str;
@@ -10,8 +10,6 @@ const CONFIG_STR: &str = "config";
 const UCB_TYPE_VARIANTS: [&str; 3] = ["Winrate", "Ucb1", "Ucb1Tuned"];
 
 const UCT_KOMI_TYPE_VARIANTS: [&str; 3] = ["None", "Static", "Dynamic"];
-
-const MINIMAX_MOVES_SORTING_VARIANTS: [&str; 3] = ["None", "Random", "TrajectoriesCount"];
 
 const MINIMAX_TYPE_VARIANTS: [&str; 2] = ["NegaScout", "MTDF"];
 
@@ -65,34 +63,6 @@ impl str::FromStr for UctKomiTypeArg {
       Ok(UctKomiTypeArg(UctKomiType::Static))
     } else if s.eq_ignore_ascii_case("Dynamic") {
       Ok(UctKomiTypeArg(UctKomiType::Dynamic))
-    } else {
-      Err(format!("valid values: {}", UCT_KOMI_TYPE_VARIANTS.join(", ")))
-    }
-  }
-}
-
-struct MinimaxMovesSortingArg(MinimaxMovesSorting);
-
-impl fmt::Display for MinimaxMovesSortingArg {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self.0 {
-      MinimaxMovesSorting::None => write!(f, "None"),
-      MinimaxMovesSorting::Random => write!(f, "Random"),
-      MinimaxMovesSorting::TrajectoriesCount => write!(f, "TrajectoriesCount"),
-    }
-  }
-}
-
-impl str::FromStr for MinimaxMovesSortingArg {
-  type Err = String;
-
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    if s.eq_ignore_ascii_case("None") {
-      Ok(MinimaxMovesSortingArg(MinimaxMovesSorting::None))
-    } else if s.eq_ignore_ascii_case("Random") {
-      Ok(MinimaxMovesSortingArg(MinimaxMovesSorting::Random))
-    } else if s.eq_ignore_ascii_case("TrajectoriesCount") {
-      Ok(MinimaxMovesSortingArg(MinimaxMovesSorting::TrajectoriesCount))
     } else {
       Err(format!("valid values: {}", UCT_KOMI_TYPE_VARIANTS.join(", ")))
     }
@@ -163,7 +133,6 @@ const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
 const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
   threads_count: 4,
   minimax_type: MinimaxType::NegaScout,
-  minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
   hash_table_size: 10_000,
   rebuild_trajectories: false,
 };
@@ -264,15 +233,6 @@ pub fn cli_parse() {
         .possible_values(&MINIMAX_TYPE_VARIANTS)
         .case_insensitive(true)
         .default_value("NegaScout"),
-    )
-    .arg(
-      Arg::with_name("moves-order")
-        .long("moves-order")
-        .help("Moves sorting method for Minimax")
-        .takes_value(true)
-        .possible_values(&MINIMAX_MOVES_SORTING_VARIANTS)
-        .case_insensitive(true)
-        .default_value("TrajectoriesCount"),
     )
     .arg(
       Arg::with_name("rebuild-trajectories")
@@ -393,9 +353,6 @@ pub fn cli_parse() {
   let minimax_config = MinimaxConfig {
     threads_count,
     minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxTypeArg)
-      .unwrap_or_else(|e| e.exit())
-      .0,
-    minimax_moves_sorting: value_t!(matches.value_of("moves-order"), MinimaxMovesSortingArg)
       .unwrap_or_else(|e| e.exit())
       .0,
     hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit()),

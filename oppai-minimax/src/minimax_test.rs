@@ -1,4 +1,4 @@
-use crate::minimax::{Minimax, MinimaxConfig, MinimaxMovesSorting, MinimaxType};
+use crate::minimax::{Minimax, MinimaxConfig, MinimaxType};
 use env_logger;
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
@@ -11,7 +11,6 @@ const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 
 const MINIMAX_CONFIG_NEGASCOUT: MinimaxConfig = MinimaxConfig {
   threads_count: 1,
   minimax_type: MinimaxType::NegaScout,
-  minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
   hash_table_size: 10_000,
   rebuild_trajectories: false,
 };
@@ -19,7 +18,6 @@ const MINIMAX_CONFIG_NEGASCOUT: MinimaxConfig = MinimaxConfig {
 const MINIMAX_CONFIG_MTDF: MinimaxConfig = MinimaxConfig {
   threads_count: 1,
   minimax_type: MinimaxType::MTDF,
-  minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
   hash_table_size: 10_000,
   rebuild_trajectories: false,
 };
@@ -33,7 +31,7 @@ macro_rules! minimax_test {
       let mut rng = XorShiftRng::from_seed(SEED);
       let mut field = construct_field(&mut rng, $image.image);
       let minimax = Minimax::new($config);
-      let pos = minimax.minimax(&mut field, Player::Red, &mut rng, $depth);
+      let pos = minimax.minimax(&mut field, Player::Red, $depth);
       assert_eq!(pos, Some(field.to_pos($image.solution.0, $image.solution.1)));
     }
   }

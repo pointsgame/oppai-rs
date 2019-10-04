@@ -4,7 +4,7 @@ extern crate criterion;
 use criterion::{Bencher, Criterion};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use oppai_minimax::minimax::{Minimax, MinimaxConfig, MinimaxMovesSorting, MinimaxType};
+use oppai_minimax::minimax::{Minimax, MinimaxConfig, MinimaxType};
 use oppai_test_images::*;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -14,7 +14,6 @@ const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 
 const MINIMAX_CONFIG_NEGASCOUT: MinimaxConfig = MinimaxConfig {
   threads_count: 1,
   minimax_type: MinimaxType::NegaScout,
-  minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
   hash_table_size: 1_000,
   rebuild_trajectories: false,
 };
@@ -22,7 +21,6 @@ const MINIMAX_CONFIG_NEGASCOUT: MinimaxConfig = MinimaxConfig {
 const MINIMAX_CONFIG_MTDF: MinimaxConfig = MinimaxConfig {
   threads_count: 1,
   minimax_type: MinimaxType::MTDF,
-  minimax_moves_sorting: MinimaxMovesSorting::TrajectoriesCount,
   hash_table_size: 1_000,
   rebuild_trajectories: false,
 };
@@ -35,7 +33,7 @@ macro_rules! minimax_bench {
       bencher.iter(|| {
         let minimax = Minimax::new($config);
         let mut local_field = field.clone();
-        minimax.minimax(&mut local_field, Player::Red, &mut rng.clone(), $depth)
+        minimax.minimax(&mut local_field, Player::Red, $depth)
       });
     }
   };

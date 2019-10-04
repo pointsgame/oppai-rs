@@ -4,8 +4,6 @@ use crossbeam::{self, queue::SegQueue};
 use oppai_common::common;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
-use rand::distributions::{Distribution, Standard};
-use rand::{Rng, SeedableRng};
 use std::{
   iter,
   sync::atomic::{AtomicBool, AtomicIsize, Ordering},
@@ -21,18 +19,10 @@ pub enum MinimaxType {
   MTDF,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum MinimaxMovesSorting {
-  None,
-  Random,
-  TrajectoriesCount,
-}
-
 #[derive(Clone, PartialEq, Debug)]
 pub struct MinimaxConfig {
   pub threads_count: usize,
   pub minimax_type: MinimaxType,
-  pub minimax_moves_sorting: MinimaxMovesSorting,
   pub hash_table_size: usize,
   pub rebuild_trajectories: bool,
 }
@@ -59,7 +49,7 @@ impl Minimax {
     hash_table.put(hash, new_hash_value);
   }
 
-  fn alpha_beta<R: Rng>(
+  fn alpha_beta(
     field: &mut Field,
     depth: u32,
     last_pos: Option<Pos>,
@@ -69,7 +59,6 @@ impl Minimax {
     beta: i32,
     empty_board: &mut Vec<u32>,
     hash_table: &HashTable,
-    rng: &mut R,
     should_stop: &AtomicBool,
   ) -> i32 {
     if should_stop.load(Ordering::Relaxed) {
@@ -114,7 +103,7 @@ impl Minimax {
     };
     if last_pos.is_some() && beta - alpha > 1 {
       let enemy_trajectories_pruning =
-        trajectories_pruning.dec_and_swap_exists(field, depth - 1, empty_board, rng, &should_stop);
+        trajectories_pruning.dec_and_swap_exists(field, depth - 1, empty_board, &should_stop);
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
@@ -125,7 +114,6 @@ impl Minimax {
         -beta + 1,
         empty_board,
         hash_table,
-        rng,
         should_stop,
       );
       if cur_estimation >= beta {
@@ -140,7 +128,7 @@ impl Minimax {
         return i32::max_value();
       }
       let next_trajectories_pruning =
-        trajectories_pruning.from_last(field, enemy, depth - 1, empty_board, rng, hash_pos, should_stop);
+        trajectories_pruning.from_last(field, enemy, depth - 1, empty_board, hash_pos, should_stop);
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
@@ -151,7 +139,6 @@ impl Minimax {
         -cur_alpha,
         empty_board,
         hash_table,
-        rng,
         should_stop,
       );
       field.undo();
@@ -184,7 +171,7 @@ impl Minimax {
         return i32::max_value();
       }
       let next_trajectories_pruning =
-        trajectories_pruning.from_last(field, enemy, depth - 1, empty_board, rng, pos, should_stop);
+        trajectories_pruning.from_last(field, enemy, depth - 1, empty_board, pos, should_stop);
       let mut cur_estimation = -Minimax::alpha_beta(
         // TODO: check if cur_alpha is -Inf
         field,
@@ -196,7 +183,6 @@ impl Minimax {
         -cur_alpha,
         empty_board,
         hash_table,
-        rng,
         should_stop,
       );
       if cur_estimation > cur_alpha && cur_estimation < beta {
@@ -210,7 +196,6 @@ impl Minimax {
           -cur_estimation,
           empty_board,
           hash_table,
-          rng,
           should_stop,
         );
       }
@@ -236,7 +221,7 @@ impl Minimax {
     cur_alpha
   }
 
-  pub fn alpha_beta_parallel<S, R>(
+  pub fn alpha_beta_parallel(
     &self,
     field: &mut Field,
     player: Player,
@@ -244,15 +229,9 @@ impl Minimax {
     alpha: i32,
     beta: i32,
     trajectories_pruning: &TrajectoriesPruning,
-    rng: &mut R,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
-  ) -> i32
-  where
-    S: Sized + Default + AsMut<[u8]>,
-    R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
-  {
+  ) -> i32 {
     info!(
       target: MINIMAX_STR,
       "Starting parellel alpha beta with depth {}, player {} and beta {}.", depth, player, beta
@@ -289,10 +268,8 @@ impl Minimax {
     let best_moves = SegQueue::new();
     crossbeam::scope(|scope| {
       for _ in 0..self.config.threads_count {
-        let new_rng = R::from_seed(rng.gen());
         scope.spawn(|_| {
           let mut local_field = field.clone();
-          let mut local_rng = new_rng;
           let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect();
           let mut local_best_move = 0;
           let mut local_alpha = alpha;
@@ -307,7 +284,6 @@ impl Minimax {
               enemy,
               depth - 1,
               &mut local_empty_board,
-              &mut local_rng,
               pos,
               should_stop,
             );
@@ -328,7 +304,6 @@ impl Minimax {
               -cur_alpha,
               &mut local_empty_board,
               &self.hash_table,
-              &mut local_rng,
               should_stop,
             );
             if should_stop.load(Ordering::Relaxed) {
@@ -345,7 +320,6 @@ impl Minimax {
                 -cur_estimation,
                 &mut local_empty_board,
                 &self.hash_table,
-                &mut local_rng,
                 should_stop,
               );
             }
@@ -408,21 +382,15 @@ impl Minimax {
     best_alpha
   }
 
-  fn mtdf<S, R>(
+  fn mtdf(
     &self,
     field: &mut Field,
     player: Player,
     trajectories_pruning: &TrajectoriesPruning,
-    rng: &mut R,
     depth: u32,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
-  ) -> i32
-  where
-    S: Sized + Default + AsMut<[u8]>,
-    R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
-  {
+  ) -> i32 {
     let mut alpha = 0;
     let mut beta = 0;
     for &pos in field.points_seq() {
@@ -450,7 +418,6 @@ impl Minimax {
         center,
         center + 1,
         trajectories_pruning,
-        rng,
         &mut cur_best_move,
         should_stop,
       );
@@ -464,21 +431,15 @@ impl Minimax {
     alpha
   }
 
-  fn nega_scout<S, R>(
+  fn nega_scout(
     &self,
     field: &mut Field,
     player: Player,
     trajectories_pruning: &TrajectoriesPruning,
-    rng: &mut R,
     depth: u32,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
-  ) -> i32
-  where
-    S: Sized + Default + AsMut<[u8]>,
-    R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
-  {
+  ) -> i32 {
     self.alpha_beta_parallel(
       field,
       player,
@@ -486,18 +447,12 @@ impl Minimax {
       i32::min_value() + 1,
       i32::max_value(),
       trajectories_pruning,
-      rng,
       best_move,
       should_stop,
     )
   }
 
-  pub fn minimax<S, R>(&self, field: &mut Field, player: Player, rng: &mut R, depth: u32) -> Option<Pos>
-  where
-    S: Sized + Default + AsMut<[u8]>,
-    R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
-  {
+  pub fn minimax(&self, field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
     info!(
       target: MINIMAX_STR,
       "Starting minimax with depth {} and player {}.", depth, player
@@ -508,13 +463,11 @@ impl Minimax {
     let should_stop = AtomicBool::new(false);
     let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
     let trajectories_pruning = TrajectoriesPruning::new(
-      self.config.minimax_moves_sorting,
       self.config.rebuild_trajectories,
       field,
       player,
       depth,
       &mut empty_board,
-      rng,
       &should_stop,
     );
     let mut best_move = None;
@@ -531,7 +484,6 @@ impl Minimax {
       field,
       player,
       &trajectories_pruning,
-      rng,
       depth,
       &mut best_move,
       &should_stop,
@@ -539,7 +491,7 @@ impl Minimax {
     let enemy = player.next();
     let mut enemy_best_move = best_move;
     let enemy_trajectories_pruning =
-      trajectories_pruning.dec_and_swap_exists(field, depth - 1, &mut empty_board, rng, &should_stop);
+      trajectories_pruning.dec_and_swap_exists(field, depth - 1, &mut empty_board, &should_stop);
     info!(
       target: MINIMAX_STR,
       "Calculating of enemy estimation with upper bound {}. Player is {}",
@@ -555,7 +507,6 @@ impl Minimax {
       -estimation,
       -estimation + 1,
       &enemy_trajectories_pruning,
-      rng,
       &mut enemy_best_move,
       &should_stop,
     ) < estimation
@@ -576,12 +527,7 @@ impl Minimax {
     }
   }
 
-  pub fn minimax_with_time<S, R>(&self, field: &mut Field, player: Player, rng: &mut R, time: u32) -> Option<Pos>
-  where
-    S: Sized + Default + AsMut<[u8]>,
-    R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
-  {
+  pub fn minimax_with_time(&self, field: &mut Field, player: Player, time: u32) -> Option<Pos> {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|_| {
@@ -596,13 +542,11 @@ impl Minimax {
       let mut enemy_best_move = None;
       let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
       let mut trajectories_pruning = TrajectoriesPruning::new(
-        self.config.minimax_moves_sorting,
         self.config.rebuild_trajectories,
         field,
         player,
         depth,
         &mut empty_board,
-        rng,
         &should_stop,
       );
       let minimax_function = match self.config.minimax_type {
@@ -615,7 +559,6 @@ impl Minimax {
           field,
           player,
           &trajectories_pruning,
-          rng,
           depth,
           &mut cur_best_move,
           &should_stop,
@@ -631,7 +574,7 @@ impl Minimax {
           break;
         }
         let enemy_trajectories_pruning =
-          trajectories_pruning.dec_and_swap_exists(field, depth - 1, &mut empty_board, rng, &should_stop);
+          trajectories_pruning.dec_and_swap_exists(field, depth - 1, &mut empty_board, &should_stop);
         if should_stop.load(Ordering::Relaxed) {
           // See previous comment.
           if best_move.is_some() {
@@ -651,7 +594,6 @@ impl Minimax {
             -estimation,
             -estimation + 1,
             &enemy_trajectories_pruning,
-            rng,
             &mut enemy_best_move,
             &should_stop,
           ) < estimation
@@ -665,7 +607,7 @@ impl Minimax {
         }
         depth += 1;
         trajectories_pruning =
-          trajectories_pruning.inc_exists(field, player, depth, &mut empty_board, rng, &should_stop);
+          trajectories_pruning.inc_exists(field, player, depth, &mut empty_board, &should_stop);
       }
       best_move
     })
