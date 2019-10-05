@@ -606,8 +606,7 @@ impl Minimax {
           break;
         }
         depth += 1;
-        trajectories_pruning =
-          trajectories_pruning.inc_exists(field, player, depth, &mut empty_board, &should_stop);
+        trajectories_pruning = trajectories_pruning.inc_exists(field, player, depth, &mut empty_board, &should_stop);
       }
       best_move
     })

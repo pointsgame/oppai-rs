@@ -1,4 +1,4 @@
-use oppai_field::field::{Field, Pos};
+use oppai_field::field::{manhattan, wave_diag, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use std::{
@@ -72,57 +72,101 @@ impl TrajectoriesPruning {
     trajectories.push(trajectory);
   }
 
+  fn next_moves(
+    field: &Field,
+    start_pos: Pos,
+    player: Player,
+    empty_board: &mut Vec<u32>,
+    marks: &mut Vec<Pos>,
+  ) -> Vec<Pos> {
+    let mut moves = Vec::new();
+    wave_diag(field.width(), start_pos, |pos| {
+      if empty_board[pos] != 0 {
+        return false;
+      }
+      empty_board[pos] = 1;
+      let cell = field.cell(pos);
+      if cell.is_players_point(player) {
+        marks.push(pos);
+        true
+      } else {
+        if cell.is_putting_allowed() && !cell.is_players_empty_base(player) {
+          moves.push(pos);
+        } else {
+          marks.push(pos);
+        }
+        false
+      }
+    });
+    for &pos in &moves {
+      empty_board[pos] = 0;
+    }
+    moves
+  }
+
   fn build_trajectories_rec(
     field: &mut Field,
     trajectories: &mut Vec<Trajectory>,
     player: Player,
     cur_depth: u32,
     depth: u32,
+    empty_board: &mut Vec<u32>,
+    last_pos: Pos,
+    moves: Vec<Pos>,
     should_stop: &AtomicBool,
   ) {
-    for pos in field.min_pos()..=field.max_pos() {
-      // TODO: try to reduce area
+    for pos in moves {
+      if should_stop.load(Ordering::Relaxed) {
+        break;
+      }
+      if field.number_near_points(pos, player) >= 3 {
+        continue;
+      }
       let cell = field.cell(pos);
-      if cell.is_putting_allowed() && field.has_near_points(pos, player) && !cell.is_players_empty_base(player) {
-        if should_stop.load(Ordering::Relaxed) {
-          break;
+      if cell.is_players_empty_base(player.next()) {
+        field.put_point(pos, player);
+        if field.get_delta_score(player) > 0 {
+          TrajectoriesPruning::add_trajectory(
+            field,
+            trajectories,
+            field
+              .points_seq()
+              .index(field.moves_count() - cur_depth as usize..field.moves_count()),
+            player,
+          );
         }
-        if cell.is_players_empty_base(player.next()) {
-          field.put_point(pos, player);
-          if field.get_delta_score(player) > 0 {
-            TrajectoriesPruning::add_trajectory(
-              field,
-              trajectories,
-              field
-                .points_seq()
-                .index(field.moves_count() - cur_depth as usize..field.moves_count()),
-              player,
-            );
+        field.undo();
+      } else {
+        field.put_point(pos, player);
+        if field.get_delta_score(player) > 0 {
+          TrajectoriesPruning::add_trajectory(
+            field,
+            trajectories,
+            field
+              .points_seq()
+              .index(field.moves_count() - cur_depth as usize..field.moves_count()),
+            player,
+          );
+        } else if depth > 0 {
+          let mut marks = Vec::new();
+          let mut next_moves = TrajectoriesPruning::next_moves(field, pos, player, empty_board, &mut marks);
+          next_moves.retain(|&next_pos| manhattan(field.width(), last_pos, next_pos) > 1);
+          TrajectoriesPruning::build_trajectories_rec(
+            field,
+            trajectories,
+            player,
+            cur_depth + 1,
+            depth - 1,
+            empty_board,
+            pos,
+            next_moves,
+            should_stop,
+          );
+          for mark_pos in marks {
+            empty_board[mark_pos] = 0;
           }
-          field.undo();
-        } else {
-          field.put_point(pos, player);
-          if field.get_delta_score(player) > 0 {
-            TrajectoriesPruning::add_trajectory(
-              field,
-              trajectories,
-              field
-                .points_seq()
-                .index(field.moves_count() - cur_depth as usize..field.moves_count()),
-              player,
-            );
-          } else if depth > 0 {
-            TrajectoriesPruning::build_trajectories_rec(
-              field,
-              trajectories,
-              player,
-              cur_depth + 1,
-              depth - 1,
-              should_stop,
-            );
-          }
-          field.undo();
         }
+        field.undo();
       }
     }
   }
@@ -132,10 +176,40 @@ impl TrajectoriesPruning {
     trajectories: &mut Vec<Trajectory>,
     player: Player,
     depth: u32,
+    empty_board: &mut Vec<u32>,
     should_stop: &AtomicBool,
   ) {
-    if depth > 0 {
-      TrajectoriesPruning::build_trajectories_rec(field, trajectories, player, 1, depth - 1, should_stop);
+    if depth == 0 {
+      return;
+    }
+
+    let mut marks = Vec::new();
+    for pos in field.points_seq().clone() {
+      if field.cell(pos).get_player() != player {
+        continue;
+      }
+
+      if should_stop.load(Ordering::Relaxed) {
+        break;
+      }
+
+      let moves = TrajectoriesPruning::next_moves(field, pos, player, empty_board, &mut marks);
+
+      TrajectoriesPruning::build_trajectories_rec(
+        field,
+        trajectories,
+        player,
+        1,
+        depth - 1,
+        empty_board,
+        0,
+        moves,
+        should_stop,
+      );
+    }
+
+    for pos in marks {
+      empty_board[pos] = 0;
     }
   }
 
@@ -281,11 +355,25 @@ impl TrajectoriesPruning {
     }
     let mut cur_trajectories = Vec::new();
     let mut enemy_trajectories = Vec::new();
-    TrajectoriesPruning::build_trajectories(field, &mut cur_trajectories, player, (depth + 1) / 2, should_stop);
+    TrajectoriesPruning::build_trajectories(
+      field,
+      &mut cur_trajectories,
+      player,
+      (depth + 1) / 2,
+      empty_board,
+      should_stop,
+    );
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
-    TrajectoriesPruning::build_trajectories(field, &mut enemy_trajectories, player.next(), depth / 2, should_stop);
+    TrajectoriesPruning::build_trajectories(
+      field,
+      &mut enemy_trajectories,
+      player.next(),
+      depth / 2,
+      empty_board,
+      should_stop,
+    );
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
@@ -349,7 +437,14 @@ impl TrajectoriesPruning {
     let mut cur_trajectories = Vec::new();
     let mut enemy_trajectories = Vec::new();
     if self.rebuild_trajectories {
-      TrajectoriesPruning::build_trajectories(field, &mut cur_trajectories, player, (depth + 1) / 2, should_stop);
+      TrajectoriesPruning::build_trajectories(
+        field,
+        &mut cur_trajectories,
+        player,
+        (depth + 1) / 2,
+        empty_board,
+        should_stop,
+      );
     } else {
       for trajectory in &self.enemy_trajectories {
         if trajectory
@@ -469,7 +564,14 @@ impl TrajectoriesPruning {
     let mut cur_trajectories = Vec::new();
     let mut enemy_trajectories = Vec::new();
     if depth % 2 == 0 {
-      TrajectoriesPruning::build_trajectories(field, &mut enemy_trajectories, player.next(), depth / 2, should_stop);
+      TrajectoriesPruning::build_trajectories(
+        field,
+        &mut enemy_trajectories,
+        player.next(),
+        depth / 2,
+        empty_board,
+        should_stop,
+      );
       if should_stop.load(Ordering::Relaxed) {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }
@@ -477,7 +579,14 @@ impl TrajectoriesPruning {
         cur_trajectories.push(Trajectory::new(trajectory.points.clone(), trajectory.hash()));
       }
     } else {
-      TrajectoriesPruning::build_trajectories(field, &mut cur_trajectories, player, (depth + 1) / 2, should_stop);
+      TrajectoriesPruning::build_trajectories(
+        field,
+        &mut cur_trajectories,
+        player,
+        (depth + 1) / 2,
+        empty_board,
+        should_stop,
+      );
       if should_stop.load(Ordering::Relaxed) {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }

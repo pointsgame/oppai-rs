@@ -191,22 +191,35 @@ pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
   let mut q = VecDeque::new();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
-    let n_pos = n(width, pos);
-    let s_pos = s(width, pos);
-    let w_pos = w(pos);
-    let e_pos = e(pos);
-    if cond(n_pos) {
-      q.push_back(n_pos);
-    }
-    if cond(s_pos) {
-      q.push_back(s_pos);
-    }
-    if cond(w_pos) {
-      q.push_back(w_pos);
-    }
-    if cond(e_pos) {
-      q.push_back(e_pos);
-    }
+    q.extend(
+      [n(width, pos), s(width, pos), w(pos), e(pos)]
+        .iter()
+        .filter(|&&pos| cond(pos)),
+    )
+  }
+}
+
+pub fn wave_diag<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
+  if !cond(start_pos) {
+    return;
+  }
+  let mut q = VecDeque::new();
+  q.push_back(start_pos);
+  while let Some(pos) = q.pop_front() {
+    q.extend(
+      [
+        n(width, pos),
+        s(width, pos),
+        w(pos),
+        e(pos),
+        nw(width, pos),
+        ne(width, pos),
+        sw(width, pos),
+        se(width, pos),
+      ]
+      .iter()
+      .filter(|&&pos| cond(pos)),
+    )
   }
 }
 
@@ -303,43 +316,57 @@ impl Field {
   }
 
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
-    self.points[self.n(center_pos)].is_live_players_point(player)
-      || self.points[self.s(center_pos)].is_live_players_point(player)
-      || self.points[self.w(center_pos)].is_live_players_point(player)
-      || self.points[self.e(center_pos)].is_live_players_point(player)
-      || self.points[self.nw(center_pos)].is_live_players_point(player)
-      || self.points[self.ne(center_pos)].is_live_players_point(player)
-      || self.points[self.sw(center_pos)].is_live_players_point(player)
-      || self.points[self.se(center_pos)].is_live_players_point(player)
+    [
+      self.n(center_pos),
+      self.s(center_pos),
+      self.w(center_pos),
+      self.e(center_pos),
+    ]
+    .iter()
+    .any(|&pos| self.points[pos].is_live_players_point(player))
+  }
+
+  pub fn has_near_points_diag(&self, center_pos: Pos, player: Player) -> bool {
+    [
+      self.n(center_pos),
+      self.s(center_pos),
+      self.w(center_pos),
+      self.e(center_pos),
+      self.nw(center_pos),
+      self.ne(center_pos),
+      self.sw(center_pos),
+      self.se(center_pos),
+    ]
+    .iter()
+    .any(|&pos| self.points[pos].is_live_players_point(player))
   }
 
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
-    let mut result = 0u32;
-    if self.points[self.n(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    if self.points[self.s(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    if self.points[self.w(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    if self.points[self.e(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    if self.points[self.nw(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    if self.points[self.ne(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    if self.points[self.sw(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    if self.points[self.se(center_pos)].is_live_players_point(player) {
-      result += 1;
-    }
-    result
+    [
+      self.n(center_pos),
+      self.s(center_pos),
+      self.w(center_pos),
+      self.e(center_pos),
+    ]
+    .iter()
+    .filter(|&&pos| self.points[pos].is_live_players_point(player))
+    .count() as u32
+  }
+
+  pub fn number_near_points_diag(&self, center_pos: Pos, player: Player) -> u32 {
+    [
+      self.n(center_pos),
+      self.s(center_pos),
+      self.w(center_pos),
+      self.e(center_pos),
+      self.nw(center_pos),
+      self.ne(center_pos),
+      self.sw(center_pos),
+      self.se(center_pos),
+    ]
+    .iter()
+    .filter(|&&pos| self.points[pos].is_live_players_point(player))
+    .count() as u32
   }
 
   pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u32 {
