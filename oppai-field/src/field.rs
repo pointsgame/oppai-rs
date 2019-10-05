@@ -229,6 +229,13 @@ pub fn manhattan(width: u32, pos1: Pos, pos2: Pos) -> u32 {
     + i32::abs(to_y(width, pos1) as i32 - to_y(width, pos2) as i32)) as u32
 }
 
+#[inline]
+pub fn euclidean(width: u32, pos1: Pos, pos2: Pos) -> u32 {
+  let a = to_x(width, pos1) as i32 - to_x(width, pos2) as i32;
+  let b = to_y(width, pos1) as i32 - to_y(width, pos2) as i32;
+  (a * a + b * b) as u32
+}
+
 impl Field {
   #[inline]
   pub fn length(&self) -> Pos {

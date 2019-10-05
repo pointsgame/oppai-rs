@@ -1,4 +1,4 @@
-use oppai_field::field::{manhattan, wave_diag, Field, Pos};
+use oppai_field::field::{euclidean, wave_diag, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use std::{
@@ -150,7 +150,9 @@ impl TrajectoriesPruning {
         } else if depth > 0 {
           let mut marks = Vec::new();
           let mut next_moves = TrajectoriesPruning::next_moves(field, pos, player, empty_board, &mut marks);
-          next_moves.retain(|&next_pos| manhattan(field.width(), last_pos, next_pos) > 1);
+          if last_pos != 0 {
+            next_moves.retain(|&next_pos| euclidean(field.width(), last_pos, next_pos) > 2);
+          }
           TrajectoriesPruning::build_trajectories_rec(
             field,
             trajectories,
