@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "bench", feature(test))]
-#![allow(dead_code)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::cognitive_complexity)]
 
@@ -54,8 +52,6 @@ use std::{
   str::FromStr,
   sync::Arc,
 };
-
-const CONFIG_PATH: &str = "config/config.toml";
 
 const LOG_CONFIG_PATH: &str = "config/log.toml";
 

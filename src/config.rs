@@ -5,8 +5,6 @@ use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
 use std::fmt;
 use std::str;
 
-const CONFIG_STR: &str = "config";
-
 const UCB_TYPE_VARIANTS: [&str; 3] = ["Winrate", "Ucb1", "Ucb1Tuned"];
 
 const UCT_KOMI_TYPE_VARIANTS: [&str; 3] = ["None", "Static", "Dynamic"];
@@ -153,11 +151,6 @@ static mut CONFIG: Config = DEFAULT_CONFIG;
 #[inline]
 pub fn config() -> &'static Config {
   unsafe { &CONFIG }
-}
-
-#[inline]
-fn config_mut() -> &'static mut Config {
-  unsafe { &mut CONFIG }
 }
 
 pub fn cli_parse() {

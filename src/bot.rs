@@ -27,7 +27,6 @@ const MAX_MINIMAX_DEPTH: u32 = 8;
 pub struct Bot {
   rng: XorShiftRng,
   patterns: Arc<Patterns>,
-  zobrist: Arc<Zobrist>,
   field: Field,
   uct: UctRoot,
   minimax: Minimax,
@@ -64,7 +63,6 @@ impl Bot {
     Bot {
       rng,
       patterns,
-      zobrist,
       field: Field::new(width, height, field_zobrist),
       uct: UctRoot::new(config::config().uct.clone(), length),
       minimax: Minimax::new(config::config().minimax.clone()),
