@@ -177,6 +177,10 @@ impl HashTable {
     self.entries.len()
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.entries.is_empty()
+  }
+
   fn choose_best(data1: HashData, data2: HashData) -> HashData {
     if data1.hash_type() != HashType::Alpha && data2.hash_type() == HashType::Alpha {
       data1

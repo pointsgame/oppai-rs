@@ -424,7 +424,7 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn from_last(
+  pub fn next(
     &self,
     field: &mut Field,
     player: Player,
@@ -513,7 +513,7 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn dec_and_swap_exists(
+  pub fn dec_and_swap(
     &self,
     field: &Field,
     depth: u32,
@@ -555,7 +555,7 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn inc_exists(
+  pub fn inc(
     &self,
     field: &mut Field,
     player: Player,

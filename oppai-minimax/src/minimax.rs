@@ -103,7 +103,7 @@ impl Minimax {
     };
     if last_pos.is_some() && beta - alpha > 1 {
       let enemy_trajectories_pruning =
-        trajectories_pruning.dec_and_swap_exists(field, depth - 1, empty_board, &should_stop);
+        trajectories_pruning.dec_and_swap(field, depth - 1, empty_board, &should_stop);
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
@@ -128,7 +128,7 @@ impl Minimax {
         return i32::max_value();
       }
       let next_trajectories_pruning =
-        trajectories_pruning.from_last(field, enemy, depth - 1, empty_board, hash_pos, should_stop);
+        trajectories_pruning.next(field, enemy, depth - 1, empty_board, hash_pos, should_stop);
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
@@ -171,7 +171,7 @@ impl Minimax {
         return i32::max_value();
       }
       let next_trajectories_pruning =
-        trajectories_pruning.from_last(field, enemy, depth - 1, empty_board, pos, should_stop);
+        trajectories_pruning.next(field, enemy, depth - 1, empty_board, pos, should_stop);
       let mut cur_estimation = -Minimax::alpha_beta(
         // TODO: check if cur_alpha is -Inf
         field,
@@ -279,7 +279,7 @@ impl Minimax {
               break;
             }
             local_field.put_point(pos, player);
-            let next_trajectories_pruning = trajectories_pruning.from_last(
+            let next_trajectories_pruning = trajectories_pruning.next(
               &mut local_field,
               enemy,
               depth - 1,
@@ -491,7 +491,7 @@ impl Minimax {
     let enemy = player.next();
     let mut enemy_best_move = best_move;
     let enemy_trajectories_pruning =
-      trajectories_pruning.dec_and_swap_exists(field, depth - 1, &mut empty_board, &should_stop);
+      trajectories_pruning.dec_and_swap(field, depth - 1, &mut empty_board, &should_stop);
     info!(
       target: MINIMAX_STR,
       "Calculating of enemy estimation with upper bound {}. Player is {}",
@@ -574,7 +574,7 @@ impl Minimax {
           break;
         }
         let enemy_trajectories_pruning =
-          trajectories_pruning.dec_and_swap_exists(field, depth - 1, &mut empty_board, &should_stop);
+          trajectories_pruning.dec_and_swap(field, depth - 1, &mut empty_board, &should_stop);
         if should_stop.load(Ordering::Relaxed) {
           // See previous comment.
           if best_move.is_some() {
@@ -606,7 +606,7 @@ impl Minimax {
           break;
         }
         depth += 1;
-        trajectories_pruning = trajectories_pruning.inc_exists(field, player, depth, &mut empty_board, &should_stop);
+        trajectories_pruning = trajectories_pruning.inc(field, player, depth, &mut empty_board, &should_stop);
       }
       best_move
     })
