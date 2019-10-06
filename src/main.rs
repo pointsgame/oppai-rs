@@ -1,33 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::cognitive_complexity)]
 
-extern crate rand;
-
-extern crate rand_xorshift;
-
 #[macro_use]
 extern crate log;
 
-extern crate log4rs;
-
-extern crate num_cpus;
-
-extern crate crossbeam;
-
-extern crate rayon;
-
-extern crate tar;
-
 #[macro_use]
 extern crate clap;
-
-#[cfg(test)]
-extern crate env_logger;
-
-#[cfg(all(test, feature = "bench"))]
-extern crate test;
-
-extern crate oppai_field;
 
 mod bot;
 mod config;
@@ -48,12 +26,9 @@ use std::{
   default::Default,
   fs::File,
   io::{self, BufRead, BufReader, Write},
-  path::Path,
   str::FromStr,
   sync::Arc,
 };
-
-const LOG_CONFIG_PATH: &str = "config/log.toml";
 
 const PATTERNS_PATH: &str = "patterns.tar";
 
@@ -191,7 +166,8 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 
 fn main() {
   cli_parse();
-  log4rs::init_file(Path::new(LOG_CONFIG_PATH), Default::default()).ok();
+  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  env_logger::Builder::from_env(env).init();
   let patterns = if let Ok(patterns_file) = File::open(PATTERNS_PATH) {
     Patterns::from_tar(patterns_file)
   } else {

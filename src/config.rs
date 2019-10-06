@@ -161,7 +161,7 @@ pub fn cli_parse() {
     .about(crate_description!())
     .group(
       ArgGroup::with_name("Minimax")
-        .args(&["minimax-type", "moves-order", "rebuild-trajectories"])
+        .args(&["minimax-type", "rebuild-trajectories"])
         .multiple(true),
     )
     .group(

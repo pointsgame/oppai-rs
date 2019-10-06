@@ -11,7 +11,7 @@ rand = "0.7"
 rand_xorshift = "0.2"
 time = "0.1"
 log = "0.4"
-log4rs = { version = "0.8", features = ["toml"] }
+env_logger = "0.6"
 num_cpus = "1.10"
 crossbeam = "0.7"
 rayon = "1.2"
@@ -21,9 +21,6 @@ oppai-field = { path = "oppai-field" }
 oppai-common = { path = "oppai-common" }
 oppai-uct = { path = "oppai-uct" }
 oppai-minimax = { path = "oppai-minimax" }
-
-[dev-dependencies]
-env_logger = "0.6"
 
 [features]
 default = ["dsu"]
