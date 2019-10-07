@@ -102,8 +102,7 @@ impl Minimax {
       HashType::Empty => None,
     };
     if last_pos.is_some() && beta - alpha > 1 {
-      let enemy_trajectories_pruning =
-        trajectories_pruning.dec_and_swap(field, depth - 1, empty_board, &should_stop);
+      let enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(field, depth - 1, empty_board, &should_stop);
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
@@ -170,8 +169,7 @@ impl Minimax {
         field.undo();
         return i32::max_value();
       }
-      let next_trajectories_pruning =
-        trajectories_pruning.next(field, enemy, depth - 1, empty_board, pos, should_stop);
+      let next_trajectories_pruning = trajectories_pruning.next(field, enemy, depth - 1, empty_board, pos, should_stop);
       let mut cur_estimation = -Minimax::alpha_beta(
         // TODO: check if cur_alpha is -Inf
         field,

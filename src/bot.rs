@@ -22,7 +22,7 @@ const MAX_UCT_ITERATIONS: usize = 500_000;
 
 const MIN_MINIMAX_DEPTH: u32 = 0;
 
-const MAX_MINIMAX_DEPTH: u32 = 8;
+const MAX_MINIMAX_DEPTH: u32 = 12;
 
 pub struct Bot {
   rng: XorShiftRng,
