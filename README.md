@@ -74,7 +74,7 @@ cargo bench --features bench
 
 TODO
 ====
-* Parallel trajectories building.
+
 * Best Node Search algorithm (see [link](https://dspace.lu.lv/dspace/bitstream/handle/7/4903/38550-Dmitrijs_Rutko_2013.pdf)).
 * Cache built DFA for fast patterns loading.
 * Fill debuts database.
