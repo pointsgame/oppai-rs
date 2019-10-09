@@ -1,17 +1,15 @@
 use oppai_field::field::{euclidean, wave_diag, Field, Pos};
 use oppai_field::player::Player;
-use oppai_field::zobrist::Zobrist;
 use std::{
   collections::HashSet,
   ops::Index,
   sync::atomic::{AtomicBool, Ordering},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Trajectory {
   points: Vec<Pos>,
   hash: u64,
-  excluded: bool,
 }
 
 impl Trajectory {
@@ -19,7 +17,6 @@ impl Trajectory {
     Trajectory {
       points,
       hash,
-      excluded: false,
     }
   }
 
@@ -31,16 +28,8 @@ impl Trajectory {
     self.hash
   }
 
-  pub fn excluded(&self) -> bool {
-    self.excluded
-  }
-
   pub fn len(&self) -> usize {
     self.points.len()
-  }
-
-  pub fn exclude(&mut self) {
-    self.excluded = true;
   }
 }
 
@@ -215,49 +204,9 @@ impl TrajectoriesPruning {
     }
   }
 
-  fn intersection_hash(
-    trajectory1: &Trajectory,
-    trajectory2: &Trajectory,
-    zobrist: &Zobrist,
-    empty_board: &mut Vec<u32>,
-  ) -> u64 {
-    let mut result = trajectory1.hash() ^ trajectory2.hash();
-    for &pos in trajectory1.points() {
-      empty_board[pos] = 1;
-    }
-    for &pos in trajectory2.points() {
-      if empty_board[pos] != 0 {
-        result ^= zobrist.get_hash(pos);
-      }
-    }
-    for &pos in trajectory1.points() {
-      empty_board[pos] = 0;
-    }
-    result
-  }
-
-  fn exclude_composite_trajectories(trajectories: &mut Vec<Trajectory>, zobrist: &Zobrist, empty_board: &mut Vec<u32>) {
-    let len = trajectories.len();
-    for k in 0..len {
-      for i in 0..len - 1 {
-        if trajectories[k].len() > trajectories[i].len() {
-          for j in i + 1..len {
-            if trajectories[k].len() > trajectories[j].len()
-              && trajectories[k].hash()
-                == TrajectoriesPruning::intersection_hash(&trajectories[i], &trajectories[j], zobrist, empty_board)
-            {
-              trajectories[k].exclude();
-            }
-          }
-        }
-      }
-    }
-  }
-
   fn project(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
     for &pos in trajectories
       .iter()
-      .filter(|trajectory| !trajectory.excluded())
       .flat_map(|trajectory| trajectory.points().iter())
     {
       empty_board[pos] += 1;
@@ -265,7 +214,7 @@ impl TrajectoriesPruning {
   }
 
   fn project_length(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
-    for trajectory in trajectories.iter().filter(|trajectory| !trajectory.excluded()) {
+    for trajectory in trajectories {
       let len = trajectory.len() as u32;
       for &pos in trajectory.points() {
         if empty_board[pos] == 0 || empty_board[pos] > len {
@@ -278,7 +227,6 @@ impl TrajectoriesPruning {
   fn deproject(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
     for &pos in trajectories
       .iter()
-      .filter(|trajectory| !trajectory.excluded())
       .flat_map(|trajectory| trajectory.points().iter())
     {
       empty_board[pos] = 0;
@@ -287,27 +235,26 @@ impl TrajectoriesPruning {
 
   fn exclude_unnecessary_trajectories(trajectories: &mut Vec<Trajectory>, empty_board: &mut Vec<u32>) -> bool {
     let mut need_exclude = false;
-    for trajectory in trajectories.iter_mut().filter(|trajectory| !trajectory.excluded()) {
+    trajectories.retain(|trajectory| {
       let single_count = trajectory.points().iter().filter(|&&pos| empty_board[pos] == 1).count();
       if single_count > 1 {
         for &pos in trajectory.points() {
           empty_board[pos] -= 1;
         }
-        trajectory.exclude();
         need_exclude = true;
+        false
+      } else {
+        true
       }
-    }
+    });
     need_exclude
   }
 
   fn calculate_moves(
     trajectories1: &mut Vec<Trajectory>,
     trajectories2: &mut Vec<Trajectory>,
-    zobrist: &Zobrist,
     empty_board: &mut Vec<u32>,
   ) -> Vec<Pos> {
-    TrajectoriesPruning::exclude_composite_trajectories(trajectories1, zobrist, empty_board);
-    TrajectoriesPruning::exclude_composite_trajectories(trajectories2, zobrist, empty_board);
     TrajectoriesPruning::project(trajectories1, empty_board);
     TrajectoriesPruning::project(trajectories2, empty_board);
     while TrajectoriesPruning::exclude_unnecessary_trajectories(trajectories1, empty_board)
@@ -317,7 +264,6 @@ impl TrajectoriesPruning {
     for &pos in trajectories1
       .iter()
       .chain(trajectories2.iter())
-      .filter(|trajectory| !trajectory.excluded())
       .flat_map(|trajectory| trajectory.points().iter())
     {
       result_set.insert(pos);
@@ -382,7 +328,6 @@ impl TrajectoriesPruning {
     let moves = TrajectoriesPruning::calculate_moves(
       &mut cur_trajectories,
       &mut enemy_trajectories,
-      field.zobrist(),
       empty_board,
     );
     TrajectoriesPruning {
@@ -454,8 +399,7 @@ impl TrajectoriesPruning {
           .iter()
           .all(|&pos| field.cell(pos).is_putting_allowed())
         {
-          let new_trajectory = Trajectory::new(trajectory.points().clone(), trajectory.hash());
-          cur_trajectories.push(new_trajectory);
+          cur_trajectories.push((*trajectory).clone());
         }
       }
       if let Some(new_cur_trajectory) = TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos) {
@@ -502,7 +446,6 @@ impl TrajectoriesPruning {
     let moves = TrajectoriesPruning::calculate_moves(
       &mut cur_trajectories,
       &mut enemy_trajectories,
-      field.zobrist(),
       empty_board,
     );
     TrajectoriesPruning {
@@ -515,7 +458,6 @@ impl TrajectoriesPruning {
 
   pub fn dec_and_swap(
     &self,
-    field: &Field,
     depth: u32,
     empty_board: &mut Vec<u32>,
     should_stop: &AtomicBool,
@@ -544,7 +486,6 @@ impl TrajectoriesPruning {
     let moves = TrajectoriesPruning::calculate_moves(
       &mut cur_trajectories,
       &mut enemy_trajectories,
-      field.zobrist(),
       empty_board,
     );
     TrajectoriesPruning {
@@ -602,7 +543,6 @@ impl TrajectoriesPruning {
     let moves = TrajectoriesPruning::calculate_moves(
       &mut cur_trajectories,
       &mut enemy_trajectories,
-      field.zobrist(),
       empty_board,
     );
     TrajectoriesPruning {
