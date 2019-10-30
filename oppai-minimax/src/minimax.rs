@@ -226,13 +226,13 @@ impl Minimax {
     depth: u32,
     alpha: i32,
     beta: i32,
-    trajectories_pruning: &TrajectoriesPruning,
+    trajectories_pruning: &mut TrajectoriesPruning,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
   ) -> i32 {
     info!(
       target: MINIMAX_STR,
-      "Starting parellel alpha beta with depth {}, player {} and beta {}.", depth, player, beta
+      "Starting parallel alpha beta with depth {}, player {} and beta {}.", depth, player, beta
     );
     if depth == 0 || should_stop.load(Ordering::Relaxed) {
       *best_move = None;
@@ -264,6 +264,7 @@ impl Minimax {
     }
     let atomic_alpha = AtomicIsize::new(alpha as isize);
     let best_moves = SegQueue::new();
+    let skipped_moves = SegQueue::new();
     crossbeam::scope(|scope| {
       for _ in 0..self.config.threads_count {
         scope.spawn(|_| {
@@ -290,6 +291,7 @@ impl Minimax {
             }
             let cur_alpha = atomic_alpha.load(Ordering::Relaxed) as i32;
             if cur_alpha >= beta {
+              skipped_moves.push(pos);
               break;
             }
             let mut cur_estimation = -Minimax::alpha_beta(
@@ -349,7 +351,7 @@ impl Minimax {
               }
             }
           }
-          if local_best_move != 0 && local_alpha == atomic_alpha.load(Ordering::Relaxed) as i32 {
+          if local_best_move != 0 {
             best_moves.push((local_best_move, local_alpha));
           }
         });
@@ -358,10 +360,22 @@ impl Minimax {
     .expect("Minimax alpha_beta_parallel panic");
     let mut result = 0;
     let best_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
-    while let Ok((pos, pos_alpha)) = best_moves.pop() {
-      if pos_alpha == best_alpha {
-        result = pos;
-        break;
+    if best_alpha > alpha {
+      let moves = trajectories_pruning.moves_mut();
+      moves.clear();
+      while let Ok((pos, pos_alpha)) = best_moves.pop() {
+        if pos_alpha == best_alpha || pos_alpha >= beta {
+          moves.push(pos);
+        }
+        if pos_alpha == best_alpha && result == 0 {
+          result = pos;
+        }
+      }
+      while let Ok(pos) = skipped_moves.pop() {
+        moves.push(pos);
+      }
+      while let Ok(pos) = queue.pop() {
+        moves.push(pos);
       }
     }
     if result == 0 {
@@ -384,7 +398,7 @@ impl Minimax {
     &self,
     field: &mut Field,
     player: Player,
-    trajectories_pruning: &TrajectoriesPruning,
+    trajectories_pruning: &mut TrajectoriesPruning,
     depth: u32,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
@@ -399,6 +413,10 @@ impl Minimax {
       }
     }
     while alpha != beta {
+      if let &[single_move] = trajectories_pruning.moves().as_slice() {
+        *best_move = Some(single_move);
+        return alpha;
+      }
       if should_stop.load(Ordering::Relaxed) {
         *best_move = None;
         return alpha;
@@ -433,7 +451,7 @@ impl Minimax {
     &self,
     field: &mut Field,
     player: Player,
-    trajectories_pruning: &TrajectoriesPruning,
+    trajectories_pruning: &mut TrajectoriesPruning,
     depth: u32,
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
@@ -460,7 +478,7 @@ impl Minimax {
     }
     let should_stop = AtomicBool::new(false);
     let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-    let trajectories_pruning = TrajectoriesPruning::new(
+    let mut trajectories_pruning = TrajectoriesPruning::new(
       self.config.rebuild_trajectories,
       field,
       player,
@@ -481,14 +499,14 @@ impl Minimax {
       &self,
       field,
       player,
-      &trajectories_pruning,
+      &mut trajectories_pruning,
       depth,
       &mut best_move,
       &should_stop,
     );
     let enemy = player.next();
     let mut enemy_best_move = best_move;
-    let enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
+    let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
     info!(
       target: MINIMAX_STR,
       "Calculating of enemy estimation with upper bound {}. Player is {}",
@@ -503,7 +521,7 @@ impl Minimax {
       depth - 1,
       -estimation,
       -estimation + 1,
-      &enemy_trajectories_pruning,
+      &mut enemy_trajectories_pruning,
       &mut enemy_best_move,
       &should_stop,
     ) < estimation
@@ -555,7 +573,7 @@ impl Minimax {
           &self,
           field,
           player,
-          &trajectories_pruning,
+          &mut trajectories_pruning,
           depth,
           &mut cur_best_move,
           &should_stop,
@@ -570,7 +588,8 @@ impl Minimax {
           }
           break;
         }
-        let enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
+        let mut enemy_trajectories_pruning =
+          trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
         if should_stop.load(Ordering::Relaxed) {
           // See previous comment.
           if best_move.is_some() {
@@ -589,7 +608,7 @@ impl Minimax {
             depth - 1,
             -estimation,
             -estimation + 1,
-            &enemy_trajectories_pruning,
+            &mut enemy_trajectories_pruning,
             &mut enemy_best_move,
             &should_stop,
           ) < estimation

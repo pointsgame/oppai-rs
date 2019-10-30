@@ -526,4 +526,8 @@ impl TrajectoriesPruning {
   pub fn moves(&self) -> &Vec<Pos> {
     &self.moves
   }
+
+  pub fn moves_mut(&mut self) -> &mut Vec<Pos> {
+    &mut self.moves
+  }
 }
