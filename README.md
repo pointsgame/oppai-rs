@@ -45,11 +45,14 @@ or with:
 ./target/release/oppai-rs
 ```
 
-If you have nightly rust and want to see clippy warnings, compile with:
+If you are running the produced binary on the same CPU it was built on you might want to specify `target-cpu` flag:
 
 ```sh
-cargo build --features clippy
+RUSTFLAGS="-C target-cpu=native" \
+  cargo build --release
 ```
+
+Depending on your hardware it might increase the performance by up to 10%.
 
 Testing
 ====
