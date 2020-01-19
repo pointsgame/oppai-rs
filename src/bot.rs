@@ -1,4 +1,4 @@
-use crate::config::{self, Solver};
+use crate::config::{Config, Solver};
 use crate::heuristic;
 use crate::patterns::Patterns;
 use oppai_field::field::{self, Field};
@@ -30,10 +30,11 @@ pub struct Bot {
   field: Field,
   uct: UctRoot,
   minimax: Minimax,
+  config: Config,
 }
 
 impl Bot {
-  pub fn new(width: u32, height: u32, seed: u64, patterns: Arc<Patterns>) -> Bot {
+  pub fn new(width: u32, height: u32, seed: u64, patterns: Arc<Patterns>, config: Config) -> Bot {
     info!(
       target: BOT_STR,
       "Initialization with width {0}, height {1}, seed {2}.", width, height, seed
@@ -64,8 +65,9 @@ impl Bot {
       rng,
       patterns,
       field: Field::new(width, height, field_zobrist),
-      uct: UctRoot::new(config::config().uct.clone(), length),
-      minimax: Minimax::new(config::config().minimax.clone()),
+      uct: UctRoot::new(config.uct.clone(), length),
+      minimax: Minimax::new(config.minimax.clone()),
+      config,
     }
   }
 
@@ -135,15 +137,15 @@ impl Bot {
     if let Some(pos) = self.patterns.find_rand(&self.field, player, false, &mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
-    match config::solver() {
+    match self.config.bot.solver {
       Solver::Uct => self
         .uct
-        .best_move_with_time(&self.field, player, &mut self.rng, time - config::time_gap())
+        .best_move_with_time(&self.field, player, &mut self.rng, time - self.config.bot.time_gap)
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
       Solver::Minimax => self
         .minimax
-        .minimax_with_time(&mut self.field, player, time - config::time_gap())
+        .minimax_with_time(&mut self.field, player, time - self.config.bot.time_gap)
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
       Solver::Heuristic => {
@@ -171,7 +173,7 @@ impl Bot {
     if let Some(pos) = self.patterns.find_rand(&self.field, player, false, &mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
-    match config::solver() {
+    match self.config.bot.solver {
       Solver::Uct => {
         let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS)
           / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize

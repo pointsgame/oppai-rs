@@ -165,7 +165,7 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
 }
 
 fn main() {
-  cli_parse();
+  let config = cli_parse();
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
   let patterns = if let Ok(patterns_file) = File::open(PATTERNS_PATH) {
@@ -199,7 +199,7 @@ fn main() {
           if split.next().is_some() {
             write_init_error(&mut output, id);
           } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
-            bot_option = Some(Bot::new(x, y, seed, Arc::clone(&patterns_arc)));
+            bot_option = Some(Bot::new(x, y, seed, Arc::clone(&patterns_arc), config.clone()));
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);

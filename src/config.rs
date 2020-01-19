@@ -105,55 +105,16 @@ arg_enum! {
 pub struct Config {
   pub uct: UctConfig,
   pub minimax: MinimaxConfig,
-  bot: BotConfig,
+  pub bot: BotConfig,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct BotConfig {
-  time_gap: u32,
-  solver: Solver,
+pub struct BotConfig {
+  pub time_gap: u32,
+  pub solver: Solver,
 }
 
-const DEFAULT_UCT_CONFIG: UctConfig = UctConfig {
-  threads_count: 4,
-  radius: 3,
-  ucb_type: UcbType::Ucb1Tuned,
-  draw_weight: 0.4,
-  uctk: 1.0,
-  when_create_children: 2,
-  depth: 8,
-  komi_type: UctKomiType::Dynamic,
-  red: 0.45,
-  green: 0.5,
-  komi_min_iterations: 3_000,
-};
-
-const DEFAULT_MINIMAX_CONFIG: MinimaxConfig = MinimaxConfig {
-  threads_count: 4,
-  minimax_type: MinimaxType::NegaScout,
-  hash_table_size: 10_000,
-  rebuild_trajectories: false,
-};
-
-const DEFAULT_BOT_CONFIG: BotConfig = BotConfig {
-  time_gap: 100,
-  solver: Solver::Uct,
-};
-
-const DEFAULT_CONFIG: Config = Config {
-  uct: DEFAULT_UCT_CONFIG,
-  minimax: DEFAULT_MINIMAX_CONFIG,
-  bot: DEFAULT_BOT_CONFIG,
-};
-
-static mut CONFIG: Config = DEFAULT_CONFIG;
-
-#[inline]
-pub fn config() -> &'static Config {
-  unsafe { &CONFIG }
-}
-
-pub fn cli_parse() {
+pub fn cli_parse() -> Config {
   let num_cpus_string = num_cpus::get().to_string();
   let matches = App::new(crate_name!())
     .version(crate_version!())
@@ -355,22 +316,9 @@ pub fn cli_parse() {
     time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
   };
-  let config = Config {
+  Config {
     uct: uct_config,
     minimax: minimax_config,
     bot: bot_config,
-  };
-  unsafe {
-    CONFIG = config;
   }
-}
-
-#[inline]
-pub fn time_gap() -> u32 {
-  config().bot.time_gap
-}
-
-#[inline]
-pub fn solver() -> Solver {
-  config().bot.solver
 }
