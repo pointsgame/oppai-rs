@@ -488,8 +488,7 @@ impl Minimax {
     );
     let enemy = player.next();
     let mut enemy_best_move = best_move;
-    let enemy_trajectories_pruning =
-      trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
+    let enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
     info!(
       target: MINIMAX_STR,
       "Calculating of enemy estimation with upper bound {}. Player is {}",
@@ -571,8 +570,7 @@ impl Minimax {
           }
           break;
         }
-        let enemy_trajectories_pruning =
-          trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
+        let enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
         if should_stop.load(Ordering::Relaxed) {
           // See previous comment.
           if best_move.is_some() {

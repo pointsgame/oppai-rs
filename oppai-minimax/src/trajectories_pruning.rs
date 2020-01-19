@@ -14,10 +14,7 @@ struct Trajectory {
 
 impl Trajectory {
   pub fn new(points: Vec<Pos>, hash: u64) -> Trajectory {
-    Trajectory {
-      points,
-      hash,
-    }
+    Trajectory { points, hash }
   }
 
   pub fn points(&self) -> &Vec<Pos> {
@@ -205,10 +202,7 @@ impl TrajectoriesPruning {
   }
 
   fn project(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
-    for &pos in trajectories
-      .iter()
-      .flat_map(|trajectory| trajectory.points().iter())
-    {
+    for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points().iter()) {
       empty_board[pos] += 1;
     }
   }
@@ -225,10 +219,7 @@ impl TrajectoriesPruning {
   }
 
   fn deproject(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
-    for &pos in trajectories
-      .iter()
-      .flat_map(|trajectory| trajectory.points().iter())
-    {
+    for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points().iter()) {
       empty_board[pos] = 0;
     }
   }
@@ -325,11 +316,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
-    let moves = TrajectoriesPruning::calculate_moves(
-      &mut cur_trajectories,
-      &mut enemy_trajectories,
-      empty_board,
-    );
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);
     TrajectoriesPruning {
       rebuild_trajectories,
       cur_trajectories,
@@ -443,11 +430,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
-    let moves = TrajectoriesPruning::calculate_moves(
-      &mut cur_trajectories,
-      &mut enemy_trajectories,
-      empty_board,
-    );
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);
     TrajectoriesPruning {
       rebuild_trajectories: self.rebuild_trajectories,
       cur_trajectories,
@@ -456,12 +439,7 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn dec_and_swap(
-    &self,
-    depth: u32,
-    empty_board: &mut Vec<u32>,
-    should_stop: &AtomicBool,
-  ) -> TrajectoriesPruning {
+  pub fn dec_and_swap(&self, depth: u32, empty_board: &mut Vec<u32>, should_stop: &AtomicBool) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
@@ -483,11 +461,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
-    let moves = TrajectoriesPruning::calculate_moves(
-      &mut cur_trajectories,
-      &mut enemy_trajectories,
-      empty_board,
-    );
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);
     TrajectoriesPruning {
       rebuild_trajectories: self.rebuild_trajectories,
       cur_trajectories,
@@ -540,11 +514,7 @@ impl TrajectoriesPruning {
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
-    let moves = TrajectoriesPruning::calculate_moves(
-      &mut cur_trajectories,
-      &mut enemy_trajectories,
-      empty_board,
-    );
+    let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);
     TrajectoriesPruning {
       rebuild_trajectories: self.rebuild_trajectories,
       cur_trajectories,
