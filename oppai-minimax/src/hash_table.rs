@@ -58,7 +58,7 @@ impl From<usize> for HashType {
       1 => HashType::Alpha,
       2 => HashType::Exact,
       3 => HashType::Beta,
-      0 | _ => HashType::Empty,
+      _ => HashType::Empty,
     }
   }
 }

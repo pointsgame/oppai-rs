@@ -413,7 +413,7 @@ impl Minimax {
       }
     }
     while alpha != beta {
-      if let &[single_move] = trajectories_pruning.moves().as_slice() {
+      if let [single_move] = *trajectories_pruning.moves().as_slice() {
         *best_move = Some(single_move);
         return alpha;
       }

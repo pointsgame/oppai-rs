@@ -1,5 +1,4 @@
 use crate::wave_pruning::WavePruning;
-use crossbeam;
 use oppai_common::common;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
@@ -339,14 +338,13 @@ impl UctRoot {
   }
 
   fn random_result(field: &Field, player: Player, komi: i32) -> Option<Player> {
+    use std::cmp::Ordering;
     let red_komi = if player == Player::Red { komi } else { -komi };
     let red_score = field.score(Player::Red);
-    if red_score > red_komi {
-      Some(Player::Red)
-    } else if red_score < red_komi {
-      Some(Player::Black)
-    } else {
-      None
+    match red_score.cmp(&red_komi) {
+      Ordering::Greater => Some(Player::Red),
+      Ordering::Less => Some(Player::Black),
+      Ordering::Equal => None,
     }
   }
 

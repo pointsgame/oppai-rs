@@ -915,13 +915,12 @@ impl Field {
 
   #[inline]
   pub fn hash_at(&self, move_number: usize) -> Option<u64> {
+    use std::cmp::Ordering;
     let moves_count = self.moves_count();
-    if move_number < moves_count {
-      Some(self.changes[move_number].hash)
-    } else if move_number == moves_count {
-      Some(self.hash)
-    } else {
-      None
+    match move_number.cmp(&moves_count) {
+      Ordering::Less => Some(self.changes[move_number].hash),
+      Ordering::Equal => Some(self.hash),
+      Ordering::Greater => None,
     }
   }
 

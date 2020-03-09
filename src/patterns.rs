@@ -5,7 +5,6 @@ use oppai_field::cell::Cell;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
 use rand::Rng;
-use rayon;
 use std::{
   cmp,
   collections::{HashMap, HashSet},

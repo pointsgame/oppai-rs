@@ -1,5 +1,4 @@
 use clap::{App, Arg, ArgGroup};
-use num_cpus;
 use oppai_minimax::minimax::{MinimaxConfig, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
 use std::fmt;

@@ -1,5 +1,4 @@
 use crate::uct::{UcbType, UctConfig, UctKomiType, UctRoot};
-use env_logger;
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use oppai_test_images::*;
