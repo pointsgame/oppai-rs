@@ -1,7 +1,7 @@
 use crate::cell::Cell;
 use crate::player::Player;
 use crate::zobrist::Zobrist;
-use std::{collections::VecDeque, mem, sync::Arc};
+use std::{collections::VecDeque, fmt, mem, sync::Arc};
 
 pub type Pos = usize;
 
@@ -972,5 +972,29 @@ impl Field {
   #[inline]
   pub fn zobrist(&self) -> &Zobrist {
     &self.zobrist
+  }
+}
+
+impl fmt::Display for Field {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    for y in 0..self.height() {
+      for x in 0..self.width() {
+        let pos = self.to_pos(x, y);
+        let cell = self.cell(pos);
+        match cell.get_players_point() {
+          Some(Player::Red) => write!(f, "+")?,
+          Some(Player::Black) => write!(f, "*")?,
+          None => {
+            if cell.is_captured() {
+              write!(f, ",")?
+            } else {
+              write!(f, ".")?
+            }
+          }
+        }
+      }
+      writeln!(f)?;
+    }
+    Ok(())
   }
 }
