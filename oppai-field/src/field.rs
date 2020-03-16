@@ -184,6 +184,23 @@ pub fn square(width: u32, pos1: Pos, pos2: Pos) -> i32 {
   (to_x(width, pos1) * to_y(width, pos2)) as i32 - (to_y(width, pos1) * to_x(width, pos2)) as i32
 }
 
+pub fn directions(width: u32, pos: Pos) -> [Pos; 4] {
+  [n(width, pos), s(width, pos), w(pos), e(pos)]
+}
+
+pub fn directions_diag(width: u32, pos: Pos) -> [Pos; 8] {
+  [
+    n(width, pos),
+    s(width, pos),
+    w(pos),
+    e(pos),
+    nw(width, pos),
+    ne(width, pos),
+    sw(width, pos),
+    se(width, pos),
+  ]
+}
+
 pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
@@ -191,11 +208,7 @@ pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
   let mut q = VecDeque::new();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
-    q.extend(
-      [n(width, pos), s(width, pos), w(pos), e(pos)]
-        .iter()
-        .filter(|&&pos| cond(pos)),
-    )
+    q.extend(directions(width, pos).iter().filter(|&&pos| cond(pos)))
   }
 }
 
@@ -206,20 +219,7 @@ pub fn wave_diag<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F)
   let mut q = VecDeque::new();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
-    q.extend(
-      [
-        n(width, pos),
-        s(width, pos),
-        w(pos),
-        e(pos),
-        nw(width, pos),
-        ne(width, pos),
-        sw(width, pos),
-        se(width, pos),
-      ]
-      .iter()
-      .filter(|&&pos| cond(pos)),
-    )
+    q.extend(directions_diag(width, pos).iter().filter(|&&pos| cond(pos)))
   }
 }
 
@@ -298,6 +298,16 @@ impl Field {
   }
 
   #[inline]
+  pub fn directions(&self, pos: Pos) -> [Pos; 4] {
+    directions(self.width, pos)
+  }
+
+  #[inline]
+  pub fn directions_diag(&self, pos: Pos) -> [Pos; 8] {
+    directions_diag(self.width, pos)
+  }
+
+  #[inline]
   pub fn min_pos(&self) -> Pos {
     min_pos(self.width)
   }
@@ -323,57 +333,33 @@ impl Field {
   }
 
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
-    [
-      self.n(center_pos),
-      self.s(center_pos),
-      self.w(center_pos),
-      self.e(center_pos),
-    ]
-    .iter()
-    .any(|&pos| self.points[pos].is_live_players_point(player))
+    self
+      .directions(center_pos)
+      .iter()
+      .any(|&pos| self.points[pos].is_live_players_point(player))
   }
 
   pub fn has_near_points_diag(&self, center_pos: Pos, player: Player) -> bool {
-    [
-      self.n(center_pos),
-      self.s(center_pos),
-      self.w(center_pos),
-      self.e(center_pos),
-      self.nw(center_pos),
-      self.ne(center_pos),
-      self.sw(center_pos),
-      self.se(center_pos),
-    ]
-    .iter()
-    .any(|&pos| self.points[pos].is_live_players_point(player))
+    self
+      .directions_diag(center_pos)
+      .iter()
+      .any(|&pos| self.points[pos].is_live_players_point(player))
   }
 
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
-    [
-      self.n(center_pos),
-      self.s(center_pos),
-      self.w(center_pos),
-      self.e(center_pos),
-    ]
-    .iter()
-    .filter(|&&pos| self.points[pos].is_live_players_point(player))
-    .count() as u32
+    self
+      .directions(center_pos)
+      .iter()
+      .filter(|&&pos| self.points[pos].is_live_players_point(player))
+      .count() as u32
   }
 
   pub fn number_near_points_diag(&self, center_pos: Pos, player: Player) -> u32 {
-    [
-      self.n(center_pos),
-      self.s(center_pos),
-      self.w(center_pos),
-      self.e(center_pos),
-      self.nw(center_pos),
-      self.ne(center_pos),
-      self.sw(center_pos),
-      self.se(center_pos),
-    ]
-    .iter()
-    .filter(|&&pos| self.points[pos].is_live_players_point(player))
-    .count() as u32
+    self
+      .directions_diag(center_pos)
+      .iter()
+      .filter(|&&pos| self.points[pos].is_live_players_point(player))
+      .count() as u32
   }
 
   pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u32 {

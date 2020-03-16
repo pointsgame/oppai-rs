@@ -328,15 +328,10 @@ impl TrajectoriesPruning {
   fn last_pos_trajectory(field: &Field, player: Player, depth: u32, last_pos: Pos) -> Option<Trajectory> {
     let mut points = Vec::with_capacity(4);
     let mut hash = 0;
-    for &pos in &[
-      field.n(last_pos),
-      field.s(last_pos),
-      field.w(last_pos),
-      field.e(last_pos),
-    ] {
+    for &pos in &field.directions(last_pos) {
       if field.cell(pos).is_putting_allowed() {
         let mut neighbors_count = 0;
-        for &neighbor in &[field.n(pos), field.s(pos), field.w(pos), field.e(pos)] {
+        for &neighbor in &field.directions(pos) {
           if field.cell(neighbor).is_players_point(player) {
             neighbors_count += 1;
           }
