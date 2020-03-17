@@ -381,7 +381,7 @@ impl TrajectoriesPruning {
           .iter()
           .all(|&pos| field.cell(pos).is_putting_allowed())
         {
-          cur_trajectories.push((*trajectory).clone());
+          cur_trajectories.push(trajectory.clone());
         }
       }
       if let Some(new_cur_trajectory) = TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos) {
@@ -441,7 +441,7 @@ impl TrajectoriesPruning {
     let mut cur_trajectories = Vec::new();
     let mut enemy_trajectories = Vec::new();
     for trajectory in &self.enemy_trajectories {
-      cur_trajectories.push(Trajectory::new(trajectory.points.clone(), trajectory.hash()));
+      cur_trajectories.push(trajectory.clone());
     }
     let enemy_depth = depth / 2;
     if enemy_depth > 0 {
@@ -450,7 +450,7 @@ impl TrajectoriesPruning {
         .iter()
         .filter(|trajectory| trajectory.len() as u32 <= enemy_depth)
       {
-        enemy_trajectories.push(Trajectory::new(trajectory.points.clone(), trajectory.hash()));
+        enemy_trajectories.push(trajectory.clone());
       }
     }
     if should_stop.load(Ordering::Relaxed) {
@@ -488,7 +488,7 @@ impl TrajectoriesPruning {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }
       for trajectory in &self.cur_trajectories {
-        cur_trajectories.push(Trajectory::new(trajectory.points.clone(), trajectory.hash()));
+        cur_trajectories.push(trajectory.clone());
       }
     } else {
       TrajectoriesPruning::build_trajectories(
@@ -503,7 +503,7 @@ impl TrajectoriesPruning {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }
       for trajectory in &self.enemy_trajectories {
-        enemy_trajectories.push(Trajectory::new(trajectory.points.clone(), trajectory.hash()));
+        enemy_trajectories.push(trajectory.clone());
       }
     }
     if should_stop.load(Ordering::Relaxed) {
