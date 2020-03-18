@@ -7,14 +7,15 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-struct Trajectory {
+pub struct Trajectory {
   points: Vec<Pos>,
   hash: u64,
+  score: i32,
 }
 
 impl Trajectory {
-  pub fn new(points: Vec<Pos>, hash: u64) -> Trajectory {
-    Trajectory { points, hash }
+  pub fn new(points: Vec<Pos>, hash: u64, score: i32) -> Trajectory {
+    Trajectory { points, hash, score }
   }
 
   pub fn points(&self) -> &Vec<Pos> {
@@ -25,8 +26,16 @@ impl Trajectory {
     self.hash
   }
 
+  pub fn score(&self) -> i32 {
+    self.score
+  }
+
   pub fn len(&self) -> usize {
     self.points.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.points.is_empty()
   }
 }
 
@@ -54,7 +63,7 @@ impl TrajectoriesPruning {
         return;
       }
     }
-    let trajectory = Trajectory::new(points.to_vec(), hash);
+    let trajectory = Trajectory::new(points.to_vec(), hash, field.score(player));
     trajectories.push(trajectory);
   }
 
@@ -333,7 +342,7 @@ impl TrajectoriesPruning {
       }
     }
     if points.len() as u32 <= (depth + 1) / 2 {
-      Some(Trajectory::new(points, hash))
+      Some(Trajectory::new(points, hash, field.score(player) + 1))
     } else {
       None
     }
@@ -396,6 +405,7 @@ impl TrajectoriesPruning {
                   .filter(|&pos| pos != last_pos)
                   .collect(),
                 trajectory.hash() ^ field.zobrist().get_hash(last_pos),
+                trajectory.score,
               )
             } else {
               trajectory.clone()
