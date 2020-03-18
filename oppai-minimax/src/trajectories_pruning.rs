@@ -161,14 +161,15 @@ impl TrajectoriesPruning {
 
   fn build_trajectories(
     field: &mut Field,
-    trajectories: &mut Vec<Trajectory>,
     player: Player,
     depth: u32,
     empty_board: &mut Vec<u32>,
     should_stop: &AtomicBool,
-  ) {
+  ) -> Vec<Trajectory> {
+    let mut trajectories = Vec::new();
+
     if depth == 0 {
-      return;
+      return trajectories;
     }
 
     let mut marks = Vec::new();
@@ -185,7 +186,7 @@ impl TrajectoriesPruning {
 
       TrajectoriesPruning::build_trajectories_rec(
         field,
-        trajectories,
+        &mut trajectories,
         player,
         1,
         depth - 1,
@@ -199,6 +200,8 @@ impl TrajectoriesPruning {
     for pos in marks {
       empty_board[pos] = 0;
     }
+
+    trajectories
   }
 
   fn project(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
@@ -292,27 +295,13 @@ impl TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
-    let mut cur_trajectories = Vec::new();
-    let mut enemy_trajectories = Vec::new();
-    TrajectoriesPruning::build_trajectories(
-      field,
-      &mut cur_trajectories,
-      player,
-      (depth + 1) / 2,
-      empty_board,
-      should_stop,
-    );
+    let mut cur_trajectories =
+      TrajectoriesPruning::build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop);
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
-    TrajectoriesPruning::build_trajectories(
-      field,
-      &mut enemy_trajectories,
-      player.next(),
-      depth / 2,
-      empty_board,
-      should_stop,
-    );
+    let mut enemy_trajectories =
+      TrajectoriesPruning::build_trajectories(field, player.next(), depth / 2, empty_board, should_stop);
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
@@ -363,65 +352,64 @@ impl TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
-    let mut cur_trajectories = Vec::new();
-    let mut enemy_trajectories = Vec::new();
-    if self.rebuild_trajectories {
-      TrajectoriesPruning::build_trajectories(
-        field,
-        &mut cur_trajectories,
-        player,
-        (depth + 1) / 2,
-        empty_board,
-        should_stop,
-      );
+    let mut cur_trajectories = if self.rebuild_trajectories {
+      TrajectoriesPruning::build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop)
     } else {
-      for trajectory in &self.enemy_trajectories {
-        if trajectory
-          .points()
-          .iter()
-          .all(|&pos| field.cell(pos).is_putting_allowed())
-        {
-          cur_trajectories.push(trajectory.clone());
-        }
-      }
-      if let Some(new_cur_trajectory) = TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos) {
-        cur_trajectories.push(new_cur_trajectory);
-      }
-    }
+      self
+        .enemy_trajectories
+        .iter()
+        .filter(|trajectory| {
+          trajectory
+            .points()
+            .iter()
+            .all(|&pos| field.cell(pos).is_putting_allowed())
+        })
+        .cloned()
+        .chain(TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos).into_iter())
+        .collect()
+    };
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
     let enemy_depth = depth / 2;
-    if enemy_depth > 0 {
-      for trajectory in &self.cur_trajectories {
-        let len = trajectory.len() as u32;
-        let contains_pos = trajectory.points().contains(&last_pos);
-        if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos)
-          && trajectory
-            .points()
-            .iter()
-            .all(|&pos| field.cell(pos).is_putting_allowed() || pos == last_pos)
-        {
-          let new_trajectory = if contains_pos {
-            if len == 1 {
-              continue;
-            }
-            Trajectory::new(
-              trajectory
-                .points
-                .iter()
-                .cloned()
-                .filter(|&pos| pos != last_pos)
-                .collect(),
-              trajectory.hash() ^ field.zobrist().get_hash(last_pos),
-            )
+    let mut enemy_trajectories = if enemy_depth > 0 {
+      self
+        .cur_trajectories
+        .iter()
+        .filter_map(|trajectory| {
+          let len = trajectory.len() as u32;
+          let contains_pos = trajectory.points().contains(&last_pos);
+          if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos)
+            && trajectory
+              .points()
+              .iter()
+              .all(|&pos| field.cell(pos).is_putting_allowed() || pos == last_pos)
+          {
+            let new_trajectory = if contains_pos {
+              if len == 1 {
+                return None;
+              }
+              Trajectory::new(
+                trajectory
+                  .points
+                  .iter()
+                  .cloned()
+                  .filter(|&pos| pos != last_pos)
+                  .collect(),
+                trajectory.hash() ^ field.zobrist().get_hash(last_pos),
+              )
+            } else {
+              trajectory.clone()
+            };
+            Some(new_trajectory)
           } else {
-            Trajectory::new(trajectory.points.clone(), trajectory.hash())
-          };
-          enemy_trajectories.push(new_trajectory);
-        }
-      }
-    }
+            None
+          }
+        })
+        .collect()
+    } else {
+      Vec::new()
+    };
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
@@ -438,21 +426,18 @@ impl TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
-    let mut cur_trajectories = Vec::new();
-    let mut enemy_trajectories = Vec::new();
-    for trajectory in &self.enemy_trajectories {
-      cur_trajectories.push(trajectory.clone());
-    }
+    let mut cur_trajectories = self.enemy_trajectories.clone();
     let enemy_depth = depth / 2;
-    if enemy_depth > 0 {
-      for trajectory in self
+    let mut enemy_trajectories = if enemy_depth > 0 {
+      self
         .cur_trajectories
         .iter()
         .filter(|trajectory| trajectory.len() as u32 <= enemy_depth)
-      {
-        enemy_trajectories.push(trajectory.clone());
-      }
-    }
+        .cloned()
+        .collect()
+    } else {
+      Vec::new()
+    };
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
@@ -473,39 +458,21 @@ impl TrajectoriesPruning {
     empty_board: &mut Vec<u32>,
     should_stop: &AtomicBool,
   ) -> TrajectoriesPruning {
-    let mut cur_trajectories = Vec::new();
-    let mut enemy_trajectories = Vec::new();
-    if depth % 2 == 0 {
-      TrajectoriesPruning::build_trajectories(
-        field,
-        &mut enemy_trajectories,
-        player.next(),
-        depth / 2,
-        empty_board,
-        should_stop,
-      );
+    let (mut cur_trajectories, mut enemy_trajectories) = if depth % 2 == 0 {
+      let enemy_trajectories =
+        TrajectoriesPruning::build_trajectories(field, player.next(), depth / 2, empty_board, should_stop);
       if should_stop.load(Ordering::Relaxed) {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }
-      for trajectory in &self.cur_trajectories {
-        cur_trajectories.push(trajectory.clone());
-      }
+      (self.cur_trajectories.clone(), enemy_trajectories)
     } else {
-      TrajectoriesPruning::build_trajectories(
-        field,
-        &mut cur_trajectories,
-        player,
-        (depth + 1) / 2,
-        empty_board,
-        should_stop,
-      );
+      let cur_trajectories =
+        TrajectoriesPruning::build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop);
       if should_stop.load(Ordering::Relaxed) {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }
-      for trajectory in &self.enemy_trajectories {
-        enemy_trajectories.push(trajectory.clone());
-      }
-    }
+      (cur_trajectories, self.enemy_trajectories.clone())
+    };
     if should_stop.load(Ordering::Relaxed) {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
