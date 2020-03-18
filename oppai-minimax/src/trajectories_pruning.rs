@@ -70,16 +70,15 @@ impl TrajectoriesPruning {
       if empty_board[pos] != 0 {
         return false;
       }
-      empty_board[pos] = 1;
       let cell = field.cell(pos);
       if cell.is_players_point(player) {
+        empty_board[pos] = 1;
         marks.push(pos);
         true
       } else {
         if cell.is_putting_allowed() && !cell.is_players_empty_base(player) {
+          empty_board[pos] = 1;
           moves.push(pos);
-        } else {
-          marks.push(pos);
         }
         false
       }
