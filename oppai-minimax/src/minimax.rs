@@ -403,15 +403,16 @@ impl Minimax {
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
   ) -> i32 {
-    let mut alpha = 0;
-    let mut beta = 0;
-    for &pos in field.points_seq() {
-      if field.cell(pos).get_player() == player {
-        alpha -= 1;
-      } else {
-        beta += 1;
-      }
-    }
+    let mut alpha = if let Some(alpha) = trajectories_pruning.alpha() {
+      alpha
+    } else {
+      field.score(player)
+    };
+    let mut beta = if let Some(beta) = trajectories_pruning.beta() {
+      beta
+    } else {
+      field.score(player)
+    };
     while alpha != beta {
       if let [single_move] = *trajectories_pruning.moves().as_slice() {
         *best_move = Some(single_move);
@@ -456,12 +457,22 @@ impl Minimax {
     best_move: &mut Option<Pos>,
     should_stop: &AtomicBool,
   ) -> i32 {
+    let alpha = if let Some(alpha) = trajectories_pruning.alpha() {
+      alpha
+    } else {
+      field.score(player)
+    };
+    let beta = if let Some(beta) = trajectories_pruning.beta() {
+      beta
+    } else {
+      field.score(player)
+    };
     self.alpha_beta_parallel(
       field,
       player,
       depth,
-      i32::min_value() + 1,
-      i32::max_value(),
+      alpha,
+      beta,
       trajectories_pruning,
       best_move,
       should_stop,

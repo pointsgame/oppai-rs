@@ -494,6 +494,18 @@ impl TrajectoriesPruning {
     }
   }
 
+  fn trajectories_score(trajectories: &[Trajectory]) -> Option<i32> {
+    trajectories.iter().map(|trajectory| trajectory.score).max()
+  }
+
+  pub fn alpha(&self) -> Option<i32> {
+    TrajectoriesPruning::trajectories_score(&self.enemy_trajectories).map(|score| -score)
+  }
+
+  pub fn beta(&self) -> Option<i32> {
+    TrajectoriesPruning::trajectories_score(&self.cur_trajectories)
+  }
+
   pub fn moves(&self) -> &Vec<Pos> {
     &self.moves
   }
