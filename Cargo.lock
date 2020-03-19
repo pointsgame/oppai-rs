@@ -368,6 +368,8 @@ name = "oppai-common"
 version = "0.1.0"
 dependencies = [
  "oppai-field 0.1.0",
+ "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand_xorshift 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
