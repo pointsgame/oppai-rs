@@ -449,7 +449,7 @@ impl UctRoot {
           next.lose_node();
           return self.play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);
         }
-        if common::is_penult_move_stuped(field) {
+        if common::is_penult_move_stupid(field) {
           // Theoretically, visits in this node may be overflowed by another thread, but
           // there's nothing to worry about. In this case this node will be
           // marked as losing on the next visit

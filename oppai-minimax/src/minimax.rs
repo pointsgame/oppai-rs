@@ -122,7 +122,7 @@ impl Minimax {
     // Try the best move from the hash table.
     if let Some(hash_pos) = hash_pos_option {
       field.put_point(hash_pos, player);
-      if common::is_penult_move_stuped(field) {
+      if common::is_penult_move_stupid(field) {
         field.undo();
         return i32::max_value();
       }
@@ -165,7 +165,7 @@ impl Minimax {
     // For all moves instead the one from the hash table.
     for &pos in moves.iter().filter(|&&pos| Some(pos) != hash_pos_option) {
       field.put_point(pos, player);
-      if common::is_penult_move_stuped(field) {
+      if common::is_penult_move_stupid(field) {
         field.undo();
         return i32::max_value();
       }
