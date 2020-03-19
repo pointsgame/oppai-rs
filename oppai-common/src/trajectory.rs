@@ -98,6 +98,7 @@ fn build_trajectories_rec(
   empty_board: &mut Vec<u32>,
   last_pos: Pos,
   moves: Vec<Pos>,
+  ensure_pos: Pos,
   should_stop: &AtomicBool,
 ) {
   for pos in moves {
@@ -110,7 +111,7 @@ fn build_trajectories_rec(
     let cell = field.cell(pos);
     if cell.is_players_empty_base(player.next()) {
       field.put_point(pos, player);
-      if field.get_delta_score(player) > 0 {
+      if field.get_delta_score(player) > 0 && (ensure_pos == 0 || field.cell(ensure_pos).is_bound()) {
         add_trajectory(
           field,
           trajectories,
@@ -123,7 +124,7 @@ fn build_trajectories_rec(
       field.undo();
     } else {
       field.put_point(pos, player);
-      if field.get_delta_score(player) > 0 {
+      if field.get_delta_score(player) > 0 && (ensure_pos == 0 || field.cell(ensure_pos).is_bound()) {
         add_trajectory(
           field,
           trajectories,
@@ -147,6 +148,7 @@ fn build_trajectories_rec(
           empty_board,
           pos,
           next_moves,
+          ensure_pos,
           should_stop,
         );
         for mark_pos in marks {
@@ -192,9 +194,47 @@ pub fn build_trajectories(
       empty_board,
       0,
       moves,
+      0,
       should_stop,
     );
   }
+
+  for pos in marks {
+    empty_board[pos] = 0;
+  }
+
+  trajectories
+}
+
+pub fn build_trajectories_from(
+  field: &mut Field,
+  pos: Pos,
+  player: Player,
+  depth: u32,
+  empty_board: &mut Vec<u32>,
+  should_stop: &AtomicBool,
+) -> Vec<Trajectory> {
+  let mut trajectories = Vec::new();
+
+  if depth == 0 {
+    return trajectories;
+  }
+
+  let mut marks = Vec::new();
+  let moves = next_moves(field, pos, player, empty_board, &mut marks);
+
+  build_trajectories_rec(
+    field,
+    &mut trajectories,
+    player,
+    1,
+    depth - 1,
+    empty_board,
+    0,
+    moves,
+    pos,
+    should_stop,
+  );
 
   for pos in marks {
     empty_board[pos] = 0;

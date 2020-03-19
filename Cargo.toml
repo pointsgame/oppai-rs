@@ -19,6 +19,7 @@ tar = "0.4"
 clap = "2.33"
 oppai-field = { path = "oppai-field" }
 oppai-common = { path = "oppai-common" }
+oppai-ladders = { path = "oppai-ladders" }
 oppai-uct = { path = "oppai-uct" }
 oppai-minimax = { path = "oppai-minimax" }
 

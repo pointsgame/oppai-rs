@@ -1,4 +1,4 @@
-use crate::trajectory::build_trajectories;
+use crate::trajectory::{build_trajectories, build_trajectories_from};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use rand::SeedableRng;
@@ -349,4 +349,38 @@ fn build_trajectories_maze_3() {
   let trajectories = build_trajectories(&mut field, Player::Red, 80, &mut empty_board, &should_stop);
 
   assert!(!trajectories.is_empty());
+}
+
+#[test]
+fn build_trajectories_from_1() {
+  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ........
+    ..a..a..
+    .AAaaAA.
+    .aa..aa.
+    ........
+    ",
+  );
+
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let should_stop = AtomicBool::new(false);
+
+  let pos = field.to_pos(2, 1);
+  let trajectories = build_trajectories_from(&mut field, pos, Player::Red, 2, &mut empty_board, &should_stop);
+  assert_eq!(trajectories.len(), 1);
+
+  let pos = field.to_pos(3, 2);
+  let trajectories = build_trajectories_from(&mut field, pos, Player::Red, 2, &mut empty_board, &should_stop);
+  assert_eq!(trajectories.len(), 1);
+
+  let pos = field.to_pos(5, 1);
+  let trajectories = build_trajectories_from(&mut field, pos, Player::Red, 2, &mut empty_board, &should_stop);
+  assert_eq!(trajectories.len(), 1);
+
+  let pos = field.to_pos(4, 2);
+  let trajectories = build_trajectories_from(&mut field, pos, Player::Red, 2, &mut empty_board, &should_stop);
+  assert_eq!(trajectories.len(), 1);
 }
