@@ -30,18 +30,19 @@ fn ladders_rec(
   trajectory: &Trajectory,
   empty_board: &mut Vec<u32>,
   should_stop: &AtomicBool,
-  depth: usize,
-) -> (Pos, i32) {
+  depth: u32,
+) -> (Pos, i32, u32) {
   match *trajectory.points().as_slice() {
     [pos] => {
       field.put_point(pos, player);
       let cur_score = field.score(player);
       field.undo();
-      (pos, cur_score)
+      (pos, cur_score, depth)
     }
     [pos1, pos2] => {
       let mut max_score = field.score(player);
       let mut best_move = 0;
+      let mut max_depth = depth;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
         if field.cell(our_pos).is_players_empty_base(player.next()) {
@@ -91,10 +92,13 @@ fn ladders_rec(
         let marks = mark_group(field, our_pos, player, empty_board);
 
         for trajectory in trajectories {
-          let (_, cur_score) = ladders_rec(field, player, &trajectory, empty_board, should_stop, depth);
+          let (_, cur_score, cur_depth) = ladders_rec(field, player, &trajectory, empty_board, should_stop, depth);
           if cur_score > max_score {
             max_score = cur_score;
             best_move = our_pos;
+          }
+          if cur_depth > max_depth {
+            max_depth = cur_depth;
           }
         }
 
@@ -106,7 +110,7 @@ fn ladders_rec(
         field.undo();
       }
 
-      (best_move, max_score)
+      (best_move, max_score, max_depth)
     }
     _ => unreachable!("Trajectory with {} points", trajectory.len()),
   }
@@ -140,7 +144,7 @@ pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (
       Vec::new()
     };
 
-    let (cur_pos, cur_score) = ladders_rec(field, player, &trajectory, &mut empty_board, should_stop, 0);
+    let (cur_pos, cur_score, _) = ladders_rec(field, player, &trajectory, &mut empty_board, should_stop, 0);
     let cur_score = cur_score.min(trajectory.score());
     if cur_score > max_score {
       max_score = cur_score;
