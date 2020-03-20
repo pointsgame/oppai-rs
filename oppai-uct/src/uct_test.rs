@@ -1,5 +1,6 @@
 use crate::uct::{UcbType, UctConfig, UctKomiType, UctRoot};
 use oppai_field::construct_field::construct_field;
+use oppai_field::field::NonZeroPos;
 use oppai_field::player::Player;
 use oppai_test_images::*;
 use rand::SeedableRng;
@@ -31,7 +32,7 @@ macro_rules! uct_test {
       let field = construct_field(&mut rng, $image.image);
       let mut uct = UctRoot::new(UCT_CONFIG, field.length());
       let pos = uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, $iterations);
-      assert_eq!(pos, Some(field.to_pos($image.solution.0, $image.solution.1)));
+      assert_eq!(pos, NonZeroPos::new(field.to_pos($image.solution.0, $image.solution.1)));
     }
   }
 }

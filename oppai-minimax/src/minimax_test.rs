@@ -1,5 +1,6 @@
 use crate::minimax::{Minimax, MinimaxConfig, MinimaxType};
 use oppai_field::construct_field::construct_field;
+use oppai_field::field::NonZeroPos;
 use oppai_field::player::Player;
 use oppai_test_images::*;
 use rand::SeedableRng;
@@ -31,7 +32,7 @@ macro_rules! minimax_test {
       let mut field = construct_field(&mut rng, $image.image);
       let minimax = Minimax::new($config);
       let pos = minimax.minimax(&mut field, Player::Red, $depth);
-      assert_eq!(pos, Some(field.to_pos($image.solution.0, $image.solution.1)));
+      assert_eq!(pos, NonZeroPos::new(field.to_pos($image.solution.0, $image.solution.1)));
     }
   }
 }

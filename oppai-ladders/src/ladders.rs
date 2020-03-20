@@ -1,7 +1,7 @@
 use oppai_common::common::is_last_move_stupid;
 use oppai_common::trajectory::{build_trajectories, build_trajectories_from, Trajectory};
 use oppai_field::field::wave_diag;
-use oppai_field::field::{Field, Pos};
+use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use std::iter;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,17 +31,17 @@ fn ladders_rec(
   empty_board: &mut Vec<u32>,
   should_stop: &AtomicBool,
   depth: u32,
-) -> (Pos, i32, u32) {
+) -> (Option<NonZeroPos>, i32, u32) {
   match *trajectory.points().as_slice() {
     [pos] => {
       field.put_point(pos, player);
       let cur_score = field.score(player);
       field.undo();
-      (pos, cur_score, depth)
+      (NonZeroPos::new(pos), cur_score, depth)
     }
     [pos1, pos2] => {
       let mut max_score = field.score(player);
-      let mut best_move = 0;
+      let mut best_move = None;
       let mut max_depth = depth;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
@@ -67,7 +67,7 @@ fn ladders_rec(
           let cur_score = field.score(player);
           if cur_score > max_score {
             max_score = cur_score;
-            best_move = our_pos;
+            best_move = NonZeroPos::new(our_pos);
           }
 
           field.undo();
@@ -95,7 +95,7 @@ fn ladders_rec(
           let (_, cur_score, cur_depth) = ladders_rec(field, player, &trajectory, empty_board, should_stop, depth);
           if cur_score > max_score {
             max_score = cur_score;
-            best_move = our_pos;
+            best_move = NonZeroPos::new(our_pos);
           }
           if cur_depth > max_depth {
             max_depth = cur_depth;
@@ -116,13 +116,13 @@ fn ladders_rec(
   }
 }
 
-pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (Pos, i32) {
+pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (Option<NonZeroPos>, i32) {
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
 
   let trajectories = build_trajectories(field, player, 2, &mut empty_board, &should_stop);
 
   let mut max_score = field.score(player);
-  let mut best_move = 0;
+  let mut best_move = None;
 
   for trajectory in trajectories {
     if should_stop.load(Ordering::Relaxed) {

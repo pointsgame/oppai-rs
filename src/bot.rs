@@ -142,14 +142,14 @@ impl Bot {
         .uct
         .best_move_with_time(&self.field, player, &mut self.rng, time - self.config.bot.time_gap)
         .or_else(|| heuristic::heuristic(&self.field, player))
-        .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
+        .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
       Solver::Minimax => self
         .minimax
         .minimax_with_time(&mut self.field, player, time - self.config.bot.time_gap)
         .or_else(|| heuristic::heuristic(&self.field, player))
-        .map(|pos| (self.field.to_x(pos), self.field.to_y(pos))),
+        .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
       Solver::Heuristic => {
-        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
       }
     }
   }
@@ -182,7 +182,7 @@ impl Bot {
           .uct
           .best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count)
           .or_else(|| heuristic::heuristic(&self.field, player))
-          .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+          .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
       }
       Solver::Minimax => {
         let depth = (complexity - MIN_COMPLEXITY) * (MAX_MINIMAX_DEPTH - MIN_MINIMAX_DEPTH)
@@ -192,10 +192,10 @@ impl Bot {
           .minimax
           .minimax(&mut self.field, player, depth)
           .or_else(|| heuristic::heuristic(&self.field, player))
-          .map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+          .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
       }
       Solver::Heuristic => {
-        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos), self.field.to_y(pos)))
+        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
       }
     }
   }

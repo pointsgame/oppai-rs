@@ -1,9 +1,10 @@
 use crate::cell::Cell;
 use crate::player::Player;
 use crate::zobrist::Zobrist;
-use std::{collections::VecDeque, fmt, mem, sync::Arc};
+use std::{collections::VecDeque, fmt, mem, num::NonZeroUsize, sync::Arc};
 
 pub type Pos = usize;
+pub type NonZeroPos = NonZeroUsize;
 
 #[derive(Clone, PartialEq)]
 struct FieldChange {

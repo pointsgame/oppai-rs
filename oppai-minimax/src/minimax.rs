@@ -2,7 +2,7 @@ use crate::hash_table::{HashData, HashTable, HashType};
 use crate::trajectories_pruning::TrajectoriesPruning;
 use crossbeam::{self, queue::SegQueue};
 use oppai_common::common;
-use oppai_field::field::{Field, Pos};
+use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use std::{
   iter,
@@ -52,7 +52,7 @@ impl Minimax {
   fn alpha_beta(
     field: &mut Field,
     depth: u32,
-    last_pos: Option<Pos>,
+    last_pos: Option<NonZeroPos>,
     player: Player,
     trajectories_pruning: &TrajectoriesPruning,
     alpha: i32,
@@ -66,7 +66,7 @@ impl Minimax {
     }
     let enemy = player.next();
     if let Some(last_pos) = last_pos {
-      if common::is_last_move_stupid(field, last_pos, enemy) {
+      if common::is_last_move_stupid(field, last_pos.get(), enemy) {
         return i32::max_value();
       }
     }
@@ -131,7 +131,7 @@ impl Minimax {
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
-        Some(hash_pos),
+        NonZeroPos::new(hash_pos),
         enemy,
         &next_trajectories_pruning,
         -beta,
@@ -174,7 +174,7 @@ impl Minimax {
         // TODO: check if cur_alpha is -Inf
         field,
         depth - 1,
-        Some(pos),
+        NonZeroPos::new(pos),
         enemy,
         &next_trajectories_pruning,
         -cur_alpha - 1,
@@ -187,7 +187,7 @@ impl Minimax {
         cur_estimation = -Minimax::alpha_beta(
           field,
           depth - 1,
-          Some(pos),
+          NonZeroPos::new(pos),
           enemy,
           &next_trajectories_pruning,
           -beta,
@@ -227,7 +227,7 @@ impl Minimax {
     alpha: i32,
     beta: i32,
     trajectories_pruning: &mut TrajectoriesPruning,
-    best_move: &mut Option<Pos>,
+    best_move: &mut Option<NonZeroPos>,
     should_stop: &AtomicBool,
   ) -> i32 {
     info!(
@@ -253,8 +253,8 @@ impl Minimax {
     }
     let queue = SegQueue::new();
     if let Some(best_pos) = *best_move {
-      queue.push(best_pos);
-      for &pos in moves.iter().filter(|&&pos| pos != best_pos) {
+      queue.push(best_pos.get());
+      for &pos in moves.iter().filter(|&&pos| pos != best_pos.get()) {
         queue.push(pos);
       }
     } else {
@@ -297,7 +297,7 @@ impl Minimax {
             let mut cur_estimation = -Minimax::alpha_beta(
               &mut local_field,
               depth - 1,
-              Some(pos),
+              NonZeroPos::new(pos),
               enemy,
               &next_trajectories_pruning,
               -cur_alpha - 1,
@@ -313,7 +313,7 @@ impl Minimax {
               cur_estimation = -Minimax::alpha_beta(
                 &mut local_field,
                 depth - 1,
-                Some(pos),
+                NonZeroPos::new(pos),
                 enemy,
                 &next_trajectories_pruning,
                 -beta,
@@ -388,7 +388,7 @@ impl Minimax {
         field.to_x(result),
         field.to_y(result)
       );
-      *best_move = Some(result);
+      *best_move = NonZeroPos::new(result);
     }
     info!(target: MINIMAX_STR, "Estimation is {}.", best_alpha);
     best_alpha
@@ -400,7 +400,7 @@ impl Minimax {
     player: Player,
     trajectories_pruning: &mut TrajectoriesPruning,
     depth: u32,
-    best_move: &mut Option<Pos>,
+    best_move: &mut Option<NonZeroPos>,
     should_stop: &AtomicBool,
   ) -> i32 {
     let mut alpha = if let Some(alpha) = trajectories_pruning.alpha() {
@@ -415,7 +415,7 @@ impl Minimax {
     };
     while alpha != beta {
       if let [single_move] = *trajectories_pruning.moves().as_slice() {
-        *best_move = Some(single_move);
+        *best_move = NonZeroPos::new(single_move);
         return alpha;
       }
       if should_stop.load(Ordering::Relaxed) {
@@ -454,7 +454,7 @@ impl Minimax {
     player: Player,
     trajectories_pruning: &mut TrajectoriesPruning,
     depth: u32,
-    best_move: &mut Option<Pos>,
+    best_move: &mut Option<NonZeroPos>,
     should_stop: &AtomicBool,
   ) -> i32 {
     let alpha = if let Some(alpha) = trajectories_pruning.alpha() {
@@ -479,7 +479,7 @@ impl Minimax {
     )
   }
 
-  pub fn minimax(&self, field: &mut Field, player: Player, depth: u32) -> Option<Pos> {
+  pub fn minimax(&self, field: &mut Field, player: Player, depth: u32) -> Option<NonZeroPos> {
     info!(
       target: MINIMAX_STR,
       "Starting minimax with depth {} and player {}.", depth, player
@@ -540,7 +540,7 @@ impl Minimax {
       info!(
         target: MINIMAX_STR,
         "Estimation is greater than enemy estimation. So the best move is {:?}, estimation is {}.",
-        best_move.map(|pos| (field.to_x(pos), field.to_y(pos))),
+        best_move.map(|pos| (field.to_x(pos.get()), field.to_y(pos.get()))),
         estimation
       );
       best_move
@@ -553,7 +553,7 @@ impl Minimax {
     }
   }
 
-  pub fn minimax_with_time(&self, field: &mut Field, player: Player, time: u32) -> Option<Pos> {
+  pub fn minimax_with_time(&self, field: &mut Field, player: Player, time: u32) -> Option<NonZeroPos> {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|_| {

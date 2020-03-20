@@ -1,5 +1,6 @@
 use crate::ladders::ladders;
 use oppai_field::construct_field::construct_field;
+use oppai_field::field::NonZeroPos;
 use oppai_field::player::Player;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -28,7 +29,7 @@ fn ladders_escape() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, 0);
+  assert_eq!(pos, None);
   assert_eq!(score, 0);
 }
 
@@ -53,7 +54,7 @@ fn ladders_capture_1() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, field.to_pos(3, 3));
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 3)));
   assert_eq!(score, 3);
 }
 
@@ -78,7 +79,7 @@ fn ladders_capture_2() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, field.to_pos(2, 4));
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 4)));
   assert_eq!(score, 2);
 }
 
@@ -103,7 +104,7 @@ fn ladders_capture_3() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, field.to_pos(2, 4));
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 4)));
   assert_eq!(score, 2);
 }
 
@@ -128,7 +129,7 @@ fn ladders_capture_4() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, field.to_pos(2, 4));
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 4)));
   assert_eq!(score, 2);
 }
 
@@ -155,7 +156,7 @@ fn ladders_side_capture_1() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, field.to_pos(2, 6));
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 6)));
   assert_eq!(score, 2);
 }
 
@@ -184,7 +185,7 @@ fn ladders_side_capture_2() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, field.to_pos(3, 8));
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 8)));
   assert_eq!(score, 2);
 }
 
@@ -206,7 +207,7 @@ fn ladders_fork() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, field.to_pos(3, 2));
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 2)));
   assert_eq!(score, 1);
 }
 
@@ -230,6 +231,6 @@ fn ladders_stupid() {
 
   let (pos, score) = ladders(&mut field, Player::Red, &should_stop);
 
-  assert_eq!(pos, 0);
+  assert_eq!(pos, None);
   assert_eq!(score, 0);
 }

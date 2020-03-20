@@ -1,4 +1,4 @@
-use oppai_field::field::{Field, Pos};
+use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 
 static CG_SUM: [i32; 9] = [-5, -1, 0, 0, 1, 2, 5, 20, 30];
@@ -18,7 +18,7 @@ fn heuristic_estimation(field: &Field, pos: Pos, player: Player) -> i32 {
   result
 }
 
-pub fn heuristic(field: &Field, player: Player) -> Option<Pos> {
+pub fn heuristic(field: &Field, player: Player) -> Option<NonZeroPos> {
   let mut best_estimation = i32::min_value();
   let mut result = None;
   for pos in field.min_pos()..=field.max_pos() {
@@ -27,7 +27,7 @@ pub fn heuristic(field: &Field, player: Player) -> Option<Pos> {
       if cur_estimation > best_estimation {
         // TODO: check for stupid move.
         best_estimation = cur_estimation;
-        result = Some(pos);
+        result = NonZeroPos::new(pos);
       }
     }
   }

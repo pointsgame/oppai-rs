@@ -1,6 +1,6 @@
 use crate::wave_pruning::WavePruning;
 use oppai_common::common;
-use oppai_field::field::{Field, Pos};
+use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
@@ -551,7 +551,7 @@ impl UctRoot {
     rng: &mut R,
     should_stop: &AtomicBool,
     max_iterations_count: usize,
-  ) -> Option<Pos>
+  ) -> Option<NonZeroPos>
   where
     S: Sized + Default + AsMut<[u8]>,
     R: Rng + SeedableRng<Seed = S> + Send,
@@ -619,7 +619,7 @@ impl UctRoot {
         );
         if uct_value > best_uct || uct_value == best_uct && rng.gen::<bool>() {
           best_uct = uct_value;
-          result = Some(pos);
+          result = NonZeroPos::new(pos);
         }
         next = next_node.get_sibling_ref();
       }
@@ -628,15 +628,15 @@ impl UctRoot {
       info!(
         target: UCT_STR,
         "Best move is ({}, {}), uct is {}.",
-        field.to_x(pos),
-        field.to_y(pos),
+        field.to_x(pos.get()),
+        field.to_y(pos.get()),
         best_uct
       );
     }
     result
   }
 
-  pub fn best_move_with_time<S, R>(&mut self, field: &Field, player: Player, rng: &mut R, time: u32) -> Option<Pos>
+  pub fn best_move_with_time<S, R>(&mut self, field: &Field, player: Player, rng: &mut R, time: u32) -> Option<NonZeroPos>
   where
     S: Sized + Default + AsMut<[u8]>,
     R: Rng + SeedableRng<Seed = S> + Send,
@@ -659,7 +659,7 @@ impl UctRoot {
     player: Player,
     rng: &mut R,
     iterations: usize,
-  ) -> Option<Pos>
+  ) -> Option<NonZeroPos>
   where
     S: Sized + Default + AsMut<[u8]>,
     R: Rng + SeedableRng<Seed = S> + Send,
