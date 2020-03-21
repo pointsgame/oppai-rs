@@ -7,27 +7,17 @@ pub fn is_last_move_stupid(field: &Field, pos: Pos, player: Player) -> bool {
     || delta_score == 0
       && {
         let enemy = player.next();
-        let mut enemies_around = 0u32;
-        if field.cell(field.n(pos)).is_players_point(enemy) {
-          enemies_around += 1;
-        }
-        if field.cell(field.s(pos)).is_players_point(enemy) {
-          enemies_around += 1;
-        }
-        if field.cell(field.w(pos)).is_players_point(enemy) {
-          enemies_around += 1;
-        }
-        if field.cell(field.e(pos)).is_players_point(enemy) {
-          enemies_around += 1;
-        }
+        let enemies_around = field
+          .directions(pos)
+          .iter()
+          .filter(|&&pos| field.cell(pos).is_players_point(enemy))
+          .count();
         enemies_around == 3
       }
-      && {
-        field.cell(field.n(pos)).is_putting_allowed()
-          || field.cell(field.s(pos)).is_putting_allowed()
-          || field.cell(field.w(pos)).is_putting_allowed()
-          || field.cell(field.e(pos)).is_putting_allowed()
-      }
+      && field
+        .directions(pos)
+        .iter()
+        .any(|&pos| field.cell(pos).is_putting_allowed())
 }
 
 pub fn is_penult_move_stupid(field: &Field) -> bool {
