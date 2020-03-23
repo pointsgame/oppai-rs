@@ -54,6 +54,7 @@ codegen-units = 1
 members = [
   "oppai-field",
   "oppai-common",
+  "oppai-ladders",
   "oppai-test-images",
   "oppai-uct",
   "oppai-minimax",

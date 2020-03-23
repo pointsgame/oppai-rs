@@ -636,7 +636,13 @@ impl UctRoot {
     result
   }
 
-  pub fn best_move_with_time<S, R>(&mut self, field: &Field, player: Player, rng: &mut R, time: u32) -> Option<NonZeroPos>
+  pub fn best_move_with_time<S, R>(
+    &mut self,
+    field: &Field,
+    player: Player,
+    rng: &mut R,
+    time: u32,
+  ) -> Option<NonZeroPos>
   where
     S: Sized + Default + AsMut<[u8]>,
     R: Rng + SeedableRng<Seed = S> + Send,

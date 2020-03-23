@@ -24,6 +24,69 @@ fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut V
   marks
 }
 
+fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Player) -> bool {
+  if trajectory.points().iter().any(|&pos| !field.is_putting_allowed(pos)) {
+    return false;
+  }
+
+  for &pos in trajectory.points() {
+    field.put_point(pos, player);
+  }
+
+  let result = field.get_delta_score(player) > 0
+    || (field.min_pos()..field.max_pos()).any(|pos| {
+      field.is_putting_allowed(pos) && {
+        field.put_point(pos, player);
+        let result = field.get_delta_score(player) > 0
+          && trajectory
+            .points()
+            .iter()
+            .all(|&trajectory_pos| field.cell(trajectory_pos).is_bound());
+        field.undo();
+        result && {
+          let enemy = player.next();
+          let enemies_around = field
+            .directions(pos)
+            .iter()
+            .filter(|&&pos| field.cell(pos).is_players_point(enemy))
+            .count();
+          enemies_around < 3
+            || enemies_around == 3
+              && field
+                .directions(pos)
+                .iter()
+                .all(|&near_pos| !field.cell(near_pos).is_putting_allowed())
+        }
+      }
+    });
+
+  for _ in 0..trajectory.len() {
+    field.undo();
+  }
+
+  result
+}
+
+fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Player) -> bool {
+  let enemy = player.next();
+  (field.min_pos()..field.max_pos()).all(|enemy_pos| {
+    !field.is_putting_allowed(enemy_pos) || {
+      field.put_point(enemy_pos, enemy);
+
+      if field.get_delta_score(enemy) == 0 {
+        field.undo();
+        return true;
+      }
+
+      let result = is_trajectoty_alive(field, trajectory, player);
+
+      field.undo();
+
+      result
+    }
+  })
+}
+
 fn ladders_rec(
   field: &mut Field,
   player: Player,
@@ -31,18 +94,19 @@ fn ladders_rec(
   empty_board: &mut Vec<u32>,
   should_stop: &AtomicBool,
   depth: u32,
-) -> (Option<NonZeroPos>, i32, u32) {
+) -> (Option<NonZeroPos>, i32, u32, u32) {
   match *trajectory.points().as_slice() {
     [pos] => {
       field.put_point(pos, player);
       let cur_score = field.score(player);
       field.undo();
-      (NonZeroPos::new(pos), cur_score, depth)
+      (NonZeroPos::new(pos), cur_score, depth, depth)
     }
     [pos1, pos2] => {
       let mut max_score = field.score(player);
       let mut best_move = None;
       let mut max_depth = depth;
+      let mut capture_depth = 0;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
         if field.cell(our_pos).is_players_empty_base(player.next()) {
@@ -65,12 +129,12 @@ fn ladders_rec(
 
         if field.get_delta_score(player) > 0 {
           let cur_score = field.score(player);
+          field.undo();
           if cur_score > max_score {
             max_score = cur_score;
             best_move = NonZeroPos::new(our_pos);
+            capture_depth = depth;
           }
-
-          field.undo();
           continue;
         }
 
@@ -92,10 +156,12 @@ fn ladders_rec(
         let marks = mark_group(field, our_pos, player, empty_board);
 
         for trajectory in trajectories {
-          let (_, cur_score, cur_depth) = ladders_rec(field, player, &trajectory, empty_board, should_stop, depth);
+          let (_, cur_score, cur_depth, cur_capture_depth) =
+            ladders_rec(field, player, &trajectory, empty_board, should_stop, depth + 1);
           if cur_score > max_score {
             max_score = cur_score;
             best_move = NonZeroPos::new(our_pos);
+            capture_depth = cur_capture_depth;
           }
           if cur_depth > max_depth {
             max_depth = cur_depth;
@@ -110,23 +176,34 @@ fn ladders_rec(
         field.undo();
       }
 
-      (best_move, max_score, max_depth)
+      (best_move, max_score, max_depth, capture_depth)
     }
     _ => unreachable!("Trajectory with {} points", trajectory.len()),
   }
 }
 
-pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (Option<NonZeroPos>, i32) {
+pub fn ladders(
+  field: &mut Field,
+  player: Player,
+  depth_limit: u32,
+  should_stop: &AtomicBool,
+) -> (Option<NonZeroPos>, i32, Vec<Trajectory>) {
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
 
   let trajectories = build_trajectories(field, player, 2, &mut empty_board, &should_stop);
 
-  let mut max_score = field.score(player);
+  let base_score = field.score(player);
+  let mut max_score = base_score;
   let mut best_move = None;
+  let mut banned_trajectories = Vec::new();
 
   for trajectory in trajectories {
     if should_stop.load(Ordering::Relaxed) {
       break;
+    }
+
+    if trajectory.len() < 2 || !is_trajectoty_viable(field, &trajectory, player) {
+      continue;
     }
 
     let marks = if let [pos1, _] = *trajectory.points().as_slice() {
@@ -144,11 +221,14 @@ pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (
       Vec::new()
     };
 
-    let (cur_pos, cur_score, _) = ladders_rec(field, player, &trajectory, &mut empty_board, should_stop, 0);
+    let (cur_pos, cur_score, cur_max_depth, cur_capture_depth) =
+      ladders_rec(field, player, &trajectory, &mut empty_board, should_stop, 0);
     let cur_score = cur_score.min(trajectory.score());
-    if cur_score > max_score {
+    if cur_score > max_score && cur_capture_depth > depth_limit {
       max_score = cur_score;
       best_move = cur_pos;
+    } else if cur_score == base_score && cur_max_depth > depth_limit {
+      banned_trajectories.push(trajectory);
     }
 
     for pos in marks {
@@ -156,5 +236,5 @@ pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (
     }
   }
 
-  (best_move, max_score)
+  (best_move, max_score, banned_trajectories)
 }
