@@ -109,6 +109,10 @@ fn ladders_rec(
       let mut capture_depth = 0;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
+        if trajectory.score() <= max_score {
+          break;
+        }
+
         if field.cell(our_pos).is_players_empty_base(player.next()) {
           continue;
         }
@@ -156,8 +160,14 @@ fn ladders_rec(
         let marks = mark_group(field, our_pos, player, empty_board);
 
         for trajectory in trajectories {
+          if trajectory.score() <= max_score {
+            continue;
+          }
+
           let (_, cur_score, cur_depth, cur_capture_depth) =
             ladders_rec(field, player, &trajectory, empty_board, should_stop, depth + 1);
+          let cur_score = cur_score.min(trajectory.score());
+
           if cur_score > max_score {
             max_score = cur_score;
             best_move = NonZeroPos::new(our_pos);
@@ -207,6 +217,10 @@ pub fn ladders(
     }
 
     let marks = if let [pos1, _] = *trajectory.points().as_slice() {
+      if trajectory.score() <= max_score {
+        continue;
+      }
+
       if let Some(&pos) = field
         .directions_diag(pos1)
         .iter()

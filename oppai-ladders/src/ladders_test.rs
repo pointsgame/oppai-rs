@@ -212,6 +212,28 @@ fn ladders_fork() {
 }
 
 #[test]
+fn ladders_fork_deep() {
+  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ..a...
+    ..A...
+    .a....
+    .aAAa.
+    ..aa..
+    ",
+  );
+
+  let should_stop = AtomicBool::new(false);
+
+  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 2)));
+  assert_eq!(score, 1);
+}
+
+#[test]
 fn ladders_fork_stupid() {
   let mut rng = XorShiftRng::from_seed(SEED);
   let mut field = construct_field(
