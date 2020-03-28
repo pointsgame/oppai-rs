@@ -24,7 +24,23 @@ fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut V
   marks
 }
 
-fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Player) -> bool {
+fn collect_near_moves(field: &Field, player: Player, empty_board: &mut Vec<u32>) -> Vec<Pos> {
+  let mut moves = Vec::new();
+  for &pos in field.points_seq().iter().filter(|&&pos| field.cell(pos).is_players_point(player)) {
+    for &near_pos in field.directions(pos).iter() {
+      if empty_board[near_pos] == 0 {
+        moves.push(near_pos);
+        empty_board[near_pos] = 1;
+      }
+    }
+  }
+  for &pos in &moves {
+    empty_board[pos] = 0;
+  }
+  moves
+}
+
+fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Player, empty_board: &mut Vec<u32>) -> bool {
   if trajectory.points().iter().any(|&pos| !field.is_putting_allowed(pos)) {
     return false;
   }
@@ -33,8 +49,10 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Playe
     field.put_point(pos, player);
   }
 
-  let result = field.get_delta_score(player) > 0
-    || (field.min_pos()..field.max_pos()).any(|pos| {
+  let result = field.get_delta_score(player) > 0 || {
+    let enemy = player.next();
+    let moves = collect_near_moves(field, enemy, empty_board);
+    moves.into_iter().any(|pos| {
       field.is_putting_allowed(pos) && {
         field.put_point(pos, player);
         let result = field.get_delta_score(player) > 0
@@ -44,7 +62,6 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Playe
             .all(|&trajectory_pos| field.cell(trajectory_pos).is_bound());
         field.undo();
         result && {
-          let enemy = player.next();
           let enemies_around = field
             .directions(pos)
             .iter()
@@ -58,7 +75,8 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Playe
                 .all(|&near_pos| !field.cell(near_pos).is_putting_allowed())
         }
       }
-    });
+    })
+  };
 
   for _ in 0..trajectory.len() {
     field.undo();
@@ -67,9 +85,10 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Playe
   result
 }
 
-fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Player) -> bool {
+fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Player, empty_board: &mut Vec<u32>) -> bool {
+  let moves = collect_near_moves(field, player, empty_board);
   let enemy = player.next();
-  (field.min_pos()..field.max_pos()).all(|enemy_pos| {
+  moves.into_iter().all(|enemy_pos| {
     !field.is_putting_allowed(enemy_pos) || {
       field.put_point(enemy_pos, enemy);
 
@@ -78,7 +97,7 @@ fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Play
         return true;
       }
 
-      let result = is_trajectoty_alive(field, trajectory, player);
+      let result = is_trajectoty_alive(field, trajectory, player, empty_board);
 
       field.undo();
 
@@ -212,7 +231,7 @@ pub fn ladders(
       break;
     }
 
-    if trajectory.len() < 2 || !is_trajectoty_viable(field, &trajectory, player) {
+    if trajectory.len() < 2 || !is_trajectoty_viable(field, &trajectory, player, &mut empty_board) {
       continue;
     }
 
