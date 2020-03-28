@@ -192,7 +192,7 @@ fn ladders_rec(
             ladders_rec(field, player, &trajectory, empty_board, should_stop, depth + 1);
           let cur_score = cur_score.min(trajectory.score());
 
-          if cur_score > max_score {
+          if cur_score > max_score && is_trajectoty_viable(field, &trajectory, player, empty_board) {
             max_score = cur_score;
             best_move = NonZeroPos::new(our_pos);
             capture_depth = cur_capture_depth;
@@ -236,7 +236,7 @@ pub fn ladders(
       break;
     }
 
-    if trajectory.len() < 2 || !is_trajectoty_viable(field, &trajectory, player, &mut empty_board) {
+    if trajectory.len() < 2 {
       continue;
     }
 
@@ -262,7 +262,10 @@ pub fn ladders(
     let (cur_pos, cur_score, cur_max_depth, cur_capture_depth) =
       ladders_rec(field, player, &trajectory, &mut empty_board, should_stop, 0);
     let cur_score = cur_score.min(trajectory.score());
-    if cur_score > max_score && cur_capture_depth > depth_limit {
+    if cur_score > max_score
+      && cur_capture_depth > depth_limit
+      && is_trajectoty_viable(field, &trajectory, player, &mut empty_board)
+    {
       max_score = cur_score;
       best_move = cur_pos;
     } else if cur_score == base_score && cur_max_depth > depth_limit {

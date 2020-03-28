@@ -353,6 +353,59 @@ fn ladders_not_viable_2() {
 }
 
 #[test]
+fn ladders_viable_multi() {
+  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .................
+    .......aaaa......
+    ......a....aAA...
+    .....aA.....aAA..
+    .....AA......aAA.
+    .....AA.....aAA..
+    .....aa....aAA...
+    .a.....aaaa......
+    .................
+    ",
+  );
+
+  let should_stop = AtomicBool::new(false);
+
+  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(4, 4)));
+  assert_eq!(score, 5);
+}
+
+#[test]
+fn ladders_viable_complex() {
+  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .........
+    ...AA.a..
+    ..A.a....
+    .Aaa.....
+    .aA..Aa..
+    .aA..aA..
+    .aA..A...
+    .aAAAaa..
+    ..aaa....
+    .........
+    ",
+  );
+
+  let should_stop = AtomicBool::new(false);
+
+  let (_, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  // It's possible to capture 8 points here but current method is
+  // limited - it doesn't consider ladders after captures.
+  assert_eq!(score, 6);
+}
+
+#[test]
 fn ladders_depth_limit() {
   let mut rng = XorShiftRng::from_seed(SEED);
   let mut field = construct_field(
