@@ -386,6 +386,7 @@ dependencies = [
 name = "oppai-ladders"
 version = "0.1.0"
 dependencies = [
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "oppai-common 0.1.0",
  "oppai-field 0.1.0",
  "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",

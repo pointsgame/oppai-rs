@@ -7,6 +7,7 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
+log = "0.4"
 oppai-field = { path = "../oppai-field" }
 oppai-common = { path = "../oppai-common" }
 

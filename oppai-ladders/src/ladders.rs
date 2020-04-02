@@ -6,6 +6,8 @@ use oppai_field::player::Player;
 use std::iter;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+const LADDERS_STR: &str = "ladders";
+
 fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut Vec<u32>) -> Vec<Pos> {
   let mut marks = Vec::new();
   wave_diag(field.width(), start_pos, |pos| {
@@ -226,6 +228,12 @@ pub fn ladders(
 
   let trajectories = build_trajectories(field, player, 2, &mut empty_board, &should_stop);
 
+  info!(
+    target: LADDERS_STR,
+    "Solving ladders for {} trajectories.",
+    trajectories.len()
+  );
+
   let base_score = field.score(player);
   let mut max_score = base_score;
   let mut best_move = None;
@@ -276,6 +284,12 @@ pub fn ladders(
       empty_board[pos] = 0;
     }
   }
+
+  info!(
+    target: LADDERS_STR,
+    "Banned {} trajectories.",
+    banned_trajectories.len()
+  );
 
   (best_move, max_score, banned_trajectories)
 }
