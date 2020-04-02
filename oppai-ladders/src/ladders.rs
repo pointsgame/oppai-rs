@@ -113,6 +113,14 @@ fn is_trajectoty_viable(
   })
 }
 
+fn is_trajectory_likely_defending(field: &mut Field, trajectory: &Trajectory, player: Player) -> bool {
+  let enemy = player.next();
+  trajectory
+    .points()
+    .iter()
+    .any(|&pos| field.number_near_groups(pos, enemy) > 1)
+}
+
 fn ladders_rec(
   field: &mut Field,
   player: Player,
@@ -276,7 +284,10 @@ pub fn ladders(
     {
       max_score = cur_score;
       best_move = cur_pos;
-    } else if cur_score == base_score && cur_max_depth > depth_limit {
+    } else if cur_score == base_score
+      && cur_max_depth > depth_limit
+      && !is_trajectory_likely_defending(field, &trajectory, player)
+    {
       banned_trajectories.push(trajectory);
     }
 

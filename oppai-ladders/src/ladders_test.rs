@@ -27,10 +27,11 @@ fn ladders_escape() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score, banned_trajectories) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, None);
   assert_eq!(score, 0);
+  assert!(!banned_trajectories.is_empty());
 }
 
 #[test]
@@ -52,10 +53,11 @@ fn ladders_capture_1() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score, banned_trajectories) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 3)));
   assert_eq!(score, 3);
+  assert!(banned_trajectories.is_empty());
 }
 
 #[test]
@@ -432,4 +434,30 @@ fn ladders_depth_limit() {
   let (pos, score, _) = ladders(&mut field, Player::Red, 2, &should_stop);
   assert_eq!(pos, None);
   assert_eq!(score, 0);
+}
+
+#[test]
+fn ladders_defending_not_banned() {
+  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ...........
+    ..A.A......
+    .AA..A.....
+    .Aaa.Aa....
+    .aAaaaA....
+    .aAAAa.....
+    ..aaAAA....
+    ....aa.....
+    ...........
+    ...........
+    ...........
+    ",
+  );
+
+  let should_stop = AtomicBool::new(false);
+
+  let (_, _, banned_trajectories) = ladders(&mut field, Player::Red, 1, &should_stop);
+  assert!(banned_trajectories.is_empty());
 }
