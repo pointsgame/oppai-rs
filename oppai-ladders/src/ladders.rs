@@ -113,14 +113,6 @@ fn is_trajectoty_viable(
   })
 }
 
-fn is_trajectory_likely_defending(field: &mut Field, trajectory: &Trajectory, player: Player) -> bool {
-  let enemy = player.next();
-  trajectory
-    .points()
-    .iter()
-    .any(|&pos| field.number_near_groups(pos, enemy) > 1)
-}
-
 fn ladders_rec(
   field: &mut Field,
   player: Player,
@@ -128,18 +120,17 @@ fn ladders_rec(
   empty_board: &mut Vec<u32>,
   should_stop: &AtomicBool,
   depth: u32,
-) -> (Option<NonZeroPos>, i32, u32, u32) {
+) -> (Option<NonZeroPos>, i32, u32) {
   match *trajectory.points().as_slice() {
     [pos] => {
       field.put_point(pos, player);
       let cur_score = field.score(player);
       field.undo();
-      (NonZeroPos::new(pos), cur_score, depth, depth)
+      (NonZeroPos::new(pos), cur_score, depth)
     }
     [pos1, pos2] => {
       let mut max_score = field.score(player);
       let mut best_move = None;
-      let mut max_depth = depth;
       let mut capture_depth = 0;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
@@ -198,7 +189,7 @@ fn ladders_rec(
             continue;
           }
 
-          let (_, cur_score, cur_depth, cur_capture_depth) =
+          let (_, cur_score, cur_capture_depth) =
             ladders_rec(field, player, &trajectory, empty_board, should_stop, depth + 1);
           let cur_score = cur_score.min(trajectory.score());
 
@@ -206,9 +197,6 @@ fn ladders_rec(
             max_score = cur_score;
             best_move = NonZeroPos::new(our_pos);
             capture_depth = cur_capture_depth;
-          }
-          if cur_depth > max_depth {
-            max_depth = cur_depth;
           }
         }
 
@@ -220,7 +208,7 @@ fn ladders_rec(
         field.undo();
       }
 
-      (best_move, max_score, max_depth, capture_depth)
+      (best_move, max_score, capture_depth)
     }
     _ => unreachable!("Trajectory with {} points", trajectory.len()),
   }
@@ -231,7 +219,7 @@ pub fn ladders(
   player: Player,
   depth_limit: u32,
   should_stop: &AtomicBool,
-) -> (Option<NonZeroPos>, i32, Vec<Trajectory>) {
+) -> (Option<NonZeroPos>, i32) {
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
 
   let trajectories = build_trajectories(field, player, 2, &mut empty_board, &should_stop);
@@ -245,7 +233,6 @@ pub fn ladders(
   let base_score = field.score(player);
   let mut max_score = base_score;
   let mut best_move = None;
-  let mut banned_trajectories = Vec::new();
 
   for trajectory in trajectories {
     if should_stop.load(Ordering::Relaxed) {
@@ -275,7 +262,7 @@ pub fn ladders(
       Vec::new()
     };
 
-    let (cur_pos, cur_score, cur_max_depth, cur_capture_depth) =
+    let (cur_pos, cur_score, cur_capture_depth) =
       ladders_rec(field, player, &trajectory, &mut empty_board, should_stop, 0);
     let cur_score = cur_score.min(trajectory.score());
     if cur_score > max_score
@@ -284,11 +271,6 @@ pub fn ladders(
     {
       max_score = cur_score;
       best_move = cur_pos;
-    } else if cur_score == base_score
-      && cur_max_depth > depth_limit
-      && !is_trajectory_likely_defending(field, &trajectory, player)
-    {
-      banned_trajectories.push(trajectory);
     }
 
     for pos in marks {
@@ -296,11 +278,5 @@ pub fn ladders(
     }
   }
 
-  info!(
-    target: LADDERS_STR,
-    "Banned {} trajectories.",
-    banned_trajectories.len()
-  );
-
-  (best_move, max_score, banned_trajectories)
+  (best_move, max_score)
 }

@@ -27,11 +27,10 @@ fn ladders_escape() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, banned_trajectories) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, None);
   assert_eq!(score, 0);
-  assert!(!banned_trajectories.is_empty());
 }
 
 #[test]
@@ -53,11 +52,10 @@ fn ladders_capture_1() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, banned_trajectories) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 3)));
   assert_eq!(score, 3);
-  assert!(banned_trajectories.is_empty());
 }
 
 #[test]
@@ -79,7 +77,7 @@ fn ladders_capture_2() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 4)));
   assert_eq!(score, 2);
@@ -104,7 +102,7 @@ fn ladders_capture_3() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 4)));
   assert_eq!(score, 2);
@@ -129,7 +127,7 @@ fn ladders_capture_4() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 4)));
   assert_eq!(score, 2);
@@ -156,7 +154,7 @@ fn ladders_side_capture_1() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 6)));
   assert_eq!(score, 2);
@@ -185,7 +183,7 @@ fn ladders_side_capture_2() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 8)));
   assert_eq!(score, 2);
@@ -207,7 +205,7 @@ fn ladders_fork() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 2)));
   assert_eq!(score, 1);
@@ -229,7 +227,7 @@ fn ladders_fork_deep() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 2)));
   assert_eq!(score, 1);
@@ -251,7 +249,7 @@ fn ladders_fork_stupid() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, None);
   assert_eq!(score, 0);
@@ -275,7 +273,7 @@ fn ladders_stupid() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, None);
   assert_eq!(score, 0);
@@ -299,7 +297,7 @@ fn ladders_not_viable_1() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
   assert_eq!(pos, None);
   assert_eq!(score, 0);
 }
@@ -324,7 +322,7 @@ fn ladders_viable() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
   assert_eq!(pos, NonZeroPos::new(field.to_pos(5, 5)));
   assert_eq!(score, 7);
 }
@@ -349,7 +347,7 @@ fn ladders_not_viable_2() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
   assert_eq!(pos, None);
   assert_eq!(score, 0);
 }
@@ -374,7 +372,7 @@ fn ladders_viable_multi() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 0, &should_stop);
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(4, 4)));
   assert_eq!(score, 5);
@@ -401,7 +399,7 @@ fn ladders_viable_complex() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (_, score, _) = ladders(&mut field, Player::Red, 0, &should_stop);
+  let (_, score) = ladders(&mut field, Player::Red, 0, &should_stop);
   // It's possible to capture 8 points here but current method is
   // limited - it doesn't consider ladders after captures.
   assert_eq!(score, 6);
@@ -427,37 +425,11 @@ fn ladders_depth_limit() {
 
   let should_stop = AtomicBool::new(false);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 1, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 1, &should_stop);
   assert_eq!(pos, NonZeroPos::new(field.to_pos(6, 6)));
   assert_eq!(score, 3);
 
-  let (pos, score, _) = ladders(&mut field, Player::Red, 2, &should_stop);
+  let (pos, score) = ladders(&mut field, Player::Red, 2, &should_stop);
   assert_eq!(pos, None);
   assert_eq!(score, 0);
-}
-
-#[test]
-fn ladders_defending_not_banned() {
-  let mut rng = XorShiftRng::from_seed(SEED);
-  let mut field = construct_field(
-    &mut rng,
-    "
-    ...........
-    ..A.A......
-    .AA..A.....
-    .Aaa.Aa....
-    .aAaaaA....
-    .aAAAa.....
-    ..aaAAA....
-    ....aa.....
-    ...........
-    ...........
-    ...........
-    ",
-  );
-
-  let should_stop = AtomicBool::new(false);
-
-  let (_, _, banned_trajectories) = ladders(&mut field, Player::Red, 1, &should_stop);
-  assert!(banned_trajectories.is_empty());
 }
