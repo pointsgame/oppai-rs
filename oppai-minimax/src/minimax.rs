@@ -553,11 +553,11 @@ impl Minimax {
     }
   }
 
-  pub fn minimax_with_time(&self, field: &mut Field, player: Player, time: u32) -> Option<NonZeroPos> {
+  pub fn minimax_with_time(&self, field: &mut Field, player: Player, time: Duration) -> Option<NonZeroPos> {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|_| {
-        thread::sleep(Duration::from_millis(u64::from(time)));
+        thread::sleep(time);
         debug!(target: MINIMAX_STR, "Time-out!");
         should_stop.store(true, Ordering::Relaxed);
       });

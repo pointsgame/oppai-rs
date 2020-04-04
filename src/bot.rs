@@ -8,7 +8,7 @@ use oppai_minimax::minimax::Minimax;
 use oppai_uct::uct::UctRoot;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use std::{cmp, sync::Arc};
+use std::{cmp, sync::Arc, time::Duration};
 
 const BOT_STR: &str = "bot";
 
@@ -140,12 +140,12 @@ impl Bot {
     match self.config.bot.solver {
       Solver::Uct => self
         .uct
-        .best_move_with_time(&self.field, player, &mut self.rng, time - self.config.bot.time_gap)
+        .best_move_with_time(&self.field, player, &mut self.rng, Duration::from_millis(u64::from(time - self.config.bot.time_gap)))
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
       Solver::Minimax => self
         .minimax
-        .minimax_with_time(&mut self.field, player, time - self.config.bot.time_gap)
+        .minimax_with_time(&mut self.field, player, Duration::from_millis(u64::from(time - self.config.bot.time_gap)))
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
       Solver::Heuristic => {

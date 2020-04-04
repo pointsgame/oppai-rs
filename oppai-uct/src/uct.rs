@@ -641,7 +641,7 @@ impl UctRoot {
     field: &Field,
     player: Player,
     rng: &mut R,
-    time: u32,
+    time: Duration,
   ) -> Option<NonZeroPos>
   where
     S: Sized + Default + AsMut<[u8]>,
@@ -651,7 +651,7 @@ impl UctRoot {
     let should_stop = AtomicBool::new(false);
     crossbeam::scope(|scope| {
       scope.spawn(|_| {
-        thread::sleep(Duration::from_millis(u64::from(time)));
+        thread::sleep(time);
         should_stop.store(true, Ordering::Relaxed);
       });
       self.best_move_generic(field, player, rng, &should_stop, usize::max_value())
