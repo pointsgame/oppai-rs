@@ -9,7 +9,7 @@ const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 
 fn construct_patterns(strings: &[&str]) -> Patterns {
   let mut p = Patterns::empty();
   for s in strings {
-    p = p.union(&Patterns::from_str("<none>", s));
+    p = p.union(&Patterns::from_str(s).unwrap());
   }
   p
 }
