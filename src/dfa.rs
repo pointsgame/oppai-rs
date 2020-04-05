@@ -70,6 +70,9 @@ impl<P: Clone> Dfa<P> {
     states.push(build_state(other_len, &self.states[0], &other.states[0]));
     let mut map = HashMap::new();
     map.insert(0, 0);
+    // TODO: compare performance with using a stack to minimize jumps in memory
+    // empty value is supposed to appear often, it should have a small jump
+    // bad value is supposed to be rare, it should imply a big jump
     let mut q = VecDeque::new();
     q.push_back(0);
     while let Some(cur_idx) = q.pop_front() {
