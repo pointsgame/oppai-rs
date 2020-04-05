@@ -20,8 +20,8 @@ fn pattern_moves_discrepancy() {
   construct_patterns(&["
     4 4 1.0
     ....
-    .RB.
-    .BR.
+    .XO.
+    .OX.
     .+..
     2 3 1.0
     "]);
@@ -33,8 +33,8 @@ fn pattern_without_moves_on_image() {
   construct_patterns(&["
     4 4 1.0
     ....
-    .RB.
-    .BR.
+    .XO.
+    .OX.
     ....
     2 3 1.0
     "]);
@@ -46,8 +46,8 @@ fn pattern_with_less_moves_than_on_image() {
   construct_patterns(&["
     4 4 1.0
     ....
-    .RB.
-    .BR.
+    .XO.
+    .OX.
     .++.
     2 3 1.0
     "]);
@@ -58,8 +58,8 @@ fn pattern_empty_doesnt_match() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #RB.
-    #B..
+    #XO.
+    #O..
     #.+.
     2 3 1.0
     "]);
@@ -80,8 +80,8 @@ fn pattern_borders_matches() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #RB.
-    #BR.
+    #XO.
+    #OX.
     #.+.
     2 3 1.0
     "]);
@@ -102,8 +102,8 @@ fn pattern_borders_doesnt_match() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #RB.
-    #BR.
+    #XO.
+    #OX.
     #.+.
     2 3 1.0
     "]);
@@ -124,7 +124,7 @@ fn pattern_any_matches() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #RB.
+    #XO.
     ****
     #.+.
     2 3 1.0
@@ -146,7 +146,7 @@ fn pattern_any_except_border_matches() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #RB.
+    #XO.
     #???
     #.+.
     2 3 1.0
@@ -168,7 +168,7 @@ fn pattern_any_except_border_doesnt_match() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #RB.
+    #XO.
     ????
     #.+.
     2 3 1.0
@@ -190,8 +190,8 @@ fn pattern_red_black_or_none_matches() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #Rbb
-    #Brr
+    #Xoo
+    #Oxx
     #.+.
     2 3 1.0
     "]);
@@ -212,8 +212,8 @@ fn pattern_red_black_or_none_doesnt_match() {
   let p = construct_patterns(&["
     4 4 1.0
     #...
-    #bbb
-    #rrr
+    #ooo
+    #xxx
     #.+.
     2 3 1.0
     "]);
@@ -234,9 +234,9 @@ fn pattern_rotation_0() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -258,9 +258,9 @@ fn pattern_rotation_1() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -282,9 +282,9 @@ fn pattern_rotation_2() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -306,9 +306,9 @@ fn pattern_rotation_3() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -330,9 +330,9 @@ fn pattern_rotation_4() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -354,9 +354,9 @@ fn pattern_rotation_5() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -378,9 +378,9 @@ fn pattern_rotation_6() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -402,9 +402,9 @@ fn pattern_rotation_7() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -426,9 +426,9 @@ fn pattern_inversion_doesnt_match() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -450,9 +450,9 @@ fn pattern_inversion_matches() {
   let p = construct_patterns(&["
     5 5 1.0
     .....
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 1.0
     "]);
@@ -474,9 +474,9 @@ fn pattern_multiple_moves() {
   let p = construct_patterns(&["
     5 5 5.0
     .+...
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 3.0
     1 0 1.0
@@ -504,9 +504,9 @@ fn multiple_patterns() {
     "
     5 5 1.0
     .+...
-    +RB..
-    .BR..
-    .B.R.
+    +XO..
+    .OX..
+    .O.X.
     .....
     0 1 3.0
     1 0 1.0
@@ -514,9 +514,9 @@ fn multiple_patterns() {
     "
     5 5 4.0
     ???..
-    ?rb..
-    .br..
-    .B.R+
+    ?xo..
+    .ox..
+    .O.X+
     ...+.
     4 3 1.0
     3 4 3.0

@@ -969,8 +969,8 @@ impl fmt::Display for Field {
         let pos = self.to_pos(x, y);
         let cell = self.cell(pos);
         match cell.get_players_point() {
-          Some(Player::Red) => write!(f, "+")?,
-          Some(Player::Black) => write!(f, "*")?,
+          Some(Player::Red) => write!(f, "x")?,
+          Some(Player::Black) => write!(f, "o")?,
           None => {
             if cell.is_captured() {
               write!(f, ",")?
