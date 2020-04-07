@@ -969,8 +969,10 @@ impl fmt::Display for Field {
         let pos = self.to_pos(x, y);
         let cell = self.cell(pos);
         match cell.get_players_point() {
-          Some(Player::Red) => write!(f, "x")?,
-          Some(Player::Black) => write!(f, "o")?,
+          Some(Player::Red) if cell.is_captured() => write!(f, "x")?,
+          Some(Player::Red) => write!(f, "X")?,
+          Some(Player::Black) if cell.is_captured() => write!(f, "o")?,
+          Some(Player::Black) => write!(f, "O")?,
           None => {
             if cell.is_captured() {
               write!(f, ",")?
@@ -983,5 +985,11 @@ impl fmt::Display for Field {
       writeln!(f)?;
     }
     Ok(())
+  }
+}
+
+impl fmt::Debug for Field {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}", self)
   }
 }
