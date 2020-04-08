@@ -171,7 +171,6 @@ impl Minimax {
       }
       let next_trajectories_pruning = trajectories_pruning.next(field, enemy, depth - 1, empty_board, pos, should_stop);
       let mut cur_estimation = -Minimax::alpha_beta(
-        // TODO: check if cur_alpha is -Inf
         field,
         depth - 1,
         NonZeroPos::new(pos),
