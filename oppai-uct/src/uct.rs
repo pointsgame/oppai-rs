@@ -375,11 +375,11 @@ impl UctRoot {
     let win_rate = (wins + draws * self.config.draw_weight) / visits;
     let uct = match ucb_type {
       UcbType::Winrate => 0f64,
-      UcbType::Ucb1 => self.config.uctk * f64::sqrt(2.0 * f64::ln(parent_visits) / visits),
+      UcbType::Ucb1 => self.config.uctk * (2.0 * parent_visits.ln() / visits).sqrt(),
       UcbType::Ucb1Tuned => {
         let v = (wins + draws * self.config.draw_weight * self.config.draw_weight) / visits - win_rate * win_rate
-          + f64::sqrt(2.0 * f64::ln(parent_visits) / visits);
-        self.config.uctk * f64::sqrt(v.min(0.25) * f64::ln(parent_visits) / visits)
+          + (2.0 * parent_visits.ln() / visits).sqrt();
+        self.config.uctk * (v.min(0.25) * parent_visits.ln() / visits).sqrt()
       }
     };
     win_rate + uct
