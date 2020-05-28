@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 ndarray = "0.13"
+decorum = "0.1"
+oppai-field = { path = "../oppai-field" }
