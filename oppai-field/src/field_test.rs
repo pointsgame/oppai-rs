@@ -26,6 +26,7 @@ fn simple_surround() {
   assert!(!field.cell(field.to_pos(1, 0)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(1, 2)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(2, 1)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 4);
 }
 
 #[test]
@@ -50,6 +51,7 @@ fn surround_empty_territory() {
   assert!(!field.cell(field.to_pos(1, 0)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(1, 2)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(2, 1)).is_putting_allowed());
+  assert!(field.get_last_chain().is_empty());
 }
 
 #[test]
@@ -64,6 +66,7 @@ fn move_priority() {
   );
   assert_eq!(field.captured_count(Player::Red), 0);
   assert_eq!(field.captured_count(Player::Black), 1);
+  assert_eq!(field.get_last_chain().len(), 4);
 }
 
 #[test]
@@ -79,6 +82,7 @@ fn move_priority_big() {
   );
   assert_eq!(field.captured_count(Player::Red), 0);
   assert_eq!(field.captured_count(Player::Black), 2);
+  assert_eq!(field.get_last_chain().len(), 8);
 }
 
 #[test]
@@ -95,6 +99,7 @@ fn onion_surroundings() {
   );
   assert_eq!(field.captured_count(Player::Red), 4);
   assert_eq!(field.captured_count(Player::Black), 0);
+  assert_eq!(field.get_last_chain().len(), 8);
 }
 
 #[test]
@@ -113,6 +118,7 @@ fn deep_onion_surroundings() {
   );
   assert_eq!(field.captured_count(Player::Red), 0);
   assert_eq!(field.captured_count(Player::Black), 9);
+  assert_eq!(field.get_last_chain().len(), 12);
 }
 
 #[test]
@@ -127,6 +133,7 @@ fn apply_control_surrounding_in_same_turn() {
   );
   assert_eq!(field.captured_count(Player::Red), 1);
   assert_eq!(field.captured_count(Player::Black), 0);
+  assert_eq!(field.get_last_chain().len(), 4);
 }
 
 #[test]
@@ -141,6 +148,7 @@ fn double_surround() {
   );
   assert_eq!(field.captured_count(Player::Red), 2);
   assert_eq!(field.captured_count(Player::Black), 0);
+  assert_eq!(field.get_last_chain().len(), 8);
 }
 
 #[test]
@@ -157,6 +165,7 @@ fn double_surround_with_empty_part() {
   assert_eq!(field.captured_count(Player::Black), 0);
   assert!(field.cell(field.to_pos(1, 1)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(3, 1)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 4);
 }
 
 #[test]
@@ -181,6 +190,7 @@ fn should_not_leave_empty_inside() {
   assert!(!field.cell(field.to_pos(1, 3)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(3, 3)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(1, 1)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 18);
 }
 
 #[test]
@@ -203,6 +213,7 @@ fn a_hole_inside_a_surrounding() {
   assert_eq!(field.captured_count(Player::Black), 0);
   assert!(!field.cell(field.to_pos(4, 4)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(4, 1)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 16);
 }
 
 #[test]
@@ -225,6 +236,7 @@ fn a_hole_inside_a_surrounding_after_control_surrounding() {
   assert_eq!(field.captured_count(Player::Black), 0);
   assert!(!field.cell(field.to_pos(4, 4)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(4, 1)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 16);
 }
 
 #[test]
@@ -250,6 +262,7 @@ fn surrounding_does_not_expand() {
   assert!(field.cell(field.to_pos(4, 5)).is_putting_allowed());
   assert!(field.cell(field.to_pos(6, 5)).is_putting_allowed());
   assert!(!field.cell(field.to_pos(5, 4)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 4);
 }
 
 #[test]
@@ -265,6 +278,7 @@ fn two_surroundings_with_common_border() {
   );
   assert_eq!(field.captured_count(Player::Red), 2);
   assert_eq!(field.captured_count(Player::Black), 0);
+  assert_eq!(field.get_last_chain().len(), 8);
 }
 
 #[test]
@@ -281,6 +295,7 @@ fn three_surroundings_with_common_borders() {
   );
   assert_eq!(field.captured_count(Player::Red), 3);
   assert_eq!(field.captured_count(Player::Black), 0);
+  assert_eq!(field.get_last_chain().len(), 12);
 }
 
 #[test]

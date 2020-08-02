@@ -578,6 +578,31 @@ impl Field {
     }
   }
 
+  fn find_chain(&self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
+    let mut chain = Vec::new();
+    chain.push(start_pos);
+    let mut pos = direction_pos;
+    let mut center_pos = start_pos;
+    let mut base_square = self.square(center_pos, pos);
+    loop {
+      chain.push(pos);
+      mem::swap(&mut pos, &mut center_pos);
+      pos = self.get_first_next_pos(center_pos, pos);
+      while !(self.points[pos].is_live_players_point(player) && self.points[pos].is_bound()) {
+        pos = self.get_next_pos(center_pos, pos);
+      }
+      base_square += self.square(center_pos, pos);
+      if pos == start_pos {
+        break;
+      }
+    }
+    if base_square < 0 && chain.len() > 2 {
+      Some(chain)
+    } else {
+      None
+    }
+  }
+
   #[inline]
   pub fn is_point_inside_ring(&self, pos: Pos, ring: &[Pos]) -> bool {
     is_point_inside_ring(self.width, pos, ring)
@@ -585,11 +610,11 @@ impl Field {
 
   #[inline]
   fn update_hash(&mut self, pos: Pos, player: Player) {
-    if player == Player::Red {
-      self.hash ^= self.zobrist.get_hash(pos);
+    self.hash ^= if player == Player::Red {
+      self.zobrist.get_hash(pos)
     } else {
-      self.hash ^= self.zobrist.get_hash(self.length + pos);
-    }
+      self.zobrist.get_hash(self.length + pos)
+    };
   }
 
   fn capture(&mut self, chain: &[Pos], inside_pos: Pos, player: Player) -> bool {
@@ -601,7 +626,7 @@ impl Field {
     }
     wave(self.width, inside_pos, |pos| {
       let cell = self.points[pos];
-      if !cell.is_tagged() && (!cell.is_bound_player(player) || cell.is_captured()) {
+      if !cell.is_tagged() && !cell.is_bound_player(player) {
         self.points[pos].set_tag();
         captured_points.push(pos);
         if cell.is_put() {
@@ -647,6 +672,7 @@ impl Field {
           self.update_hash(pos, player);
         } else if cell.get_player() != player {
           self.points[pos].set_captured();
+          self.points[pos].clear_bound();
           self.update_hash(pos, player.next());
           self.update_hash(pos, player);
         } else if cell.is_captured() {
@@ -877,6 +903,51 @@ impl Field {
       true
     } else {
       false
+    }
+  }
+
+  pub fn get_last_chain(&self) -> Vec<Pos> {
+    let pos = if let Some(&pos) = self.points_seq.last() {
+      pos
+    } else {
+      return Vec::new();
+    };
+    let player = self.points[pos].get_player();
+    let delta_score = self.get_delta_score(player);
+    if delta_score > 0 {
+      let mut result = Vec::new();
+      let input_points = self.get_input_points(pos, player);
+      let input_points_count = input_points.len();
+      let mut chains_count = 0;
+      for (chain_pos, _) in input_points {
+        if let Some(mut chain) = self.find_chain(pos, player, chain_pos) {
+          result.append(&mut chain);
+          chains_count += 1;
+          if chains_count == input_points_count - 1 {
+            break;
+          }
+        }
+      }
+      result
+    } else if delta_score < 0 {
+      let next_player = player.next();
+      let mut bound_pos = pos;
+      loop {
+        bound_pos = self.w(bound_pos);
+        while !self.points[bound_pos].is_bound() {
+          bound_pos = self.w(bound_pos);
+        }
+        let input_points = self.get_input_points(bound_pos, next_player);
+        for (chain_pos, _) in input_points {
+          if let Some(chain) = self.find_chain(bound_pos, next_player, chain_pos) {
+            if self.is_point_inside_ring(pos, &chain) {
+              return chain;
+            }
+          }
+        }
+      }
+    } else {
+      Vec::new()
     }
   }
 
