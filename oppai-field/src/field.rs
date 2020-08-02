@@ -601,7 +601,7 @@ impl Field {
     }
     wave(self.width, inside_pos, |pos| {
       let cell = self.points[pos];
-      if !cell.is_tagged() && !cell.is_bound_player(player) {
+      if !cell.is_tagged() && (!cell.is_bound_player(player) || cell.is_captured()) {
         self.points[pos].set_tag();
         captured_points.push(pos);
         if cell.is_put() {

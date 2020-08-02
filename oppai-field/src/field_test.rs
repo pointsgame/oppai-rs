@@ -86,15 +86,33 @@ fn onion_surroundings() {
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
     "
-    ...c...
-    ..cBc..
-    .cBaBc.
-    ..cBc..
-    ...c...
+    ..c..
+    .cBc.
+    cBaBc
+    .cBc.
+    ..c..
     ",
   );
   assert_eq!(field.captured_count(Player::Red), 4);
   assert_eq!(field.captured_count(Player::Black), 0);
+}
+
+#[test]
+fn deep_onion_surroundings() {
+  let field = construct_field(
+    &mut XorShiftRng::from_seed(SEED),
+    "
+    ...D...
+    ..DcD..
+    .DcBcD.
+    DcBaBcD
+    .DcBcD.
+    ..DcD..
+    ...D...
+    ",
+  );
+  assert_eq!(field.captured_count(Player::Red), 0);
+  assert_eq!(field.captured_count(Player::Black), 9);
 }
 
 #[test]
