@@ -58,5 +58,6 @@ members = [
   "oppai-test-images",
   "oppai-uct",
   "oppai-minimax",
-  "oppai-zero"
+  "oppai-zero",
+  "oppai-iced"
 ]
