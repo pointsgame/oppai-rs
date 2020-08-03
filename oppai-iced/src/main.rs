@@ -98,7 +98,7 @@ impl canvas::Program<Pos> for Game {
     }
   }
 
-  fn draw(&self, bounds: Rectangle, _cursor: canvas::Cursor) -> Vec<canvas::Geometry> {
+  fn draw(&self, bounds: Rectangle, cursor: canvas::Cursor) -> Vec<canvas::Geometry> {
     let mut frame = canvas::Frame::new(bounds.size());
 
     let field_width = self.field.width();
@@ -145,12 +145,15 @@ impl canvas::Program<Pos> for Game {
       }
     }
 
-    let pos_to_point = |pos: Pos| {
-      let x = self.field.to_x(pos);
-      let y = self.field.to_y(pos);
+    let xy_to_point = |x: u32, y: u32| {
       let offset_x = (step_x * x as f32 + step_x / 2.0).round() + 0.5;
       let offset_y = (step_y * y as f32 + step_y / 2.0).round() + 0.5;
       Point::new(offset_x, offset_y) + shift
+    };
+    let pos_to_point = |pos: Pos| {
+      let x = self.field.to_x(pos);
+      let y = self.field.to_y(pos);
+      xy_to_point(x, y)
     };
 
     for &player in &[Player::Red, Player::Black] {
@@ -180,6 +183,29 @@ impl canvas::Program<Pos> for Game {
       color.a = 0.5;
 
       frame.fill(&path, color);
+    }
+
+    if let Some(point) = cursor.position().and_then(|c| {
+      let point = c - shift - Vector::new(step_x / 2.0, step_y / 2.0);
+      if point.x >= 0.0 && point.x <= width && point.y >= 0.0 && point.y <= height {
+        let x = (point.x / step_x).round() as u32;
+        let y = (point.y / step_y).round() as u32;
+        let pos = self.field.to_pos(x, y);
+        if self.field.is_putting_allowed(pos) {
+          Some(xy_to_point(x, y))
+        } else {
+          None
+        }
+      } else {
+        None
+      }
+    }) {
+      let cursor_point = canvas::Path::new(|path| path.circle(point, 5.0));
+
+      let mut color = color(self.player);
+      color.a = 0.5;
+
+      frame.fill(&cursor_point, color);
     }
 
     vec![frame.into_geometry()]
