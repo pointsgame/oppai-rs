@@ -86,9 +86,13 @@ impl canvas::Program<Pos> for Game {
         );
 
         let point = cursor_position - shift;
-        let x = (point.x / step_x).round() as u32;
-        let y = (point.y / step_y).round() as u32;
-        Some(self.field.to_pos(x, y))
+        if point.x >= 0.0 && point.x <= width && point.y >= 0.0 && point.y <= height {
+          let x = (point.x / step_x).round() as u32;
+          let y = (point.y / step_y).round() as u32;
+          Some(self.field.to_pos(x, y))
+        } else {
+          None
+        }
       }
       _ => None,
     }
