@@ -141,6 +141,14 @@ impl canvas::Program<Pos> for Game {
       }
     }
 
+    let pos_to_point = |pos: Pos| {
+      let x = self.field.to_x(pos);
+      let y = self.field.to_y(pos);
+      let offset_x = (step_x * x as f32 + step_x / 2.0).round() + 0.5;
+      let offset_y = (step_y * y as f32 + step_y / 2.0).round() + 0.5;
+      Point::new(offset_x, offset_y) + shift
+    };
+
     for &player in &[Player::Red, Player::Black] {
       let points = canvas::Path::new(|path| {
         for &pos in self
@@ -149,12 +157,7 @@ impl canvas::Program<Pos> for Game {
           .iter()
           .filter(|&&pos| self.field.cell(pos).is_players_point(player))
         {
-          let x = self.field.to_x(pos);
-          let y = self.field.to_y(pos);
-
-          let offset_x = (step_x * x as f32 + step_x / 2.0).round() + 0.5;
-          let offset_y = (step_y * y as f32 + step_y / 2.0).round() + 0.5;
-          path.circle(Point::new(offset_x, offset_y) + shift, 5.0)
+          path.circle(pos_to_point(pos), 5.0)
         }
       });
 
@@ -163,21 +166,9 @@ impl canvas::Program<Pos> for Game {
 
     for (chain, player) in &self.captures {
       let path = canvas::Path::new(|path| {
-        let pos = chain[0];
-        let x = self.field.to_x(pos);
-        let y = self.field.to_y(pos);
-
-        let offset_x = (step_x * x as f32 + step_x / 2.0).round() + 0.5;
-        let offset_y = (step_y * y as f32 + step_y / 2.0).round() + 0.5;
-        path.move_to(Point::new(offset_x, offset_y) + shift);
-
+        path.move_to(pos_to_point(chain[0]));
         for &pos in chain.iter().skip(1) {
-          let x = self.field.to_x(pos);
-          let y = self.field.to_y(pos);
-
-          let offset_x = (step_x * x as f32 + step_x / 2.0).round() + 0.5;
-          let offset_y = (step_y * y as f32 + step_y / 2.0).round() + 0.5;
-          path.line_to(Point::new(offset_x, offset_y) + shift);
+          path.line_to(pos_to_point(pos));
         }
       });
 
