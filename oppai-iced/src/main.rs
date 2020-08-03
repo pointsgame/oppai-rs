@@ -5,8 +5,6 @@ use oppai_field::zobrist::Zobrist;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
-const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
-
 const FIELD_WIDTH: u32 = 39;
 const FIELD_HEIGHT: u32 = 32;
 
@@ -32,7 +30,7 @@ impl Sandbox for Game {
   type Message = Message;
 
   fn new() -> Self {
-    let mut rng = XorShiftRng::from_seed(SEED);
+    let mut rng = XorShiftRng::from_entropy();
     let zobrist = Zobrist::new(field::length(FIELD_WIDTH, FIELD_HEIGHT) * 2, &mut rng);
     let field = Field::new(FIELD_WIDTH, FIELD_HEIGHT, std::sync::Arc::new(zobrist));
     Game {
