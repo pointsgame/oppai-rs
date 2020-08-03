@@ -49,12 +49,38 @@ impl Sandbox for Game {
   fn update(&mut self, message: Self::Message) {
     let Message::PutPoint(pos) = message;
     if self.field.put_point(pos, self.player) {
-      self.player = self.player.next();
       let last_chain = self.field.get_last_chain();
       if let Some(&pos) = last_chain.first() {
         let player = self.field.cell(pos).get_player();
         self.captures.push((last_chain, player));
       }
+
+      let n = self.field.n(pos);
+      let s = self.field.s(pos);
+      let w = self.field.w(pos);
+      let e = self.field.e(pos);
+      let nw = self.field.nw(pos);
+      let ne = self.field.ne(pos);
+      let sw = self.field.sw(pos);
+      let se = self.field.se(pos);
+
+      let mut check = |pos1: Pos, pos2: Pos| {
+        if self.field.cell(pos1).get_players_point() == Some(self.player)
+          && self.field.cell(pos2).get_players_point() == Some(self.player)
+        {
+          self.captures.push((vec![pos, pos1, pos2], self.player));
+          true
+        } else {
+          false
+        }
+      };
+
+      let _ = !check(s, e) && (check(s, se) || check(e, se));
+      let _ = !check(e, n) && (check(e, ne) || check(n, ne));
+      let _ = !check(n, w) && (check(n, nw) || check(w, nw));
+      let _ = !check(w, s) && (check(w, sw) || check(s, sw));
+
+      self.player = self.player.next();
     }
   }
 
