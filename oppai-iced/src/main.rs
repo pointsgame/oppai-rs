@@ -1,4 +1,6 @@
-use iced::{canvas, mouse, Canvas, Color, Element, Length, Point, Rectangle, Sandbox, Settings, Vector};
+use iced::{
+  canvas, executor, mouse, Application, Canvas, Color, Command, Element, Length, Point, Rectangle, Settings, Vector,
+};
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
@@ -26,25 +28,30 @@ enum Message {
   PutPoint(Pos),
 }
 
-impl Sandbox for Game {
+impl Application for Game {
+  type Executor = executor::Null;
   type Message = Message;
+  type Flags = ();
 
-  fn new() -> Self {
+  fn new(_flags: ()) -> (Self, Command<Self::Message>) {
     let mut rng = XorShiftRng::from_entropy();
     let zobrist = Zobrist::new(field::length(FIELD_WIDTH, FIELD_HEIGHT) * 2, &mut rng);
     let field = Field::new(FIELD_WIDTH, FIELD_HEIGHT, std::sync::Arc::new(zobrist));
-    Game {
-      player: Player::Red,
-      field,
-      captures: Vec::new(),
-    }
+    (
+      Game {
+        player: Player::Red,
+        field,
+        captures: Vec::new(),
+      },
+      Command::none(),
+    )
   }
 
   fn title(&self) -> String {
     "OpPAI".into()
   }
 
-  fn update(&mut self, message: Self::Message) {
+  fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     let Message::PutPoint(pos) = message;
     if self.field.put_point(pos, self.player) {
       let last_chain = self.field.get_last_chain();
@@ -80,6 +87,8 @@ impl Sandbox for Game {
 
       self.player = self.player.next();
     }
+
+    Command::none()
   }
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
