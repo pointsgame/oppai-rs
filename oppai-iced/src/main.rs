@@ -185,6 +185,21 @@ impl canvas::Program<Pos> for Game {
       frame.fill(&path, color);
     }
 
+    if let Some(&pos) = self.field.points_seq().last() {
+      let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), 8.0));
+
+      let color = color(self.field.cell(pos).get_player());
+
+      frame.stroke(
+        &last_point,
+        canvas::Stroke {
+          width: 2.0,
+          color,
+          ..canvas::Stroke::default()
+        },
+      );
+    }
+
     if let Some(point) = cursor.position().and_then(|c| {
       let point = c - shift - Vector::new(step_x / 2.0, step_y / 2.0);
       if point.x >= 0.0 && point.x <= width && point.y >= 0.0 && point.y <= height {
