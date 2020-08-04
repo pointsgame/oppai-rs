@@ -114,12 +114,14 @@ impl canvas::Program<Pos> for Game {
         let step_x = width / field_width as f32;
         let step_y = height / field_height as f32;
         let shift = Vector::new(
-          ((bounds.width - width) / 2.0).round() + step_x / 2.0,
-          ((bounds.height - height) / 2.0).round() + step_y / 2.0,
+          ((bounds.width - width) / 2.0).round(),
+          ((bounds.height - height) / 2.0).round(),
         );
+        let cursor_shift = Vector::new(step_x / 2.0, step_y / 2.0);
 
         let point = cursor_position - shift;
         if point.x >= 0.0 && point.x <= width && point.y >= 0.0 && point.y <= height {
+          let point = point - cursor_shift;
           let x = (point.x / step_x).round() as u32;
           let y = (point.y / step_y).round() as u32;
           Some(self.field.to_pos(x, y))
@@ -148,6 +150,7 @@ impl canvas::Program<Pos> for Game {
       ((frame.width() - width) / 2.0).round(),
       ((frame.height() - height) / 2.0).round(),
     );
+    let cursor_shift = Vector::new(step_x / 2.0, step_y / 2.0);
 
     let grid = canvas::Path::new(|path| {
       for x in 0..field_width {
@@ -233,9 +236,10 @@ impl canvas::Program<Pos> for Game {
       );
     }
 
-    if let Some(point) = cursor.position().and_then(|c| {
-      let point = c - shift - Vector::new(step_x / 2.0, step_y / 2.0);
+    if let Some(point) = cursor.position().and_then(|cursor_position| {
+      let point = cursor_position - shift;
       if point.x >= 0.0 && point.x <= width && point.y >= 0.0 && point.y <= height {
+        let point = point - cursor_shift;
         let x = (point.x / step_x).round() as u32;
         let y = (point.y / step_y).round() as u32;
         let pos = self.field.to_pos(x, y);
