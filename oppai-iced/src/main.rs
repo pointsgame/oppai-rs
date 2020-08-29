@@ -100,9 +100,8 @@ impl Application for Game {
 impl canvas::Program<Pos> for Game {
   fn update(&mut self, event: canvas::Event, bounds: Rectangle, cursor: canvas::Cursor) -> Option<Pos> {
     let cursor_position = cursor.position_in(&bounds)?;
-    let canvas::Event::Mouse(mouse_event) = event;
-    match mouse_event {
-      mouse::Event::ButtonPressed(mouse::Button::Left) => {
+    match event {
+      canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
         let field_width = self.field.width();
         let field_height = self.field.height();
         let width = bounds
