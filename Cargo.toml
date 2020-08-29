@@ -59,5 +59,6 @@ members = [
   "oppai-uct",
   "oppai-minimax",
   "oppai-zero",
+  "oppai-zero-tf",
   "oppai-iced"
 ]

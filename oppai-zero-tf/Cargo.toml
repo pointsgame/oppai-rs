@@ -1,0 +1,14 @@
+[package]
+name = "oppai-zero-tf"
+version = "0.1.0"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
+edition = "2018"
+
+[dependencies]
+ndarray = "0.13"
+pyo3 = "0.11"
+numpy = "0.11"
+indoc = "1.0"
+oppai-zero = { path = "../oppai-zero" }
