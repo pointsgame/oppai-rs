@@ -261,7 +261,7 @@ impl UctRoot {
             let mut added_moves = self.wave_pruning.update(field, last_moves_count, self.config.radius);
             debug!(
               target: UCT_STR,
-              "Added  into consideration moves: {:?}.",
+              "Added into consideration moves: {:?}.",
               added_moves
                 .iter()
                 .map(|&pos| (field.to_x(pos), field.to_y(pos)))
