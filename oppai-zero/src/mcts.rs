@@ -3,15 +3,15 @@ use oppai_field::field::Pos;
 
 pub struct MctsNode {
   /// Current move.
-  pos: Pos,
+  pub pos: Pos,
   /// Visits count.
-  n: u64,
+  pub n: u64,
   /// Prior probability.
-  p: f64,
+  pub p: f64,
   /// Total action value.
-  w: u64,
+  pub w: f64,
   /// Children moves.
-  children: Vec<MctsNode>,
+  pub children: Vec<MctsNode>,
 }
 
 const C_PUCT: f64 = 1f64;
@@ -19,12 +19,12 @@ const C_PUCT: f64 = 1f64;
 const TEMPERATURE: f64 = 1f64;
 
 impl MctsNode {
-  pub fn new(pos: Pos, p: f64) -> Self {
+  pub fn new(pos: Pos, p: f64, w: f64) -> Self {
     Self {
       pos,
       n: 0,
       p,
-      w: 0, // TODO: initialize from parent value?
+      w,
       children: Vec::new(),
     }
   }
@@ -45,18 +45,49 @@ impl MctsNode {
     self.q() + C_PUCT * self.p * (parent_n as f64).sqrt() / (1 + self.n) as f64
   }
 
-  pub fn select(&mut self, moves: &mut Vec<Pos>) {
-    // TODO: noise?
+  fn select_child(&mut self) -> Option<&mut MctsNode> {
     let n = self.n;
-    if let Some(child) = self
+    self
       .children
       .iter_mut()
       .max_by_key(|child| R64::from(child.mcts_value(n)))
-    {
-      // virtual loss
-      child.w -= 1;
+  }
+
+  pub fn select(&mut self) -> Vec<Pos> {
+    // TODO: noise?
+    let mut moves = Vec::new();
+    let mut node = self;
+
+    while let Some(child) = node.select_child() {
       moves.push(child.pos);
-      child.select(moves)
+      // virtual loss
+      child.w -= 1.0;
+      node = child;
+    }
+
+    moves
+  }
+
+  pub fn revert_virtual_loss(&mut self, moves: &[Pos]) {
+    let mut node = self;
+    for &pos in moves {
+      node = node.children.iter_mut().find(|child| child.pos == pos).unwrap();
+      node.w += 1.0;
+    }
+  }
+
+  pub fn add_result(&mut self, moves: &[Pos], mut result: f64, children: Vec<MctsNode>) {
+    self.n += 1;
+    self.w -= result;
+    let mut node = self;
+    for &pos in moves {
+      node = node.children.iter_mut().find(|child| child.pos == pos).unwrap();
+      node.n += 1;
+      node.w += result;
+      result = -result;
+    }
+    if !children.is_empty() {
+      node.children = children;
     }
   }
 }

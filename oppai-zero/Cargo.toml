@@ -7,6 +7,10 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
+rand = "0.7"
 ndarray = "0.13"
 decorum = "0.1"
 oppai-field = { path = "../oppai-field" }
+
+[dev-dependencies]
+rand_xorshift = "0.2"
