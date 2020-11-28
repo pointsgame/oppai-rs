@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 rand = "0.7"
 ndarray = "0.13"
-decorum = "0.1"
+decorum = "0.3"
 oppai-field = { path = "../oppai-field" }
 
 [dev-dependencies]

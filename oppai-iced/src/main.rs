@@ -10,11 +10,11 @@ use rand_xorshift::XorShiftRng;
 const FIELD_WIDTH: u32 = 39;
 const FIELD_HEIGHT: u32 = 32;
 
-pub fn main() {
+pub fn main() -> iced::Result {
   Game::run(Settings {
     antialiasing: true,
     ..Settings::default()
-  });
+  })
 }
 
 struct Game {
@@ -29,7 +29,7 @@ enum Message {
 }
 
 impl Application for Game {
-  type Executor = executor::Null;
+  type Executor = executor::Default;
   type Message = Message;
   type Flags = ();
 
@@ -98,8 +98,12 @@ impl Application for Game {
 }
 
 impl canvas::Program<Pos> for Game {
-  fn update(&mut self, event: canvas::Event, bounds: Rectangle, cursor: canvas::Cursor) -> Option<Pos> {
-    let cursor_position = cursor.position_in(&bounds)?;
+  fn update(&mut self, event: canvas::Event, bounds: Rectangle, cursor: canvas::Cursor) -> (canvas::event::Status, Option<Pos>) {
+    let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
+      position
+    } else {
+      return (canvas::event::Status::Ignored, None);
+    };
     match event {
       canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
         let field_width = self.field.width();
@@ -123,12 +127,12 @@ impl canvas::Program<Pos> for Game {
           let point = point - cursor_shift;
           let x = (point.x / step_x).round() as u32;
           let y = (point.y / step_y).round() as u32;
-          Some(self.field.to_pos(x, y))
+          (canvas::event::Status::Captured, Some(self.field.to_pos(x, y)))
         } else {
-          None
+          (canvas::event::Status::Captured, None)
         }
       }
-      _ => None,
+      _ => (canvas::event::Status::Ignored, None),
     }
   }
 

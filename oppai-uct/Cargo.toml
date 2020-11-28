@@ -9,14 +9,14 @@ edition = "2018"
 [dependencies]
 rand = "0.7"
 log = "0.4"
-crossbeam = "0.7"
+crossbeam = "0.8"
 oppai-field = { path = "../oppai-field" }
 oppai-common = { path = "../oppai-common" }
 
 [dev-dependencies]
 criterion = "0.3"
 rand_xorshift = "0.2"
-env_logger = "0.7"
+env_logger = "0.8"
 oppai-test-images = { path = "../oppai-test-images" }
 
 [[bench]]

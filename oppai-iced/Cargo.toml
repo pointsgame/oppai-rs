@@ -7,7 +7,7 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
-iced = { git = "https://github.com/hecrj/iced.git", features = [ "canvas" ] }
+iced = { version = "0.2", features = [ "canvas" ] }
 rand = "0.7"
 rand_xorshift = "0.2"
 oppai-field = { path = "../oppai-field" }

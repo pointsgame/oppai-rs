@@ -272,7 +272,7 @@ impl Minimax {
           let mut local_best_move = 0;
           let mut local_alpha = alpha;
           let enemy = player.next();
-          while let Ok(pos) = queue.pop() {
+          while let Some(pos) = queue.pop() {
             if should_stop.load(Ordering::Relaxed) {
               break;
             }
@@ -362,7 +362,7 @@ impl Minimax {
     if best_alpha > alpha {
       let moves = trajectories_pruning.moves_mut();
       moves.clear();
-      while let Ok((pos, pos_alpha)) = best_moves.pop() {
+      while let Some((pos, pos_alpha)) = best_moves.pop() {
         if pos_alpha == best_alpha || pos_alpha >= beta {
           moves.push(pos);
         }
@@ -370,10 +370,10 @@ impl Minimax {
           result = pos;
         }
       }
-      while let Ok(pos) = skipped_moves.pop() {
+      while let Some(pos) = skipped_moves.pop() {
         moves.push(pos);
       }
-      while let Ok(pos) = queue.pop() {
+      while let Some(pos) = queue.pop() {
         moves.push(pos);
       }
     }
