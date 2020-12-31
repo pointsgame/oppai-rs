@@ -180,6 +180,8 @@ impl canvas::Program<Pos> for Game {
       xy_to_point(x, y)
     };
 
+    let point_radius = width / field_width as f32 / 6.0;
+
     let field = self.field_cache.draw(bounds.size(), |frame| {
       let grid = canvas::Path::new(|path| {
         for x in 0..field_width {
@@ -211,7 +213,7 @@ impl canvas::Program<Pos> for Game {
             .iter()
             .filter(|&&pos| self.field.cell(pos).is_players_point(player))
           {
-            path.circle(pos_to_point(pos), 5.0)
+            path.circle(pos_to_point(pos), point_radius)
           }
         });
 
@@ -233,7 +235,7 @@ impl canvas::Program<Pos> for Game {
       }
 
       if let Some(&pos) = self.field.points_seq().last() {
-        let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), 8.0));
+        let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), point_radius * 1.5));
 
         let color = color(self.field.cell(pos).get_player());
 
@@ -266,7 +268,7 @@ impl canvas::Program<Pos> for Game {
         None
       }
     }) {
-      let cursor_point = canvas::Path::new(|path| path.circle(point, 5.0));
+      let cursor_point = canvas::Path::new(|path| path.circle(point, point_radius));
 
       let mut color = color(self.player);
       color.a = 0.5;
