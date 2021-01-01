@@ -1,5 +1,6 @@
 use iced::{
-  canvas, executor, mouse, Application, Canvas, Color, Command, Element, Length, Point, Rectangle, Settings, Vector,
+  canvas, executor, keyboard, mouse, Application, Canvas, Color, Command, Element, Length, Point, Rectangle, Settings,
+  Vector,
 };
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;
@@ -20,13 +21,19 @@ pub fn main() -> iced::Result {
 struct Game {
   player: Player,
   field: Field,
-  captures: Vec<(Vec<Pos>, Player)>,
+  captures: Vec<(Vec<Pos>, Player, usize)>,
   field_cache: canvas::Cache,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Message {
+enum CanvasMessage {
   PutPoint(Pos),
+  Undo,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Message {
+  Canvas(CanvasMessage),
 }
 
 impl Application for Game {
@@ -54,42 +61,57 @@ impl Application for Game {
   }
 
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
-    let Message::PutPoint(pos) = message;
-    if self.field.put_point(pos, self.player) {
-      let last_chain = self.field.get_last_chain();
-      if let Some(&pos) = last_chain.first() {
-        let player = self.field.cell(pos).get_player();
-        self.captures.push((last_chain, player));
-      }
+    match message {
+      Message::Canvas(CanvasMessage::PutPoint(pos)) => {
+        if self.field.put_point(pos, self.player) {
+          let last_chain = self.field.get_last_chain();
+          if let Some(&pos) = last_chain.first() {
+            let player = self.field.cell(pos).get_player();
+            self.captures.push((last_chain, player, self.field.moves_count()));
+          }
 
-      let n = self.field.n(pos);
-      let s = self.field.s(pos);
-      let w = self.field.w(pos);
-      let e = self.field.e(pos);
-      let nw = self.field.nw(pos);
-      let ne = self.field.ne(pos);
-      let sw = self.field.sw(pos);
-      let se = self.field.se(pos);
+          let n = self.field.n(pos);
+          let s = self.field.s(pos);
+          let w = self.field.w(pos);
+          let e = self.field.e(pos);
+          let nw = self.field.nw(pos);
+          let ne = self.field.ne(pos);
+          let sw = self.field.sw(pos);
+          let se = self.field.se(pos);
 
-      let mut check = |pos1: Pos, pos2: Pos| {
-        if self.field.cell(pos1).get_players_point() == Some(self.player)
-          && self.field.cell(pos2).get_players_point() == Some(self.player)
-        {
-          self.captures.push((vec![pos, pos1, pos2], self.player));
-          true
-        } else {
-          false
+          let mut check = |pos1: Pos, pos2: Pos| {
+            if self.field.cell(pos1).get_players_point() == Some(self.player)
+              && self.field.cell(pos2).get_players_point() == Some(self.player)
+            {
+              self.captures.push((vec![pos, pos1, pos2], self.player, self.field.moves_count()));
+              true
+            } else {
+              false
+            }
+          };
+
+          let _ = !check(s, e) && (check(s, se) || check(e, se));
+          let _ = !check(e, n) && (check(e, ne) || check(n, ne));
+          let _ = !check(n, w) && (check(n, nw) || check(w, nw));
+          let _ = !check(w, s) && (check(w, sw) || check(s, sw));
+
+          self.player = self.player.next();
+
+          self.field_cache.clear();
         }
-      };
+      }
+      Message::Canvas(CanvasMessage::Undo) => {
+        if let Some(player) = self.field.last_player() {
+          self.player = player;
+          self.field.undo();
 
-      let _ = !check(s, e) && (check(s, se) || check(e, se));
-      let _ = !check(e, n) && (check(e, ne) || check(n, ne));
-      let _ = !check(n, w) && (check(n, nw) || check(w, nw));
-      let _ = !check(w, s) && (check(w, sw) || check(s, sw));
+          while self.captures.last().map_or(false, |&(_, _, c)| c > self.field.moves_count()) {
+            self.captures.pop();
+          }
 
-      self.player = self.player.next();
-
-      self.field_cache.clear();
+          self.field_cache.clear();
+        }
+      }
     }
 
     Command::none()
@@ -97,17 +119,17 @@ impl Application for Game {
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
-    Element::<Pos>::from(canvas).map(Message::PutPoint)
+    Element::<CanvasMessage>::from(canvas).map(Message::Canvas)
   }
 }
 
-impl canvas::Program<Pos> for Game {
+impl canvas::Program<CanvasMessage> for Game {
   fn update(
     &mut self,
     event: canvas::Event,
     bounds: Rectangle,
     cursor: canvas::Cursor,
-  ) -> (canvas::event::Status, Option<Pos>) {
+  ) -> (canvas::event::Status, Option<CanvasMessage>) {
     let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
       position
     } else {
@@ -136,11 +158,18 @@ impl canvas::Program<Pos> for Game {
           let point = point - cursor_shift;
           let x = (point.x / step_x).round() as u32;
           let y = (point.y / step_y).round() as u32;
-          (canvas::event::Status::Captured, Some(self.field.to_pos(x, y)))
+          (
+            canvas::event::Status::Captured,
+            Some(CanvasMessage::PutPoint(self.field.to_pos(x, y))),
+          )
         } else {
           (canvas::event::Status::Captured, None)
         }
       }
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::Backspace,
+        ..
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Undo)),
       _ => (canvas::event::Status::Ignored, None),
     }
   }
@@ -220,7 +249,7 @@ impl canvas::Program<Pos> for Game {
         frame.fill(&points, color(player));
       }
 
-      for (chain, player) in &self.captures {
+      for (chain, player, _) in &self.captures {
         let path = canvas::Path::new(|path| {
           path.move_to(pos_to_point(chain[0]));
           for &pos in chain.iter().skip(1) {
