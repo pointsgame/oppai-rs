@@ -10,4 +10,5 @@ edition = "2018"
 iced = { version = "0.2", features = [ "canvas" ] }
 rand = "0.7"
 rand_xorshift = "0.2"
+clap = "2.33"
 oppai-field = { path = "../oppai-field" }

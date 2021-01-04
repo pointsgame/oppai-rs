@@ -1,3 +1,6 @@
+mod config;
+
+use crate::config::{cli_parse, Config};
 use iced::{
   canvas, executor, keyboard, mouse, Application, Canvas, Color, Command, Element, Length, Point, Rectangle, Settings,
   Vector,
@@ -8,12 +11,12 @@ use oppai_field::zobrist::Zobrist;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
-const FIELD_WIDTH: u32 = 39;
-const FIELD_HEIGHT: u32 = 32;
-
 pub fn main() -> iced::Result {
+  let config = cli_parse();
+
   Game::run(Settings {
     antialiasing: true,
+    flags: config,
     ..Settings::default()
   })
 }
@@ -39,12 +42,12 @@ enum Message {
 impl Application for Game {
   type Executor = executor::Default;
   type Message = Message;
-  type Flags = ();
+  type Flags = Config;
 
-  fn new(_flags: ()) -> (Self, Command<Self::Message>) {
+  fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = XorShiftRng::from_entropy();
-    let zobrist = Zobrist::new(field::length(FIELD_WIDTH, FIELD_HEIGHT) * 2, &mut rng);
-    let field = Field::new(FIELD_WIDTH, FIELD_HEIGHT, std::sync::Arc::new(zobrist));
+    let zobrist = Zobrist::new(field::length(flags.width, flags.height) * 2, &mut rng);
+    let field = Field::new(flags.width, flags.height, std::sync::Arc::new(zobrist));
     (
       Game {
         player: Player::Red,
@@ -83,7 +86,9 @@ impl Application for Game {
             if self.field.cell(pos1).get_players_point() == Some(self.player)
               && self.field.cell(pos2).get_players_point() == Some(self.player)
             {
-              self.captures.push((vec![pos, pos1, pos2], self.player, self.field.moves_count()));
+              self
+                .captures
+                .push((vec![pos, pos1, pos2], self.player, self.field.moves_count()));
               true
             } else {
               false
@@ -105,7 +110,11 @@ impl Application for Game {
           self.player = player;
           self.field.undo();
 
-          while self.captures.last().map_or(false, |&(_, _, c)| c > self.field.moves_count()) {
+          while self
+            .captures
+            .last()
+            .map_or(false, |&(_, _, c)| c > self.field.moves_count())
+          {
             self.captures.pop();
           }
 
