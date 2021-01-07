@@ -238,13 +238,13 @@ impl Patterns {
     }
   }
 
-  fn from_strings(strings: &[(String, String)]) -> Patterns {
+  fn from_strings(strings: &[String]) -> Patterns {
     let len = strings.len();
-    if let [(ref name, ref pattern_str)] = *strings {
+    if let [ref pattern_str] = *strings {
       match Patterns::from_str(pattern_str) {
         Ok(patterns) => patterns,
         Err(e) => {
-          error!(target: PATTERNS_STR, "Failed to parse pattern {}: {}", name, e);
+          error!(target: PATTERNS_STR, "Failed to parse pattern: {}\n{}", e, pattern_str);
           Patterns::empty()
         }
       }
@@ -275,7 +275,7 @@ impl Patterns {
       info!(target: PATTERNS_STR, "Loading pattern '{}'", name);
       let mut s = String::new();
       file.read_to_string(&mut s).ok();
-      strings.push((name, s));
+      strings.push(s);
     }
     let patterns = Patterns::from_strings(&strings);
     info!(target: PATTERNS_STR, "DFA total size: {}.", patterns.dfa.states_count());
