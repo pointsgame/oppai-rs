@@ -9,7 +9,6 @@ extern crate clap;
 
 mod bot;
 mod config;
-mod dfa;
 mod heuristic;
 mod patterns;
 mod rotate;

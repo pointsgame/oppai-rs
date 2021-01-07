@@ -22,6 +22,7 @@ oppai-common = { path = "oppai-common" }
 oppai-ladders = { path = "oppai-ladders" }
 oppai-uct = { path = "oppai-uct" }
 oppai-minimax = { path = "oppai-minimax" }
+oppai-patterns = { path = "oppai-patterns" }
 
 [features]
 default = ["dsu"]
@@ -58,6 +59,7 @@ members = [
   "oppai-test-images",
   "oppai-uct",
   "oppai-minimax",
+  "oppai-patterns",
   "oppai-zero",
   "oppai-zero-tf",
   "oppai-iced"

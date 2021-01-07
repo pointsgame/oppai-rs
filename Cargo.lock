@@ -1971,6 +1971,7 @@ dependencies = [
  "oppai-field",
  "oppai-ladders",
  "oppai-minimax",
+ "oppai-patterns",
  "oppai-uct",
  "rand",
  "rand_xorshift",
@@ -2001,6 +2002,7 @@ dependencies = [
 name = "oppai-iced"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "iced",
  "oppai-field",
  "rand",
@@ -2031,6 +2033,13 @@ dependencies = [
  "oppai-test-images",
  "rand",
  "rand_xorshift",
+]
+
+[[package]]
+name = "oppai-patterns"
+version = "0.1.0"
+dependencies = [
+ "oppai-field",
 ]
 
 [[package]]
