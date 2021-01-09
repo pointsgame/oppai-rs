@@ -10,17 +10,11 @@ extern crate clap;
 mod bot;
 mod config;
 mod heuristic;
-mod patterns;
-mod rotate;
-mod spiral;
-
-#[cfg(test)]
-mod patterns_test;
 
 use crate::bot::Bot;
 use crate::config::cli_parse;
-use crate::patterns::Patterns;
 use oppai_field::player::Player;
+use oppai_patterns::patterns::Patterns;
 use std::{
   default::Default,
   fs::File,

@@ -1963,7 +1963,6 @@ dependencies = [
  "oppai-uct",
  "rand",
  "rand_xorshift",
- "rayon",
  "time",
 ]
 
@@ -2026,7 +2025,11 @@ dependencies = [
 name = "oppai-patterns"
 version = "0.1.0"
 dependencies = [
+ "log",
  "oppai-field",
+ "rand",
+ "rand_xorshift",
+ "rayon",
 ]
 
 [[package]]
