@@ -16,52 +16,22 @@ fn construct_patterns(strings: &[&str]) -> Patterns {
 
 #[test]
 #[should_panic]
-fn pattern_moves_discrepancy() {
-  construct_patterns(&["
-    4 4 1.0
-    ....
-    .XO.
-    .OX.
-    .+..
-    2 3 1.0
-    "]);
-}
-
-#[test]
-#[should_panic]
 fn pattern_without_moves_on_image() {
   construct_patterns(&["
-    4 4 1.0
     ....
     .XO.
     .OX.
     ....
-    2 3 1.0
-    "]);
-}
-
-#[test]
-#[should_panic]
-fn pattern_with_less_moves_than_on_image() {
-  construct_patterns(&["
-    4 4 1.0
-    ....
-    .XO.
-    .OX.
-    .++.
-    2 3 1.0
     "]);
 }
 
 #[test]
 fn pattern_empty_doesnt_match() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #XO.
     #O..
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -78,12 +48,10 @@ fn pattern_empty_doesnt_match() {
 #[test]
 fn pattern_borders_matches() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #XO.
     #OX.
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -94,18 +62,16 @@ fn pattern_borders_matches() {
     ...
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(1, 3)]);
 }
 
 #[test]
 fn pattern_borders_doesnt_match() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #XO.
     #OX.
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -122,12 +88,10 @@ fn pattern_borders_doesnt_match() {
 #[test]
 fn pattern_any_matches() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #XO.
     ****
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -138,18 +102,16 @@ fn pattern_any_matches() {
     ...
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(1, 3)]);
 }
 
 #[test]
 fn pattern_any_except_border_matches() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #XO.
     #???
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -160,18 +122,16 @@ fn pattern_any_except_border_matches() {
     ...
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(1, 3)]);
 }
 
 #[test]
 fn pattern_any_except_border_doesnt_match() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #XO.
     ????
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -188,12 +148,10 @@ fn pattern_any_except_border_doesnt_match() {
 #[test]
 fn pattern_red_black_or_none_matches() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #Xoo
     #Oxx
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -204,18 +162,16 @@ fn pattern_red_black_or_none_matches() {
     ...
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(1, 3)]);
 }
 
 #[test]
 fn pattern_red_black_or_none_doesnt_match() {
   let p = construct_patterns(&["
-    4 4 1.0
     #...
     #ooo
     #xxx
     #.+.
-    2 3 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -232,13 +188,11 @@ fn pattern_red_black_or_none_doesnt_match() {
 #[test]
 fn pattern_rotation_0() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -250,19 +204,17 @@ fn pattern_rotation_0() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(0, 1), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(0, 1)]);
 }
 
 #[test]
 fn pattern_rotation_1() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -274,19 +226,17 @@ fn pattern_rotation_1() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 4), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(1, 4)]);
 }
 
 #[test]
 fn pattern_rotation_2() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -298,19 +248,17 @@ fn pattern_rotation_2() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(4, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(4, 3)]);
 }
 
 #[test]
 fn pattern_rotation_3() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -322,19 +270,17 @@ fn pattern_rotation_3() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(3, 0), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(3, 0)]);
 }
 
 #[test]
 fn pattern_rotation_4() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -346,19 +292,17 @@ fn pattern_rotation_4() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(4, 1), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(4, 1)]);
 }
 
 #[test]
 fn pattern_rotation_5() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -370,19 +314,17 @@ fn pattern_rotation_5() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(1, 0), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(1, 0)]);
 }
 
 #[test]
 fn pattern_rotation_6() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -394,19 +336,17 @@ fn pattern_rotation_6() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(0, 3), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(0, 3)]);
 }
 
 #[test]
 fn pattern_rotation_7() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -418,19 +358,17 @@ fn pattern_rotation_7() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Red, false), vec![(field.to_pos(3, 4), 1f64)]);
+  assert_eq!(p.find(&field, Player::Red, false), vec![field.to_pos(3, 4)]);
 }
 
 #[test]
 fn pattern_inversion_doesnt_match() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -448,13 +386,11 @@ fn pattern_inversion_doesnt_match() {
 #[test]
 fn pattern_inversion_matches() {
   let p = construct_patterns(&["
-    5 5 1.0
     .....
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -466,20 +402,17 @@ fn pattern_inversion_matches() {
     .....
     ",
   );
-  assert_eq!(p.find(&field, Player::Black, false), vec![(field.to_pos(0, 1), 1f64)]);
+  assert_eq!(p.find(&field, Player::Black, false), vec![field.to_pos(0, 1)]);
 }
 
 #[test]
 fn pattern_multiple_moves() {
   let p = construct_patterns(&["
-    5 5 5.0
     .+...
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 3.0
-    1 0 1.0
     "]);
   let field = construct_field(
     &mut XorShiftRng::from_seed(SEED),
@@ -491,35 +424,27 @@ fn pattern_multiple_moves() {
     .....
     ",
   );
-  assert_eq!(
-    p.find_sorted(&field, Player::Red, false),
-    vec![(field.to_pos(0, 1), 0.75f64), (field.to_pos(1, 0), 0.25f64)]
-  );
-  assert_eq!(p.find_foreground(&field, Player::Red, false), Some(field.to_pos(0, 1)));
+  let mut moves = p.find(&field, Player::Red, false);
+  moves.sort();
+  assert_eq!(moves, vec![field.to_pos(1, 0), field.to_pos(0, 1)]);
 }
 
 #[test]
 fn multiple_patterns() {
   let p = construct_patterns(&[
     "
-    5 5 1.0
     .+...
     +XO..
     .OX..
     .O.X.
     .....
-    0 1 3.0
-    1 0 1.0
     ",
     "
-    5 5 4.0
     ???..
     ?xo..
     .ox..
     .O.X+
     ...+.
-    4 3 1.0
-    3 4 3.0
     ",
   ]);
   let field = construct_field(
@@ -532,14 +457,15 @@ fn multiple_patterns() {
     .....
     ",
   );
+  let mut moves = p.find(&field, Player::Red, false);
+  moves.sort();
   assert_eq!(
-    p.find_sorted(&field, Player::Red, false),
+    moves,
     vec![
-      (field.to_pos(3, 4), 0.6f64),
-      (field.to_pos(4, 3), 0.2f64),
-      (field.to_pos(0, 1), 0.15f64),
-      (field.to_pos(1, 0), 0.05f64)
+      field.to_pos(1, 0),
+      field.to_pos(0, 1),
+      field.to_pos(4, 3),
+      field.to_pos(3, 4),
     ]
   );
-  assert_eq!(p.find_foreground(&field, Player::Red, false), Some(field.to_pos(3, 4)));
 }

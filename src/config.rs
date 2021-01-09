@@ -111,6 +111,7 @@ pub struct Config {
 pub struct BotConfig {
   pub time_gap: u32,
   pub solver: Solver,
+  pub patterns: Vec<String>,
 }
 
 pub fn cli_parse() -> Config {
@@ -170,6 +171,14 @@ pub fn cli_parse() -> Config {
         )
         .takes_value(true)
         .default_value(&num_cpus_string),
+    )
+    .arg(
+      Arg::with_name("patterns-file")
+        .short("p")
+        .long("patterns-file")
+        .help("Patterns file to use")
+        .takes_value(true)
+        .multiple(true),
     )
     .arg(
       Arg::with_name("hash-table-size")
@@ -314,6 +323,7 @@ pub fn cli_parse() -> Config {
   let bot_config = BotConfig {
     time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
+    patterns: values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit()),
   };
   Config {
     uct: uct_config,

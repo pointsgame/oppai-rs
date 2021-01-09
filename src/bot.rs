@@ -134,7 +134,7 @@ impl Bot {
     if let Some(m) = self.initial_move() {
       return Some(m);
     }
-    if let Some(pos) = self.patterns.find_rand(&self.field, player, false, &mut self.rng) {
+    if let &[pos, ..] = self.patterns.find(&self.field, player, false).as_slice() {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
     match self.config.bot.solver {
@@ -179,7 +179,7 @@ impl Bot {
     if let Some(m) = self.initial_move() {
       return Some(m);
     }
-    if let Some(pos) = self.patterns.find_rand(&self.field, player, false, &mut self.rng) {
+    if let &[pos, ..] = self.patterns.find(&self.field, player, false).as_slice() {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
     match self.config.bot.solver {
