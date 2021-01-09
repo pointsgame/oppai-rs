@@ -1,9 +1,9 @@
-use rand_xorshift::XorShiftRng;
-use rand::SeedableRng;
+use crate::field_features::field_features;
+use ndarray::prelude::{array, s};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use ndarray::prelude::{array, s};
-use crate::field_features::field_features;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 
 const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
 
@@ -18,16 +18,8 @@ fn field_features_square() {
     ",
   );
 
-  let red = array![
-    [1., 0., 1.],
-    [0., 1., 0.],
-    [0., 1., 0.]
-  ];
-  let black = array![
-    [0., 0., 0.],
-    [1., 0., 0.],
-    [0., 0., 1.]
-  ];
+  let red = array![[1., 0., 1.], [0., 1., 0.], [0., 1., 0.]];
+  let black = array![[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]];
 
   let features = field_features(&field, Player::Red);
   assert_eq!(features.slice(s![.., .., 0]), red);
@@ -49,16 +41,8 @@ fn field_features_rectangle() {
     ",
   );
 
-  let red = array![
-    [1., 0.],
-    [0., 1.],
-    [1., 0.]
-  ];
-  let black = array![
-    [0., 1.],
-    [1., 0.],
-    [0., 1.]
-  ];
+  let red = array![[1., 0.], [0., 1.], [1., 0.]];
+  let black = array![[0., 1.], [1., 0.], [0., 1.]];
 
   let features = field_features(&field, Player::Red);
   assert_eq!(features.slice(s![.., .., 0]), red);
@@ -80,16 +64,8 @@ fn field_features_capture() {
     ",
   );
 
-  let red = array![
-    [0., 1., 0.],
-    [1., 1., 1.],
-    [0., 1., 0.]
-  ];
-  let black = array![
-    [0., 0., 0.],
-    [0., 0., 0.],
-    [0., 0., 0.]
-  ];
+  let red = array![[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]];
+  let black = array![[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]];
 
   let features = field_features(&field, Player::Red);
   assert_eq!(features.slice(s![.., .., 0]), red);

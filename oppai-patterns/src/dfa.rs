@@ -32,7 +32,7 @@ pub struct Dfa<P: Clone> {
 
 impl<P: Clone> Dfa<P> {
   pub fn empty() -> Dfa<P> {
-    let state = DfaState::new(0, 0, 0, 0, true, Vec::with_capacity(0));
+    let state = DfaState::new(0, 0, 0, 0, true, Vec::new());
     Dfa { states: vec![state] }
   }
 

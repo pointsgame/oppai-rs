@@ -15,5 +15,8 @@ pub fn field_features(field: &Field, player: Player) -> Array3<f64> {
   let mut features = Vec::with_capacity((field.width() * field.height() * 2) as usize);
   push_features(field, player, &mut features);
   push_features(field, player.next(), &mut features);
-  Array::from(features).into_shape((2, field.height() as usize, field.width() as usize)).unwrap().permuted_axes((1, 2, 0))
+  Array::from(features)
+    .into_shape((2, field.height() as usize, field.width() as usize))
+    .unwrap()
+    .permuted_axes((1, 2, 0))
 }
