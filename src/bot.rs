@@ -6,6 +6,7 @@ use oppai_field::zobrist::Zobrist;
 use oppai_minimax::minimax::Minimax;
 use oppai_patterns::patterns::Patterns;
 use oppai_uct::uct::UctRoot;
+use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::{cmp, sync::Arc, time::Duration};
@@ -134,7 +135,7 @@ impl Bot {
     if let Some(m) = self.initial_move() {
       return Some(m);
     }
-    if let &[pos, ..] = self.patterns.find(&self.field, player, false).as_slice() {
+    if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
     match self.config.bot.solver {
@@ -179,7 +180,7 @@ impl Bot {
     if let Some(m) = self.initial_move() {
       return Some(m);
     }
-    if let &[pos, ..] = self.patterns.find(&self.field, player, false).as_slice() {
+    if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
     match self.config.bot.solver {
