@@ -15,12 +15,12 @@ env_logger = "0.8"
 num_cpus = "1.13"
 crossbeam = "0.8"
 clap = "2.33"
-oppai-field = { path = "oppai-field" }
-oppai-common = { path = "oppai-common" }
-oppai-ladders = { path = "oppai-ladders" }
-oppai-uct = { path = "oppai-uct" }
-oppai-minimax = { path = "oppai-minimax" }
-oppai-patterns = { path = "oppai-patterns" }
+oppai-field = { path = "field" }
+oppai-common = { path = "common" }
+oppai-ladders = { path = "ladders" }
+oppai-uct = { path = "uct" }
+oppai-minimax = { path = "minimax" }
+oppai-patterns = { path = "patterns" }
 
 [features]
 default = ["dsu"]
@@ -51,14 +51,14 @@ codegen-units = 1
 
 [workspace]
 members = [
-  "oppai-field",
-  "oppai-common",
-  "oppai-ladders",
-  "oppai-test-images",
-  "oppai-uct",
-  "oppai-minimax",
-  "oppai-patterns",
-  "oppai-zero",
-  "oppai-zero-tf",
-  "oppai-iced"
+  "field",
+  "common",
+  "ladders",
+  "test-images",
+  "uct",
+  "minimax",
+  "patterns",
+  "zero",
+  "zero-tf",
+  "iced"
 ]

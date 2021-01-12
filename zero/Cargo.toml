@@ -10,7 +10,7 @@ edition = "2018"
 rand = "0.7"
 ndarray = "0.13"
 decorum = "0.3"
-oppai-field = { path = "../oppai-field" }
+oppai-field = { path = "../field" }
 
 [dev-dependencies]
 rand_xorshift = "0.2"

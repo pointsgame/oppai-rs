@@ -7,7 +7,7 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
-oppai-field = { path = "../oppai-field" }
+oppai-field = { path = "../field" }
 
 [dev-dependencies]
 rand = "0.7"

@@ -1,5 +1,5 @@
 [package]
-name = "oppai-ladders"
+name = "oppai-zero-tf"
 version = "0.1.0"
 authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
 license = "AGPL-3.0+"
@@ -7,10 +7,8 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
-log = "0.4"
-oppai-field = { path = "../oppai-field" }
-oppai-common = { path = "../oppai-common" }
-
-[dev-dependencies]
-rand = "0.7"
-rand_xorshift = "0.2"
+ndarray = "0.13"
+pyo3 = "0.12"
+numpy = "0.12"
+indoc = "1.0"
+oppai-zero = { path = "../zero" }
