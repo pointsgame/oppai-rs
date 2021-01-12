@@ -10,8 +10,6 @@ use std::{
   io::{BufRead, BufReader},
 };
 
-const PATTERNS_STR: &str = "patterns";
-
 #[derive(Clone, Debug)]
 struct Move {
   x: i32,
@@ -180,7 +178,7 @@ impl Patterns {
       match Patterns::from_str(pattern_str) {
         Ok(patterns) => patterns,
         Err(e) => {
-          error!(target: PATTERNS_STR, "Failed to parse pattern: {}\n{}", e, pattern_str);
+          error!("Failed to parse pattern: {}\n{}", e, pattern_str);
           Patterns::empty()
         }
       }
@@ -217,7 +215,7 @@ impl Patterns {
     }
 
     let patterns = Patterns::from_strings(&strings);
-    info!(target: PATTERNS_STR, "DFA total size: {}.", patterns.dfa.states_count());
+    info!("DFA total size: {}.", patterns.dfa.states_count());
     Ok(patterns)
   }
 
@@ -252,7 +250,6 @@ impl Patterns {
         }
         if first_match && !matched.is_empty() {
           info!(
-            target: PATTERNS_STR,
             "Found first matched moves: {:?}.",
             matched
               .iter()
@@ -264,7 +261,6 @@ impl Patterns {
       }
     }
     info!(
-      target: PATTERNS_STR,
       "Found moves: {:?}.",
       matched
         .iter()

@@ -12,8 +12,6 @@ use std::{
   time::Duration,
 };
 
-const UCT_STR: &str = "uct";
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum UcbType {
   Winrate,
@@ -210,7 +208,7 @@ impl UctRoot {
   }
 
   fn init(&mut self, field: &Field, player: Player) {
-    debug!(target: UCT_STR, "Initialization.");
+    debug!("Initialization.");
     self.node = Some(Box::new(UctNode::new(0)));
     self.player = player;
     self.moves_count = field.moves_count();
@@ -248,7 +246,7 @@ impl UctRoot {
     if self.node.is_none() {
       self.init(field, player);
     } else {
-      debug!(target: UCT_STR, "Updation.");
+      debug!("Updation.");
       let points_seq = field.points_seq();
       let moves_count = field.moves_count();
       let last_moves_count = self.moves_count;
@@ -260,7 +258,6 @@ impl UctRoot {
           } else if let Some(node) = self.node.as_mut() {
             let mut added_moves = self.wave_pruning.update(field, last_moves_count, self.config.radius);
             debug!(
-              target: UCT_STR,
               "Added into consideration moves: {:?}.",
               added_moves
                 .iter()
@@ -282,7 +279,6 @@ impl UctRoot {
         }
         let next_pos = points_seq[self.moves_count];
         debug!(
-          target: UCT_STR,
           "Next move is ({}, {}), player {}.",
           field.to_x(next_pos),
           field.to_y(next_pos),
@@ -299,12 +295,7 @@ impl UctRoot {
         }
         if let Some(ref mut node) = next {
           let pos = node.get_pos();
-          debug!(
-            target: UCT_STR,
-            "Node found for move ({}, {}).",
-            field.to_x(pos),
-            field.to_y(pos)
-          );
+          debug!("Node found for move ({}, {}).", field.to_x(pos), field.to_y(pos));
           node.clear_sibling();
         } else {
           self.clear();
@@ -518,7 +509,6 @@ impl UctRoot {
                 }
                 self.komi.fetch_sub(1, Ordering::Relaxed);
                 info!(
-                  target: UCT_STR,
                   "Komi decreased after {} visits: {}. Winrate is {}.",
                   visits,
                   komi - 1,
@@ -527,7 +517,6 @@ impl UctRoot {
               } else {
                 self.komi.fetch_add(1, Ordering::Relaxed);
                 info!(
-                  target: UCT_STR,
                   "Komi increased after {} visits: {}. Winrate is {}.",
                   visits,
                   komi + 1,
@@ -557,9 +546,8 @@ impl UctRoot {
     R: Rng + SeedableRng<Seed = S> + Send,
     Standard: Distribution<S>,
   {
-    info!(target: UCT_STR, "Generating best move for player {}.", player);
+    info!("Generating best move for player {}.", player);
     debug!(
-      target: UCT_STR,
       "Moves history: {:?}.",
       field
         .points_seq()
@@ -567,10 +555,9 @@ impl UctRoot {
         .map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player()))
         .collect::<Vec<(u32, u32, Player)>>()
     );
-    debug!(target: UCT_STR, "Next random u64: {}.", rng.gen::<u64>());
+    debug!("Next random u64: {}.", rng.gen::<u64>());
     self.update(field, player, rng);
     info!(
-      target: UCT_STR,
       "Komi is {}, type is {:?}.",
       self.komi.load(Ordering::Relaxed),
       self.config.komi_type
@@ -595,11 +582,7 @@ impl UctRoot {
       }
     })
     .expect("UCT best_move_generic panic");
-    info!(
-      target: UCT_STR,
-      "Iterations count: {}.",
-      iterations.load(Ordering::Relaxed)
-    );
+    info!("Iterations count: {}.", iterations.load(Ordering::Relaxed));
     let mut best_uct = 0f64;
     let mut result = None;
     if let Some(ref root) = self.node {
@@ -608,7 +591,6 @@ impl UctRoot {
         let uct_value = self.ucb(root, next_node, UcbType::Winrate);
         let pos = next_node.get_pos();
         info!(
-          target: UCT_STR,
           "Uct for move ({}, {}) is {}, {} wins, {} draws, {} visits.",
           field.to_x(pos),
           field.to_y(pos),
@@ -626,7 +608,6 @@ impl UctRoot {
     }
     if let Some(pos) = result {
       info!(
-        target: UCT_STR,
         "Best move is ({}, {}), uct is {}.",
         field.to_x(pos.get()),
         field.to_y(pos.get()),

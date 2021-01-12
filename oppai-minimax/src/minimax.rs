@@ -11,8 +11,6 @@ use std::{
   time::Duration,
 };
 
-const MINIMAX_STR: &str = "minimax";
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MinimaxType {
   NegaScout,
@@ -230,8 +228,8 @@ impl Minimax {
     should_stop: &AtomicBool,
   ) -> i32 {
     info!(
-      target: MINIMAX_STR,
-      "Starting parallel alpha beta with depth {}, player {} and beta {}.", depth, player, beta
+      "Starting parallel alpha beta with depth {}, player {} and beta {}.",
+      depth, player, beta
     );
     if depth == 0 || should_stop.load(Ordering::Relaxed) {
       *best_move = None;
@@ -239,7 +237,6 @@ impl Minimax {
     }
     let moves = trajectories_pruning.moves();
     debug!(
-      target: MINIMAX_STR,
       "Moves in consideration: {:?}.",
       moves
         .iter()
@@ -328,7 +325,6 @@ impl Minimax {
               break;
             }
             debug!(
-              target: MINIMAX_STR,
               "Estimation for move ({}, {}) is {}, alpha is {}, beta is {}.",
               field.to_x(pos),
               field.to_y(pos),
@@ -378,18 +374,13 @@ impl Minimax {
       }
     }
     if result == 0 {
-      info!(target: MINIMAX_STR, "Best move is not found.");
+      info!("Best move is not found.");
       *best_move = None;
     } else {
-      info!(
-        target: MINIMAX_STR,
-        "Best move is ({}, {}).",
-        field.to_x(result),
-        field.to_y(result)
-      );
+      info!("Best move is ({}, {}).", field.to_x(result), field.to_y(result));
       *best_move = NonZeroPos::new(result);
     }
-    info!(target: MINIMAX_STR, "Estimation is {}.", best_alpha);
+    info!("Estimation is {}.", best_alpha);
     best_alpha
   }
 
@@ -479,10 +470,7 @@ impl Minimax {
   }
 
   pub fn minimax(&self, field: &mut Field, player: Player, depth: u32) -> Option<NonZeroPos> {
-    info!(
-      target: MINIMAX_STR,
-      "Starting minimax with depth {} and player {}.", depth, player
-    );
+    info!("Starting minimax with depth {} and player {}.", depth, player);
     if depth == 0 {
       return None;
     }
@@ -497,10 +485,7 @@ impl Minimax {
       &should_stop,
     );
     let mut best_move = None;
-    info!(
-      target: MINIMAX_STR,
-      "Calculating of our estimation. Player is {}", player
-    );
+    info!("Calculating of our estimation. Player is {}", player);
     let minimax_function = match self.config.minimax_type {
       MinimaxType::NegaScout => Minimax::nega_scout,
       MinimaxType::MTDF => Minimax::mtdf,
@@ -518,7 +503,6 @@ impl Minimax {
     let mut enemy_best_move = best_move;
     let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
     info!(
-      target: MINIMAX_STR,
       "Calculating of enemy estimation with upper bound {}. Player is {}",
       -estimation + 1,
       enemy
@@ -537,7 +521,6 @@ impl Minimax {
     ) < estimation
     {
       info!(
-        target: MINIMAX_STR,
         "Estimation is greater than enemy estimation. So the best move is {:?}, estimation is {}.",
         best_move.map(|pos| (field.to_x(pos.get()), field.to_y(pos.get()))),
         estimation
@@ -545,8 +528,8 @@ impl Minimax {
       best_move
     } else {
       info!(
-        target: MINIMAX_STR,
-        "Estimation is less than or equal enemy estimation. So all moves have the same estimation {}.", estimation
+        "Estimation is less than or equal enemy estimation. So all moves have the same estimation {}.",
+        estimation
       );
       None
     }
@@ -557,7 +540,7 @@ impl Minimax {
     crossbeam::scope(|scope| {
       scope.spawn(|_| {
         thread::sleep(time);
-        debug!(target: MINIMAX_STR, "Time-out!");
+        debug!("Time-out!");
         should_stop.store(true, Ordering::Relaxed);
       });
       let enemy = player.next();

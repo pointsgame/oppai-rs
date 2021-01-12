@@ -11,8 +11,6 @@ use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::{cmp, sync::Arc, time::Duration};
 
-const BOT_STR: &str = "bot";
-
 const MIN_COMPLEXITY: u32 = 0;
 
 const MAX_COMPLEXITY: u32 = 100;
@@ -37,8 +35,8 @@ pub struct Bot {
 impl Bot {
   pub fn new(width: u32, height: u32, seed: u64, patterns: Arc<Patterns>, config: Config) -> Bot {
     info!(
-      target: BOT_STR,
-      "Initialization with width {0}, height {1}, seed {2}.", width, height, seed
+      "Initialization with width {0}, height {1}, seed {2}.",
+      width, height, seed
     );
     let length = field::length(width, height);
     let seed_array = [
