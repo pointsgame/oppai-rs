@@ -174,7 +174,9 @@ impl Patterns {
 
   fn from_strings(strings: &[String]) -> Patterns {
     let len = strings.len();
-    if let [ref pattern_str] = *strings {
+    if strings.is_empty() {
+      Patterns::empty()
+    } else if let [ref pattern_str] = *strings {
       match Patterns::from_str(pattern_str) {
         Ok(patterns) => patterns,
         Err(e) => {

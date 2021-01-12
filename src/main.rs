@@ -304,14 +304,18 @@ fn main() {
   let config = cli_parse();
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
-  let patterns = Patterns::from_files(
-    config
-      .bot
-      .patterns
-      .iter()
-      .map(|path| File::open(path).expect("Failed to open patterns file.")),
-  )
-  .expect("Failed to read patterns file.");
+  let patterns = if config.bot.patterns.is_empty() {
+    Patterns::empty()
+  } else {
+    Patterns::from_files(
+      config
+        .bot
+        .patterns
+        .iter()
+        .map(|path| File::open(path).expect("Failed to open patterns file.")),
+    )
+    .expect("Failed to read patterns file.")
+  };
   let patterns_arc = Arc::new(patterns);
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();

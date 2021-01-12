@@ -323,7 +323,11 @@ pub fn cli_parse() -> Config {
   let bot_config = BotConfig {
     time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
-    patterns: values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit()),
+    patterns: if matches.is_present("patterns-file") {
+      values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit())
+    } else {
+      Vec::new()
+    },
   };
   Config {
     uct: uct_config,
