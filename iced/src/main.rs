@@ -1,6 +1,6 @@
 mod config;
 
-use crate::config::{cli_parse, Config};
+use crate::config::{cli_parse, Config, RGB};
 use iced::{
   canvas, executor, keyboard, mouse, Application, Canvas, Color, Command, Container, Element, Length, Point, Rectangle,
   Row, Settings, Text, Vector,
@@ -10,6 +10,12 @@ use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+
+impl From<RGB> for Color {
+  fn from(rgb: RGB) -> Self {
+    Self::from_rgb8(rgb.r, rgb.g, rgb.b)
+  }
+}
 
 pub fn main() -> iced::Result {
   let config = cli_parse();
@@ -22,6 +28,7 @@ pub fn main() -> iced::Result {
 }
 
 struct Game {
+  config: Config,
   player: Player,
   field: Field,
   captures: Vec<(Vec<Pos>, Player, usize)>,
@@ -50,6 +57,7 @@ impl Application for Game {
     let field = Field::new(flags.width, flags.height, std::sync::Arc::new(zobrist));
     (
       Game {
+        config: flags,
         player: Player::Red,
         field,
         captures: Vec::new(),
@@ -128,9 +136,9 @@ impl Application for Game {
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
     let score = Row::new()
-      .push(Text::new(self.field.captured_count(Player::Red).to_string()).color(Color::from_rgb8(0xFF, 0x00, 0x00)))
+      .push(Text::new(self.field.captured_count(Player::Red).to_string()).color(self.config.red_color))
       .push(Text::new(":"))
-      .push(Text::new(self.field.captured_count(Player::Black).to_string()).color(Color::BLACK));
+      .push(Text::new(self.field.captured_count(Player::Black).to_string()).color(self.config.black_color));
 
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
     let canvas_element = Element::<CanvasMessage>::from(canvas).map(Message::Canvas);
@@ -194,11 +202,12 @@ impl canvas::Program<CanvasMessage> for Game {
   }
 
   fn draw(&self, bounds: Rectangle, cursor: canvas::Cursor) -> Vec<canvas::Geometry> {
-    fn color(player: Player) -> Color {
-      match player {
-        Player::Red => Color::from_rgb8(0xFF, 0x00, 0x00),
-        Player::Black => Color::BLACK,
-      }
+    fn color(config: &Config, player: Player) -> Color {
+      (match player {
+        Player::Red => config.red_color,
+        Player::Black => config.black_color,
+      })
+      .into()
     }
 
     let field_width = self.field.width();
@@ -265,7 +274,7 @@ impl canvas::Program<CanvasMessage> for Game {
           }
         });
 
-        frame.fill(&points, color(player));
+        frame.fill(&points, color(&self.config, player));
       }
 
       for (chain, player, _) in &self.captures {
@@ -276,7 +285,7 @@ impl canvas::Program<CanvasMessage> for Game {
           }
         });
 
-        let mut color = color(*player);
+        let mut color = color(&self.config, *player);
         color.a = 0.5;
 
         frame.fill(&path, color);
@@ -285,7 +294,7 @@ impl canvas::Program<CanvasMessage> for Game {
       if let Some(&pos) = self.field.points_seq().last() {
         let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), point_radius * 1.5));
 
-        let color = color(self.field.cell(pos).get_player());
+        let color = color(&self.config, self.field.cell(pos).get_player());
 
         frame.stroke(
           &last_point,
@@ -318,7 +327,7 @@ impl canvas::Program<CanvasMessage> for Game {
     }) {
       let cursor_point = canvas::Path::new(|path| path.circle(point, point_radius));
 
-      let mut color = color(self.player);
+      let mut color = color(&self.config, self.player);
       color.a = 0.5;
 
       frame.fill(&cursor_point, color);
