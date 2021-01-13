@@ -2,8 +2,8 @@ mod config;
 
 use crate::config::{cli_parse, Config};
 use iced::{
-  canvas, executor, keyboard, mouse, Application, Canvas, Color, Command, Element, Length, Point, Rectangle, Settings,
-  Vector,
+  canvas, executor, keyboard, mouse, Application, Canvas, Color, Command, Container, Element, Length, Point, Rectangle,
+  Row, Settings, Text, Vector,
 };
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;
@@ -127,8 +127,17 @@ impl Application for Game {
   }
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
+    let score = Row::new()
+      .push(Text::new(self.field.captured_count(Player::Red).to_string()).color(Color::from_rgb8(0xFF, 0x00, 0x00)))
+      .push(Text::new(":"))
+      .push(Text::new(self.field.captured_count(Player::Black).to_string()).color(Color::BLACK));
+
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
-    Element::<CanvasMessage>::from(canvas).map(Message::Canvas)
+    let canvas_element = Element::<CanvasMessage>::from(canvas).map(Message::Canvas);
+
+    let content = Row::new().push(canvas_element).push(score);
+
+    Container::new(content).width(Length::Fill).height(Length::Fill).into()
   }
 }
 
