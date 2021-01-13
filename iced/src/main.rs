@@ -139,13 +139,14 @@ impl canvas::Program<CanvasMessage> for Game {
     bounds: Rectangle,
     cursor: canvas::Cursor,
   ) -> (canvas::event::Status, Option<CanvasMessage>) {
-    let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
-      position
-    } else {
-      return (canvas::event::Status::Ignored, None);
-    };
     match event {
       canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+        let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
+          position
+        } else {
+          return (canvas::event::Status::Ignored, None);
+        };
+
         let field_width = self.field.width();
         let field_height = self.field.height();
         let width = bounds
