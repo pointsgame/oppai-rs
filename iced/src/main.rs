@@ -137,7 +137,7 @@ impl Application for Game {
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
     let score = Row::new()
       .push(Text::new(self.field.captured_count(Player::Red).to_string()).color(self.config.red_color))
-      .push(Text::new(":"))
+      .push(Text::new(":").color(self.config.grid_color))
       .push(Text::new(self.field.captured_count(Player::Black).to_string()).color(self.config.black_color));
 
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
@@ -257,7 +257,7 @@ impl canvas::Program<CanvasMessage> for Game {
         &grid,
         canvas::Stroke {
           width: 1.0,
-          color: Color::BLACK,
+          color: self.config.grid_color.into(),
           ..canvas::Stroke::default()
         },
       );

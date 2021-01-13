@@ -39,6 +39,7 @@ pub struct Config {
   pub height: u32,
   pub red_color: RGB,
   pub black_color: RGB,
+  pub grid_color: RGB,
 }
 
 impl Default for Config {
@@ -48,6 +49,7 @@ impl Default for Config {
       height: 32,
       red_color: RED,
       black_color: BLACK,
+      grid_color: BLACK,
     }
   }
 }
@@ -74,14 +76,21 @@ pub fn cli_parse() -> Config {
     .arg(
       Arg::with_name("red-color")
         .long("red-color")
-        .help("Red color")
+        .help("The color of first player")
         .takes_value(true)
         .default_value("#FF0000"),
     )
     .arg(
       Arg::with_name("black-color")
         .long("black-color")
-        .help("Black color")
+        .help("The color of second player")
+        .takes_value(true)
+        .default_value("#000000"),
+    )
+    .arg(
+      Arg::with_name("grid-color")
+        .long("grid-color")
+        .help("The color of grid")
         .takes_value(true)
         .default_value("#000000"),
     )
@@ -91,11 +100,13 @@ pub fn cli_parse() -> Config {
   let height = value_t!(matches.value_of("height"), u32).unwrap_or_else(|e| e.exit());
   let red_color = value_t!(matches.value_of("red-color"), RGB).unwrap_or_else(|e| e.exit());
   let black_color = value_t!(matches.value_of("black-color"), RGB).unwrap_or_else(|e| e.exit());
+  let grid_color = value_t!(matches.value_of("grid-color"), RGB).unwrap_or_else(|e| e.exit());
 
   Config {
     width,
     height,
     red_color,
     black_color,
+    grid_color,
   }
 }
