@@ -281,7 +281,7 @@ impl canvas::Program<CanvasMessage> for Game {
       frame.stroke(
         &grid,
         canvas::Stroke {
-          width: 1.0,
+          width: self.config.grid_thickness,
           color: self.config.grid_color.into(),
           ..canvas::Stroke::default()
         },

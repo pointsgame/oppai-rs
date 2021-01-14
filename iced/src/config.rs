@@ -47,6 +47,7 @@ pub struct Config {
   pub black_color: RGB,
   pub grid_color: RGB,
   pub background_color: RGB,
+  pub grid_thickness: f32,
 }
 
 impl Default for Config {
@@ -58,6 +59,7 @@ impl Default for Config {
       black_color: BLACK,
       grid_color: BLACK,
       background_color: WHITE,
+      grid_thickness: 1.0,
     }
   }
 }
@@ -109,6 +111,13 @@ pub fn cli_parse() -> Config {
         .takes_value(true)
         .default_value("#FFFFFF"),
     )
+    .arg(
+      Arg::with_name("grid-thickness")
+        .long("grid-thickness")
+        .help("The grid thickness")
+        .takes_value(true)
+        .default_value("1"),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -117,6 +126,7 @@ pub fn cli_parse() -> Config {
   let black_color = value_t!(matches.value_of("black-color"), RGB).unwrap_or_else(|e| e.exit());
   let grid_color = value_t!(matches.value_of("grid-color"), RGB).unwrap_or_else(|e| e.exit());
   let background_color = value_t!(matches.value_of("background-color"), RGB).unwrap_or_else(|e| e.exit());
+  let grid_thickness = value_t!(matches.value_of("grid-thickness"), f32).unwrap_or_else(|e| e.exit());
 
   Config {
     width,
@@ -125,5 +135,6 @@ pub fn cli_parse() -> Config {
     black_color,
     grid_color,
     background_color,
+    grid_thickness,
   }
 }
