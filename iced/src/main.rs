@@ -2,8 +2,8 @@ mod config;
 
 use crate::config::{cli_parse, Config, RGB};
 use iced::{
-  canvas, executor, keyboard, mouse, Application, Canvas, Color, Command, Container, Element, Length, Point, Rectangle,
-  Row, Settings, Text, Vector,
+  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Command, Container, Element,
+  Length, Point, Rectangle, Row, Settings, Text, Vector,
 };
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;
@@ -137,15 +137,40 @@ impl Application for Game {
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
     let score = Row::new()
       .push(Text::new(self.field.captured_count(Player::Red).to_string()).color(self.config.red_color))
-      .push(Text::new(":").color(self.config.grid_color))
+      .push(Text::new(":"))
       .push(Text::new(self.field.captured_count(Player::Black).to_string()).color(self.config.black_color));
+
+    let background_color = self.config.background_color;
+    let text_color = self.config.grid_color;
 
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
     let canvas_element = Element::<CanvasMessage>::from(canvas).map(Message::Canvas);
 
     let content = Row::new().push(canvas_element).push(score);
 
-    Container::new(content).width(Length::Fill).height(Length::Fill).into()
+    Container::new(content)
+      .width(Length::Fill)
+      .height(Length::Fill)
+      .style(ContainerStyle {
+        background: background_color.into(),
+        text: text_color.into(),
+      })
+      .into()
+  }
+}
+
+pub struct ContainerStyle {
+  background: Color,
+  text: Color,
+}
+
+impl container::StyleSheet for ContainerStyle {
+  fn style(&self) -> container::Style {
+    container::Style {
+      background: Some(Background::Color(self.background)),
+      text_color: Some(self.text),
+      ..container::Style::default()
+    }
   }
 }
 

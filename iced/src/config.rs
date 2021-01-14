@@ -33,6 +33,12 @@ pub const BLACK: RGB = RGB {
   b: 0x00,
 };
 
+pub const WHITE: RGB = RGB {
+  r: 0xFF,
+  g: 0xFF,
+  b: 0xFF,
+};
+
 #[derive(Debug, Clone)]
 pub struct Config {
   pub width: u32,
@@ -40,6 +46,7 @@ pub struct Config {
   pub red_color: RGB,
   pub black_color: RGB,
   pub grid_color: RGB,
+  pub background_color: RGB,
 }
 
 impl Default for Config {
@@ -50,6 +57,7 @@ impl Default for Config {
       red_color: RED,
       black_color: BLACK,
       grid_color: BLACK,
+      background_color: WHITE,
     }
   }
 }
@@ -94,6 +102,13 @@ pub fn cli_parse() -> Config {
         .takes_value(true)
         .default_value("#000000"),
     )
+    .arg(
+      Arg::with_name("background-color")
+        .long("background-color")
+        .help("The background color")
+        .takes_value(true)
+        .default_value("#FFFFFF"),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -101,6 +116,7 @@ pub fn cli_parse() -> Config {
   let red_color = value_t!(matches.value_of("red-color"), RGB).unwrap_or_else(|e| e.exit());
   let black_color = value_t!(matches.value_of("black-color"), RGB).unwrap_or_else(|e| e.exit());
   let grid_color = value_t!(matches.value_of("grid-color"), RGB).unwrap_or_else(|e| e.exit());
+  let background_color = value_t!(matches.value_of("background-color"), RGB).unwrap_or_else(|e| e.exit());
 
   Config {
     width,
@@ -108,5 +124,6 @@ pub fn cli_parse() -> Config {
     red_color,
     black_color,
     grid_color,
+    background_color,
   }
 }
