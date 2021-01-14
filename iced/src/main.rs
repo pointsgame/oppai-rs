@@ -262,7 +262,7 @@ impl canvas::Program<CanvasMessage> for Game {
       xy_to_point(x, y)
     };
 
-    let point_radius = width / field_width as f32 / 6.0;
+    let point_radius = width / field_width as f32 * self.config.point_radius;
 
     let field = self.field_cache.draw(bounds.size(), |frame| {
       let grid = canvas::Path::new(|path| {
