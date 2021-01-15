@@ -49,6 +49,7 @@ pub struct Config {
   pub background_color: RGB,
   pub grid_thickness: f32,
   pub point_radius: f32,
+  pub filling_alpha: f32,
 }
 
 impl Default for Config {
@@ -62,6 +63,7 @@ impl Default for Config {
       background_color: WHITE,
       grid_thickness: 1.0,
       point_radius: 0.166667,
+      filling_alpha: 0.5,
     }
   }
 }
@@ -127,6 +129,13 @@ pub fn cli_parse() -> Config {
         .takes_value(true)
         .default_value("0.166667"),
     )
+    .arg(
+      Arg::with_name("filling-alpha")
+        .long("filling-alpha")
+        .help("The degree of filling transparency")
+        .takes_value(true)
+        .default_value("0.5"),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -137,6 +146,7 @@ pub fn cli_parse() -> Config {
   let background_color = value_t!(matches.value_of("background-color"), RGB).unwrap_or_else(|e| e.exit());
   let grid_thickness = value_t!(matches.value_of("grid-thickness"), f32).unwrap_or_else(|e| e.exit());
   let point_radius = value_t!(matches.value_of("point-radius"), f32).unwrap_or_else(|e| e.exit());
+  let filling_alpha = value_t!(matches.value_of("filling-alpha"), f32).unwrap_or_else(|e| e.exit());
 
   Config {
     width,
@@ -147,5 +157,6 @@ pub fn cli_parse() -> Config {
     background_color,
     grid_thickness,
     point_radius,
+    filling_alpha,
   }
 }

@@ -311,7 +311,7 @@ impl canvas::Program<CanvasMessage> for Game {
         });
 
         let mut color = color(&self.config, *player);
-        color.a = 0.5;
+        color.a = self.config.filling_alpha;
 
         frame.fill(&path, color);
       }
