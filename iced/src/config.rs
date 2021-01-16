@@ -50,6 +50,8 @@ pub struct Config {
   pub grid_thickness: f32,
   pub point_radius: f32,
   pub filling_alpha: f32,
+  pub extended_filling: bool,
+  pub maximum_area_filling: bool,
 }
 
 impl Default for Config {
@@ -64,6 +66,8 @@ impl Default for Config {
       grid_thickness: 1.0,
       point_radius: 0.166667,
       filling_alpha: 0.5,
+      extended_filling: true,
+      maximum_area_filling: true,
     }
   }
 }
@@ -136,6 +140,17 @@ pub fn cli_parse() -> Config {
         .takes_value(true)
         .default_value("0.5"),
     )
+    .arg(
+      Arg::with_name("no-extended-filling")
+        .long("no-extended-filling")
+        .help("Disable extended area filling, changes appearance only"),
+    )
+    .arg(
+      Arg::with_name("no-maximum-area-filling")
+        .long("no-maximum-area-filling")
+        .help("Disable filling captures by maximum area, changes appearance only")
+        .requires("no-extended-filling"),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -147,6 +162,8 @@ pub fn cli_parse() -> Config {
   let grid_thickness = value_t!(matches.value_of("grid-thickness"), f32).unwrap_or_else(|e| e.exit());
   let point_radius = value_t!(matches.value_of("point-radius"), f32).unwrap_or_else(|e| e.exit());
   let filling_alpha = value_t!(matches.value_of("filling-alpha"), f32).unwrap_or_else(|e| e.exit());
+  let extended_filling = !matches.is_present("no-extended-filling");
+  let maximum_area_filling = !matches.is_present("no-maximum-area-filling");
 
   Config {
     width,
@@ -158,5 +175,7 @@ pub fn cli_parse() -> Config {
     grid_thickness,
     point_radius,
     filling_alpha,
+    extended_filling,
+    maximum_area_filling,
   }
 }
