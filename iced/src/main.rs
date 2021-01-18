@@ -32,6 +32,7 @@ struct Game {
   player: Player,
   field: Field,
   captures: Vec<(Vec<Pos>, Player, usize)>,
+  captured: Vec<usize>,
   field_cache: canvas::Cache,
 }
 
@@ -55,12 +56,14 @@ impl Application for Game {
     let mut rng = XorShiftRng::from_entropy();
     let zobrist = Zobrist::new(field::length(flags.width, flags.height) * 2, &mut rng);
     let field = Field::new(flags.width, flags.height, std::sync::Arc::new(zobrist));
+    let length = field.length();
     (
       Game {
         config: flags,
         player: Player::Red,
         field,
         captures: Vec::new(),
+        captured: vec![0; length],
         field_cache: Default::default(),
       },
       Command::none(),
@@ -79,6 +82,11 @@ impl Application for Game {
           if let Some(&pos) = last_chain.first() {
             let player = self.field.cell(pos).get_player();
             self.captures.push((last_chain, player, self.field.moves_count()));
+            for (pos, _) in self.field.last_changed_cells() {
+              if self.captured[pos] == 0 && self.field.cell(pos).is_captured() {
+                self.captured[pos] = self.field.moves_count();
+              }
+            }
           }
 
           if self.config.maximum_area_filling {
@@ -117,6 +125,13 @@ impl Application for Game {
       }
       Message::Canvas(CanvasMessage::Undo) => {
         if let Some(player) = self.field.last_player() {
+          let moves_count = self.field.moves_count();
+          for (pos, _) in self.field.last_changed_cells() {
+            if self.captured[pos] == moves_count {
+              self.captured[pos] = 0;
+            }
+          }
+
           self.player = player;
           self.field.undo();
 
@@ -308,6 +323,104 @@ impl canvas::Program<CanvasMessage> for Game {
         frame.fill(&points, color(&self.config, player));
       }
 
+      // fill extended area to display connecting lines
+
+      if self.config.extended_filling {
+        for &pos in self.field.points_seq() {
+          let player = self.field.cell(pos).get_player();
+          let mut color = color(&self.config, player);
+          color.a = self.config.filling_alpha;
+          let p = pos_to_point(pos);
+          let captured = self.captured[pos];
+          let is_owner = |pos: Pos| -> bool {
+            self.field.cell(pos).is_players_point(player)
+              || self.captured[pos] > 0 && (captured == 0 || self.captured[pos] < captured)
+          };
+
+          // draw vertical lines
+
+          if self.field.cell(self.field.s(pos)).is_players_point(player) {
+            if !is_owner(self.field.w(pos)) && !is_owner(self.field.sw(pos)) {
+              frame.fill_rectangle(p, Size::new(-point_radius, step_y), color);
+            }
+
+            if !is_owner(self.field.e(pos)) && !is_owner(self.field.se(pos)) {
+              frame.fill_rectangle(p, Size::new(point_radius, step_y), color);
+            }
+          }
+
+          // draw horizontal lines
+
+          if self.field.cell(self.field.e(pos)).is_players_point(player) {
+            if !is_owner(self.field.n(pos)) && !is_owner(self.field.ne(pos)) {
+              frame.fill_rectangle(p, Size::new(step_x, -point_radius), color);
+            }
+
+            if !is_owner(self.field.s(pos)) && !is_owner(self.field.se(pos)) {
+              frame.fill_rectangle(p, Size::new(step_x, point_radius), color);
+            }
+          }
+
+          // draw \ diagonal lines
+
+          let diag_width = point_radius / 2f32.sqrt();
+
+          if self.field.cell(self.field.se(pos)).is_players_point(player) {
+            let p2 = pos_to_point(self.field.se(pos));
+
+            if is_owner(self.field.e(pos)) && !is_owner(self.field.s(pos)) {
+              let path = canvas::Path::new(|path| {
+                let vec = Vector::new(-diag_width, diag_width);
+                path.move_to(p);
+                path.line_to(p + vec);
+                path.line_to(p2 + vec);
+                path.line_to(p2);
+              });
+              frame.fill(&path, color);
+            }
+
+            if is_owner(self.field.s(pos)) && !is_owner(self.field.e(pos)) {
+              let path = canvas::Path::new(|path| {
+                let vec = Vector::new(diag_width, -diag_width);
+                path.move_to(p);
+                path.line_to(p + vec);
+                path.line_to(p2 + vec);
+                path.line_to(p2);
+              });
+              frame.fill(&path, color);
+            }
+          }
+
+          // draw / diagonal lines
+
+          if self.field.cell(self.field.ne(pos)).is_players_point(player) {
+            let p2 = pos_to_point(self.field.ne(pos));
+
+            if is_owner(self.field.e(pos)) && !is_owner(self.field.n(pos)) {
+              let path = canvas::Path::new(|path| {
+                let vec = Vector::new(-diag_width, -diag_width);
+                path.move_to(p);
+                path.line_to(p + vec);
+                path.line_to(p2 + vec);
+                path.line_to(p2);
+              });
+              frame.fill(&path, color);
+            }
+
+            if is_owner(self.field.n(pos)) && !is_owner(self.field.e(pos)) {
+              let path = canvas::Path::new(|path| {
+                let vec = Vector::new(diag_width, diag_width);
+                path.move_to(p);
+                path.line_to(p + vec);
+                path.line_to(p2 + vec);
+                path.line_to(p2);
+              });
+              frame.fill(&path, color);
+            }
+          }
+        }
+      }
+
       // fill captures
 
       for (chain, player, _) in &self.captures {
@@ -322,115 +435,6 @@ impl canvas::Program<CanvasMessage> for Game {
         color.a = self.config.filling_alpha;
 
         frame.fill(&path, color);
-      }
-
-      // fill extended area to display connecting lines
-
-      if self.config.extended_filling {
-        for &pos in self.field.points_seq() {
-          let player = self.field.cell(pos).get_player();
-          let mut color = color(&self.config, player);
-          color.a = self.config.filling_alpha;
-          let p = pos_to_point(pos);
-
-          // draw vertical lines
-
-          if self.field.cell(self.field.s(pos)).is_owner(player) {
-            if !self.field.cell(self.field.w(pos)).is_owner(player)
-              && !self.field.cell(self.field.sw(pos)).is_owner(player)
-            {
-              frame.fill_rectangle(p, Size::new(-point_radius, step_y), color);
-            }
-
-            if !self.field.cell(self.field.e(pos)).is_owner(player)
-              && !self.field.cell(self.field.se(pos)).is_owner(player)
-            {
-              frame.fill_rectangle(p, Size::new(point_radius, step_y), color);
-            }
-          }
-
-          // draw horizontal lines
-
-          if self.field.cell(self.field.e(pos)).is_owner(player) {
-            if !self.field.cell(self.field.n(pos)).is_owner(player)
-              && !self.field.cell(self.field.ne(pos)).is_owner(player)
-            {
-              frame.fill_rectangle(p, Size::new(step_x, -point_radius), color);
-            }
-
-            if !self.field.cell(self.field.s(pos)).is_owner(player)
-              && !self.field.cell(self.field.se(pos)).is_owner(player)
-            {
-              frame.fill_rectangle(p, Size::new(step_x, point_radius), color);
-            }
-          }
-
-          // draw \ diagonal lines
-
-          let diag_width = point_radius / 2f32.sqrt();
-
-          if self.field.cell(self.field.se(pos)).is_owner(player) {
-            let p2 = pos_to_point(self.field.se(pos));
-
-            if self.field.cell(self.field.e(pos)).is_owner(player)
-              && !self.field.cell(self.field.s(pos)).is_owner(player)
-            {
-              let path = canvas::Path::new(|path| {
-                let vec = Vector::new(-diag_width, diag_width);
-                path.move_to(p);
-                path.line_to(p + vec);
-                path.line_to(p2 + vec);
-                path.line_to(p2);
-              });
-              frame.fill(&path, color);
-            }
-
-            if self.field.cell(self.field.s(pos)).is_owner(player)
-              && !self.field.cell(self.field.e(pos)).is_owner(player)
-            {
-              let path = canvas::Path::new(|path| {
-                let vec = Vector::new(diag_width, -diag_width);
-                path.move_to(p);
-                path.line_to(p + vec);
-                path.line_to(p2 + vec);
-                path.line_to(p2);
-              });
-              frame.fill(&path, color);
-            }
-          }
-
-          // draw / diagonal lines
-
-          if self.field.cell(self.field.ne(pos)).is_owner(player) {
-            let p2 = pos_to_point(self.field.ne(pos));
-
-            if self.field.cell(self.field.e(pos)).is_owner(player)
-              && !self.field.cell(self.field.n(pos)).is_owner(player)
-            {
-              let path = canvas::Path::new(|path| {
-                let vec = Vector::new(-diag_width, -diag_width);
-                path.move_to(p);
-                path.line_to(p + vec);
-                path.line_to(p2 + vec);
-                path.line_to(p2);
-              });
-              frame.fill(&path, color);
-            }
-
-            if self.field.cell(self.field.n(pos)).is_owner(player)
-              && !self.field.cell(self.field.e(pos)).is_owner(player)
-            {
-              let path = canvas::Path::new(|path| {
-                let vec = Vector::new(diag_width, diag_width);
-                path.move_to(p);
-                path.line_to(p + vec);
-                path.line_to(p2 + vec);
-                path.line_to(p2);
-              });
-              frame.fill(&path, color);
-            }
-          }
-        }
       }
 
       // mark last point

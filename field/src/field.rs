@@ -1031,6 +1031,15 @@ impl Field {
   pub fn zobrist(&self) -> &Zobrist {
     &self.zobrist
   }
+
+  pub fn last_changed_cells(&self) -> impl Iterator<Item = (Pos, Cell)> + '_ {
+    self
+      .changes
+      .last()
+      .into_iter()
+      .flat_map(|change| change.points_changes.iter())
+      .cloned()
+  }
 }
 
 impl fmt::Display for Field {
