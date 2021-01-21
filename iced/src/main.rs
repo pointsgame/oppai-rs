@@ -1,15 +1,18 @@
 mod config;
+mod extended_field;
 
 use crate::config::{cli_parse, Config, RGB};
+use crate::extended_field::ExtendedField;
 use iced::{
   canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Command, Container, Element,
   Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
 };
-use oppai_field::field::{self, Field, Pos};
+use oppai_field::field::Pos;
 use oppai_field::player::Player;
-use oppai_field::zobrist::Zobrist;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use rfd::FileDialog;
+use std::fs;
 
 impl From<RGB> for Color {
   fn from(rgb: RGB) -> Self {
@@ -27,12 +30,11 @@ pub fn main() -> iced::Result {
   })
 }
 
+#[derive(Debug)]
 struct Game {
   config: Config,
-  player: Player,
-  field: Field,
-  captures: Vec<(Vec<Pos>, Player, usize)>,
-  captured: Vec<usize>,
+  rng: XorShiftRng,
+  extended_field: ExtendedField,
   field_cache: canvas::Cache,
 }
 
@@ -40,6 +42,8 @@ struct Game {
 enum CanvasMessage {
   PutPoint(Pos),
   Undo,
+  New,
+  Open,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,16 +58,12 @@ impl Application for Game {
 
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = XorShiftRng::from_entropy();
-    let zobrist = Zobrist::new(field::length(flags.width, flags.height) * 2, &mut rng);
-    let field = Field::new(flags.width, flags.height, std::sync::Arc::new(zobrist));
-    let length = field.length();
+    let extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
     (
       Game {
         config: flags,
-        player: Player::Red,
-        field,
-        captures: Vec::new(),
-        captured: vec![0; length],
+        rng,
+        extended_field,
         field_cache: Default::default(),
       },
       Command::none(),
@@ -77,73 +77,29 @@ impl Application for Game {
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match message {
       Message::Canvas(CanvasMessage::PutPoint(pos)) => {
-        if self.field.put_point(pos, self.player) {
-          let last_chain = self.field.get_last_chain();
-          if let Some(&pos) = last_chain.first() {
-            let player = self.field.cell(pos).get_player();
-            self.captures.push((last_chain, player, self.field.moves_count()));
-            for (pos, _) in self.field.last_changed_cells() {
-              if self.captured[pos] == 0 && self.field.cell(pos).is_captured() {
-                self.captured[pos] = self.field.moves_count();
-              }
-            }
-          }
-
-          if self.config.maximum_area_filling {
-            let n = self.field.n(pos);
-            let s = self.field.s(pos);
-            let w = self.field.w(pos);
-            let e = self.field.e(pos);
-            let nw = self.field.nw(pos);
-            let ne = self.field.ne(pos);
-            let sw = self.field.sw(pos);
-            let se = self.field.se(pos);
-
-            let mut check = |pos1: Pos, pos2: Pos| {
-              if self.field.cell(pos1).get_players_point() == Some(self.player)
-                && self.field.cell(pos2).get_players_point() == Some(self.player)
-              {
-                self
-                  .captures
-                  .push((vec![pos, pos1, pos2], self.player, self.field.moves_count()));
-                true
-              } else {
-                false
-              }
-            };
-
-            let _ = !check(s, e) && (check(s, se) || check(e, se));
-            let _ = !check(e, n) && (check(e, ne) || check(n, ne));
-            let _ = !check(n, w) && (check(n, nw) || check(w, nw));
-            let _ = !check(w, s) && (check(w, sw) || check(s, sw));
-          }
-
-          self.player = self.player.next();
-
+        if self.extended_field.put_point(pos) {
           self.field_cache.clear();
         }
       }
       Message::Canvas(CanvasMessage::Undo) => {
-        if let Some(player) = self.field.last_player() {
-          let moves_count = self.field.moves_count();
-          for (pos, _) in self.field.last_changed_cells() {
-            if self.captured[pos] == moves_count {
-              self.captured[pos] = 0;
+        if self.extended_field.undo() {
+          self.field_cache.clear();
+        }
+      }
+      Message::Canvas(CanvasMessage::New) => {
+        self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
+        self.field_cache.clear();
+      }
+      Message::Canvas(CanvasMessage::Open) => {
+        if let Some(file) = FileDialog::new().add_filter("SGF", &["sgf"]).pick_file() {
+          if let Ok(text) = fs::read_to_string(file) {
+            if let Ok(game_tree) = sgf_parser::parse(&text) {
+              if let Some(extended_field) = ExtendedField::from_sgf(game_tree, &mut self.rng) {
+                self.extended_field = extended_field;
+                self.field_cache.clear();
+              }
             }
           }
-
-          self.player = player;
-          self.field.undo();
-
-          while self
-            .captures
-            .last()
-            .map_or(false, |&(_, _, c)| c > self.field.moves_count())
-          {
-            self.captures.pop();
-          }
-
-          self.field_cache.clear();
         }
       }
     }
@@ -153,9 +109,11 @@ impl Application for Game {
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
     let score = Row::new()
-      .push(Text::new(self.field.captured_count(Player::Red).to_string()).color(self.config.red_color))
+      .push(Text::new(self.extended_field.field.captured_count(Player::Red).to_string()).color(self.config.red_color))
       .push(Text::new(":"))
-      .push(Text::new(self.field.captured_count(Player::Black).to_string()).color(self.config.black_color));
+      .push(
+        Text::new(self.extended_field.field.captured_count(Player::Black).to_string()).color(self.config.black_color),
+      );
 
     let background_color = self.config.background_color;
     let text_color = self.config.grid_color;
@@ -206,8 +164,8 @@ impl canvas::Program<CanvasMessage> for Game {
           return (canvas::event::Status::Ignored, None);
         };
 
-        let field_width = self.field.width();
-        let field_height = self.field.height();
+        let field_width = self.extended_field.field.width();
+        let field_height = self.extended_field.field.height();
         let width = bounds
           .width
           .min(bounds.height / field_height as f32 * field_width as f32);
@@ -229,7 +187,7 @@ impl canvas::Program<CanvasMessage> for Game {
           let y = (point.y / step_y).round() as u32;
           (
             canvas::event::Status::Captured,
-            Some(CanvasMessage::PutPoint(self.field.to_pos(x, y))),
+            Some(CanvasMessage::PutPoint(self.extended_field.field.to_pos(x, y))),
           )
         } else {
           (canvas::event::Status::Captured, None)
@@ -239,6 +197,14 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::Backspace,
         ..
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::Undo)),
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::N,
+        modifiers: keyboard::Modifiers { control: true, .. },
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::New)),
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::O,
+        modifiers: keyboard::Modifiers { control: true, .. },
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
       _ => (canvas::event::Status::Ignored, None),
     }
   }
@@ -252,8 +218,8 @@ impl canvas::Program<CanvasMessage> for Game {
       .into()
     }
 
-    let field_width = self.field.width();
-    let field_height = self.field.height();
+    let field_width = self.extended_field.field.width();
+    let field_height = self.extended_field.field.height();
     let width = bounds
       .width
       .min(bounds.height / field_height as f32 * field_width as f32);
@@ -274,8 +240,8 @@ impl canvas::Program<CanvasMessage> for Game {
       Point::new(offset_x, offset_y) + shift
     };
     let pos_to_point = |pos: Pos| {
-      let x = self.field.to_x(pos);
-      let y = self.field.to_y(pos);
+      let x = self.extended_field.field.to_x(pos);
+      let y = self.extended_field.field.to_y(pos);
       xy_to_point(x, y)
     };
 
@@ -311,10 +277,11 @@ impl canvas::Program<CanvasMessage> for Game {
       for &player in &[Player::Red, Player::Black] {
         let points = canvas::Path::new(|path| {
           for &pos in self
+            .extended_field
             .field
             .points_seq()
             .iter()
-            .filter(|&&pos| self.field.cell(pos).is_players_point(player))
+            .filter(|&&pos| self.extended_field.field.cell(pos).is_players_point(player))
           {
             path.circle(pos_to_point(pos), point_radius)
           }
@@ -326,37 +293,48 @@ impl canvas::Program<CanvasMessage> for Game {
       // fill extended area to display connecting lines
 
       if self.config.extended_filling {
-        for &pos in self.field.points_seq() {
-          let player = self.field.cell(pos).get_player();
+        for &pos in self.extended_field.field.points_seq() {
+          let player = self.extended_field.field.cell(pos).get_player();
           let mut color = color(&self.config, player);
           color.a = self.config.filling_alpha;
           let p = pos_to_point(pos);
-          let captured = self.captured[pos];
+          let captured = self.extended_field.captured[pos];
           let is_owner = |pos: Pos| -> bool {
-            self.field.cell(pos).is_players_point(player)
-              || self.captured[pos] > 0 && (captured == 0 || self.captured[pos] < captured)
+            self.extended_field.field.cell(pos).is_players_point(player)
+              || self.extended_field.captured[pos] > 0
+                && (captured == 0 || self.extended_field.captured[pos] < captured)
           };
 
           // draw vertical lines
 
-          if self.field.cell(self.field.s(pos)).is_players_point(player) {
-            if !is_owner(self.field.w(pos)) && !is_owner(self.field.sw(pos)) {
+          if self
+            .extended_field
+            .field
+            .cell(self.extended_field.field.s(pos))
+            .is_players_point(player)
+          {
+            if !is_owner(self.extended_field.field.w(pos)) && !is_owner(self.extended_field.field.sw(pos)) {
               frame.fill_rectangle(p, Size::new(-point_radius, step_y), color);
             }
 
-            if !is_owner(self.field.e(pos)) && !is_owner(self.field.se(pos)) {
+            if !is_owner(self.extended_field.field.e(pos)) && !is_owner(self.extended_field.field.se(pos)) {
               frame.fill_rectangle(p, Size::new(point_radius, step_y), color);
             }
           }
 
           // draw horizontal lines
 
-          if self.field.cell(self.field.e(pos)).is_players_point(player) {
-            if !is_owner(self.field.n(pos)) && !is_owner(self.field.ne(pos)) {
+          if self
+            .extended_field
+            .field
+            .cell(self.extended_field.field.e(pos))
+            .is_players_point(player)
+          {
+            if !is_owner(self.extended_field.field.n(pos)) && !is_owner(self.extended_field.field.ne(pos)) {
               frame.fill_rectangle(p, Size::new(step_x, -point_radius), color);
             }
 
-            if !is_owner(self.field.s(pos)) && !is_owner(self.field.se(pos)) {
+            if !is_owner(self.extended_field.field.s(pos)) && !is_owner(self.extended_field.field.se(pos)) {
               frame.fill_rectangle(p, Size::new(step_x, point_radius), color);
             }
           }
@@ -365,10 +343,15 @@ impl canvas::Program<CanvasMessage> for Game {
 
           let diag_width = point_radius / 2f32.sqrt();
 
-          if self.field.cell(self.field.se(pos)).is_players_point(player) {
-            let p2 = pos_to_point(self.field.se(pos));
+          if self
+            .extended_field
+            .field
+            .cell(self.extended_field.field.se(pos))
+            .is_players_point(player)
+          {
+            let p2 = pos_to_point(self.extended_field.field.se(pos));
 
-            if is_owner(self.field.e(pos)) && !is_owner(self.field.s(pos)) {
+            if is_owner(self.extended_field.field.e(pos)) && !is_owner(self.extended_field.field.s(pos)) {
               let path = canvas::Path::new(|path| {
                 let vec = Vector::new(-diag_width, diag_width);
                 path.move_to(p);
@@ -379,7 +362,7 @@ impl canvas::Program<CanvasMessage> for Game {
               frame.fill(&path, color);
             }
 
-            if is_owner(self.field.s(pos)) && !is_owner(self.field.e(pos)) {
+            if is_owner(self.extended_field.field.s(pos)) && !is_owner(self.extended_field.field.e(pos)) {
               let path = canvas::Path::new(|path| {
                 let vec = Vector::new(diag_width, -diag_width);
                 path.move_to(p);
@@ -393,10 +376,15 @@ impl canvas::Program<CanvasMessage> for Game {
 
           // draw / diagonal lines
 
-          if self.field.cell(self.field.ne(pos)).is_players_point(player) {
-            let p2 = pos_to_point(self.field.ne(pos));
+          if self
+            .extended_field
+            .field
+            .cell(self.extended_field.field.ne(pos))
+            .is_players_point(player)
+          {
+            let p2 = pos_to_point(self.extended_field.field.ne(pos));
 
-            if is_owner(self.field.e(pos)) && !is_owner(self.field.n(pos)) {
+            if is_owner(self.extended_field.field.e(pos)) && !is_owner(self.extended_field.field.n(pos)) {
               let path = canvas::Path::new(|path| {
                 let vec = Vector::new(-diag_width, -diag_width);
                 path.move_to(p);
@@ -407,7 +395,7 @@ impl canvas::Program<CanvasMessage> for Game {
               frame.fill(&path, color);
             }
 
-            if is_owner(self.field.n(pos)) && !is_owner(self.field.e(pos)) {
+            if is_owner(self.extended_field.field.n(pos)) && !is_owner(self.extended_field.field.e(pos)) {
               let path = canvas::Path::new(|path| {
                 let vec = Vector::new(diag_width, diag_width);
                 path.move_to(p);
@@ -423,7 +411,11 @@ impl canvas::Program<CanvasMessage> for Game {
 
       // fill captures
 
-      for (chain, player, _) in &self.captures {
+      for (chain, player, _) in &self.extended_field.captures {
+        if !self.config.maximum_area_filling && chain.len() < 4 {
+          continue;
+        }
+
         let path = canvas::Path::new(|path| {
           path.move_to(pos_to_point(chain[0]));
           for &pos in chain.iter().skip(1) {
@@ -439,10 +431,10 @@ impl canvas::Program<CanvasMessage> for Game {
 
       // mark last point
 
-      if let Some(&pos) = self.field.points_seq().last() {
+      if let Some(&pos) = self.extended_field.field.points_seq().last() {
         let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), point_radius * 1.5));
 
-        let color = color(&self.config, self.field.cell(pos).get_player());
+        let color = color(&self.config, self.extended_field.field.cell(pos).get_player());
 
         frame.stroke(
           &last_point,
@@ -463,8 +455,8 @@ impl canvas::Program<CanvasMessage> for Game {
         let point = point - cursor_shift;
         let x = (point.x / step_x).round() as u32;
         let y = (point.y / step_y).round() as u32;
-        let pos = self.field.to_pos(x, y);
-        if self.field.is_putting_allowed(pos) {
+        let pos = self.extended_field.field.to_pos(x, y);
+        if self.extended_field.field.is_putting_allowed(pos) {
           Some(xy_to_point(x, y))
         } else {
           None
@@ -475,7 +467,7 @@ impl canvas::Program<CanvasMessage> for Game {
     }) {
       let cursor_point = canvas::Path::new(|path| path.circle(point, point_radius));
 
-      let mut color = color(&self.config, self.player);
+      let mut color = color(&self.config, self.extended_field.player);
       color.a = 0.5;
 
       frame.fill(&cursor_point, color);
