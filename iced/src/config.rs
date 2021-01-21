@@ -52,6 +52,7 @@ pub struct Config {
   pub filling_alpha: f32,
   pub extended_filling: bool,
   pub maximum_area_filling: bool,
+  pub last_point_mark: bool,
 }
 
 impl Default for Config {
@@ -68,6 +69,7 @@ impl Default for Config {
       filling_alpha: 0.5,
       extended_filling: true,
       maximum_area_filling: true,
+      last_point_mark: true,
     }
   }
 }
@@ -151,6 +153,11 @@ pub fn cli_parse() -> Config {
         .help("Disable filling captures by maximum area, changes appearance only")
         .requires("no-extended-filling"),
     )
+    .arg(
+      Arg::with_name("no-last-point-mark")
+        .long("no-last-point-mark")
+        .help("Don't mark last point"),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -164,6 +171,7 @@ pub fn cli_parse() -> Config {
   let filling_alpha = value_t!(matches.value_of("filling-alpha"), f32).unwrap_or_else(|e| e.exit());
   let extended_filling = !matches.is_present("no-extended-filling");
   let maximum_area_filling = !matches.is_present("no-maximum-area-filling");
+  let last_point_mark = !matches.is_present("no-last-point-mark");
 
   Config {
     width,
@@ -177,5 +185,6 @@ pub fn cli_parse() -> Config {
     filling_alpha,
     extended_filling,
     maximum_area_filling,
+    last_point_mark,
   }
 }
