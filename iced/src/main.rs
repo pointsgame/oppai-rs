@@ -58,7 +58,8 @@ impl Application for Game {
 
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = XorShiftRng::from_entropy();
-    let extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
+    let mut extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
+    extended_field.place_initial_position(flags.initial_position);
     (
       Game {
         config: flags,
@@ -88,6 +89,7 @@ impl Application for Game {
       }
       Message::Canvas(CanvasMessage::New) => {
         self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
+        self.extended_field.place_initial_position(self.config.initial_position);
         self.field_cache.clear();
       }
       Message::Canvas(CanvasMessage::Open) => {

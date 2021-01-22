@@ -1,9 +1,20 @@
-use oppai_field::field::{self, Field, Pos};
+use clap::arg_enum;
+use oppai_field::field::{self, to_pos, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use rand::Rng;
 use sgf_parser::{Action, Color, Game, GameNode, GameTree, SgfToken};
 use std::sync::Arc;
+
+arg_enum! {
+  #[derive(Clone, Copy, PartialEq, Debug)]
+  pub enum InitialPosition {
+    Empty,
+    Cross,
+    TwoCrosses,
+    TripleCross,
+  }
+}
 
 #[derive(Debug)]
 pub struct ExtendedField {
@@ -11,6 +22,47 @@ pub struct ExtendedField {
   pub field: Field,
   pub captures: Vec<(Vec<Pos>, Player, usize)>,
   pub captured: Vec<usize>,
+}
+
+fn cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 4] {
+  let w2 = width / 2;
+  let h2 = height / 2;
+  [
+    (to_pos(width, w2 - 1, h2 - 1), player),
+    (to_pos(width, w2 - 1, h2), player.next()),
+    (to_pos(width, w2, h2), player),
+    (to_pos(width, w2, h2 - 1), player.next()),
+  ]
+}
+
+fn two_crosses(width: u32, height: u32, player: Player) -> [(Pos, Player); 8] {
+  let w2 = width / 2;
+  let h2 = height / 2;
+  [
+    (to_pos(width, w2 - 2, h2 - 1), player),
+    (to_pos(width, w2 - 2, h2), player.next()),
+    (to_pos(width, w2 - 1, h2), player),
+    (to_pos(width, w2 - 1, h2 - 1), player.next()),
+    (to_pos(width, w2, h2), player),
+    (to_pos(width, w2, h2 - 1), player.next()),
+    (to_pos(width, w2 + 1, h2 - 1), player),
+    (to_pos(width, w2 + 1, h2), player.next()),
+  ]
+}
+
+fn triple_cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 8] {
+  let w2 = width / 2;
+  let h2 = height / 2;
+  [
+    (to_pos(width, w2 - 1, h2 - 1), player),
+    (to_pos(width, w2 - 1, h2), player.next()),
+    (to_pos(width, w2, h2), player),
+    (to_pos(width, w2, h2 - 1), player.next()),
+    (to_pos(width, w2 + 1, h2 - 1), player),
+    (to_pos(width, w2, h2 - 2), player.next()),
+    (to_pos(width, w2, h2 + 1), player),
+    (to_pos(width, w2 + 1, h2), player.next()),
+  ]
 }
 
 impl ExtendedField {
@@ -23,6 +75,23 @@ impl ExtendedField {
       field,
       captures: Vec::new(),
       captured: vec![0; length],
+    }
+  }
+
+  fn put_points(&mut self, points: &[(Pos, Player)]) {
+    for &(pos, player) in points {
+      self.put_players_point(pos, player);
+    }
+  }
+
+  pub fn place_initial_position(&mut self, initial_position: InitialPosition) {
+    match initial_position {
+      InitialPosition::Empty => {}
+      InitialPosition::Cross => self.put_points(&cross(self.field.width(), self.field.height(), self.player)),
+      InitialPosition::TwoCrosses => self.put_points(&two_crosses(self.field.width(), self.field.height(), self.player)),
+      InitialPosition::TripleCross => {
+        self.put_points(&triple_cross(self.field.width(), self.field.height(), self.player))
+      }
     }
   }
 

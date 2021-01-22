@@ -1,6 +1,7 @@
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_t, App, Arg};
 use std::num::ParseIntError;
 use std::str::FromStr;
+use crate::extended_field::InitialPosition;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RGB {
@@ -53,6 +54,7 @@ pub struct Config {
   pub extended_filling: bool,
   pub maximum_area_filling: bool,
   pub last_point_mark: bool,
+  pub initial_position: InitialPosition,
 }
 
 impl Default for Config {
@@ -70,6 +72,7 @@ impl Default for Config {
       extended_filling: true,
       maximum_area_filling: true,
       last_point_mark: true,
+      initial_position: InitialPosition::Cross,
     }
   }
 }
@@ -158,6 +161,15 @@ pub fn cli_parse() -> Config {
         .long("no-last-point-mark")
         .help("Don't mark last point"),
     )
+    .arg(
+      Arg::with_name("initial-position")
+        .long("initial-position")
+        .help("Initial position on the field")
+        .takes_value(true)
+        .possible_values(&InitialPosition::variants())
+        .case_insensitive(true)
+        .default_value("Cross"),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -172,6 +184,7 @@ pub fn cli_parse() -> Config {
   let extended_filling = !matches.is_present("no-extended-filling");
   let maximum_area_filling = !matches.is_present("no-maximum-area-filling");
   let last_point_mark = !matches.is_present("no-last-point-mark");
+  let initial_position = value_t!(matches.value_of("initial-position"), InitialPosition).unwrap_or_else(|e| e.exit());
 
   Config {
     width,
@@ -186,5 +199,6 @@ pub fn cli_parse() -> Config {
     extended_filling,
     maximum_area_filling,
     last_point_mark,
+    initial_position,
   }
 }
