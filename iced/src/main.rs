@@ -5,8 +5,8 @@ mod sgf;
 use crate::config::{cli_parse, Config, RGB};
 use crate::extended_field::ExtendedField;
 use iced::{
-  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Command, Container, Element,
-  Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
+  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Column, Command, Container,
+  Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
 };
 use oppai_field::field::Pos;
 use oppai_field::player::Player;
@@ -37,14 +37,17 @@ struct Game {
   rng: XorShiftRng,
   extended_field: ExtendedField,
   field_cache: canvas::Cache,
+  edit_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum CanvasMessage {
   PutPoint(Pos),
+  PutPlayersPoint(Pos, Player),
   Undo,
   New,
   Open,
+  ToggleEditMode,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -67,6 +70,7 @@ impl Application for Game {
         rng,
         extended_field,
         field_cache: Default::default(),
+        edit_mode: false,
       },
       Command::none(),
     )
@@ -80,6 +84,11 @@ impl Application for Game {
     match message {
       Message::Canvas(CanvasMessage::PutPoint(pos)) => {
         if self.extended_field.put_point(pos) {
+          self.field_cache.clear();
+        }
+      }
+      Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
+        if self.extended_field.put_players_point(pos, player) {
           self.field_cache.clear();
         }
       }
@@ -105,18 +114,26 @@ impl Application for Game {
           }
         }
       }
+      Message::Canvas(CanvasMessage::ToggleEditMode) => {
+        self.edit_mode = !self.edit_mode;
+      }
     }
 
     Command::none()
   }
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
+    let mode = Text::new(if self.edit_mode { "Editing" } else { "Playing" });
+
     let score = Row::new()
+      .push(Text::new("Score: "))
       .push(Text::new(self.extended_field.field.captured_count(Player::Red).to_string()).color(self.config.red_color))
       .push(Text::new(":"))
       .push(
         Text::new(self.extended_field.field.captured_count(Player::Black).to_string()).color(self.config.black_color),
       );
+
+    let moves_count = Text::new(format!("Moves: {}", self.extended_field.field.moves_count()));
 
     let background_color = self.config.background_color;
     let text_color = self.config.grid_color;
@@ -124,7 +141,9 @@ impl Application for Game {
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
     let canvas_element = Element::<CanvasMessage>::from(canvas).map(Message::Canvas);
 
-    let content = Row::new().push(canvas_element).push(score);
+    let info = Column::new().push(mode).push(score).push(moves_count);
+
+    let content = Row::new().push(canvas_element).push(info);
 
     Container::new(content)
       .width(Length::Fill)
@@ -160,7 +179,19 @@ impl canvas::Program<CanvasMessage> for Game {
     cursor: canvas::Cursor,
   ) -> (canvas::event::Status, Option<CanvasMessage>) {
     match event {
-      canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+      canvas::Event::Mouse(mouse::Event::ButtonPressed(button)) => {
+        let is_right = match button {
+          mouse::Button::Left => false,
+          mouse::Button::Right => {
+            if self.edit_mode {
+              true
+            } else {
+              return (canvas::event::Status::Ignored, None);
+            }
+          }
+          _ => return (canvas::event::Status::Ignored, None),
+        };
+
         let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
           position
         } else {
@@ -188,9 +219,14 @@ impl canvas::Program<CanvasMessage> for Game {
           let point = point - cursor_shift;
           let x = (point.x / step_x).round() as u32;
           let y = (point.y / step_y).round() as u32;
+          let pos = self.extended_field.field.to_pos(x, y);
           (
             canvas::event::Status::Captured,
-            Some(CanvasMessage::PutPoint(self.extended_field.field.to_pos(x, y))),
+            Some(if self.edit_mode {
+              CanvasMessage::PutPlayersPoint(pos, Player::from_bool(is_right))
+            } else {
+              CanvasMessage::PutPoint(pos)
+            }),
           )
         } else {
           (canvas::event::Status::Captured, None)
@@ -208,6 +244,10 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::O,
         modifiers: keyboard::Modifiers { control: true, .. },
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::E,
+        modifiers: keyboard::Modifiers { control: true, .. },
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleEditMode)),
       _ => (canvas::event::Status::Ignored, None),
     }
   }
