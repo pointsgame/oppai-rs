@@ -38,6 +38,7 @@ struct Game {
   extended_field: ExtendedField,
   field_cache: canvas::Cache,
   edit_mode: bool,
+  coordinates: Option<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -48,6 +49,8 @@ enum CanvasMessage {
   New,
   Open,
   ToggleEditMode,
+  ChangeCoordinates(u32, u32),
+  ClearCoordinates,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -71,6 +74,7 @@ impl Application for Game {
         extended_field,
         field_cache: Default::default(),
         edit_mode: false,
+        coordinates: None,
       },
       Command::none(),
     )
@@ -117,6 +121,12 @@ impl Application for Game {
       Message::Canvas(CanvasMessage::ToggleEditMode) => {
         self.edit_mode = !self.edit_mode;
       }
+      Message::Canvas(CanvasMessage::ChangeCoordinates(x, y)) => {
+        self.coordinates = Some((x, y));
+      }
+      Message::Canvas(CanvasMessage::ClearCoordinates) => {
+        self.coordinates = None;
+      }
     }
 
     Command::none()
@@ -135,13 +145,25 @@ impl Application for Game {
 
     let moves_count = Text::new(format!("Moves: {}", self.extended_field.field.moves_count()));
 
+    let coordinates = Text::new(if let Some((x, y)) = self.coordinates {
+      format!("Coords: {}-{}", x, y)
+    } else {
+      "Coords: -".to_owned()
+    });
+
     let background_color = self.config.background_color;
     let text_color = self.config.grid_color;
 
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
     let canvas_element = Element::<CanvasMessage>::from(canvas).map(Message::Canvas);
 
-    let info = Column::new().push(mode).push(score).push(moves_count);
+    let info = Column::new()
+      .push(mode)
+      .push(score)
+      .push(moves_count)
+      .push(coordinates)
+      .width(Length::Units(130))
+      .padding(2);
 
     let content = Row::new().push(canvas_element).push(info);
 
@@ -179,18 +201,17 @@ impl canvas::Program<CanvasMessage> for Game {
     cursor: canvas::Cursor,
   ) -> (canvas::event::Status, Option<CanvasMessage>) {
     match event {
-      canvas::Event::Mouse(mouse::Event::ButtonPressed(button)) => {
-        let is_right = match button {
-          mouse::Button::Left => false,
-          mouse::Button::Right => {
-            if self.edit_mode {
-              true
-            } else {
+      canvas::Event::Mouse(event) => {
+        match event {
+          mouse::Event::ButtonPressed(mouse::Button::Left) => {}
+          mouse::Event::ButtonPressed(mouse::Button::Right) => {
+            if !self.edit_mode {
               return (canvas::event::Status::Ignored, None);
             }
           }
+          mouse::Event::CursorMoved { .. } => {}
           _ => return (canvas::event::Status::Ignored, None),
-        };
+        }
 
         let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
           position
@@ -219,17 +240,45 @@ impl canvas::Program<CanvasMessage> for Game {
           let point = point - cursor_shift;
           let x = (point.x / step_x).round() as u32;
           let y = (point.y / step_y).round() as u32;
-          let pos = self.extended_field.field.to_pos(x, y);
+
+          match event {
+            mouse::Event::ButtonPressed(button) => {
+              let pos = self.extended_field.field.to_pos(x, y);
+              match button {
+                mouse::Button::Left => (
+                  canvas::event::Status::Captured,
+                  Some(if self.edit_mode {
+                    CanvasMessage::PutPlayersPoint(pos, Player::Red)
+                  } else {
+                    CanvasMessage::PutPoint(pos)
+                  }),
+                ),
+                mouse::Button::Right => (
+                  canvas::event::Status::Captured,
+                  Some(CanvasMessage::PutPlayersPoint(pos, Player::Black)),
+                ),
+                _ => (canvas::event::Status::Ignored, None),
+              }
+            }
+            mouse::Event::CursorMoved { .. } => (
+              canvas::event::Status::Captured,
+              if self.coordinates != Some((x, y)) {
+                Some(CanvasMessage::ChangeCoordinates(x, y))
+              } else {
+                None
+              },
+            ),
+            _ => (canvas::event::Status::Ignored, None),
+          }
+        } else {
           (
             canvas::event::Status::Captured,
-            Some(if self.edit_mode {
-              CanvasMessage::PutPlayersPoint(pos, Player::from_bool(is_right))
+            if self.coordinates.is_some() {
+              Some(CanvasMessage::ClearCoordinates)
             } else {
-              CanvasMessage::PutPoint(pos)
-            }),
+              None
+            },
           )
-        } else {
-          (canvas::event::Status::Captured, None)
         }
       }
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
