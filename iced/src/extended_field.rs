@@ -3,7 +3,6 @@ use oppai_field::field::{self, to_pos, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use rand::Rng;
-use sgf_parser::{Action, Color, Game, GameNode, GameTree, SgfToken};
 use std::sync::Arc;
 
 arg_enum! {
@@ -88,7 +87,9 @@ impl ExtendedField {
     match initial_position {
       InitialPosition::Empty => {}
       InitialPosition::Cross => self.put_points(&cross(self.field.width(), self.field.height(), self.player)),
-      InitialPosition::TwoCrosses => self.put_points(&two_crosses(self.field.width(), self.field.height(), self.player)),
+      InitialPosition::TwoCrosses => {
+        self.put_points(&two_crosses(self.field.width(), self.field.height(), self.player))
+      }
       InitialPosition::TripleCross => {
         self.put_points(&triple_cross(self.field.width(), self.field.height(), self.player))
       }
@@ -174,96 +175,5 @@ impl ExtendedField {
     } else {
       false
     }
-  }
-
-  fn parse_root(root: &GameNode) -> Option<(u32, u32)> {
-    let mut game = None;
-    let mut size = None;
-    for token in &root.tokens {
-      if game.is_some() && size.is_some() {
-        break;
-      }
-      match token {
-        SgfToken::Game(g) => game = Some(g == &Game::Other(40)),
-        SgfToken::Size(w, h) => size = Some((*w, *h)),
-        _ => {}
-      }
-    }
-    if game == Some(true) {
-      size
-    } else {
-      None
-    }
-  }
-
-  fn color_to_player(color: Color) -> Player {
-    match color {
-      Color::White => Player::Red,
-      Color::Black => Player::Black,
-    }
-  }
-
-  fn to_coordinate(c: u8) -> u8 {
-    if c > 96 {
-      c - 97
-    } else {
-      c - 39
-    }
-  }
-
-  fn parse_node(node: &GameNode) -> Option<(Player, u32, u32)> {
-    for token in &node.tokens {
-      match token {
-        SgfToken::Move { color, action } => match action {
-          Action::Pass => return None,
-          Action::Move(x, y) => {
-            let player = ExtendedField::color_to_player(*color);
-            return Some((player, (*x - 1) as u32, (*y - 1) as u32));
-          }
-        },
-        SgfToken::Invalid((ident, value)) => {
-          let player = if ident == "W" {
-            Player::Red
-          } else if ident == "B" {
-            Player::Black
-          } else {
-            continue;
-          };
-          if value.len() < 2 {
-            return None;
-          }
-          let x = ExtendedField::to_coordinate(value.as_bytes()[0]);
-          let y = ExtendedField::to_coordinate(value.as_bytes()[1]);
-          return Some((player, x as u32, y as u32));
-        }
-        _ => {}
-      }
-    }
-    None
-  }
-
-  pub fn from_sgf<G: Rng>(game_tree: GameTree, rng: &mut G) -> Option<ExtendedField> {
-    let (width, height) = if let Some(size) = game_tree.nodes.first().and_then(ExtendedField::parse_root) {
-      size
-    } else {
-      return None;
-    };
-
-    let mut extended_field = ExtendedField::new(width, height, rng);
-
-    for node in &game_tree.nodes[1..] {
-      if let Some((player, x, y)) = ExtendedField::parse_node(node) {
-        let pos = extended_field.field.to_pos(x, y);
-        if !extended_field.put_players_point(pos, player) {
-          return None;
-        }
-      }
-    }
-
-    if let Some(player) = extended_field.field.last_player() {
-      extended_field.player = player.next();
-    }
-
-    Some(extended_field)
   }
 }

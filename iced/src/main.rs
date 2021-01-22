@@ -1,5 +1,6 @@
 mod config;
 mod extended_field;
+mod sgf;
 
 use crate::config::{cli_parse, Config, RGB};
 use crate::extended_field::ExtendedField;
@@ -96,7 +97,7 @@ impl Application for Game {
         if let Some(file) = FileDialog::new().add_filter("SGF", &["sgf"]).pick_file() {
           if let Ok(text) = fs::read_to_string(file) {
             if let Ok(game_tree) = sgf_parser::parse(&text) {
-              if let Some(extended_field) = ExtendedField::from_sgf(game_tree, &mut self.rng) {
+              if let Some(extended_field) = sgf::from_sgf(game_tree, &mut self.rng) {
                 self.extended_field = extended_field;
                 self.field_cache.clear();
               }
