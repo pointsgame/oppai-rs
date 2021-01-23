@@ -133,7 +133,11 @@ impl Application for Game {
   }
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
-    let mode = Text::new(if self.edit_mode { "Editing" } else { "Playing" });
+    let mode = Text::new(if self.edit_mode {
+      "Mode: Editing"
+    } else {
+      "Mode: Playing"
+    });
 
     let score = Row::new()
       .push(Text::new("Score: "))
