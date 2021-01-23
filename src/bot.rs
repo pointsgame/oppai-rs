@@ -6,9 +6,9 @@ use oppai_field::zobrist::Zobrist;
 use oppai_minimax::minimax::Minimax;
 use oppai_patterns::patterns::Patterns;
 use oppai_uct::uct::UctRoot;
-use rand::rngs::SmallRng;
+use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use std::{cmp, sync::Arc, time::Duration};
 
 const MIN_COMPLEXITY: u32 = 0;
@@ -23,8 +23,17 @@ const MIN_MINIMAX_DEPTH: u32 = 0;
 
 const MAX_MINIMAX_DEPTH: u32 = 12;
 
-pub struct Bot {
-  rng: SmallRng,
+fn is_field_occupied(field: &Field) -> bool {
+  for pos in field.min_pos()..=field.max_pos() {
+    if field.cell(pos).is_putting_allowed() {
+      return false;
+    }
+  }
+  true
+}
+
+pub struct Bot<R> {
+  rng: R,
   patterns: Arc<Patterns>,
   field: Field,
   uct: UctRoot,
@@ -32,14 +41,14 @@ pub struct Bot {
   config: Config,
 }
 
-impl Bot {
-  pub fn new(width: u32, height: u32, seed: u64, patterns: Arc<Patterns>, config: Config) -> Bot {
-    info!(
-      "Initialization with width {0}, height {1}, seed {2}.",
-      width, height, seed
-    );
+impl<S, R> Bot<R>
+where
+  R: Rng + SeedableRng<Seed = S> + Send,
+  Standard: Distribution<S>,
+{
+  pub fn new(width: u32, height: u32, mut rng: R, patterns: Arc<Patterns>, config: Config) -> Self {
+    info!("Initialization with width {0}, height {1}.", width, height);
     let length = field::length(width, height);
-    let mut rng = SmallRng::seed_from_u64(seed);
     let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
     let field_zobrist = Arc::clone(&zobrist);
     Bot {
@@ -95,21 +104,12 @@ impl Bot {
     }
   }
 
-  fn is_field_occupied(field: &Field) -> bool {
-    for pos in field.min_pos()..=field.max_pos() {
-      if field.cell(pos).is_putting_allowed() {
-        return false;
-      }
-    }
-    true
-  }
-
   pub fn best_move(&mut self, player: Player) -> Option<(u32, u32)> {
     self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<(u32, u32)> {
-    if self.field.width() < 3 || self.field.height() < 3 || Bot::is_field_occupied(&self.field) {
+    if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
     }
     if let Some(m) = self.initial_move() {
@@ -154,7 +154,7 @@ impl Bot {
   }
 
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<(u32, u32)> {
-    if self.field.width() < 3 || self.field.height() < 3 || Bot::is_field_occupied(&self.field) {
+    if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
     }
     if let Some(m) = self.initial_move() {

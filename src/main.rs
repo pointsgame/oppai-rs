@@ -160,6 +160,8 @@ use crate::bot::Bot;
 use crate::config::cli_parse;
 use oppai_field::player::Player;
 use oppai_patterns::patterns::Patterns;
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
 use std::{
   default::Default,
   fs::File,
@@ -342,7 +344,8 @@ fn main() {
           if split.next().is_some() {
             write_init_error(&mut output, id);
           } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
-            bot_option = Some(Bot::new(x, y, seed, Arc::clone(&patterns_arc), config.clone()));
+            let rng = SmallRng::seed_from_u64(seed);
+            bot_option = Some(Bot::new(x, y, rng, Arc::clone(&patterns_arc), config.clone()));
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);
