@@ -105,13 +105,13 @@ pub struct Config {
   pub uct: UctConfig,
   pub minimax: MinimaxConfig,
   pub bot: BotConfig,
+  pub patterns: Vec<String>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct BotConfig {
   pub time_gap: u32,
   pub solver: Solver,
-  pub patterns: Vec<String>,
 }
 
 pub fn cli_parse() -> Config {
@@ -323,15 +323,15 @@ pub fn cli_parse() -> Config {
   let bot_config = BotConfig {
     time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
-    patterns: if matches.is_present("patterns-file") {
-      values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit())
-    } else {
-      Vec::new()
-    },
   };
   Config {
     uct: uct_config,
     minimax: minimax_config,
     bot: bot_config,
+    patterns: if matches.is_present("patterns-file") {
+      values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit())
+    } else {
+      Vec::new()
+    },
   }
 }

@@ -306,12 +306,11 @@ fn main() {
   let config = cli_parse();
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
-  let patterns = if config.bot.patterns.is_empty() {
+  let patterns = if config.patterns.is_empty() {
     Patterns::empty()
   } else {
     Patterns::from_files(
       config
-        .bot
         .patterns
         .iter()
         .map(|path| File::open(path).expect("Failed to open patterns file.")),
