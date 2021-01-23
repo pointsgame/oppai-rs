@@ -6,9 +6,9 @@ use oppai_field::zobrist::Zobrist;
 use oppai_minimax::minimax::Minimax;
 use oppai_patterns::patterns::Patterns;
 use oppai_uct::uct::UctRoot;
+use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
 use std::{cmp, sync::Arc, time::Duration};
 
 const MIN_COMPLEXITY: u32 = 0;
@@ -24,7 +24,7 @@ const MIN_MINIMAX_DEPTH: u32 = 0;
 const MAX_MINIMAX_DEPTH: u32 = 12;
 
 pub struct Bot {
-  rng: XorShiftRng,
+  rng: SmallRng,
   patterns: Arc<Patterns>,
   field: Field,
   uct: UctRoot,
@@ -39,7 +39,7 @@ impl Bot {
       width, height, seed
     );
     let length = field::length(width, height);
-    let mut rng = XorShiftRng::seed_from_u64(seed);
+    let mut rng = SmallRng::seed_from_u64(seed);
     let zobrist = Arc::new(Zobrist::new(length * 2, &mut rng));
     let field_zobrist = Arc::clone(&zobrist);
     Bot {

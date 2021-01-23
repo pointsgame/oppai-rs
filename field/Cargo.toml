@@ -11,7 +11,7 @@ rand = "0.7"
 
 [dev-dependencies]
 criterion = "0.3"
-rand_xorshift = "0.2"
+rand = { version = "0.7", features = [ "small_rng" ] }
 
 [features]
 dsu = []

@@ -13,4 +13,4 @@ decorum = "0.3"
 oppai-field = { path = "../field" }
 
 [dev-dependencies]
-rand_xorshift = "0.2"
+rand = { version = "0.7", features = [ "small_rng" ] }

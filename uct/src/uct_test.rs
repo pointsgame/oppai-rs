@@ -3,10 +3,10 @@ use oppai_field::construct_field::construct_field;
 use oppai_field::field::NonZeroPos;
 use oppai_field::player::Player;
 use oppai_test_images::*;
+use rand::rngs::SmallRng;
 use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
 
-const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
+const SEED: u64 = 99991;
 
 const UCT_CONFIG: UctConfig = UctConfig {
   threads_count: 1,
@@ -28,7 +28,7 @@ macro_rules! uct_test {
     $(#[$($attr),+])*
     fn $name() {
       env_logger::try_init().ok();
-      let mut rng = XorShiftRng::from_seed(SEED);
+      let mut rng = SmallRng::seed_from_u64(SEED);
       let field = construct_field(&mut rng, $image.image);
       let mut uct = UctRoot::new(UCT_CONFIG, field.length());
       let pos = uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, $iterations);

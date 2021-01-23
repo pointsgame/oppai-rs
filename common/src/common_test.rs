@@ -1,14 +1,14 @@
 use crate::common::{is_last_move_stupid, is_penult_move_stupid};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
+use rand::rngs::SmallRng;
 use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
 
-const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
+const SEED: u64 = 99991;
 
 #[test]
 fn is_last_move_stupid_1() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -26,7 +26,7 @@ fn is_last_move_stupid_1() {
 
 #[test]
 fn is_last_move_stupid_2() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -43,7 +43,7 @@ fn is_last_move_stupid_2() {
 
 #[test]
 fn is_last_move_not_stupid() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -60,7 +60,7 @@ fn is_last_move_not_stupid() {
 
 #[test]
 fn is_penult_move_stupid_1() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -77,7 +77,7 @@ fn is_penult_move_stupid_1() {
 
 #[test]
 fn is_penult_move_stupid_2() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "

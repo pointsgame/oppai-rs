@@ -542,7 +542,6 @@ impl UctRoot {
     max_iterations_count: usize,
   ) -> Option<NonZeroPos>
   where
-    S: Sized + Default + AsMut<[u8]>,
     R: Rng + SeedableRng<Seed = S> + Send,
     Standard: Distribution<S>,
   {
@@ -625,7 +624,6 @@ impl UctRoot {
     time: Duration,
   ) -> Option<NonZeroPos>
   where
-    S: Sized + Default + AsMut<[u8]>,
     R: Rng + SeedableRng<Seed = S> + Send,
     Standard: Distribution<S>,
   {
@@ -648,7 +646,6 @@ impl UctRoot {
     iterations: usize,
   ) -> Option<NonZeroPos>
   where
-    S: Sized + Default + AsMut<[u8]>,
     R: Rng + SeedableRng<Seed = S> + Send,
     Standard: Distribution<S>,
   {

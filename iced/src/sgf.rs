@@ -77,7 +77,7 @@ fn parse_node(node: &GameNode) -> Option<(Player, u32, u32)> {
   None
 }
 
-pub fn from_sgf<G: Rng>(game_tree: GameTree, rng: &mut G) -> Option<ExtendedField> {
+pub fn from_sgf<R: Rng>(game_tree: GameTree, rng: &mut R) -> Option<ExtendedField> {
   let root = if let Some(root) = game_tree.nodes.first().and_then(parse_root) {
     root
   } else {

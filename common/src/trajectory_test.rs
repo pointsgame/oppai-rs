@@ -1,16 +1,16 @@
 use crate::trajectory::{build_trajectories, build_trajectories_from};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
+use rand::rngs::SmallRng;
 use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
 use std::iter;
 use std::sync::atomic::AtomicBool;
 
-const SEED: [u8; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
+const SEED: u64 = 99991;
 
 #[test]
 fn build_trajectories_1() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -33,7 +33,7 @@ fn build_trajectories_1() {
 
 #[test]
 fn build_trajectories_2() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -56,7 +56,7 @@ fn build_trajectories_2() {
 
 #[test]
 fn build_trajectories_3() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -81,7 +81,7 @@ fn build_trajectories_3() {
 
 #[test]
 fn build_trajectories_with_no_extra_points() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -106,7 +106,7 @@ fn build_trajectories_with_no_extra_points() {
 
 #[test]
 fn build_trajectories_through_empty_base() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -131,7 +131,7 @@ fn build_trajectories_through_empty_base() {
 
 #[test]
 fn build_trajectories_crankle_1() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -153,7 +153,7 @@ fn build_trajectories_crankle_1() {
 
 #[test]
 fn build_trajectories_crankle_2() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -176,7 +176,7 @@ fn build_trajectories_crankle_2() {
 
 #[test]
 fn build_trajectories_crankle_3() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -205,7 +205,7 @@ fn build_trajectories_crankle_3() {
 
 #[test]
 fn build_trajectories_maze_1() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -244,7 +244,7 @@ fn build_trajectories_maze_1() {
 
 #[test]
 fn build_trajectories_maze_2() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -294,7 +294,7 @@ fn build_trajectories_maze_2() {
 #[test]
 #[ignore]
 fn build_trajectories_maze_3() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -353,7 +353,7 @@ fn build_trajectories_maze_3() {
 
 #[test]
 fn build_trajectories_from_1() {
-  let mut rng = XorShiftRng::from_seed(SEED);
+  let mut rng = SmallRng::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "

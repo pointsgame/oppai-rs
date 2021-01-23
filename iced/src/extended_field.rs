@@ -65,7 +65,7 @@ fn triple_cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 8] {
 }
 
 impl ExtendedField {
-  pub fn new<G: Rng>(width: u32, height: u32, rng: &mut G) -> Self {
+  pub fn new<R: Rng>(width: u32, height: u32, rng: &mut R) -> Self {
     let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, rng));
     let field = Field::new(width, height, zobrist);
     let length = field.length();

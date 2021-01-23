@@ -1,7 +1,7 @@
+use crate::extended_field::InitialPosition;
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_t, App, Arg};
 use std::num::ParseIntError;
 use std::str::FromStr;
-use crate::extended_field::InitialPosition;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RGB {

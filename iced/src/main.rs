@@ -10,8 +10,8 @@ use iced::{
 };
 use oppai_field::field::Pos;
 use oppai_field::player::Player;
+use rand::rngs::SmallRng;
 use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
 use rfd::FileDialog;
 use std::fs;
 
@@ -34,7 +34,7 @@ pub fn main() -> iced::Result {
 #[derive(Debug)]
 struct Game {
   config: Config,
-  rng: XorShiftRng,
+  rng: SmallRng,
   extended_field: ExtendedField,
   field_cache: canvas::Cache,
   edit_mode: bool,
@@ -64,7 +64,7 @@ impl Application for Game {
   type Flags = Config;
 
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
-    let mut rng = XorShiftRng::from_entropy();
+    let mut rng = SmallRng::from_entropy();
     let mut extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
     extended_field.place_initial_position(flags.initial_position);
     (
