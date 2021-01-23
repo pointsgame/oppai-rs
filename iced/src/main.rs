@@ -210,6 +210,13 @@ impl canvas::Program<CanvasMessage> for Game {
             }
           }
           mouse::Event::CursorMoved { .. } => {}
+          mouse::Event::CursorLeft => {
+            if self.coordinates.is_some() {
+              return (canvas::event::Status::Captured, Some(CanvasMessage::ClearCoordinates));
+            } else {
+              return (canvas::event::Status::Ignored, None);
+            }
+          }
           _ => return (canvas::event::Status::Ignored, None),
         }
 
