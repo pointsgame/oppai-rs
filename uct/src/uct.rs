@@ -11,15 +11,16 @@ use std::{
   thread,
   time::Duration,
 };
+use strum::{EnumString, EnumVariantNames};
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
 pub enum UcbType {
   Winrate,
   Ucb1,
   Ucb1Tuned,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
 pub enum UctKomiType {
   None,
   Static,

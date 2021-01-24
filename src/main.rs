@@ -147,17 +147,12 @@ computer to generate a move and placed the generated point on the field.
 */
 
 #[macro_use]
-extern crate log;
-
-#[macro_use]
 extern crate clap;
 
-mod bot;
 mod config;
-mod heuristic;
 
-use crate::bot::Bot;
 use crate::config::cli_parse;
+use oppai_bot::bot::Bot;
 use oppai_field::player::Player;
 use oppai_patterns::patterns::Patterns;
 use rand::rngs::SmallRng;
@@ -344,7 +339,7 @@ fn main() {
             write_init_error(&mut output, id);
           } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
             let rng = SmallRng::seed_from_u64(seed);
-            bot_option = Some(Bot::new(x, y, rng, Arc::clone(&patterns_arc), config.clone()));
+            bot_option = Some(Bot::new(x, y, rng, Arc::clone(&patterns_arc), config.bot.clone()));
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);

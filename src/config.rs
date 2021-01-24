@@ -1,117 +1,14 @@
 use clap::{App, Arg, ArgGroup};
+use oppai_bot::config::{Config as BotConfig, Solver};
 use oppai_minimax::minimax::{MinimaxConfig, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
-use std::fmt;
 use std::str;
-
-const UCB_TYPE_VARIANTS: [&str; 3] = ["Winrate", "Ucb1", "Ucb1Tuned"];
-
-const UCT_KOMI_TYPE_VARIANTS: [&str; 3] = ["None", "Static", "Dynamic"];
-
-const MINIMAX_TYPE_VARIANTS: [&str; 2] = ["NegaScout", "MTDF"];
-
-struct UcbTypeArg(UcbType);
-
-impl fmt::Display for UcbTypeArg {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self.0 {
-      UcbType::Winrate => write!(f, "Winrate"),
-      UcbType::Ucb1 => write!(f, "Ucb1"),
-      UcbType::Ucb1Tuned => write!(f, "Ucb1Tuned"),
-    }
-  }
-}
-
-impl str::FromStr for UcbTypeArg {
-  type Err = String;
-
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    if s.eq_ignore_ascii_case("Winrate") {
-      Ok(UcbTypeArg(UcbType::Winrate))
-    } else if s.eq_ignore_ascii_case("Ucb1") {
-      Ok(UcbTypeArg(UcbType::Ucb1))
-    } else if s.eq_ignore_ascii_case("Ucb1Tuned") {
-      Ok(UcbTypeArg(UcbType::Ucb1Tuned))
-    } else {
-      Err(format!("valid values: {}", UCB_TYPE_VARIANTS.join(", ")))
-    }
-  }
-}
-
-struct UctKomiTypeArg(UctKomiType);
-
-impl fmt::Display for UctKomiTypeArg {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self.0 {
-      UctKomiType::None => write!(f, "None"),
-      UctKomiType::Static => write!(f, "Static"),
-      UctKomiType::Dynamic => write!(f, "Dynamic"),
-    }
-  }
-}
-
-impl str::FromStr for UctKomiTypeArg {
-  type Err = String;
-
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    if s.eq_ignore_ascii_case("None") {
-      Ok(UctKomiTypeArg(UctKomiType::None))
-    } else if s.eq_ignore_ascii_case("Static") {
-      Ok(UctKomiTypeArg(UctKomiType::Static))
-    } else if s.eq_ignore_ascii_case("Dynamic") {
-      Ok(UctKomiTypeArg(UctKomiType::Dynamic))
-    } else {
-      Err(format!("valid values: {}", UCT_KOMI_TYPE_VARIANTS.join(", ")))
-    }
-  }
-}
-
-struct MinimaxTypeArg(MinimaxType);
-
-impl fmt::Display for MinimaxTypeArg {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self.0 {
-      MinimaxType::NegaScout => write!(f, "NegaScout"),
-      MinimaxType::MTDF => write!(f, "MTDF"),
-    }
-  }
-}
-
-impl str::FromStr for MinimaxTypeArg {
-  type Err = String;
-
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    if s.eq_ignore_ascii_case("NegaScout") {
-      Ok(MinimaxTypeArg(MinimaxType::NegaScout))
-    } else if s.eq_ignore_ascii_case("MTDF") {
-      Ok(MinimaxTypeArg(MinimaxType::MTDF))
-    } else {
-      Err(format!("valid values: {}", UCT_KOMI_TYPE_VARIANTS.join(", ")))
-    }
-  }
-}
-
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum Solver {
-    Uct,
-    Minimax,
-    Heuristic
-  }
-}
+use strum::VariantNames;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Config {
-  pub uct: UctConfig,
-  pub minimax: MinimaxConfig,
   pub bot: BotConfig,
   pub patterns: Vec<String>,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct BotConfig {
-  pub time_gap: u32,
-  pub solver: Solver,
 }
 
 pub fn cli_parse() -> Config {
@@ -147,7 +44,7 @@ pub fn cli_parse() -> Config {
         .long("solver")
         .help("Engine type for position estimation and the best move choosing")
         .takes_value(true)
-        .possible_values(&Solver::variants())
+        .possible_values(&Solver::VARIANTS)
         .case_insensitive(true)
         .default_value("Uct"),
     )
@@ -192,7 +89,7 @@ pub fn cli_parse() -> Config {
         .long("minimax-type")
         .help("Minimax type")
         .takes_value(true)
-        .possible_values(&MINIMAX_TYPE_VARIANTS)
+        .possible_values(&MinimaxType::VARIANTS)
         .case_insensitive(true)
         .default_value("NegaScout"),
     )
@@ -235,7 +132,7 @@ pub fn cli_parse() -> Config {
         .long("ucb-type")
         .help("Formula of the UCT value")
         .takes_value(true)
-        .possible_values(&UCB_TYPE_VARIANTS)
+        .possible_values(&UcbType::VARIANTS)
         .case_insensitive(true)
         .default_value("Ucb1Tuned"),
     )
@@ -282,7 +179,7 @@ pub fn cli_parse() -> Config {
         .long("komi-type")
         .help("Type of komi evaluation for UTC during the game")
         .takes_value(true)
-        .possible_values(&UCT_KOMI_TYPE_VARIANTS)
+        .possible_values(&UctKomiType::VARIANTS)
         .case_insensitive(true)
         .default_value("Dynamic"),
     )
@@ -298,35 +195,29 @@ pub fn cli_parse() -> Config {
   let uct_config = UctConfig {
     threads_count,
     radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
-    ucb_type: value_t!(matches.value_of("ucb-type"), UcbTypeArg)
-      .unwrap_or_else(|e| e.exit())
-      .0,
+    ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
     draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
     uctk: value_t!(matches.value_of("uctk"), f64).unwrap_or_else(|e| e.exit()),
     when_create_children: value_t!(matches.value_of("when-create-children"), usize).unwrap_or_else(|e| e.exit()),
     depth: value_t!(matches.value_of("depth"), u32).unwrap_or_else(|e| e.exit()),
-    komi_type: value_t!(matches.value_of("komi-type"), UctKomiTypeArg)
-      .unwrap_or_else(|e| e.exit())
-      .0,
+    komi_type: value_t!(matches.value_of("komi-type"), UctKomiType).unwrap_or_else(|e| e.exit()),
     red: value_t!(matches.value_of("red"), f64).unwrap_or_else(|e| e.exit()),
     green: value_t!(matches.value_of("green"), f64).unwrap_or_else(|e| e.exit()),
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit()),
   };
   let minimax_config = MinimaxConfig {
     threads_count,
-    minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxTypeArg)
-      .unwrap_or_else(|e| e.exit())
-      .0,
+    minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxType).unwrap_or_else(|e| e.exit()),
     hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit()),
     rebuild_trajectories: matches.is_present("rebuild-trajectories"),
   };
   let bot_config = BotConfig {
+    uct: uct_config,
+    minimax: minimax_config,
     time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
   };
   Config {
-    uct: uct_config,
-    minimax: minimax_config,
     bot: bot_config,
     patterns: if matches.is_present("patterns-file") {
       values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit())

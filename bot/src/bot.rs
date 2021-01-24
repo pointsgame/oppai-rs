@@ -118,14 +118,14 @@ where
     if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
-    match self.config.bot.solver {
+    match self.config.solver {
       Solver::Uct => self
         .uct
         .best_move_with_time(
           &self.field,
           player,
           &mut self.rng,
-          Duration::from_millis(u64::from(time - self.config.bot.time_gap)),
+          Duration::from_millis(u64::from(time - self.config.time_gap)),
         )
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
@@ -134,7 +134,7 @@ where
         .minimax_with_time(
           &mut self.field,
           player,
-          Duration::from_millis(u64::from(time - self.config.bot.time_gap)),
+          Duration::from_millis(u64::from(time - self.config.time_gap)),
         )
         .or_else(|| heuristic::heuristic(&self.field, player))
         .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
@@ -163,7 +163,7 @@ where
     if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
       return Some((self.field.to_x(pos), self.field.to_y(pos)));
     }
-    match self.config.bot.solver {
+    match self.config.solver {
       Solver::Uct => {
         let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS)
           / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize

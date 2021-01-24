@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 crossbeam = "0.8"
+strum = { version = "0.20", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 
