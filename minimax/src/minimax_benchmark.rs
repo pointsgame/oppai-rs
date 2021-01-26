@@ -6,10 +6,10 @@ use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use oppai_minimax::minimax::{Minimax, MinimaxConfig, MinimaxType};
 use oppai_test_images::*;
-use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
-const SEED: u64 = 99991;
+const SEED: u64 = 7;
 
 const MINIMAX_CONFIG_NEGASCOUT: MinimaxConfig = MinimaxConfig {
   threads_count: 1,
@@ -28,7 +28,7 @@ const MINIMAX_CONFIG_MTDF: MinimaxConfig = MinimaxConfig {
 macro_rules! minimax_bench {
   ($name:ident, $config:ident, $image:ident, $depth:expr) => {
     fn $name(bencher: &mut Bencher) {
-      let mut rng = SmallRng::seed_from_u64(SEED);
+      let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
       let field = construct_field(&mut rng, $image.image);
       bencher.iter(|| {
         let minimax = Minimax::new($config);

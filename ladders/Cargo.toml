@@ -12,4 +12,5 @@ oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 
 [dev-dependencies]
-rand = { version = "0.7", features = [ "small_rng" ] }
+rand = "0.8"
+rand_xoshiro = "0.6"

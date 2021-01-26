@@ -1,10 +1,10 @@
 use crate::patterns::Patterns;
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
-const SEED: u64 = 99991;
+const SEED: u64 = 7;
 
 fn construct_patterns(strings: &[&str]) -> Patterns {
   let mut p = Patterns::empty();
@@ -34,7 +34,7 @@ fn pattern_empty_doesnt_match() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...
     aA.
@@ -54,7 +54,7 @@ fn pattern_borders_matches() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...
     aA.
@@ -74,7 +74,7 @@ fn pattern_borders_doesnt_match() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ....
     .aA.
@@ -94,7 +94,7 @@ fn pattern_any_matches() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...
     aA.
@@ -114,7 +114,7 @@ fn pattern_any_except_border_matches() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...
     aA.
@@ -134,7 +134,7 @@ fn pattern_any_except_border_doesnt_match() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...
     aA.
@@ -154,7 +154,7 @@ fn pattern_red_black_or_none_matches() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...
     aA.
@@ -174,7 +174,7 @@ fn pattern_red_black_or_none_doesnt_match() {
     #.+.
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...
     aA.
@@ -195,7 +195,7 @@ fn pattern_rotation_0() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .aA..
@@ -217,7 +217,7 @@ fn pattern_rotation_1() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     ...a.
@@ -239,7 +239,7 @@ fn pattern_rotation_2() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .a.A.
@@ -261,7 +261,7 @@ fn pattern_rotation_3() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .AAa.
@@ -283,7 +283,7 @@ fn pattern_rotation_4() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     ..Aa.
@@ -305,7 +305,7 @@ fn pattern_rotation_5() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .aAA.
@@ -327,7 +327,7 @@ fn pattern_rotation_6() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .A.a.
@@ -349,7 +349,7 @@ fn pattern_rotation_7() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .a...
@@ -371,7 +371,7 @@ fn pattern_inversion_doesnt_match() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .aA..
@@ -393,7 +393,7 @@ fn pattern_inversion_matches() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .Aa..
@@ -415,7 +415,7 @@ fn pattern_multiple_moves() {
     .....
     "]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .aA..
@@ -448,7 +448,7 @@ fn multiple_patterns() {
     ",
   ]);
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
     .aA..

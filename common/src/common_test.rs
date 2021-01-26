@@ -1,14 +1,14 @@
 use crate::common::{is_last_move_stupid, is_penult_move_stupid};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
-const SEED: u64 = 99991;
+const SEED: u64 = 7;
 
 #[test]
 fn is_last_move_stupid_1() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -26,7 +26,7 @@ fn is_last_move_stupid_1() {
 
 #[test]
 fn is_last_move_stupid_2() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -43,7 +43,7 @@ fn is_last_move_stupid_2() {
 
 #[test]
 fn is_last_move_not_stupid() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -60,7 +60,7 @@ fn is_last_move_not_stupid() {
 
 #[test]
 fn is_penult_move_stupid_1() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "
@@ -77,7 +77,7 @@ fn is_penult_move_stupid_1() {
 
 #[test]
 fn is_penult_move_stupid_2() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
     "

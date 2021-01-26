@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 iced = { version = "0.2", features = [ "canvas" ] }
-rand = { version = "0.7", features = [ "small_rng" ] }
+rand = { version = "0.8", features = [ "small_rng" ] }
 clap = "2.33"
 rfd = "0.1"
 sgf-parser = "2.6"

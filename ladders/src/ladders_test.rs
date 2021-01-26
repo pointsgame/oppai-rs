@@ -2,15 +2,15 @@ use crate::ladders::ladders;
 use oppai_field::construct_field::construct_field;
 use oppai_field::field::NonZeroPos;
 use oppai_field::player::Player;
-use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::atomic::AtomicBool;
 
-const SEED: u64 = 99991;
+const SEED: u64 = 7;
 
 #[test]
 fn ladders_escape() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -36,7 +36,7 @@ fn ladders_escape() {
 
 #[test]
 fn ladders_capture_1() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -62,7 +62,7 @@ fn ladders_capture_1() {
 
 #[test]
 fn ladders_capture_2() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -88,7 +88,7 @@ fn ladders_capture_2() {
 
 #[test]
 fn ladders_capture_3() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -114,7 +114,7 @@ fn ladders_capture_3() {
 
 #[test]
 fn ladders_capture_4() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -140,7 +140,7 @@ fn ladders_capture_4() {
 
 #[test]
 fn ladders_side_capture_1() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -168,7 +168,7 @@ fn ladders_side_capture_1() {
 
 #[test]
 fn ladders_side_capture_2() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -198,7 +198,7 @@ fn ladders_side_capture_2() {
 
 #[test]
 fn ladders_fork() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -221,7 +221,7 @@ fn ladders_fork() {
 
 #[test]
 fn ladders_fork_deep() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -244,7 +244,7 @@ fn ladders_fork_deep() {
 
 #[test]
 fn ladders_fork_stupid() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -267,7 +267,7 @@ fn ladders_fork_stupid() {
 
 #[test]
 fn ladders_stupid() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -292,7 +292,7 @@ fn ladders_stupid() {
 
 #[test]
 fn ladders_not_viable_1() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -316,7 +316,7 @@ fn ladders_not_viable_1() {
 
 #[test]
 fn ladders_viable() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -342,7 +342,7 @@ fn ladders_viable() {
 
 #[test]
 fn ladders_not_viable_2() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -368,7 +368,7 @@ fn ladders_not_viable_2() {
 
 #[test]
 fn ladders_viable_multi() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -395,7 +395,7 @@ fn ladders_viable_multi() {
 
 #[test]
 fn ladders_viable_complex() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "
@@ -422,7 +422,7 @@ fn ladders_viable_complex() {
 
 #[test]
 fn ladders_depth_choice() {
-  let mut rng = SmallRng::seed_from_u64(SEED);
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
     "

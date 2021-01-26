@@ -2,15 +2,15 @@ use crate::field_features::field_features;
 use ndarray::prelude::{array, s};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
-const SEED: u64 = 99991;
+const SEED: u64 = 7;
 
 #[test]
 fn field_features_square() {
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     a.a
     Aa.
@@ -33,7 +33,7 @@ fn field_features_square() {
 #[test]
 fn field_features_rectangle() {
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     aA
     Aa
@@ -56,7 +56,7 @@ fn field_features_rectangle() {
 #[test]
 fn field_features_capture() {
   let field = construct_field(
-    &mut SmallRng::seed_from_u64(SEED),
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.
     aAa

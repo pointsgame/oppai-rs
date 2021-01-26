@@ -7,7 +7,7 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
-rand = "0.7"
+rand = "0.8"
 log = "0.4"
 crossbeam = "0.8"
 strum = { version = "0.20", features = [ "derive" ] }
@@ -16,7 +16,7 @@ oppai-common = { path = "../common" }
 
 [dev-dependencies]
 criterion = "0.3"
-rand = { version = "0.7", features = [ "small_rng" ] }
+rand_xoshiro = "0.6"
 env_logger = "0.8"
 oppai-test-images = { path = "../test-images" }
 

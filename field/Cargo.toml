@@ -7,11 +7,11 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
-rand = "0.7"
+rand = "0.8"
 
 [dev-dependencies]
 criterion = "0.3"
-rand = { version = "0.7", features = [ "small_rng" ] }
+rand_xoshiro = "0.6"
 
 [features]
 dsu = []

@@ -34,7 +34,7 @@ const MCTS_SIMS: u32 = 100;
 const PARALLEL_READOUTS: usize = 8;
 
 fn select<R: Rng>(mut nodes: Vec<MctsNode>, rng: &mut R) -> MctsNode {
-  let r = rng.gen_range(0f64, nodes.iter().map(|child| child.probability()).sum::<f64>());
+  let r = rng.gen_range(0f64..nodes.iter().map(|child| child.probability()).sum::<f64>());
   let mut node = nodes.pop().unwrap();
   let mut sum = node.probability();
   while sum < r {

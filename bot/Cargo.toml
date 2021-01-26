@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 log = "0.4"
-rand = "0.7"
+rand = "0.8"
 strum = { version = "0.20", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-minimax = { path = "../minimax" }
