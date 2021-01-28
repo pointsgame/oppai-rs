@@ -13,6 +13,17 @@ pub enum Solver {
 pub struct Config {
   pub uct: UctConfig,
   pub minimax: MinimaxConfig,
-  pub time_gap: u32,
+  pub time_gap: u32, // TODO: Instant
   pub solver: Solver,
+}
+
+impl Default for Config {
+  fn default() -> Self {
+    Self {
+      uct: UctConfig::default(),
+      minimax: MinimaxConfig::default(),
+      time_gap: 100,
+      solver: Solver::Uct,
+    }
+  }
 }

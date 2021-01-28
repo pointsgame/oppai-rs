@@ -7,7 +7,7 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 const SEED: u64 = 7;
 
 fn construct_patterns(strings: &[&str]) -> Patterns {
-  let mut p = Patterns::empty();
+  let mut p = Patterns::default();
   for s in strings {
     p = p.union(&Patterns::from_str(s).unwrap());
   }

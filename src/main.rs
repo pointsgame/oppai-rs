@@ -302,7 +302,7 @@ fn main() {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
   let patterns = if config.patterns.is_empty() {
-    Patterns::empty()
+    Patterns::default()
   } else {
     Patterns::from_files(
       config
@@ -358,7 +358,9 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_error(&mut output, id);
           } else if let (Some(player), Some(bot)) = (player_option, bot_option.as_mut()) {
-            if let Some((x, y)) = bot.best_move(player) {
+            if let Some(pos) = bot.best_move(player) {
+              let x = bot.field.to_x(pos.get());
+              let y = bot.field.to_y(pos.get());
               write_gen_move(&mut output, id, x, y, player);
             } else {
               write_gen_move_error(&mut output, id);
@@ -385,7 +387,9 @@ fn main() {
           } else if let (Some(player), Some(complexity), Some(bot)) =
             (player_option, complexity_option, bot_option.as_mut())
           {
-            if let Some((x, y)) = bot.best_move_with_complexity(player, complexity) {
+            if let Some(pos) = bot.best_move_with_complexity(player, complexity) {
+              let x = bot.field.to_x(pos.get());
+              let y = bot.field.to_y(pos.get());
               write_gen_move_with_complexity(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_complexity_error(&mut output, id);
@@ -408,7 +412,9 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
           } else if let (Some(player), Some(time), Some(bot)) = (player_option, time_option, bot_option.as_mut()) {
-            if let Some((x, y)) = bot.best_move_with_time(player, time) {
+            if let Some(pos) = bot.best_move_with_time(player, time) {
+              let x = bot.field.to_x(pos.get());
+              let y = bot.field.to_y(pos.get());
               write_gen_move_with_time(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_time_error(&mut output, id);
@@ -437,7 +443,9 @@ fn main() {
             time_per_move_option,
             bot_option.as_mut(),
           ) {
-            if let Some((x, y)) = bot.best_move_with_full_time(player, remaining_time, time_per_move) {
+            if let Some(pos) = bot.best_move_with_full_time(player, remaining_time, time_per_move) {
+              let x = bot.field.to_x(pos.get());
+              let y = bot.field.to_y(pos.get());
               write_gen_move_with_full_time(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_full_time_error(&mut output, id);
@@ -484,7 +492,8 @@ fn main() {
           } else if let (Some(x), Some(y), Some(player), Some(bot)) =
             (x_option, y_option, player_option, bot_option.as_mut())
           {
-            if bot.put_point(x, y, player) {
+            let pos = bot.field.to_pos(x, y);
+            if bot.field.put_point(pos, player) {
               write_play(&mut output, id, x, y, player);
             } else {
               write_play_error(&mut output, id);
@@ -506,7 +515,7 @@ fn main() {
           if split.next().is_some() {
             write_undo_error(&mut output, id);
           } else if let Some(bot) = bot_option.as_mut() {
-            if bot.undo() {
+            if bot.field.undo() {
               write_undo(&mut output, id);
             } else {
               write_undo_error(&mut output, id);

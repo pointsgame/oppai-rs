@@ -21,14 +21,16 @@ pub struct Patterns {
   dfa: Dfa<Move>,
 }
 
-impl Patterns {
-  pub fn empty() -> Patterns {
-    Patterns {
+impl Default for Patterns {
+  fn default() -> Self {
+    Self {
       min_size: u32::max_value(),
-      dfa: Dfa::empty(),
+      dfa: Dfa::default(),
     }
   }
+}
 
+impl Patterns {
   fn covering_spiral_length(side_of_square: u32) -> u32 {
     let x = side_of_square / 2 + 1;
     let y = (1 - side_of_square % 2) * side_of_square * 2;
@@ -161,7 +163,7 @@ impl Patterns {
 
     let moves = Patterns::get_pattern_moves(width, &chars)?;
 
-    let mut dfa = Dfa::empty();
+    let mut dfa = Dfa::default();
     for rotation in 0..8 {
       let cur_dfa = Patterns::build_dfa(width, height, &moves, rotation, &chars)?;
       dfa = dfa.product(&cur_dfa);
@@ -175,13 +177,13 @@ impl Patterns {
   fn from_strings(strings: &[String]) -> Patterns {
     let len = strings.len();
     if strings.is_empty() {
-      Patterns::empty()
+      Patterns::default()
     } else if let [ref pattern_str] = *strings {
       match Patterns::from_str(pattern_str) {
         Ok(patterns) => patterns,
         Err(e) => {
           error!("Failed to parse pattern: {}\n{}", e, pattern_str);
-          Patterns::empty()
+          Patterns::default()
         }
       }
     } else {

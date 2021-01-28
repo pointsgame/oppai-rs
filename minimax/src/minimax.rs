@@ -26,6 +26,17 @@ pub struct MinimaxConfig {
   pub rebuild_trajectories: bool,
 }
 
+impl Default for MinimaxConfig {
+  fn default() -> Self {
+    Self {
+      threads_count: num_cpus::get_physical(),
+      minimax_type: MinimaxType::NegaScout,
+      hash_table_size: 10000,
+      rebuild_trajectories: false,
+    }
+  }
+}
+
 pub struct Minimax {
   config: MinimaxConfig,
   hash_table: HashTable,

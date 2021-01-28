@@ -1,19 +1,27 @@
 mod config;
 mod extended_field;
+mod find_move;
 mod sgf;
 
 use crate::config::{cli_parse, Config, RGB};
 use crate::extended_field::ExtendedField;
+use find_move::FindMove;
 use iced::{
   canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Column, Command, Container,
-  Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
+  Element, Length, Point, Rectangle, Row, Settings, Size, Subscription, Text, Vector,
 };
-use oppai_field::field::Pos;
+use oppai_bot::bot::Bot;
+use oppai_bot::config::Config as BotConfig;
+use oppai_field::field::{NonZeroPos, Pos};
 use oppai_field::player::Player;
+use oppai_patterns::patterns::Patterns;
 use rand::rngs::SmallRng;
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rfd::FileDialog;
-use std::fs;
+use std::{
+  fs,
+  sync::{Arc, Mutex},
+};
 
 impl From<RGB> for Color {
   fn from(rgb: RGB) -> Self {
@@ -31,14 +39,56 @@ pub fn main() -> iced::Result {
   })
 }
 
-#[derive(Debug)]
 struct Game {
   config: Config,
   rng: SmallRng,
   extended_field: ExtendedField,
   field_cache: canvas::Cache,
+  bot: Arc<Mutex<Bot<SmallRng>>>,
   edit_mode: bool,
+  thinking: bool,
   coordinates: Option<(u32, u32)>,
+}
+
+impl Game {
+  pub fn put_point(&mut self, pos: Pos) -> bool {
+    let player = self.extended_field.player;
+    if self.extended_field.put_point(pos) {
+      self.bot.lock().unwrap().field.put_point(pos, player);
+      self.field_cache.clear();
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn put_players_point(&mut self, pos: Pos, player: Player) -> bool {
+    if self.extended_field.put_players_point(pos, player) {
+      self.bot.lock().unwrap().field.put_point(pos, player);
+      self.field_cache.clear();
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn undo(&mut self) -> bool {
+    if self.extended_field.undo() {
+      self.bot.lock().unwrap().field.undo();
+      self.field_cache.clear();
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn put_all_bot_points(&self) {
+    let mut bot = self.bot.lock().unwrap();
+    for &pos in self.extended_field.field.points_seq() {
+      let player = self.extended_field.field.cell(pos).get_player();
+      bot.field.put_point(pos, player);
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,6 +106,7 @@ enum CanvasMessage {
 #[derive(Debug, Clone, Copy)]
 enum Message {
   Canvas(CanvasMessage),
+  BotMove(Option<NonZeroPos>),
 }
 
 impl Application for Game {
@@ -66,18 +117,26 @@ impl Application for Game {
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = SmallRng::from_entropy();
     let mut extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
+    let bot = Bot::new(
+      flags.width,
+      flags.height,
+      SmallRng::from_seed(rng.gen()),
+      Arc::new(Patterns::default()),
+      BotConfig::default(),
+    );
     extended_field.place_initial_position(flags.initial_position);
-    (
-      Game {
-        config: flags,
-        rng,
-        extended_field,
-        field_cache: Default::default(),
-        edit_mode: false,
-        coordinates: None,
-      },
-      Command::none(),
-    )
+    let game = Game {
+      config: flags,
+      rng,
+      extended_field,
+      field_cache: Default::default(),
+      bot: Arc::new(Mutex::new(bot)),
+      edit_mode: false,
+      thinking: false,
+      coordinates: None,
+    };
+    game.put_all_bot_points();
+    (game, Command::none())
   }
 
   fn title(&self) -> String {
@@ -86,32 +145,65 @@ impl Application for Game {
 
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match message {
+      Message::BotMove(maybe_pos) => {
+        if let Some(pos) = maybe_pos {
+          self.put_point(pos.get());
+        }
+        self.thinking = false;
+      }
       Message::Canvas(CanvasMessage::PutPoint(pos)) => {
-        if self.extended_field.put_point(pos) {
-          self.field_cache.clear();
+        if self.thinking {
+          return Command::none();
+        }
+        if self.put_point(pos) {
+          self.thinking = true;
         }
       }
       Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
-        if self.extended_field.put_players_point(pos, player) {
-          self.field_cache.clear();
+        if self.thinking {
+          return Command::none();
         }
+        self.put_players_point(pos, player);
       }
       Message::Canvas(CanvasMessage::Undo) => {
-        if self.extended_field.undo() {
-          self.field_cache.clear();
+        if self.thinking {
+          return Command::none();
         }
+        self.undo();
       }
       Message::Canvas(CanvasMessage::New) => {
+        if self.thinking {
+          return Command::none();
+        }
         self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
+        self.bot = Arc::new(Mutex::new(Bot::new(
+          self.config.width,
+          self.config.height,
+          SmallRng::from_seed(self.rng.gen()),
+          Arc::new(Patterns::default()),
+          BotConfig::default(),
+        )));
         self.extended_field.place_initial_position(self.config.initial_position);
+        self.put_all_bot_points();
         self.field_cache.clear();
       }
       Message::Canvas(CanvasMessage::Open) => {
+        if self.thinking {
+          return Command::none();
+        }
         if let Some(file) = FileDialog::new().add_filter("SGF", &["sgf"]).pick_file() {
           if let Ok(text) = fs::read_to_string(file) {
             if let Ok(game_tree) = sgf_parser::parse(&text) {
               if let Some(extended_field) = sgf::from_sgf(game_tree, &mut self.rng) {
                 self.extended_field = extended_field;
+                self.bot = Arc::new(Mutex::new(Bot::new(
+                  self.config.width,
+                  self.config.height,
+                  SmallRng::from_seed(self.rng.gen()),
+                  Arc::new(Patterns::default()),
+                  BotConfig::default(),
+                )));
+                self.put_all_bot_points();
                 self.field_cache.clear();
               }
             }
@@ -132,12 +224,26 @@ impl Application for Game {
     Command::none()
   }
 
+  fn subscription(&self) -> Subscription<Message> {
+    if self.thinking {
+      Subscription::from_recipe(FindMove {
+        bot: self.bot.clone(),
+        player: self.extended_field.player,
+      })
+      .map(Message::BotMove)
+    } else {
+      Subscription::none()
+    }
+  }
+
   fn view(&mut self) -> iced::Element<'_, Self::Message> {
     let mode = Text::new(if self.edit_mode {
       "Mode: Editing"
     } else {
       "Mode: Playing"
     });
+
+    let ai = Text::new(if self.thinking { "AI: Thinking" } else { "AI: Idle" });
 
     let score = Row::new()
       .push(Text::new("Score: "))
@@ -163,6 +269,7 @@ impl Application for Game {
 
     let info = Column::new()
       .push(mode)
+      .push(ai)
       .push(score)
       .push(moves_count)
       .push(coordinates)

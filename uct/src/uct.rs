@@ -42,6 +42,24 @@ pub struct UctConfig {
   pub komi_min_iterations: usize,
 }
 
+impl Default for UctConfig {
+  fn default() -> Self {
+    Self {
+      threads_count: num_cpus::get(),
+      radius: 3,
+      ucb_type: UcbType::Ucb1Tuned,
+      draw_weight: 0.4,
+      uctk: 1.0,
+      when_create_children: 2,
+      depth: 8,
+      komi_type: UctKomiType::Dynamic,
+      red: 0.45,
+      green: 0.5,
+      komi_min_iterations: 3000,
+    }
+  }
+}
+
 struct UctNode {
   wins: AtomicUsize,
   draws: AtomicUsize,

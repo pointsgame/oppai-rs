@@ -30,12 +30,14 @@ pub struct Dfa<P: Clone> {
   states: Vec<DfaState<P>>,
 }
 
-impl<P: Clone> Dfa<P> {
-  pub fn empty() -> Dfa<P> {
+impl<P: Clone> Default for Dfa<P> {
+  fn default() -> Self {
     let state = DfaState::new(0, 0, 0, 0, true, Vec::new());
-    Dfa { states: vec![state] }
+    Self { states: vec![state] }
   }
+}
 
+impl<P: Clone> Dfa<P> {
   pub fn new(states: Vec<DfaState<P>>) -> Dfa<P> {
     Dfa { states }
   }

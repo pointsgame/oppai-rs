@@ -1,6 +1,6 @@
 use crate::config::{Config, Solver};
 use crate::heuristic;
-use oppai_field::field::{self, Field};
+use oppai_field::field::{self, Field, NonZeroPos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use oppai_minimax::minimax::Minimax;
@@ -33,12 +33,12 @@ fn is_field_occupied(field: &Field) -> bool {
 }
 
 pub struct Bot<R> {
-  rng: R,
-  patterns: Arc<Patterns>,
-  field: Field,
-  uct: UctRoot,
-  minimax: Minimax,
-  config: Config,
+  pub rng: R,
+  pub patterns: Arc<Patterns>,
+  pub field: Field,
+  pub uct: UctRoot,
+  pub minimax: Minimax,
+  pub config: Config,
 }
 
 impl<S, R> Bot<R>
@@ -61,8 +61,8 @@ where
     }
   }
 
-  pub fn initial_move(&self) -> Option<(u32, u32)> {
-    match self.field.moves_count() {
+  pub fn initial_move(&self) -> Option<NonZeroPos> {
+    let result = match self.field.moves_count() {
       0 => Some((self.field.width() / 2, self.field.height() / 2)),
       1 => {
         let width = self.field.width();
@@ -101,22 +101,23 @@ where
         }
       }
       _ => None,
-    }
+    };
+    result.and_then(|(x, y)| NonZeroPos::new(self.field.to_pos(x, y)))
   }
 
-  pub fn best_move(&mut self, player: Player) -> Option<(u32, u32)> {
+  pub fn best_move(&mut self, player: Player) -> Option<NonZeroPos> {
     self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
   }
 
-  pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<(u32, u32)> {
+  pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<NonZeroPos> {
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
     }
-    if let Some(m) = self.initial_move() {
-      return Some(m);
+    if let Some(pos) = self.initial_move() {
+      return Some(pos);
     }
     if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
-      return Some((self.field.to_x(pos), self.field.to_y(pos)));
+      return NonZeroPos::new(pos);
     }
     match self.config.solver {
       Solver::Uct => self
@@ -127,8 +128,7 @@ where
           &mut self.rng,
           Duration::from_millis(u64::from(time - self.config.time_gap)),
         )
-        .or_else(|| heuristic::heuristic(&self.field, player))
-        .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
+        .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
         .minimax_with_time(
@@ -136,11 +136,8 @@ where
           player,
           Duration::from_millis(u64::from(time - self.config.time_gap)),
         )
-        .or_else(|| heuristic::heuristic(&self.field, player))
-        .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get()))),
-      Solver::Heuristic => {
-        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
-      }
+        .or_else(|| heuristic::heuristic(&self.field, player)),
+      Solver::Heuristic => heuristic::heuristic(&self.field, player),
     }
   }
 
@@ -149,19 +146,19 @@ where
     player: Player,
     remaining_time: u32,
     time_per_move: u32,
-  ) -> Option<(u32, u32)> {
+  ) -> Option<NonZeroPos> {
     self.best_move_with_time(player, time_per_move + remaining_time / 25)
   }
 
-  pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<(u32, u32)> {
+  pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<NonZeroPos> {
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
     }
-    if let Some(m) = self.initial_move() {
-      return Some(m);
+    if let Some(pos) = self.initial_move() {
+      return Some(pos);
     }
     if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
-      return Some((self.field.to_x(pos), self.field.to_y(pos)));
+      return NonZeroPos::new(pos);
     }
     match self.config.solver {
       Solver::Uct => {
@@ -172,7 +169,6 @@ where
           .uct
           .best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count)
           .or_else(|| heuristic::heuristic(&self.field, player))
-          .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
       }
       Solver::Minimax => {
         let depth = (complexity - MIN_COMPLEXITY) * (MAX_MINIMAX_DEPTH - MIN_MINIMAX_DEPTH)
@@ -182,20 +178,8 @@ where
           .minimax
           .minimax(&mut self.field, player, depth)
           .or_else(|| heuristic::heuristic(&self.field, player))
-          .map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
       }
-      Solver::Heuristic => {
-        heuristic::heuristic(&self.field, player).map(|pos| (self.field.to_x(pos.get()), self.field.to_y(pos.get())))
-      }
+      Solver::Heuristic => heuristic::heuristic(&self.field, player),
     }
-  }
-
-  pub fn put_point(&mut self, x: u32, y: u32, player: Player) -> bool {
-    let pos = self.field.to_pos(x, y);
-    self.field.put_point(pos, player)
-  }
-
-  pub fn undo(&mut self) -> bool {
-    self.field.undo()
   }
 }
