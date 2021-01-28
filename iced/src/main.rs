@@ -44,6 +44,7 @@ struct Game {
   field_cache: canvas::Cache,
   bot: Arc<Mutex<Bot<SmallRng>>>,
   edit_mode: bool,
+  ai: bool,
   thinking: bool,
   coordinates: Option<(u32, u32)>,
 }
@@ -97,6 +98,7 @@ enum CanvasMessage {
   New,
   Open,
   ToggleEditMode,
+  ToggleAI,
   ChangeCoordinates(u32, u32),
   ClearCoordinates,
 }
@@ -130,6 +132,7 @@ impl Application for Game {
       field_cache: Default::default(),
       bot: Arc::new(Mutex::new(bot)),
       edit_mode: false,
+      ai: true,
       thinking: false,
       coordinates: None,
     };
@@ -154,12 +157,12 @@ impl Application for Game {
           return Command::none();
         }
         if self.put_point(pos) {
-          self.thinking = true;
-          let bot = self.bot.clone();
-          let player = self.extended_field.player;
-          return async move {
-            Message::BotMove(bot.lock().unwrap().best_move(player))
-          }.into();
+          if self.ai {
+            self.thinking = true;
+            let bot = self.bot.clone();
+            let player = self.extended_field.player;
+            return async move { Message::BotMove(bot.lock().unwrap().best_move(player)) }.into();
+          }
         }
       }
       Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
@@ -216,6 +219,9 @@ impl Application for Game {
       Message::Canvas(CanvasMessage::ToggleEditMode) => {
         self.edit_mode = !self.edit_mode;
       }
+      Message::Canvas(CanvasMessage::ToggleAI) => {
+        self.ai = !self.ai;
+      }
       Message::Canvas(CanvasMessage::ChangeCoordinates(x, y)) => {
         self.coordinates = Some((x, y));
       }
@@ -234,7 +240,13 @@ impl Application for Game {
       "Mode: Playing"
     });
 
-    let ai = Text::new(if self.thinking { "AI: Thinking" } else { "AI: Idle" });
+    let ai = Text::new(if self.thinking {
+      "AI: Thinking"
+    } else if self.ai {
+      "AI: Idle"
+    } else {
+      "AI: Off"
+    });
 
     let score = Row::new()
       .push(Text::new("Score: "))
@@ -406,6 +418,10 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::E,
         modifiers: keyboard::Modifiers { control: true, .. },
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleEditMode)),
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::A,
+        modifiers: keyboard::Modifiers { control: true, .. },
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleAI)),
       _ => (canvas::event::Status::Ignored, None),
     }
   }
