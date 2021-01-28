@@ -1,14 +1,12 @@
 mod config;
 mod extended_field;
-mod find_move;
 mod sgf;
 
 use crate::config::{cli_parse, Config, RGB};
 use crate::extended_field::ExtendedField;
-use find_move::FindMove;
 use iced::{
   canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Column, Command, Container,
-  Element, Length, Point, Rectangle, Row, Settings, Size, Subscription, Text, Vector,
+  Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
 };
 use oppai_bot::bot::Bot;
 use oppai_bot::config::Config as BotConfig;
@@ -157,6 +155,11 @@ impl Application for Game {
         }
         if self.put_point(pos) {
           self.thinking = true;
+          let bot = self.bot.clone();
+          let player = self.extended_field.player;
+          return async move {
+            Message::BotMove(bot.lock().unwrap().best_move(player))
+          }.into();
         }
       }
       Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
@@ -222,18 +225,6 @@ impl Application for Game {
     }
 
     Command::none()
-  }
-
-  fn subscription(&self) -> Subscription<Message> {
-    if self.thinking {
-      Subscription::from_recipe(FindMove {
-        bot: self.bot.clone(),
-        player: self.extended_field.player,
-      })
-      .map(Message::BotMove)
-    } else {
-      Subscription::none()
-    }
   }
 
   fn view(&mut self) -> iced::Element<'_, Self::Message> {

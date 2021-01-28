@@ -2200,7 +2200,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "iced",
- "iced_futures",
  "oppai-bot",
  "oppai-field",
  "oppai-patterns",
