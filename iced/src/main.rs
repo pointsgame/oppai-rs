@@ -28,6 +28,9 @@ impl From<RGB> for Color {
 }
 
 pub fn main() -> iced::Result {
+  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  env_logger::Builder::from_env(env).init();
+
   let config = cli_parse();
 
   Game::run(Settings {
