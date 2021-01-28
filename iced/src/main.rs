@@ -15,7 +15,7 @@ use oppai_field::player::Player;
 use oppai_patterns::patterns::Patterns;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use rfd::FileDialog;
+use rfd::{AsyncFileDialog, FileHandle};
 use std::{
   fs,
   sync::{Arc, Mutex},
@@ -46,6 +46,7 @@ struct Game {
   edit_mode: bool,
   ai: bool,
   thinking: bool,
+  file_choosing: bool,
   coordinates: Option<(u32, u32)>,
 }
 
@@ -88,6 +89,10 @@ impl Game {
       bot.field.put_point(pos, player);
     }
   }
+
+  pub fn is_locked(&self) -> bool {
+    self.thinking || self.file_choosing
+  }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -103,10 +108,11 @@ enum CanvasMessage {
   ClearCoordinates,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 enum Message {
   Canvas(CanvasMessage),
   BotMove(Option<NonZeroPos>),
+  OpenFile(Option<FileHandle>),
 }
 
 impl Application for Game {
@@ -134,6 +140,7 @@ impl Application for Game {
       edit_mode: false,
       ai: true,
       thinking: false,
+      file_choosing: false,
       coordinates: None,
     };
     game.put_all_bot_points();
@@ -152,53 +159,9 @@ impl Application for Game {
         }
         self.thinking = false;
       }
-      Message::Canvas(CanvasMessage::PutPoint(pos)) => {
-        if self.thinking {
-          return Command::none();
-        }
-        if self.put_point(pos) {
-          if self.ai {
-            self.thinking = true;
-            let bot = self.bot.clone();
-            let player = self.extended_field.player;
-            return async move { Message::BotMove(bot.lock().unwrap().best_move(player)) }.into();
-          }
-        }
-      }
-      Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
-        if self.thinking {
-          return Command::none();
-        }
-        self.put_players_point(pos, player);
-      }
-      Message::Canvas(CanvasMessage::Undo) => {
-        if self.thinking {
-          return Command::none();
-        }
-        self.undo();
-      }
-      Message::Canvas(CanvasMessage::New) => {
-        if self.thinking {
-          return Command::none();
-        }
-        self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
-        self.bot = Arc::new(Mutex::new(Bot::new(
-          self.config.width,
-          self.config.height,
-          SmallRng::from_seed(self.rng.gen()),
-          Arc::new(Patterns::default()),
-          BotConfig::default(),
-        )));
-        self.extended_field.place_initial_position(self.config.initial_position);
-        self.put_all_bot_points();
-        self.field_cache.clear();
-      }
-      Message::Canvas(CanvasMessage::Open) => {
-        if self.thinking {
-          return Command::none();
-        }
-        if let Some(file) = FileDialog::new().add_filter("SGF", &["sgf"]).pick_file() {
-          if let Ok(text) = fs::read_to_string(file) {
+      Message::OpenFile(maybe_file) => {
+        if let Some(file) = maybe_file {
+          if let Ok(text) = fs::read_to_string(file.inner()) {
             if let Ok(game_tree) = sgf_parser::parse(&text) {
               if let Some(extended_field) = sgf::from_sgf(game_tree, &mut self.rng) {
                 self.extended_field = extended_field;
@@ -215,6 +178,55 @@ impl Application for Game {
             }
           }
         }
+        self.file_choosing = false;
+      }
+      Message::Canvas(CanvasMessage::PutPoint(pos)) => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        if self.put_point(pos) {
+          if self.ai {
+            self.thinking = true;
+            let bot = self.bot.clone();
+            let player = self.extended_field.player;
+            return async move { Message::BotMove(bot.lock().unwrap().best_move(player)) }.into();
+          }
+        }
+      }
+      Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.put_players_point(pos, player);
+      }
+      Message::Canvas(CanvasMessage::Undo) => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.undo();
+      }
+      Message::Canvas(CanvasMessage::New) => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
+        self.bot = Arc::new(Mutex::new(Bot::new(
+          self.config.width,
+          self.config.height,
+          SmallRng::from_seed(self.rng.gen()),
+          Arc::new(Patterns::default()),
+          BotConfig::default(),
+        )));
+        self.extended_field.place_initial_position(self.config.initial_position);
+        self.put_all_bot_points();
+        self.field_cache.clear();
+      }
+      Message::Canvas(CanvasMessage::Open) => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.file_choosing = true;
+        return Command::perform(AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(), Message::OpenFile);
       }
       Message::Canvas(CanvasMessage::ToggleEditMode) => {
         self.edit_mode = !self.edit_mode;

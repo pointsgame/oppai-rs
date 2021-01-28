@@ -10,7 +10,7 @@ edition = "2018"
 iced = { version = "0.2", features = [ "canvas" ] }
 rand = { version = "0.8", features = [ "small_rng" ] }
 clap = "2.33"
-rfd = "0.1"
+rfd = { version = "0.1", features = [ "file-handle-inner" ] }
 sgf-parser = "2.6"
 oppai-field = { path = "../field" }
 oppai-patterns = { path = "../patterns" }
