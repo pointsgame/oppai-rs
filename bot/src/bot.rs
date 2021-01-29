@@ -109,7 +109,7 @@ where
     self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
   }
 
-  pub fn best_move_with_time(&mut self, player: Player, time: u32) -> Option<NonZeroPos> {
+  pub fn best_move_with_time(&mut self, player: Player, time: Duration) -> Option<NonZeroPos> {
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
     }
@@ -122,20 +122,11 @@ where
     match self.config.solver {
       Solver::Uct => self
         .uct
-        .best_move_with_time(
-          &self.field,
-          player,
-          &mut self.rng,
-          Duration::from_millis(u64::from(time - self.config.time_gap)),
-        )
+        .best_move_with_time(&self.field, player, &mut self.rng, time - self.config.time_gap)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
-        .minimax_with_time(
-          &mut self.field,
-          player,
-          Duration::from_millis(u64::from(time - self.config.time_gap)),
-        )
+        .minimax_with_time(&mut self.field, player, time - self.config.time_gap)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     }
@@ -144,8 +135,8 @@ where
   pub fn best_move_with_full_time(
     &mut self,
     player: Player,
-    remaining_time: u32,
-    time_per_move: u32,
+    remaining_time: Duration,
+    time_per_move: Duration,
   ) -> Option<NonZeroPos> {
     self.best_move_with_time(player, time_per_move + remaining_time / 25)
   }

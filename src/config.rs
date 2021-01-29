@@ -2,7 +2,7 @@ use clap::{App, Arg, ArgGroup};
 use oppai_bot::config::{Config as BotConfig, Solver};
 use oppai_minimax::minimax::{MinimaxConfig, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
-use std::str;
+use std::{str, time::Duration};
 use strum::VariantNames;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -214,7 +214,7 @@ pub fn cli_parse() -> Config {
   let bot_config = BotConfig {
     uct: uct_config,
     minimax: minimax_config,
-    time_gap: value_t!(matches.value_of("time-gap"), u32).unwrap_or_else(|e| e.exit()),
+    time_gap: Duration::from_millis(value_t!(matches.value_of("time-gap"), u64).unwrap_or_else(|e| e.exit())),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
   };
   Config {

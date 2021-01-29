@@ -1,5 +1,6 @@
 use oppai_minimax::minimax::MinimaxConfig;
 use oppai_uct::uct::UctConfig;
+use std::time::Duration;
 use strum::{EnumString, EnumVariantNames};
 
 #[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
@@ -13,7 +14,7 @@ pub enum Solver {
 pub struct Config {
   pub uct: UctConfig,
   pub minimax: MinimaxConfig,
-  pub time_gap: u32, // TODO: Instant
+  pub time_gap: Duration,
   pub solver: Solver,
 }
 
@@ -22,7 +23,7 @@ impl Default for Config {
     Self {
       uct: UctConfig::default(),
       minimax: MinimaxConfig::default(),
-      time_gap: 100,
+      time_gap: Duration::from_millis(100),
       solver: Solver::Uct,
     }
   }

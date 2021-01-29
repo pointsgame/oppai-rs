@@ -163,6 +163,7 @@ use std::{
   io::{self, BufRead, BufReader, Write},
   str::FromStr,
   sync::Arc,
+  time::Duration,
 };
 
 fn write_author<T: Write>(output: &mut T, id: u32) {
@@ -408,11 +409,11 @@ fn main() {
               1 => Some(Player::Black),
               _ => None,
             });
-          let time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
+          let time_option = split.next().and_then(|time_str| u64::from_str(time_str).ok());
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
           } else if let (Some(player), Some(time), Some(bot)) = (player_option, time_option, bot_option.as_mut()) {
-            if let Some(pos) = bot.best_move_with_time(player, time) {
+            if let Some(pos) = bot.best_move_with_time(player, Duration::from_millis(time)) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move_with_time(&mut output, id, x, y, player);
@@ -433,8 +434,8 @@ fn main() {
               1 => Some(Player::Black),
               _ => None,
             });
-          let remaining_time_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
-          let time_per_move_option = split.next().and_then(|time_str| u32::from_str(time_str).ok());
+          let remaining_time_option = split.next().and_then(|time_str| u64::from_str(time_str).ok());
+          let time_per_move_option = split.next().and_then(|time_str| u64::from_str(time_str).ok());
           if split.next().is_some() {
             write_gen_move_with_full_time_error(&mut output, id);
           } else if let (Some(player), Some(remaining_time), Some(time_per_move), Some(bot)) = (
@@ -443,7 +444,11 @@ fn main() {
             time_per_move_option,
             bot_option.as_mut(),
           ) {
-            if let Some(pos) = bot.best_move_with_full_time(player, remaining_time, time_per_move) {
+            if let Some(pos) = bot.best_move_with_full_time(
+              player,
+              Duration::from_millis(remaining_time),
+              Duration::from_millis(time_per_move),
+            ) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move_with_full_time(&mut output, id, x, y, player);
