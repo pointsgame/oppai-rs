@@ -16,3 +16,7 @@ sgf-parser = "2.6"
 oppai-field = { path = "../field" }
 oppai-patterns = { path = "../patterns" }
 oppai-bot = { path = "../bot" }
+
+[features]
+default = ["dsu"]
+dsu = ["oppai-field/dsu"]
