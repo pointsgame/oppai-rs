@@ -15,14 +15,6 @@ const MIN_COMPLEXITY: u32 = 0;
 
 const MAX_COMPLEXITY: u32 = 100;
 
-const MIN_UCT_ITERATIONS: usize = 0;
-
-const MAX_UCT_ITERATIONS: usize = 500_000;
-
-const MIN_MINIMAX_DEPTH: u32 = 0;
-
-const MAX_MINIMAX_DEPTH: u32 = 12;
-
 fn is_field_occupied(field: &Field) -> bool {
   for pos in field.min_pos()..=field.max_pos() {
     if field.cell(pos).is_putting_allowed() {
@@ -106,7 +98,7 @@ where
   }
 
   pub fn best_move(&mut self, player: Player) -> Option<NonZeroPos> {
-    self.best_move_with_complexity(player, (MAX_COMPLEXITY - MIN_COMPLEXITY) / 2 + MIN_COMPLEXITY)
+    self.best_move_with_complexity(player, MAX_COMPLEXITY)
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: Duration) -> Option<NonZeroPos> {
@@ -144,18 +136,15 @@ where
     }
     match self.config.solver {
       Solver::Uct => {
-        let iterations_count = (complexity - MIN_COMPLEXITY) as usize * (MAX_UCT_ITERATIONS - MIN_UCT_ITERATIONS)
-          / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize
-          + MIN_UCT_ITERATIONS;
+        let iterations_count = (complexity - MIN_COMPLEXITY) as usize * self.config.uct_iterations
+          / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize;
         self
           .uct
           .best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count)
           .or_else(|| heuristic::heuristic(&self.field, player))
       }
       Solver::Minimax => {
-        let depth = (complexity - MIN_COMPLEXITY) * (MAX_MINIMAX_DEPTH - MIN_MINIMAX_DEPTH)
-          / (MAX_COMPLEXITY - MIN_COMPLEXITY)
-          + MIN_MINIMAX_DEPTH;
+        let depth = (complexity - MIN_COMPLEXITY) * self.config.minimax_depth / (MAX_COMPLEXITY - MIN_COMPLEXITY);
         self
           .minimax
           .minimax(&mut self.field, player, depth)

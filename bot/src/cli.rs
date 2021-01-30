@@ -8,12 +8,12 @@ use strum::VariantNames;
 pub fn groups() -> [ArgGroup<'static>; 2] {
   [
     ArgGroup::with_name("Minimax")
-      .args(&["minimax-type", "rebuild-trajectories"])
+      .args(&["minimax-type", "rebuild-trajectories", "minimax-depth"])
       .multiple(true),
     ArgGroup::with_name("UCT")
       .args(&[
         "radius",
-        "depth",
+        "uct-depth",
         "when-create-children",
         "ucb-type",
         "uctk",
@@ -22,12 +22,13 @@ pub fn groups() -> [ArgGroup<'static>; 2] {
         "green",
         "komi-type",
         "komi-min-iterations",
+        "uct-iterations",
       ])
       .multiple(true),
   ]
 }
 
-pub fn args() -> [Arg<'static, 'static>; 16] {
+pub fn args() -> [Arg<'static, 'static>; 18] {
   [
     Arg::with_name("solver")
       .short("s")
@@ -80,8 +81,8 @@ pub fn args() -> [Arg<'static, 'static>; 16] {
       )
       .takes_value(true)
       .default_value("3"),
-    Arg::with_name("depth")
-      .long("depth")
+    Arg::with_name("uct-depth")
+      .long("uct-depth")
       .help("Maximum depth of the UCT tree")
       .takes_value(true)
       .default_value("8"),
@@ -99,7 +100,10 @@ pub fn args() -> [Arg<'static, 'static>; 16] {
       .default_value("Ucb1Tuned"),
     Arg::with_name("uctk")
       .long("uctk")
-      .help("UCT constant. Larger values give uniform search. Smaller values give very selective search")
+      .help(
+        "UCT constant. Larger values give uniform search. Smaller values \
+         give very selective search",
+      )
       .takes_value(true)
       .default_value("1.0"),
     Arg::with_name("draw-weight")
@@ -139,6 +143,22 @@ pub fn args() -> [Arg<'static, 'static>; 16] {
       .help("Dynamic komi for UCT will be updated after this number of iterations")
       .takes_value(true)
       .default_value("3000"),
+    Arg::with_name("minimax-depth")
+      .long("minimax-depth")
+      .help(
+        "The depth of minimax search tree. Used only for move generation with \
+         no time limit",
+      )
+      .takes_value(true)
+      .default_value("12"),
+    Arg::with_name("uct-iterations")
+      .long("uct-iterations")
+      .help(
+        "The number of UCT iterations. Used only for move generation with \
+         no time limit",
+      )
+      .takes_value(true)
+      .default_value("500000"),
   ]
 }
 
@@ -155,7 +175,7 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
     draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
     uctk: value_t!(matches.value_of("uctk"), f64).unwrap_or_else(|e| e.exit()),
     when_create_children: value_t!(matches.value_of("when-create-children"), usize).unwrap_or_else(|e| e.exit()),
-    depth: value_t!(matches.value_of("depth"), u32).unwrap_or_else(|e| e.exit()),
+    depth: value_t!(matches.value_of("uct-depth"), u32).unwrap_or_else(|e| e.exit()),
     komi_type: value_t!(matches.value_of("komi-type"), UctKomiType).unwrap_or_else(|e| e.exit()),
     red: value_t!(matches.value_of("red"), f64).unwrap_or_else(|e| e.exit()),
     green: value_t!(matches.value_of("green"), f64).unwrap_or_else(|e| e.exit()),
@@ -170,6 +190,8 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
   Config {
     uct: uct_config,
     minimax: minimax_config,
+    uct_iterations: value_t!(matches.value_of("uct-iterations"), usize).unwrap_or_else(|e| e.exit()),
+    minimax_depth: value_t!(matches.value_of("minimax-depth"), u32).unwrap_or_else(|e| e.exit()),
     time_gap: Duration::from_millis(value_t!(matches.value_of("time-gap"), u64).unwrap_or_else(|e| e.exit())),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
   }

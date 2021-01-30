@@ -14,6 +14,8 @@ pub enum Solver {
 pub struct Config {
   pub uct: UctConfig,
   pub minimax: MinimaxConfig,
+  pub uct_iterations: usize,
+  pub minimax_depth: u32,
   pub time_gap: Duration,
   pub solver: Solver,
 }
@@ -23,6 +25,8 @@ impl Default for Config {
     Self {
       uct: UctConfig::default(),
       minimax: MinimaxConfig::default(),
+      uct_iterations: 500_000,
+      minimax_depth: 12,
       time_gap: Duration::from_millis(100),
       solver: Solver::Uct,
     }
