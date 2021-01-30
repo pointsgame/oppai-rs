@@ -1,5 +1,7 @@
 use crate::extended_field::InitialPosition;
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_t, App, Arg};
+use oppai_bot::cli::*;
+use oppai_bot::config::Config as BotConfig;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
@@ -55,6 +57,7 @@ pub struct Config {
   pub maximum_area_filling: bool,
   pub last_point_mark: bool,
   pub initial_position: InitialPosition,
+  pub bot_config: BotConfig,
 }
 
 impl Default for Config {
@@ -73,6 +76,7 @@ impl Default for Config {
       maximum_area_filling: true,
       last_point_mark: true,
       initial_position: InitialPosition::Cross,
+      bot_config: BotConfig::default(),
     }
   }
 }
@@ -82,6 +86,8 @@ pub fn cli_parse() -> Config {
     .version(crate_version!())
     .author(crate_authors!("\n"))
     .about(crate_description!())
+    .groups(&groups())
+    .args(&args())
     .arg(
       Arg::with_name("width")
         .long("width")
@@ -185,6 +191,7 @@ pub fn cli_parse() -> Config {
   let maximum_area_filling = !matches.is_present("no-maximum-area-filling");
   let last_point_mark = !matches.is_present("no-last-point-mark");
   let initial_position = value_t!(matches.value_of("initial-position"), InitialPosition).unwrap_or_else(|e| e.exit());
+  let bot_config = parse_config(&matches);
 
   Config {
     width,
@@ -200,5 +207,6 @@ pub fn cli_parse() -> Config {
     maximum_area_filling,
     last_point_mark,
     initial_position,
+    bot_config,
   }
 }

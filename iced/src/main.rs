@@ -9,7 +9,6 @@ use iced::{
   Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
 };
 use oppai_bot::bot::Bot;
-use oppai_bot::config::Config as BotConfig;
 use oppai_field::field::{NonZeroPos, Pos};
 use oppai_field::player::Player;
 use oppai_patterns::patterns::Patterns;
@@ -131,7 +130,7 @@ impl Application for Game {
       flags.height,
       SmallRng::from_seed(rng.gen()),
       Arc::new(Patterns::default()),
-      BotConfig::default(),
+      flags.bot_config.clone(),
     );
     extended_field.place_initial_position(flags.initial_position);
     let game = Game {
@@ -173,7 +172,7 @@ impl Application for Game {
                   self.config.height,
                   SmallRng::from_seed(self.rng.gen()),
                   Arc::new(Patterns::default()),
-                  BotConfig::default(),
+                  self.config.bot_config.clone(),
                 )));
                 self.put_all_bot_points();
                 self.field_cache.clear();
@@ -218,7 +217,7 @@ impl Application for Game {
           self.config.height,
           SmallRng::from_seed(self.rng.gen()),
           Arc::new(Patterns::default()),
-          BotConfig::default(),
+          self.config.bot_config.clone(),
         )));
         self.extended_field.place_initial_position(self.config.initial_position);
         self.put_all_bot_points();
@@ -229,7 +228,10 @@ impl Application for Game {
           return Command::none();
         }
         self.file_choosing = true;
-        return Command::perform(AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(), Message::OpenFile);
+        return Command::perform(
+          AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
+          Message::OpenFile,
+        );
       }
       Message::Canvas(CanvasMessage::ToggleEditMode) => {
         self.edit_mode = !self.edit_mode;

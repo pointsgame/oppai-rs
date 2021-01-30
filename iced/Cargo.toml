@@ -15,7 +15,7 @@ rfd = { version = "0.1", features = [ "file-handle-inner" ] }
 sgf-parser = "2.6"
 oppai-field = { path = "../field" }
 oppai-patterns = { path = "../patterns" }
-oppai-bot = { path = "../bot" }
+oppai-bot = { path = "../bot", features = [ "cli" ] }
 
 [features]
 default = ["dsu"]

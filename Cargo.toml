@@ -10,7 +10,6 @@ edition = "2018"
 rand = { version = "0.8", features = [ "small_rng" ] }
 time = "0.2"
 env_logger = "0.8"
-num_cpus = "1.13"
 crossbeam = "0.8"
 clap = "2.33"
 strum = "0.20"
@@ -20,7 +19,7 @@ oppai-ladders = { path = "ladders" }
 oppai-uct = { path = "uct" }
 oppai-minimax = { path = "minimax" }
 oppai-patterns = { path = "patterns" }
-oppai-bot = { path = "bot" }
+oppai-bot = { path = "bot", features = [ "cli" ] }
 
 [features]
 default = ["dsu"]

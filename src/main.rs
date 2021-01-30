@@ -146,9 +146,6 @@ That's it, the central point is now surrounded. We initialized the field, placed
 computer to generate a move and placed the generated point on the field.
 */
 
-#[macro_use]
-extern crate clap;
-
 mod config;
 
 use crate::config::cli_parse;

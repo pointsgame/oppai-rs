@@ -10,7 +10,12 @@ edition = "2018"
 log = "0.4"
 rand = "0.8"
 strum = { version = "0.20", features = [ "derive" ] }
+clap = { version = "2.33", optional = true }
+num_cpus = { version = "1.13", optional = true }
 oppai-field = { path = "../field" }
 oppai-minimax = { path = "../minimax" }
 oppai-uct = { path = "../uct" }
 oppai-patterns = { path = "../patterns" }
+
+[features]
+cli = [ "clap", "num_cpus" ]
