@@ -405,16 +405,8 @@ impl Minimax {
     best_move: &mut Option<NonZeroPos>,
     should_stop: &AtomicBool,
   ) -> i32 {
-    let mut alpha = if let Some(alpha) = trajectories_pruning.alpha() {
-      alpha
-    } else {
-      field.score(player)
-    };
-    let mut beta = if let Some(beta) = trajectories_pruning.beta() {
-      beta
-    } else {
-      field.score(player)
-    };
+    let mut alpha = trajectories_pruning.alpha().unwrap_or_else(|| field.score(player));
+    let mut beta = trajectories_pruning.beta().unwrap_or_else(|| field.score(player));
     while alpha != beta {
       if let [single_move] = *trajectories_pruning.moves().as_slice() {
         *best_move = NonZeroPos::new(single_move);
@@ -459,16 +451,8 @@ impl Minimax {
     best_move: &mut Option<NonZeroPos>,
     should_stop: &AtomicBool,
   ) -> i32 {
-    let alpha = if let Some(alpha) = trajectories_pruning.alpha() {
-      alpha
-    } else {
-      field.score(player)
-    };
-    let beta = if let Some(beta) = trajectories_pruning.beta() {
-      beta
-    } else {
-      field.score(player)
-    };
+    let alpha = trajectories_pruning.alpha().unwrap_or_else(|| field.score(player));
+    let beta = trajectories_pruning.beta().unwrap_or_else(|| field.score(player));
     self.alpha_beta_parallel(
       field,
       player,
