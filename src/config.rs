@@ -12,7 +12,6 @@ pub struct Config {
 }
 
 pub fn cli_parse() -> Config {
-  let num_cpus_string = num_cpus::get().to_string();
   let matches = App::new(crate_name!())
     .version(crate_version!())
     .author(crate_authors!("\n"))
@@ -61,13 +60,11 @@ pub fn cli_parse() -> Config {
         .short("t")
         .long("threads-count")
         .help(
-          "Number of threads to use. Best performance is achieved by specifying \
-           the number of physical CPU cores on the target computer. Will be determined \
-           automatically if not specified, but automatic resolution is prone to errors \
-           for multithreaded CPU-s",
+          "Number of threads to use. Will be determined automatically if not specified: \
+           for Minimax number of physical cores will be chosen, for UCT - number of \
+           logical cores",
         )
-        .takes_value(true)
-        .default_value(&num_cpus_string),
+        .takes_value(true),
     )
     .arg(
       Arg::with_name("patterns-file")
@@ -191,9 +188,13 @@ pub fn cli_parse() -> Config {
         .default_value("3000"),
     )
     .get_matches();
-  let threads_count = value_t!(matches.value_of("threads-count"), usize).unwrap_or_else(|e| e.exit());
+  let threads_count = if matches.is_present("threads-count") {
+    Some(value_t!(matches.value_of("threads-count"), usize).unwrap_or_else(|e| e.exit()))
+  } else {
+    None
+  };
   let uct_config = UctConfig {
-    threads_count,
+    threads_count: threads_count.unwrap_or_else(|| num_cpus::get()),
     radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
     ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
     draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
@@ -206,7 +207,7 @@ pub fn cli_parse() -> Config {
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit()),
   };
   let minimax_config = MinimaxConfig {
-    threads_count,
+    threads_count: threads_count.unwrap_or_else(|| num_cpus::get_physical()),
     minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxType).unwrap_or_else(|e| e.exit()),
     hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit()),
     rebuild_trajectories: matches.is_present("rebuild-trajectories"),
