@@ -132,15 +132,6 @@ where
     }
   }
 
-  pub fn best_move_with_full_time(
-    &mut self,
-    player: Player,
-    remaining_time: Duration,
-    time_per_move: Duration,
-  ) -> Option<NonZeroPos> {
-    self.best_move_with_time(player, time_per_move + remaining_time / 25)
-  }
-
   pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<NonZeroPos> {
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;

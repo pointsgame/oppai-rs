@@ -441,11 +441,9 @@ fn main() {
             time_per_move_option,
             bot_option.as_mut(),
           ) {
-            if let Some(pos) = bot.best_move_with_full_time(
-              player,
-              Duration::from_millis(remaining_time),
-              Duration::from_millis(time_per_move),
-            ) {
+            if let Some(pos) =
+              bot.best_move_with_time(player, Duration::from_millis(time_per_move + remaining_time / 25))
+            {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move_with_full_time(&mut output, id, x, y, player);
