@@ -11,10 +11,6 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use std::{cmp, sync::Arc, time::Duration};
 
-const MIN_COMPLEXITY: u32 = 0;
-
-const MAX_COMPLEXITY: u32 = 100;
-
 fn is_field_occupied(field: &Field) -> bool {
   for pos in field.min_pos()..=field.max_pos() {
     if field.cell(pos).is_putting_allowed() {
@@ -98,7 +94,26 @@ where
   }
 
   pub fn best_move(&mut self, player: Player) -> Option<NonZeroPos> {
-    self.best_move_with_complexity(player, MAX_COMPLEXITY)
+    if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
+      return None;
+    }
+    if let Some(pos) = self.initial_move() {
+      return Some(pos);
+    }
+    if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
+      return NonZeroPos::new(pos);
+    }
+    match self.config.solver {
+      Solver::Uct => self
+        .uct
+        .best_move_with_iterations_count(&self.field, player, &mut self.rng, self.config.uct_iterations)
+        .or_else(|| heuristic::heuristic(&self.field, player)),
+      Solver::Minimax => self
+        .minimax
+        .minimax(&mut self.field, player, self.config.minimax_depth)
+        .or_else(|| heuristic::heuristic(&self.field, player)),
+      Solver::Heuristic => heuristic::heuristic(&self.field, player),
+    }
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: Duration) -> Option<NonZeroPos> {
@@ -120,36 +135,6 @@ where
         .minimax
         .minimax_with_time(&mut self.field, player, time - self.config.time_gap)
         .or_else(|| heuristic::heuristic(&self.field, player)),
-      Solver::Heuristic => heuristic::heuristic(&self.field, player),
-    }
-  }
-
-  pub fn best_move_with_complexity(&mut self, player: Player, complexity: u32) -> Option<NonZeroPos> {
-    if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
-      return None;
-    }
-    if let Some(pos) = self.initial_move() {
-      return Some(pos);
-    }
-    if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
-      return NonZeroPos::new(pos);
-    }
-    match self.config.solver {
-      Solver::Uct => {
-        let iterations_count = (complexity - MIN_COMPLEXITY) as usize * self.config.uct_iterations
-          / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize;
-        self
-          .uct
-          .best_move_with_iterations_count(&self.field, player, &mut self.rng, iterations_count)
-          .or_else(|| heuristic::heuristic(&self.field, player))
-      }
-      Solver::Minimax => {
-        let depth = (complexity - MIN_COMPLEXITY) * self.config.minimax_depth / (MAX_COMPLEXITY - MIN_COMPLEXITY);
-        self
-          .minimax
-          .minimax(&mut self.field, player, depth)
-          .or_else(|| heuristic::heuristic(&self.field, player))
-      }
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     }
   }
