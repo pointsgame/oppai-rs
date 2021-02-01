@@ -2202,6 +2202,7 @@ dependencies = [
  "clap",
  "env_logger",
  "iced",
+ "log",
  "oppai-bot",
  "oppai-field",
  "oppai-patterns",

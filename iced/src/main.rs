@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 mod config;
 mod extended_field;
 mod sgf;
@@ -9,7 +12,7 @@ use iced::{
   Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
 };
 use oppai_bot::bot::Bot;
-use oppai_field::field::{NonZeroPos, Pos};
+use oppai_field::field::{to_pos, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use oppai_patterns::patterns::Patterns;
 use rand::rngs::SmallRng;
@@ -104,6 +107,7 @@ enum CanvasMessage {
   Undo,
   New,
   Open,
+  Save,
   ToggleEditMode,
   ToggleAI,
   ChangeCoordinates(u32, u32),
@@ -115,6 +119,7 @@ enum Message {
   Canvas(CanvasMessage),
   BotMove(Option<NonZeroPos>),
   OpenFile(Option<FileHandle>),
+  SaveFile(Option<FileHandle>),
 }
 
 impl Application for Game {
@@ -165,7 +170,18 @@ impl Application for Game {
         if let Some(file) = maybe_file {
           if let Ok(text) = fs::read_to_string(file.inner()) {
             if let Ok(game_tree) = sgf_parser::parse(&text) {
-              if let Some(extended_field) = sgf::from_sgf(game_tree, &mut self.rng) {
+              if let Some(extended_field) = sgf::from_sgf(game_tree).and_then(|game| {
+                let width = game.width;
+                ExtendedField::from_moves(
+                  game.width,
+                  game.height,
+                  &mut self.rng,
+                  game
+                    .moves
+                    .into_iter()
+                    .map(|(player, x, y)| (to_pos(width, x, y), player)),
+                )
+              }) {
                 self.extended_field = extended_field;
                 self.bot = Arc::new(Mutex::new(Bot::new(
                   self.config.width,
@@ -179,6 +195,31 @@ impl Application for Game {
               }
             }
           }
+        }
+        self.file_choosing = false;
+      }
+      Message::SaveFile(maybe_file) => {
+        if let Some(file) = maybe_file {
+          let moves = self
+            .extended_field
+            .field
+            .points_seq()
+            .iter()
+            .map(|&pos| {
+              (
+                self.extended_field.field.cell(pos).get_player(),
+                self.extended_field.field.to_x(pos),
+                self.extended_field.field.to_y(pos),
+              )
+            })
+            .collect();
+          let game_tree = sgf::to_sgf(sgf::SgfGame {
+            width: self.extended_field.field.width(),
+            height: self.extended_field.field.height(),
+            moves,
+          });
+          let s: String = game_tree.into();
+          fs::write(file.inner(), s).ok();
         }
         self.file_choosing = false;
       }
@@ -231,6 +272,16 @@ impl Application for Game {
         return Command::perform(
           AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
           Message::OpenFile,
+        );
+      }
+      Message::Canvas(CanvasMessage::Save) => {
+        if self.file_choosing {
+          return Command::none();
+        }
+        self.file_choosing = true;
+        return Command::perform(
+          AsyncFileDialog::new().add_filter("SGF", &["sgf"]).save_file(),
+          Message::SaveFile,
         );
       }
       Message::Canvas(CanvasMessage::ToggleEditMode) => {
@@ -431,6 +482,10 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::O,
         modifiers: keyboard::Modifiers { control: true, .. },
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::S,
+        modifiers: keyboard::Modifiers { control: true, .. },
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::E,
         modifiers: keyboard::Modifiers { control: true, .. },

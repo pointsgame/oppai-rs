@@ -77,21 +77,54 @@ impl ExtendedField {
     }
   }
 
-  fn put_points(&mut self, points: &[(Pos, Player)]) {
-    for &(pos, player) in points {
-      self.put_players_point(pos, player);
+  fn put_points<I>(&mut self, points: I) -> bool
+  where
+    I: IntoIterator<Item = (Pos, Player)>,
+  {
+    for (pos, player) in points {
+      if !self.put_players_point(pos, player) {
+        return false;
+      }
+    }
+    true
+  }
+
+  pub fn from_moves<R, I>(width: u32, height: u32, rng: &mut R, moves: I) -> Option<Self>
+  where
+    R: Rng,
+    I: IntoIterator<Item = (Pos, Player)>,
+  {
+    let mut result = Self::new(width, height, rng);
+    if result.put_points(moves) {
+      Some(result)
+    } else {
+      None
     }
   }
 
   pub fn place_initial_position(&mut self, initial_position: InitialPosition) {
     match initial_position {
       InitialPosition::Empty => {}
-      InitialPosition::Cross => self.put_points(&cross(self.field.width(), self.field.height(), self.player)),
+      InitialPosition::Cross => {
+        self.put_points(
+          cross(self.field.width(), self.field.height(), self.player)
+            .iter()
+            .cloned(),
+        );
+      }
       InitialPosition::TwoCrosses => {
-        self.put_points(&two_crosses(self.field.width(), self.field.height(), self.player))
+        self.put_points(
+          two_crosses(self.field.width(), self.field.height(), self.player)
+            .iter()
+            .cloned(),
+        );
       }
       InitialPosition::TripleCross => {
-        self.put_points(&triple_cross(self.field.width(), self.field.height(), self.player))
+        self.put_points(
+          triple_cross(self.field.width(), self.field.height(), self.player)
+            .iter()
+            .cloned(),
+        );
       }
     }
   }
