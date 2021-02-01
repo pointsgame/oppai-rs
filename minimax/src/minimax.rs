@@ -87,6 +87,11 @@ impl Minimax {
     if moves.is_empty() {
       return field.score(player);
     }
+    let alpha = alpha.max(trajectories_pruning.alpha().unwrap_or_else(|| field.score(player)));
+    let beta = beta.min(trajectories_pruning.beta().unwrap_or_else(|| field.score(player)));
+    if alpha >= beta {
+      return alpha;
+    }
     let mut cur_alpha = alpha;
     let hash_value = hash_table.get(field.colored_hash(player));
     let hash_type = hash_value.hash_type();
