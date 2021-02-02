@@ -23,6 +23,7 @@ Features
 * DFA-based patterns searching.
 * DSU to optimize capturing (optional).
 * Time-based (`gen_move_with_time`) and complexity-based (`gen_move_with_complexity`) calculations.
+* Ladders solver.
 
 Running
 ====
@@ -88,7 +89,7 @@ TODO
 * Smart time control for UCT (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).
 * Smart time control for Minimax.
 * Think on enemy's move.
-* Ladders solver.
+* Forbid typical losing ladders.
 * Fractional komi support.
 * Split trajectories by groups for Minimax (see [link](https://www.icsi.berkeley.edu/ftp/global/pub/techreports/1996/tr-96-030.pdf)).
 

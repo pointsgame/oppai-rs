@@ -2167,9 +2167,11 @@ name = "oppai-bot"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "crossbeam",
  "log",
  "num_cpus",
  "oppai-field",
+ "oppai-ladders",
  "oppai-minimax",
  "oppai-patterns",
  "oppai-uct",

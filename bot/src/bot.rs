@@ -3,13 +3,19 @@ use crate::heuristic;
 use oppai_field::field::{self, Field, NonZeroPos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
+use oppai_ladders::ladders::ladders;
 use oppai_minimax::minimax::Minimax;
 use oppai_patterns::patterns::Patterns;
 use oppai_uct::uct::UctRoot;
 use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use std::{cmp, sync::Arc, time::Duration};
+use std::{
+  cmp,
+  sync::atomic::{AtomicBool, Ordering},
+  sync::Arc,
+  time::{Duration, Instant},
+};
 
 fn is_field_occupied(field: &Field) -> bool {
   for pos in field.min_pos()..=field.max_pos() {
@@ -18,6 +24,25 @@ fn is_field_occupied(field: &Field) -> bool {
     }
   }
   true
+}
+
+fn with_timeout<T: Send, F: FnOnce(&AtomicBool) -> T + Send>(f: F, time: Duration) -> T {
+  let should_stop = AtomicBool::new(false);
+  let (s, r) = crossbeam::channel::bounded(1);
+  crossbeam::scope(|scope| {
+    let should_stop_ref = &should_stop;
+    scope.spawn(move |_| {
+      let result = f(should_stop_ref);
+      s.send(result).unwrap();
+    });
+    if let Ok(result) = r.recv_timeout(time) {
+      return result;
+    }
+    info!("Time-out!");
+    should_stop.store(true, Ordering::Relaxed);
+    r.recv().unwrap()
+  })
+  .unwrap()
 }
 
 pub struct Bot<R> {
@@ -94,6 +119,7 @@ where
   }
 
   pub fn best_move(&mut self, player: Player) -> Option<NonZeroPos> {
+    let now = Instant::now();
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
     }
@@ -101,9 +127,33 @@ where
       return Some(pos);
     }
     if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
+      info!(
+        "Cumulative time for patterns evaluation (move is found): {:?}.",
+        now.elapsed()
+      );
       return NonZeroPos::new(pos);
     }
-    match self.config.solver {
+    let elapsed = now.elapsed();
+    info!("Cumulative time for patterns evaluation: {:?}.", elapsed);
+    if self.config.ladders {
+      let should_stop = AtomicBool::new(false);
+      if let (Some(pos), score, depth) = ladders(&mut self.field, player, &should_stop) {
+        info!(
+          "Cumulative time for ladders evaluation (move is found with score {} and depth {}): {:?}.",
+          score,
+          depth,
+          now.elapsed()
+        );
+        if (score - self.field.score(player)) as u32 > self.config.ladders_score_limit
+          && depth > self.config.ladders_depth_limit
+        {
+          return Some(pos);
+        }
+      };
+    }
+    let elapsed = now.elapsed();
+    info!("Cumulative time for ladders evaluation: {:?}.", elapsed);
+    let result = match self.config.solver {
       Solver::Uct => self
         .uct
         .best_move_with_iterations_count(&self.field, player, &mut self.rng, self.config.uct_iterations)
@@ -113,10 +163,14 @@ where
         .minimax(&mut self.field, player, self.config.minimax_depth)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
-    }
+    };
+    info!("Cumulative time for best move evaluation: {:?}", now.elapsed());
+    result
   }
 
   pub fn best_move_with_time(&mut self, player: Player, time: Duration) -> Option<NonZeroPos> {
+    let now = Instant::now();
+    let time = time - self.config.time_gap;
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
     }
@@ -124,18 +178,55 @@ where
       return Some(pos);
     }
     if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
+      info!(
+        "Cumulative time for patterns evaluation (move is found): {:?}.",
+        now.elapsed()
+      );
       return NonZeroPos::new(pos);
     }
-    match self.config.solver {
+    let elapsed = now.elapsed();
+    info!("Cumulative time for patterns evaluation: {:?}.", elapsed);
+    let time_left = if let Some(time_left) = time.checked_sub(elapsed) {
+      time_left
+    } else {
+      return None;
+    };
+    if self.config.ladders {
+      if let (Some(pos), score, depth) =
+        with_timeout(|should_stop| ladders(&mut self.field, player, should_stop), time_left)
+      {
+        info!(
+          "Cumulative time for ladders evaluation (move is found with score {} and depth {}): {:?}.",
+          score,
+          depth,
+          now.elapsed()
+        );
+        if (score - self.field.score(player)) as u32 > self.config.ladders_score_limit
+          && depth > self.config.ladders_depth_limit
+        {
+          return Some(pos);
+        }
+      };
+    }
+    let elapsed = now.elapsed();
+    info!("Cumulative time for ladders evaluation: {:?}.", elapsed);
+    let time_left = if let Some(time_left) = time.checked_sub(elapsed) {
+      time_left
+    } else {
+      return None;
+    };
+    let result = match self.config.solver {
       Solver::Uct => self
         .uct
-        .best_move_with_time(&self.field, player, &mut self.rng, time - self.config.time_gap)
+        .best_move_with_time(&self.field, player, &mut self.rng, time_left)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
-        .minimax_with_time(&mut self.field, player, time - self.config.time_gap)
+        .minimax_with_time(&mut self.field, player, time_left)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
-    }
+    };
+    info!("Cumulative time for best move evaluation: {:?}", now.elapsed());
+    result
   }
 }

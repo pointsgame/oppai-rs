@@ -28,7 +28,7 @@ pub fn groups() -> [ArgGroup<'static>; 2] {
   ]
 }
 
-pub fn args() -> [Arg<'static, 'static>; 18] {
+pub fn args() -> [Arg<'static, 'static>; 21] {
   [
     Arg::with_name("solver")
       .short("s")
@@ -159,6 +159,19 @@ pub fn args() -> [Arg<'static, 'static>; 18] {
       )
       .takes_value(true)
       .default_value("500000"),
+    Arg::with_name("no-ladders-solver")
+      .long("no-ladders-solver")
+      .help("Disable ladders solver"),
+    Arg::with_name("ladders-score-limit")
+      .long("ladders-score-limit")
+      .help("Score that a ladder should have to be accepted.")
+      .takes_value(true)
+      .default_value("0"),
+    Arg::with_name("ladders-depth-limit")
+      .long("ladders-depth-limit")
+      .help("Depth that a ladder should have to be accepted.")
+      .takes_value(true)
+      .default_value("0"),
   ]
 }
 
@@ -194,5 +207,8 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
     minimax_depth: value_t!(matches.value_of("minimax-depth"), u32).unwrap_or_else(|e| e.exit()),
     time_gap: Duration::from_millis(value_t!(matches.value_of("time-gap"), u64).unwrap_or_else(|e| e.exit())),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
+    ladders: !matches.is_present("no-ladders-solver"),
+    ladders_score_limit: value_t!(matches.value_of("ladders-score-limit"), u32).unwrap_or_else(|e| e.exit()),
+    ladders_depth_limit: value_t!(matches.value_of("ladders-depth-limit"), u32).unwrap_or_else(|e| e.exit()),
   }
 }

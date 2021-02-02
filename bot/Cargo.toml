@@ -12,10 +12,12 @@ rand = "0.8"
 strum = { version = "0.20", features = [ "derive" ] }
 clap = { version = "2.33", optional = true }
 num_cpus = { version = "1.13", optional = true }
+crossbeam = "0.8"
 oppai-field = { path = "../field" }
 oppai-minimax = { path = "../minimax" }
 oppai-uct = { path = "../uct" }
 oppai-patterns = { path = "../patterns" }
+oppai-ladders = { path = "../ladders" }
 
 [features]
 cli = [ "clap", "num_cpus" ]

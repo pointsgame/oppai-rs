@@ -18,6 +18,9 @@ pub struct Config {
   pub minimax_depth: u32,
   pub time_gap: Duration,
   pub solver: Solver,
+  pub ladders: bool,
+  pub ladders_score_limit: u32,
+  pub ladders_depth_limit: u32,
 }
 
 impl Default for Config {
@@ -29,6 +32,9 @@ impl Default for Config {
       minimax_depth: 12,
       time_gap: Duration::from_millis(100),
       solver: Solver::Uct,
+      ladders: true,
+      ladders_score_limit: 0,
+      ladders_depth_limit: 0,
     }
   }
 }
