@@ -20,6 +20,7 @@ use rand::{Rng, SeedableRng};
 use rfd::{AsyncFileDialog, FileHandle};
 use std::{
   fs,
+  fs::File,
   sync::{Arc, Mutex},
 };
 
@@ -130,11 +131,22 @@ impl Application for Game {
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = SmallRng::from_entropy();
     let mut extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
+    let patterns = if flags.patterns.is_empty() {
+      Patterns::default()
+    } else {
+      Patterns::from_files(
+        flags
+          .patterns
+          .iter()
+          .map(|path| File::open(path).expect("Failed to open patterns file.")),
+      )
+      .expect("Failed to read patterns file.")
+    };
     let bot = Bot::new(
       flags.width,
       flags.height,
       SmallRng::from_seed(rng.gen()),
-      Arc::new(Patterns::default()),
+      Arc::new(patterns),
       flags.bot_config.clone(),
     );
     extended_field.place_initial_position(flags.initial_position);

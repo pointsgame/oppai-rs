@@ -57,6 +57,7 @@ pub struct Config {
   pub maximum_area_filling: bool,
   pub last_point_mark: bool,
   pub initial_position: InitialPosition,
+  pub patterns: Vec<String>,
   pub bot_config: BotConfig,
 }
 
@@ -76,6 +77,7 @@ impl Default for Config {
       maximum_area_filling: true,
       last_point_mark: true,
       initial_position: InitialPosition::Cross,
+      patterns: Vec::new(),
       bot_config: BotConfig::default(),
     }
   }
@@ -176,6 +178,14 @@ pub fn cli_parse() -> Config {
         .case_insensitive(true)
         .default_value("Cross"),
     )
+    .arg(
+      Arg::with_name("patterns-file")
+        .short("p")
+        .long("patterns-file")
+        .help("Patterns file to use")
+        .takes_value(true)
+        .multiple(true),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -191,6 +201,11 @@ pub fn cli_parse() -> Config {
   let maximum_area_filling = !matches.is_present("no-maximum-area-filling");
   let last_point_mark = !matches.is_present("no-last-point-mark");
   let initial_position = value_t!(matches.value_of("initial-position"), InitialPosition).unwrap_or_else(|e| e.exit());
+  let patterns = if matches.is_present("patterns-file") {
+    clap::values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit())
+  } else {
+    Vec::new()
+  };
   let bot_config = parse_config(&matches);
 
   Config {
@@ -207,6 +222,7 @@ pub fn cli_parse() -> Config {
     maximum_area_filling,
     last_point_mark,
     initial_position,
+    patterns,
     bot_config,
   }
 }
