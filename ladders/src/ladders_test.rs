@@ -197,6 +197,57 @@ fn ladders_side_capture_2() {
 }
 
 #[test]
+fn ladders_shift() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ...........
+    .........a.
+    ...........
+    .......a...
+    ...........
+    .aAAa......
+    ..aa.......
+    ...........
+    ",
+  );
+
+  let should_stop = AtomicBool::new(false);
+
+  let (pos, score, depth) = ladders(&mut field, Player::Red, &should_stop);
+
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 4)));
+  assert_eq!(score, 2);
+  assert_eq!(depth, 9);
+}
+
+#[test]
+fn ladders_rotate() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ............
+    .........a..
+    .......a....
+    ............
+    .aAAa.......
+    ..aa......a.
+    ............
+    ",
+  );
+
+  let should_stop = AtomicBool::new(false);
+
+  let (pos, score, depth) = ladders(&mut field, Player::Red, &should_stop);
+
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 3)));
+  assert_eq!(score, 2);
+  assert_eq!(depth, 11);
+}
+
+#[test]
 fn ladders_fork() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
