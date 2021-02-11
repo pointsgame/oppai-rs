@@ -116,6 +116,7 @@ fn ladders_rec(
   player: Player,
   trajectory: &Trajectory,
   mut alpha: i32,
+  beta: i32,
   empty_board: &mut Vec<u32>,
   should_stop: &AtomicBool,
   depth: u32,
@@ -132,7 +133,7 @@ fn ladders_rec(
       let mut capture_depth = 0;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
-        if trajectory.score() <= alpha {
+        if trajectory.score() <= alpha || alpha >= beta {
           break;
         }
 
@@ -183,12 +184,24 @@ fn ladders_rec(
         let marks = mark_group(field, our_pos, player, empty_board);
 
         for trajectory in trajectories {
+          if alpha >= beta {
+            break;
+          }
+
           if trajectory.score() <= alpha {
             continue;
           }
 
-          let (_, cur_score, cur_capture_depth) =
-            ladders_rec(field, player, &trajectory, alpha, empty_board, should_stop, depth + 1);
+          let (_, cur_score, cur_capture_depth) = ladders_rec(
+            field,
+            player,
+            &trajectory,
+            alpha,
+            beta.min(trajectory.score()),
+            empty_board,
+            should_stop,
+            depth + 1,
+          );
           let cur_score = cur_score.min(trajectory.score());
 
           if cur_score > alpha && is_trajectoty_viable(field, &trajectory, player, empty_board) {
@@ -247,8 +260,16 @@ pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (
       Vec::new()
     };
 
-    let (cur_pos, cur_score, cur_capture_depth) =
-      ladders_rec(field, player, &trajectory, alpha, &mut empty_board, should_stop, 0);
+    let (cur_pos, cur_score, cur_capture_depth) = ladders_rec(
+      field,
+      player,
+      &trajectory,
+      alpha,
+      trajectory.score(),
+      &mut empty_board,
+      should_stop,
+      0,
+    );
     let cur_score = cur_score.min(trajectory.score());
     if cur_score > alpha && is_trajectoty_viable(field, &trajectory, player, &mut empty_board) {
       alpha = cur_score;
