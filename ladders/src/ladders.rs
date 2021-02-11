@@ -229,11 +229,11 @@ pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (
       break;
     }
 
-    let marks = if let [pos1, _] = *trajectory.points().as_slice() {
-      if trajectory.score() <= max_score {
-        continue;
-      }
+    if trajectory.score() <= max_score {
+      continue;
+    }
 
+    let marks = if let [pos1, _] = *trajectory.points().as_slice() {
       if let Some(&pos) = field
         .directions_diag(pos1)
         .iter()
