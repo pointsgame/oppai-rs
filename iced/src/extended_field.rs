@@ -96,6 +96,9 @@ impl ExtendedField {
   {
     let mut result = Self::new(width, height, rng);
     if result.put_points(moves) {
+      if let Some(&pos) = result.field.points_seq().last() {
+        result.player = result.field.cell(pos).get_player().next();
+      }
       Some(result)
     } else {
       None
