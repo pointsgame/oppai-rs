@@ -133,7 +133,7 @@ fn ladders_rec(
       let mut capture_depth = 0;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
-        if trajectory.score() <= alpha || alpha >= beta {
+        if trajectory.score() <= alpha || alpha >= beta || should_stop.load(Ordering::Relaxed) {
           break;
         }
 
@@ -178,13 +178,15 @@ fn ladders_rec(
         let trajectories = build_trajectories_from(field, our_pos, player, 2, empty_board, should_stop);
 
         if should_stop.load(Ordering::Relaxed) {
+          field.undo();
+          field.undo();
           break;
         }
 
         let marks = mark_group(field, our_pos, player, empty_board);
 
         for trajectory in trajectories {
-          if alpha >= beta {
+          if alpha >= beta || should_stop.load(Ordering::Relaxed) {
             break;
           }
 
