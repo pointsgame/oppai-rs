@@ -136,8 +136,11 @@ where
     let elapsed = now.elapsed();
     info!("Cumulative time for patterns evaluation: {:?}.", elapsed);
     if self.config.ladders {
-      let should_stop = AtomicBool::new(false);
-      if let (Some(pos), score, depth) = ladders(&mut self.field, player, &should_stop) {
+      let ladders_time_limit = self.config.ladders_time_limit;
+      if let (Some(pos), score, depth) = with_timeout(
+        |should_stop| ladders(&mut self.field, player, should_stop),
+        ladders_time_limit,
+      ) {
         info!(
           "Cumulative time for ladders evaluation (move is found with score {} and depth {}): {:?}.",
           score,
@@ -192,9 +195,11 @@ where
       return None;
     };
     if self.config.ladders {
-      if let (Some(pos), score, depth) =
-        with_timeout(|should_stop| ladders(&mut self.field, player, should_stop), time_left)
-      {
+      let ladders_time_limit = self.config.ladders_time_limit;
+      if let (Some(pos), score, depth) = with_timeout(
+        |should_stop| ladders(&mut self.field, player, should_stop),
+        ladders_time_limit.min(time_left),
+      ) {
         info!(
           "Cumulative time for ladders evaluation (move is found with score {} and depth {}): {:?}.",
           score,

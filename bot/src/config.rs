@@ -21,6 +21,7 @@ pub struct Config {
   pub ladders: bool,
   pub ladders_score_limit: u32,
   pub ladders_depth_limit: u32,
+  pub ladders_time_limit: Duration,
 }
 
 impl Default for Config {
@@ -35,6 +36,7 @@ impl Default for Config {
       ladders: true,
       ladders_score_limit: 0,
       ladders_depth_limit: 0,
+      ladders_time_limit: Duration::from_secs(1),
     }
   }
 }
