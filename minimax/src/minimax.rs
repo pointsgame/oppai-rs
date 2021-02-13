@@ -244,7 +244,6 @@ impl Minimax {
       depth, player, beta
     );
     if depth == 0 || should_stop.load(Ordering::Relaxed) {
-      *best_move = None;
       return field.score(player);
     }
     let moves = trajectories_pruning.moves();
@@ -256,7 +255,6 @@ impl Minimax {
         .collect::<Vec<(u32, u32)>>()
     );
     if moves.is_empty() || should_stop.load(Ordering::Relaxed) {
-      *best_move = None;
       return field.score(player);
     }
     let queue = SegQueue::new();
@@ -273,6 +271,7 @@ impl Minimax {
     let atomic_alpha = AtomicIsize::new(alpha as isize);
     let best_moves = SegQueue::new();
     let skipped_moves = SegQueue::new();
+    let first_move_considered = AtomicBool::new(best_move.is_none());
     crossbeam::scope(|scope| {
       for _ in 0..self.config.threads_count {
         scope.spawn(|_| {
@@ -350,12 +349,15 @@ impl Minimax {
               local_best_move = pos;
             }
             loop {
-              let last_alpha = atomic_alpha.load(Ordering::Relaxed);
+              let last_alpha = atomic_alpha.load(Ordering::SeqCst);
               if cur_estimation <= last_alpha as i32
-                || atomic_alpha.compare_and_swap(last_alpha, cur_estimation as isize, Ordering::Relaxed) == last_alpha
+                || atomic_alpha.compare_and_swap(last_alpha, cur_estimation as isize, Ordering::SeqCst) == last_alpha
               {
                 break;
               }
+            }
+            if *best_move == NonZeroPos::new(pos) {
+              first_move_considered.store(true, Ordering::SeqCst);
             }
           }
           if local_best_move != 0 {
@@ -385,7 +387,9 @@ impl Minimax {
         moves.push(pos);
       }
     }
-    if result == 0 {
+    if !first_move_considered.load(Ordering::SeqCst) {
+      info!("First move was not considered.");
+    } else if result == 0 {
       info!("Best move is not found.");
       *best_move = None;
     } else {
@@ -413,7 +417,6 @@ impl Minimax {
         return alpha;
       }
       if should_stop.load(Ordering::Relaxed) {
-        *best_move = None;
         return alpha;
       }
       let mut cur_best_move = *best_move;
@@ -602,6 +605,12 @@ impl Minimax {
             &should_stop,
           ) < estimation
         {
+          info!(
+            "Found best move {:?} with estimation {} at depth {}",
+            cur_best_move.map(|pos| (field.to_x(pos.get()), field.to_y(pos.get()))),
+            estimation,
+            depth
+          );
           cur_best_move
         } else {
           None
