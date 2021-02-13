@@ -118,7 +118,7 @@ where
     result.and_then(|(x, y)| NonZeroPos::new(self.field.to_pos(x, y)))
   }
 
-  pub fn best_move(&mut self, player: Player) -> Option<NonZeroPos> {
+  pub fn best_move(&mut self, player: Player, uct_iterations: usize, minimax_depth: u32) -> Option<NonZeroPos> {
     let now = Instant::now();
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
@@ -159,11 +159,11 @@ where
     let result = match self.config.solver {
       Solver::Uct => self
         .uct
-        .best_move_with_iterations_count(&self.field, player, &mut self.rng, self.config.uct_iterations)
+        .best_move_with_iterations_count(&self.field, player, &mut self.rng, uct_iterations)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
-        .minimax(&mut self.field, player, self.config.minimax_depth)
+        .minimax(&mut self.field, player, minimax_depth)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     };

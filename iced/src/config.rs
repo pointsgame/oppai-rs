@@ -4,6 +4,7 @@ use oppai_bot::cli::*;
 use oppai_bot::config::Config as BotConfig;
 use std::num::ParseIntError;
 use std::str::FromStr;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RGB {
@@ -59,6 +60,7 @@ pub struct Config {
   pub initial_position: InitialPosition,
   pub patterns: Vec<String>,
   pub bot_config: BotConfig,
+  pub time: Duration,
 }
 
 impl Default for Config {
@@ -79,6 +81,7 @@ impl Default for Config {
       initial_position: InitialPosition::Cross,
       patterns: Vec::new(),
       bot_config: BotConfig::default(),
+      time: Duration::from_secs(5),
     }
   }
 }
@@ -186,6 +189,13 @@ pub fn cli_parse() -> Config {
         .takes_value(true)
         .multiple(true),
     )
+    .arg(
+      Arg::with_name("time")
+        .long("time")
+        .help("Time to think that AI will use for one move")
+        .takes_value(true)
+        .default_value("5000"),
+    )
     .get_matches();
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
@@ -207,6 +217,7 @@ pub fn cli_parse() -> Config {
     Vec::new()
   };
   let bot_config = parse_config(&matches);
+  let time = Duration::from_millis(value_t!(matches.value_of("time"), u64).unwrap_or_else(|e| e.exit()));
 
   Config {
     width,
@@ -224,5 +235,6 @@ pub fn cli_parse() -> Config {
     initial_position,
     patterns,
     bot_config,
+    time,
   }
 }

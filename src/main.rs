@@ -360,7 +360,7 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_error(&mut output, id);
           } else if let (Some(player), Some(bot)) = (player_option, bot_option.as_mut()) {
-            if let Some(pos) = bot.best_move(player) {
+            if let Some(pos) = bot.best_move(player, config.uct_iterations, config.minimax_depth) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move(&mut output, id, x, y, player);
@@ -389,21 +389,17 @@ fn main() {
           } else if let (Some(player), Some(complexity), Some(bot)) =
             (player_option, complexity_option, bot_option.as_mut())
           {
-            let uct_iterations = bot.config.uct_iterations;
-            let minimax_depth = bot.config.minimax_depth;
-            bot.config.uct_iterations =
-              (complexity - MIN_COMPLEXITY) as usize * uct_iterations / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize;
-            bot.config.minimax_depth =
-              (complexity - MIN_COMPLEXITY) * minimax_depth / (MAX_COMPLEXITY - MIN_COMPLEXITY);
-            if let Some(pos) = bot.best_move(player) {
+            let uct_iterations = (complexity - MIN_COMPLEXITY) as usize * config.uct_iterations
+              / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize;
+            let minimax_depth =
+              (complexity - MIN_COMPLEXITY) * config.minimax_depth / (MAX_COMPLEXITY - MIN_COMPLEXITY);
+            if let Some(pos) = bot.best_move(player, uct_iterations, minimax_depth) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move_with_complexity(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_complexity_error(&mut output, id);
             }
-            bot.config.uct_iterations = uct_iterations;
-            bot.config.minimax_depth = minimax_depth;
           } else {
             write_gen_move_with_complexity_error(&mut output, id);
           }

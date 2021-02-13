@@ -244,7 +244,8 @@ impl Application for Game {
             self.thinking = true;
             let bot = self.bot.clone();
             let player = self.extended_field.player;
-            return async move { Message::BotMove(bot.lock().unwrap().best_move(player)) }.into();
+            let time = self.config.time;
+            return async move { Message::BotMove(bot.lock().unwrap().best_move_with_time(player, time)) }.into();
           }
         }
       }

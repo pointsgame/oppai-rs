@@ -8,7 +8,7 @@ use strum::VariantNames;
 pub fn groups() -> [ArgGroup<'static>; 2] {
   [
     ArgGroup::with_name("Minimax")
-      .args(&["minimax-type", "rebuild-trajectories", "minimax-depth"])
+      .args(&["minimax-type", "rebuild-trajectories"])
       .multiple(true),
     ArgGroup::with_name("UCT")
       .args(&[
@@ -22,13 +22,12 @@ pub fn groups() -> [ArgGroup<'static>; 2] {
         "green",
         "komi-type",
         "komi-min-iterations",
-        "uct-iterations",
       ])
       .multiple(true),
   ]
 }
 
-pub fn args() -> [Arg<'static, 'static>; 22] {
+pub fn args() -> [Arg<'static, 'static>; 20] {
   [
     Arg::with_name("solver")
       .short("s")
@@ -143,22 +142,6 @@ pub fn args() -> [Arg<'static, 'static>; 22] {
       .help("Dynamic komi for UCT will be updated after this number of iterations")
       .takes_value(true)
       .default_value("3000"),
-    Arg::with_name("minimax-depth")
-      .long("minimax-depth")
-      .help(
-        "The depth of minimax search tree. Used only for move generation with \
-         no time limit",
-      )
-      .takes_value(true)
-      .default_value("12"),
-    Arg::with_name("uct-iterations")
-      .long("uct-iterations")
-      .help(
-        "The number of UCT iterations. Used only for move generation with \
-         no time limit",
-      )
-      .takes_value(true)
-      .default_value("500000"),
     Arg::with_name("no-ladders-solver")
       .long("no-ladders-solver")
       .help("Disable ladders solver"),
@@ -208,8 +191,6 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
   Config {
     uct: uct_config,
     minimax: minimax_config,
-    uct_iterations: value_t!(matches.value_of("uct-iterations"), usize).unwrap_or_else(|e| e.exit()),
-    minimax_depth: value_t!(matches.value_of("minimax-depth"), u32).unwrap_or_else(|e| e.exit()),
     time_gap: Duration::from_millis(value_t!(matches.value_of("time-gap"), u64).unwrap_or_else(|e| e.exit())),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
     ladders: !matches.is_present("no-ladders-solver"),
