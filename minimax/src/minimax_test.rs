@@ -69,6 +69,7 @@ minimax_test!(
 minimax_test!(negascout_12, MINIMAX_CONFIG_NEGASCOUT, IMAGE_12, 8);
 minimax_test!(negascout_13, MINIMAX_CONFIG_NEGASCOUT, IMAGE_13, 8);
 minimax_test!(negascout_14, MINIMAX_CONFIG_NEGASCOUT, IMAGE_14, 8);
+minimax_test!(negascout_15, MINIMAX_CONFIG_NEGASCOUT, IMAGE_15, 8);
 
 minimax_test!(mtdf_1, MINIMAX_CONFIG_MTDF, IMAGE_1, 8);
 minimax_test!(mtdf_2, MINIMAX_CONFIG_MTDF, IMAGE_2, 8);
@@ -102,3 +103,4 @@ minimax_test!(
 minimax_test!(mtdf_12, MINIMAX_CONFIG_MTDF, IMAGE_12, 8);
 minimax_test!(mtdf_13, MINIMAX_CONFIG_MTDF, IMAGE_13, 8);
 minimax_test!(mtdf_14, MINIMAX_CONFIG_MTDF, IMAGE_14, 8);
+minimax_test!(mtdf_15, MINIMAX_CONFIG_MTDF, IMAGE_15, 8);

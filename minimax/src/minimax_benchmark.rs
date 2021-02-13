@@ -66,6 +66,7 @@ minimax_benches!(
     negascout_12, MINIMAX_CONFIG_NEGASCOUT, IMAGE_12, 8;
     negascout_13, MINIMAX_CONFIG_NEGASCOUT, IMAGE_13, 8;
     negascout_14, MINIMAX_CONFIG_NEGASCOUT, IMAGE_14, 8;
+    negascout_15, MINIMAX_CONFIG_NEGASCOUT, IMAGE_15, 8;
   }
 );
 
@@ -85,6 +86,7 @@ minimax_benches!(
     mtdf_12, MINIMAX_CONFIG_MTDF, IMAGE_12, 8;
     mtdf_13, MINIMAX_CONFIG_MTDF, IMAGE_13, 8;
     mtdf_14, MINIMAX_CONFIG_MTDF, IMAGE_14, 8;
+    mtdf_15, MINIMAX_CONFIG_MTDF, IMAGE_15, 8;
   }
 );
 
