@@ -110,7 +110,7 @@ impl Minimax {
       HashType::Empty => None,
     };
     if last_pos.is_some() && beta - alpha > 1 {
-      let enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, empty_board, &should_stop);
+      let enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, empty_board);
       let cur_estimation = -Minimax::alpha_beta(
         field,
         depth - 1,
@@ -497,7 +497,7 @@ impl Minimax {
     );
     let enemy = player.next();
     let mut enemy_best_move = best_move;
-    let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, should_stop);
+    let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board);
     info!(
       "Calculating of enemy estimation with upper bound {}. Player is {}",
       -estimation + 1,
@@ -570,26 +570,19 @@ impl Minimax {
         }
         break;
       }
-      let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, should_stop);
-      if should_stop.load(Ordering::Relaxed) {
-        // See previous comment.
-        if best_move.is_some() {
-          best_move = cur_best_move;
-        }
-        break;
-      }
       // Check if we could lose something if we don't make the current best move.
       // If we couldn't that means that the current best move is just a random move.
       // If we found the best move on previous iteration then likely the current best
       // move is also the best one.
       best_move = if best_move.is_some()
+        || cur_best_move.is_none()
         || -self.alpha_beta_parallel(
           field,
           enemy,
           depth - 1,
           -estimation,
           -estimation + 1,
-          &mut enemy_trajectories_pruning,
+          &mut trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board),
           &mut enemy_best_move,
           should_stop,
         ) < estimation

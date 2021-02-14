@@ -231,7 +231,7 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn dec_and_swap(&self, depth: u32, empty_board: &mut Vec<u32>, should_stop: &AtomicBool) -> TrajectoriesPruning {
+  pub fn dec_and_swap(&self, depth: u32, empty_board: &mut Vec<u32>) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
@@ -247,9 +247,6 @@ impl TrajectoriesPruning {
     } else {
       Vec::new()
     };
-    if should_stop.load(Ordering::Relaxed) {
-      return TrajectoriesPruning::empty(self.rebuild_trajectories);
-    }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);
     TrajectoriesPruning {
       rebuild_trajectories: self.rebuild_trajectories,
