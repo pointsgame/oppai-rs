@@ -2,7 +2,6 @@ use crate::config::{Config, Solver};
 use clap::{value_t, Arg, ArgGroup, ArgMatches};
 use oppai_minimax::minimax::{MinimaxConfig, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
-use std::time::Duration;
 use strum::VariantNames;
 
 pub fn groups() -> [ArgGroup<'static>; 2] {
@@ -40,9 +39,9 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
     Arg::with_name("time-gap")
       .short("g")
       .long("time-gap")
-      .help("Number of milliseconds that is given to IO plus internal delay")
+      .help("Time that is given to IO plus internal delay")
       .takes_value(true)
-      .default_value("100"),
+      .default_value("100ms"),
     Arg::with_name("threads-count")
       .short("t")
       .long("threads-count")
@@ -159,7 +158,7 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
       .long("ladders-time-limit")
       .help("Time limit for ladders solving.")
       .takes_value(true)
-      .default_value("1000"),
+      .default_value("1s"),
   ]
 }
 
@@ -191,13 +190,15 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
   Config {
     uct: uct_config,
     minimax: minimax_config,
-    time_gap: Duration::from_millis(value_t!(matches.value_of("time-gap"), u64).unwrap_or_else(|e| e.exit())),
+    time_gap: value_t!(matches.value_of("time-gap"), humantime::Duration)
+      .unwrap_or_else(|e| e.exit())
+      .into(),
     solver: value_t!(matches.value_of("solver"), Solver).unwrap_or_else(|e| e.exit()),
     ladders: !matches.is_present("no-ladders-solver"),
     ladders_score_limit: value_t!(matches.value_of("ladders-score-limit"), u32).unwrap_or_else(|e| e.exit()),
     ladders_depth_limit: value_t!(matches.value_of("ladders-depth-limit"), u32).unwrap_or_else(|e| e.exit()),
-    ladders_time_limit: Duration::from_millis(
-      value_t!(matches.value_of("ladders-time-limit"), u64).unwrap_or_else(|e| e.exit()),
-    ),
+    ladders_time_limit: value_t!(matches.value_of("ladders-time-limit"), humantime::Duration)
+      .unwrap_or_else(|e| e.exit())
+      .into(),
   }
 }

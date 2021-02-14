@@ -194,7 +194,7 @@ pub fn cli_parse() -> Config {
         .long("time")
         .help("Time to think that AI will use for one move")
         .takes_value(true)
-        .default_value("5000"),
+        .default_value("5s"),
     )
     .get_matches();
 
@@ -217,7 +217,9 @@ pub fn cli_parse() -> Config {
     Vec::new()
   };
   let bot_config = parse_config(&matches);
-  let time = Duration::from_millis(value_t!(matches.value_of("time"), u64).unwrap_or_else(|e| e.exit()));
+  let time = value_t!(matches.value_of("time"), humantime::Duration)
+    .unwrap_or_else(|e| e.exit())
+    .into();
 
   Config {
     width,
