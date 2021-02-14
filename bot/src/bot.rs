@@ -201,7 +201,7 @@ where
     let time_left = if let Some(time_left) = time.checked_sub(elapsed) {
       time_left
     } else {
-      return None;
+      return heuristic::heuristic(&self.field, player);
     };
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
@@ -228,7 +228,7 @@ where
     let time_left = if let Some(time_left) = time.checked_sub(elapsed) {
       time_left
     } else {
-      return None;
+      return heuristic::heuristic(&self.field, player);
     };
     let result = match self.config.solver {
       Solver::Uct => with_timeout(
