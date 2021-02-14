@@ -5,6 +5,7 @@ use oppai_field::player::Player;
 use oppai_test_images::*;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use std::sync::atomic::AtomicBool;
 
 const SEED: u64 = 7;
 
@@ -31,7 +32,8 @@ macro_rules! minimax_test {
       let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
       let mut field = construct_field(&mut rng, $image.image);
       let minimax = Minimax::new($config);
-      let pos = minimax.minimax(&mut field, Player::Red, $depth);
+      let should_stop = AtomicBool::new(false);
+      let pos = minimax.minimax(&mut field, Player::Red, $depth, &should_stop);
       assert_eq!(pos, NonZeroPos::new(field.to_pos($image.solution.0, $image.solution.1)));
     }
   }

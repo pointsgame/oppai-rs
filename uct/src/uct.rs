@@ -8,8 +8,6 @@ use rand::{Rng, SeedableRng};
 use std::{
   mem, ptr,
   sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
-  thread,
-  time::Duration,
 };
 use strum::{EnumString, EnumVariantNames};
 
@@ -552,7 +550,7 @@ impl UctRoot {
   // TODO: move this to exact place once stmt_expr_attributes gets stabilized
   // (see #15701)
   #[allow(clippy::float_cmp)]
-  fn best_move_generic<S, R>(
+  pub fn best_move<S, R>(
     &mut self,
     field: &Field,
     player: Player,
@@ -633,42 +631,5 @@ impl UctRoot {
       );
     }
     result
-  }
-
-  pub fn best_move_with_time<S, R>(
-    &mut self,
-    field: &Field,
-    player: Player,
-    rng: &mut R,
-    time: Duration,
-  ) -> Option<NonZeroPos>
-  where
-    R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
-  {
-    let should_stop = AtomicBool::new(false);
-    crossbeam::scope(|scope| {
-      scope.spawn(|_| {
-        thread::sleep(time);
-        should_stop.store(true, Ordering::Relaxed);
-      });
-      self.best_move_generic(field, player, rng, &should_stop, usize::max_value())
-    })
-    .expect("UCT best_move_with_time panic")
-  }
-
-  pub fn best_move_with_iterations_count<S, R>(
-    &mut self,
-    field: &Field,
-    player: Player,
-    rng: &mut R,
-    iterations: usize,
-  ) -> Option<NonZeroPos>
-  where
-    R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
-  {
-    let should_stop = AtomicBool::new(false);
-    self.best_move_generic(field, player, rng, &should_stop, iterations)
   }
 }

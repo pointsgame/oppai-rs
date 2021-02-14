@@ -26,19 +26,16 @@ fn is_field_occupied(field: &Field) -> bool {
   true
 }
 
-fn with_timeout<T: Send, F: FnOnce(&AtomicBool) -> T + Send>(f: F, time: Duration) -> T {
-  let should_stop = AtomicBool::new(false);
+fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, should_stop: &AtomicBool, time: Duration) -> T {
   let (s, r) = crossbeam::channel::bounded(1);
   crossbeam::scope(|scope| {
-    let should_stop_ref = &should_stop;
     scope.spawn(move |_| {
-      let result = f(should_stop_ref);
+      let result = f();
       s.send(result).unwrap();
     });
     if let Ok(result) = r.recv_timeout(time) {
       return result;
     }
-    info!("Time-out!");
     should_stop.store(true, Ordering::Relaxed);
     r.recv().unwrap()
   })
@@ -118,7 +115,13 @@ where
     result.and_then(|(x, y)| NonZeroPos::new(self.field.to_pos(x, y)))
   }
 
-  pub fn best_move(&mut self, player: Player, uct_iterations: usize, minimax_depth: u32) -> Option<NonZeroPos> {
+  pub fn best_move(
+    &mut self,
+    player: Player,
+    uct_iterations: usize,
+    minimax_depth: u32,
+    should_stop: &AtomicBool,
+  ) -> Option<NonZeroPos> {
     let now = Instant::now();
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
@@ -138,7 +141,8 @@ where
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
       if let (Some(pos), score, depth) = with_timeout(
-        |should_stop| ladders(&mut self.field, player, should_stop),
+        || ladders(&mut self.field, player, &should_stop),
+        &should_stop,
         ladders_time_limit,
       ) {
         info!(
@@ -159,11 +163,11 @@ where
     let result = match self.config.solver {
       Solver::Uct => self
         .uct
-        .best_move_with_iterations_count(&self.field, player, &mut self.rng, uct_iterations)
+        .best_move(&self.field, player, &mut self.rng, &should_stop, uct_iterations)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
-        .minimax(&mut self.field, player, minimax_depth)
+        .minimax(&mut self.field, player, minimax_depth, &should_stop)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     };
@@ -171,7 +175,12 @@ where
     result
   }
 
-  pub fn best_move_with_time(&mut self, player: Player, time: Duration) -> Option<NonZeroPos> {
+  pub fn best_move_with_time(
+    &mut self,
+    player: Player,
+    time: Duration,
+    should_stop: &AtomicBool,
+  ) -> Option<NonZeroPos> {
     let now = Instant::now();
     let time = time - self.config.time_gap;
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
@@ -197,7 +206,8 @@ where
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
       if let (Some(pos), score, depth) = with_timeout(
-        |should_stop| ladders(&mut self.field, player, should_stop),
+        || ladders(&mut self.field, player, &should_stop),
+        &should_stop,
         ladders_time_limit.min(time_left),
       ) {
         info!(
@@ -221,14 +231,26 @@ where
       return None;
     };
     let result = match self.config.solver {
-      Solver::Uct => self
-        .uct
-        .best_move_with_time(&self.field, player, &mut self.rng, time_left)
-        .or_else(|| heuristic::heuristic(&self.field, player)),
-      Solver::Minimax => self
-        .minimax
-        .minimax_with_time(&mut self.field, player, time_left)
-        .or_else(|| heuristic::heuristic(&self.field, player)),
+      Solver::Uct => with_timeout(
+        || {
+          self
+            .uct
+            .best_move(&self.field, player, &mut self.rng, &should_stop, usize::max_value())
+            .or_else(|| heuristic::heuristic(&self.field, player))
+        },
+        &should_stop,
+        time_left,
+      ),
+      Solver::Minimax => with_timeout(
+        || {
+          self
+            .minimax
+            .minimax_with_time(&mut self.field, player, &should_stop)
+            .or_else(|| heuristic::heuristic(&self.field, player))
+        },
+        &should_stop,
+        time_left,
+      ),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     };
     info!("Cumulative time for best move evaluation: {:?}", now.elapsed());

@@ -159,7 +159,7 @@ use std::{
   fs::File,
   io::{self, BufRead, BufReader, Write},
   str::FromStr,
-  sync::Arc,
+  sync::{atomic::AtomicBool, Arc},
   time::Duration,
 };
 
@@ -360,7 +360,8 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_error(&mut output, id);
           } else if let (Some(player), Some(bot)) = (player_option, bot_option.as_mut()) {
-            if let Some(pos) = bot.best_move(player, config.uct_iterations, config.minimax_depth) {
+            let should_stop = AtomicBool::new(false);
+            if let Some(pos) = bot.best_move(player, config.uct_iterations, config.minimax_depth, &should_stop) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move(&mut output, id, x, y, player);
@@ -393,7 +394,8 @@ fn main() {
               / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize;
             let minimax_depth =
               (complexity - MIN_COMPLEXITY) * config.minimax_depth / (MAX_COMPLEXITY - MIN_COMPLEXITY);
-            if let Some(pos) = bot.best_move(player, uct_iterations, minimax_depth) {
+            let should_stop = AtomicBool::new(false);
+            if let Some(pos) = bot.best_move(player, uct_iterations, minimax_depth, &should_stop) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move_with_complexity(&mut output, id, x, y, player);
@@ -418,7 +420,8 @@ fn main() {
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
           } else if let (Some(player), Some(time), Some(bot)) = (player_option, time_option, bot_option.as_mut()) {
-            if let Some(pos) = bot.best_move_with_time(player, Duration::from_millis(time)) {
+            let should_stop = AtomicBool::new(false);
+            if let Some(pos) = bot.best_move_with_time(player, Duration::from_millis(time), &should_stop) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move_with_time(&mut output, id, x, y, player);
@@ -449,9 +452,12 @@ fn main() {
             time_per_move_option,
             bot_option.as_mut(),
           ) {
-            if let Some(pos) =
-              bot.best_move_with_time(player, Duration::from_millis(time_per_move + remaining_time / 25))
-            {
+            let should_stop = AtomicBool::new(false);
+            if let Some(pos) = bot.best_move_with_time(
+              player,
+              Duration::from_millis(time_per_move + remaining_time / 25),
+              &should_stop,
+            ) {
               let x = bot.field.to_x(pos.get());
               let y = bot.field.to_y(pos.get());
               write_gen_move_with_full_time(&mut output, id, x, y, player);

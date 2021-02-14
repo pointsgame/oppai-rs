@@ -8,6 +8,7 @@ use oppai_field::player::Player;
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType, UctRoot};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use std::sync::atomic::AtomicBool;
 
 const SEED: u64 = 7;
 
@@ -41,9 +42,10 @@ fn find_best_move(bencher: &mut Bencher) {
     ",
   );
   let length = field::length(field.width(), field.height());
+  let should_stop = AtomicBool::new(false);
   bencher.iter(|| {
     let mut uct = UctRoot::new(UCT_CONFIG, length);
-    uct.best_move_with_iterations_count(&field, Player::Red, &mut rng.clone(), 100_000)
+    uct.best_move(&field, Player::Red, &mut rng.clone(), &should_stop, 100_000)
   });
 }
 

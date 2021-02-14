@@ -21,7 +21,10 @@ use rfd::{AsyncFileDialog, FileHandle};
 use std::{
   fs,
   fs::File,
-  sync::{Arc, Mutex},
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+  },
 };
 
 impl From<RGB> for Color {
@@ -54,6 +57,7 @@ struct Game {
   thinking: bool,
   file_choosing: bool,
   coordinates: Option<(u32, u32)>,
+  should_stop: Arc<AtomicBool>,
 }
 
 impl Game {
@@ -113,6 +117,7 @@ enum CanvasMessage {
   ToggleAI,
   ChangeCoordinates(u32, u32),
   ClearCoordinates,
+  Interrupt,
 }
 
 #[derive(Debug)]
@@ -161,6 +166,7 @@ impl Application for Game {
       thinking: false,
       file_choosing: false,
       coordinates: None,
+      should_stop: Arc::new(AtomicBool::new(false)),
     };
     game.put_all_bot_points();
     (game, Command::none())
@@ -177,6 +183,7 @@ impl Application for Game {
           self.put_point(pos.get());
         }
         self.thinking = false;
+        self.should_stop.store(false, Ordering::Relaxed);
       }
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
@@ -245,7 +252,8 @@ impl Application for Game {
             let bot = self.bot.clone();
             let player = self.extended_field.player;
             let time = self.config.time;
-            return async move { Message::BotMove(bot.lock().unwrap().best_move_with_time(player, time)) }.into();
+            let should_stop = self.should_stop.clone();
+            return async move { Message::BotMove(bot.lock().unwrap().best_move_with_time(player, time, &should_stop)) }.into();
           }
         }
       }
@@ -308,6 +316,11 @@ impl Application for Game {
       }
       Message::Canvas(CanvasMessage::ClearCoordinates) => {
         self.coordinates = None;
+      }
+      Message::Canvas(CanvasMessage::Interrupt) => {
+        if self.thinking {
+          self.should_stop.store(true, Ordering::Relaxed);
+        }
       }
     }
 
@@ -507,6 +520,10 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::A,
         modifiers: keyboard::Modifiers { control: true, .. },
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleAI)),
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::Escape,
+        ..
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Interrupt)),
       _ => (canvas::event::Status::Ignored, None),
     }
   }

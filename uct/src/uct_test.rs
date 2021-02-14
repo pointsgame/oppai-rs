@@ -5,6 +5,7 @@ use oppai_field::player::Player;
 use oppai_test_images::*;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use std::sync::atomic::AtomicBool;
 
 const UCT_CONFIG: UctConfig = UctConfig {
   threads_count: 1,
@@ -29,7 +30,8 @@ macro_rules! uct_test {
       let mut rng = Xoshiro256PlusPlus::seed_from_u64($seed);
       let field = construct_field(&mut rng, $image.image);
       let mut uct = UctRoot::new(UCT_CONFIG, field.length());
-      let pos = uct.best_move_with_iterations_count(&field, Player::Red, &mut rng, $iterations);
+      let should_stop = AtomicBool::new(false);
+      let pos = uct.best_move(&field, Player::Red, &mut rng, &should_stop, $iterations);
       assert_eq!(pos, NonZeroPos::new(field.to_pos($image.solution.0, $image.solution.1)));
     }
   }

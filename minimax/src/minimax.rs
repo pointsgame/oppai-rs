@@ -7,8 +7,6 @@ use oppai_field::player::Player;
 use std::{
   iter,
   sync::atomic::{AtomicBool, AtomicIsize, Ordering},
-  thread,
-  time::Duration,
 };
 use strum::{EnumString, EnumVariantNames};
 
@@ -468,12 +466,11 @@ impl Minimax {
     )
   }
 
-  pub fn minimax(&self, field: &mut Field, player: Player, depth: u32) -> Option<NonZeroPos> {
+  pub fn minimax(&self, field: &mut Field, player: Player, depth: u32, should_stop: &AtomicBool) -> Option<NonZeroPos> {
     info!("Starting minimax with depth {} and player {}.", depth, player);
     if depth == 0 {
       return None;
     }
-    let should_stop = AtomicBool::new(false);
     let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
     let mut trajectories_pruning = TrajectoriesPruning::new(
       self.config.rebuild_trajectories,
@@ -481,7 +478,7 @@ impl Minimax {
       player,
       depth,
       &mut empty_board,
-      &should_stop,
+      should_stop,
     );
     let mut best_move = None;
     info!("Calculating of our estimation. Player is {}", player);
@@ -496,11 +493,11 @@ impl Minimax {
       &mut trajectories_pruning,
       depth,
       &mut best_move,
-      &should_stop,
+      should_stop,
     );
     let enemy = player.next();
     let mut enemy_best_move = best_move;
-    let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
+    let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, should_stop);
     info!(
       "Calculating of enemy estimation with upper bound {}. Player is {}",
       -estimation + 1,
@@ -516,7 +513,7 @@ impl Minimax {
       -estimation + 1,
       &mut enemy_trajectories_pruning,
       &mut enemy_best_move,
-      &should_stop,
+      should_stop,
     ) < estimation
     {
       info!(
@@ -534,95 +531,85 @@ impl Minimax {
     }
   }
 
-  pub fn minimax_with_time(&self, field: &mut Field, player: Player, time: Duration) -> Option<NonZeroPos> {
-    let should_stop = AtomicBool::new(false);
-    crossbeam::scope(|scope| {
-      scope.spawn(|_| {
-        thread::sleep(time);
-        debug!("Time-out!");
-        should_stop.store(true, Ordering::Relaxed);
-      });
-      let enemy = player.next();
-      let mut depth = 1;
-      let mut best_move = None;
-      let mut cur_best_move = None;
-      let mut enemy_best_move = None;
-      let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
-      let mut trajectories_pruning = TrajectoriesPruning::new(
-        self.config.rebuild_trajectories,
+  pub fn minimax_with_time(&self, field: &mut Field, player: Player, should_stop: &AtomicBool) -> Option<NonZeroPos> {
+    let enemy = player.next();
+    let mut depth = 1;
+    let mut best_move = None;
+    let mut cur_best_move = None;
+    let mut enemy_best_move = None;
+    let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+    let mut trajectories_pruning = TrajectoriesPruning::new(
+      self.config.rebuild_trajectories,
+      field,
+      player,
+      depth,
+      &mut empty_board,
+      should_stop,
+    );
+    let minimax_function = match self.config.minimax_type {
+      MinimaxType::NegaScout => Minimax::nega_scout,
+      MinimaxType::MTDF => Minimax::mtdf,
+    };
+    while !should_stop.load(Ordering::Relaxed) {
+      let estimation = minimax_function(
+        &self,
         field,
         player,
+        &mut trajectories_pruning,
         depth,
-        &mut empty_board,
-        &should_stop,
+        &mut cur_best_move,
+        should_stop,
       );
-      let minimax_function = match self.config.minimax_type {
-        MinimaxType::NegaScout => Minimax::nega_scout,
-        MinimaxType::MTDF => Minimax::mtdf,
-      };
-      while !should_stop.load(Ordering::Relaxed) {
-        let estimation = minimax_function(
-          &self,
-          field,
-          player,
-          &mut trajectories_pruning,
-          depth,
-          &mut cur_best_move,
-          &should_stop,
-        );
-        if should_stop.load(Ordering::Relaxed) {
-          // If we found the best move on the previous iteration then the current best
-          // move can't be worse than that move. Otherwise it's possible that the
-          // current best move is just a
-          // random move.
-          if best_move.is_some() {
-            best_move = cur_best_move;
-          }
-          break;
+      if should_stop.load(Ordering::Relaxed) {
+        // If we found the best move on the previous iteration then the current best
+        // move can't be worse than that move. Otherwise it's possible that the
+        // current best move is just a
+        // random move.
+        if best_move.is_some() {
+          best_move = cur_best_move;
         }
-        let mut enemy_trajectories_pruning =
-          trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, &should_stop);
-        if should_stop.load(Ordering::Relaxed) {
-          // See previous comment.
-          if best_move.is_some() {
-            best_move = cur_best_move;
-          }
-          break;
-        }
-        // Check if we could lose something if we don't make the current best move.
-        // If we couldn't that means that the current best move is just a random move.
-        // If we found the best move on previous iteration then likely the current best
-        // move is also the best one.
-        best_move = if best_move.is_some()
-          || -self.alpha_beta_parallel(
-            field,
-            enemy,
-            depth - 1,
-            -estimation,
-            -estimation + 1,
-            &mut enemy_trajectories_pruning,
-            &mut enemy_best_move,
-            &should_stop,
-          ) < estimation
-        {
-          info!(
-            "Found best move {:?} with estimation {} at depth {}",
-            cur_best_move.map(|pos| (field.to_x(pos.get()), field.to_y(pos.get()))),
-            estimation,
-            depth
-          );
-          cur_best_move
-        } else {
-          None
-        };
-        if should_stop.load(Ordering::Relaxed) {
-          break;
-        }
-        depth += 1;
-        trajectories_pruning = trajectories_pruning.inc(field, player, depth, &mut empty_board, &should_stop);
+        break;
       }
-      best_move
-    })
-    .expect("Minimax minimax_with_time panic")
+      let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board, should_stop);
+      if should_stop.load(Ordering::Relaxed) {
+        // See previous comment.
+        if best_move.is_some() {
+          best_move = cur_best_move;
+        }
+        break;
+      }
+      // Check if we could lose something if we don't make the current best move.
+      // If we couldn't that means that the current best move is just a random move.
+      // If we found the best move on previous iteration then likely the current best
+      // move is also the best one.
+      best_move = if best_move.is_some()
+        || -self.alpha_beta_parallel(
+          field,
+          enemy,
+          depth - 1,
+          -estimation,
+          -estimation + 1,
+          &mut enemy_trajectories_pruning,
+          &mut enemy_best_move,
+          should_stop,
+        ) < estimation
+      {
+        info!(
+          "Found best move {:?} with estimation {} at depth {}",
+          cur_best_move.map(|pos| (field.to_x(pos.get()), field.to_y(pos.get()))),
+          estimation,
+          depth
+        );
+        cur_best_move
+      } else {
+        None
+      };
+      if should_stop.load(Ordering::Relaxed) {
+        break;
+      }
+      depth += 1;
+      trajectories_pruning = trajectories_pruning.inc(field, player, depth, &mut empty_board, should_stop);
+    }
+    best_move
   }
 }

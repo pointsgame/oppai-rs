@@ -8,6 +8,7 @@ use oppai_minimax::minimax::{Minimax, MinimaxConfig, MinimaxType};
 use oppai_test_images::*;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use std::sync::atomic::AtomicBool;
 
 const SEED: u64 = 7;
 
@@ -33,7 +34,8 @@ macro_rules! minimax_bench {
       bencher.iter(|| {
         let minimax = Minimax::new($config);
         let mut local_field = field.clone();
-        minimax.minimax(&mut local_field, Player::Red, $depth)
+        let should_stop = AtomicBool::new(false);
+        minimax.minimax(&mut local_field, Player::Red, $depth, &should_stop)
       });
     }
   };
