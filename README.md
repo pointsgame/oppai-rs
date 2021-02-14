@@ -7,9 +7,9 @@ Oppai-rs
 
 Oppai-rs (acronym for "OPen Points Artificial Intelligence") is an artificial intelligence for the game of points.
 
-It's written in rust language and implements "points console AI protocol v6". (See /doc/PointsAIProtocol6.txt for details.)
+It's written in rust language and implements "points console AI protocol v6".
 
-You can play with it using "[missile](https://github.com/pointsgame/missile)".
+You can play with it using [iced module](iced).
 
 Features
 ====
