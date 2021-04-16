@@ -349,7 +349,9 @@ impl Minimax {
             loop {
               let last_alpha = atomic_alpha.load(Ordering::SeqCst);
               if cur_estimation <= last_alpha as i32
-                || atomic_alpha.compare_and_swap(last_alpha, cur_estimation as isize, Ordering::SeqCst) == last_alpha
+                || atomic_alpha
+                  .compare_exchange_weak(last_alpha, cur_estimation as isize, Ordering::SeqCst, Ordering::SeqCst)
+                  .is_ok()
               {
                 break;
               }

@@ -151,10 +151,10 @@ impl UctNode {
 
   pub fn set_child(&self, child: Box<UctNode>) {
     let child_ptr = Box::into_raw(child);
-    let ptr = self
+    let result = self
       .child
-      .compare_and_swap(ptr::null_mut(), child_ptr, Ordering::Relaxed);
-    if !ptr.is_null() {
+      .compare_exchange(ptr::null_mut(), child_ptr, Ordering::Relaxed, Ordering::Relaxed);
+    if result.is_err() {
       drop::<Box<UctNode>>(unsafe { Box::from_raw(child_ptr) });
     }
   }
@@ -514,10 +514,10 @@ impl UctRoot {
             1f64 - (delta_wins as f64 + delta_draws as f64 * self.config.draw_weight) / delta_visits as f64;
           let komi = self.komi.load(Ordering::Relaxed);
           if win_rate < self.config.red || win_rate > self.config.green && komi < ratched.load(Ordering::Relaxed) {
-            let old_komi_visits = self
+            let result = self
               .komi_visits
-              .compare_and_swap(komi_visits, visits, Ordering::Relaxed);
-            if old_komi_visits == komi_visits {
+              .compare_exchange(komi_visits, visits, Ordering::Relaxed, Ordering::Relaxed);
+            if result.is_ok() {
               self.komi_wins.store(wins, Ordering::Relaxed);
               self.komi_draws.store(draws, Ordering::Relaxed);
               if win_rate < self.config.red {

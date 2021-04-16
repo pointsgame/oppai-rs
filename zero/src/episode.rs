@@ -118,7 +118,7 @@ where
 
       let feautures = fields
         .iter()
-        .map(|field| field_features(field, player).insert_axis(Axis(0)))
+        .map(|field| field_features(field, player))
         .collect::<Vec<_>>();
       let features = ndarray::stack(
         Axis(0),

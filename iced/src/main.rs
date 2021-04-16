@@ -8,8 +8,8 @@ mod sgf;
 use crate::config::{cli_parse, Config, RGB};
 use crate::extended_field::ExtendedField;
 use iced::{
-  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Column, Command, Container,
-  Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
+  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Clipboard, Color, Column, Command,
+  Container, Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
 };
 use oppai_bot::bot::Bot;
 use oppai_field::field::{to_pos, NonZeroPos, Pos};
@@ -176,7 +176,7 @@ impl Application for Game {
     "OpPAI".into()
   }
 
-  fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+  fn update(&mut self, message: Self::Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
     match message {
       Message::BotMove(maybe_pos) => {
         if let Some(pos) = maybe_pos {

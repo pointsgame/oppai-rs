@@ -7,8 +7,8 @@ description = "Open Points Artificial Intelligence"
 edition = "2018"
 
 [dependencies]
-ndarray = "0.13"
-pyo3 = "0.12"
-numpy = "0.12"
+ndarray = "0.14"
+pyo3 = "0.13"
+numpy = "0.13"
 indoc = "1.0"
 oppai-zero = { path = "../zero" }
