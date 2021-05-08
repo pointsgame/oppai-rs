@@ -47,11 +47,7 @@ fn parse_root(root: &GameNode) -> Option<(u32, u32)> {
 }
 
 pub fn from_sgf(game_tree: GameTree) -> Option<SgfGame> {
-  let (width, height) = if let Some(size) = game_tree.nodes.first().and_then(parse_root) {
-    size
-  } else {
-    return None;
-  };
+  let (width, height) = game_tree.nodes.first().and_then(parse_root)?;
 
   let mut moves = Vec::new();
 

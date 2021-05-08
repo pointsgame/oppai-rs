@@ -169,7 +169,7 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
     None
   };
   let uct_config = UctConfig {
-    threads_count: threads_count.unwrap_or_else(|| num_cpus::get()),
+    threads_count: threads_count.unwrap_or_else(num_cpus::get),
     radius: value_t!(matches.value_of("radius"), u32).unwrap_or_else(|e| e.exit()),
     ucb_type: value_t!(matches.value_of("ucb-type"), UcbType).unwrap_or_else(|e| e.exit()),
     draw_weight: value_t!(matches.value_of("draw-weight"), f64).unwrap_or_else(|e| e.exit()),
@@ -182,7 +182,7 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit()),
   };
   let minimax_config = MinimaxConfig {
-    threads_count: threads_count.unwrap_or_else(|| num_cpus::get_physical()),
+    threads_count: threads_count.unwrap_or_else(num_cpus::get_physical),
     minimax_type: value_t!(matches.value_of("minimax-type"), MinimaxType).unwrap_or_else(|e| e.exit()),
     hash_table_size: value_t!(matches.value_of("hash-table-size"), usize).unwrap_or_else(|e| e.exit()),
     rebuild_trajectories: matches.is_present("rebuild-trajectories"),

@@ -8,6 +8,7 @@ use std::{
   cmp,
   fs::File,
   io::{BufRead, BufReader},
+  str::FromStr,
 };
 
 #[derive(Clone, Debug)]
@@ -27,6 +28,37 @@ impl Default for Patterns {
       min_size: u32::max_value(),
       dfa: Dfa::default(),
     }
+  }
+}
+
+impl FromStr for Patterns {
+  type Err = &'static str;
+
+  fn from_str(string: &str) -> Result<Patterns, &'static str> {
+    let mut split = string
+      .split('\n')
+      .map(str::trim)
+      .filter(|line| !line.is_empty())
+      .peekable();
+    let width = if let Some(first) = split.peek() {
+      first.len() as u32
+    } else {
+      return Err("Empty pattern.");
+    };
+    let height = split.count() as u32;
+    let chars = string.chars().filter(|c| !c.is_whitespace()).collect::<Vec<_>>();
+
+    let moves = Patterns::get_pattern_moves(width, &chars)?;
+
+    let mut dfa = Dfa::default();
+    for rotation in 0..8 {
+      let cur_dfa = Patterns::build_dfa(width, height, &moves, rotation, &chars)?;
+      dfa = dfa.product(&cur_dfa);
+    }
+    Ok(Patterns {
+      dfa,
+      min_size: cmp::min(width, height),
+    })
   }
 }
 
@@ -51,7 +83,7 @@ impl Patterns {
     let mut states = Vec::with_capacity(spiral_length + 2);
     let fs = spiral_length; // "Found" state.
     let nfs = spiral_length + 1; // "Not found" state.
-    for (i, (shift_x, shift_y)) in Spiral::new().take(spiral_length).enumerate() {
+    for (i, (shift_x, shift_y)) in Spiral::default().take(spiral_length).enumerate() {
       let nxt = i + 1;
       let rotated_x = center_x as i32 + shift_x;
       let rotated_y = center_y as i32 + shift_y;
@@ -147,33 +179,6 @@ impl Patterns {
     }
   }
 
-  pub fn from_str(string: &str) -> Result<Patterns, &'static str> {
-    let mut split = string
-      .split('\n')
-      .map(str::trim)
-      .filter(|line| !line.is_empty())
-      .peekable();
-    let width = if let Some(first) = split.peek() {
-      first.len() as u32
-    } else {
-      return Err("Empty pattern.");
-    };
-    let height = split.count() as u32;
-    let chars = string.chars().filter(|c| !c.is_whitespace()).collect::<Vec<_>>();
-
-    let moves = Patterns::get_pattern_moves(width, &chars)?;
-
-    let mut dfa = Dfa::default();
-    for rotation in 0..8 {
-      let cur_dfa = Patterns::build_dfa(width, height, &moves, rotation, &chars)?;
-      dfa = dfa.product(&cur_dfa);
-    }
-    Ok(Patterns {
-      dfa,
-      min_size: cmp::min(width, height),
-    })
-  }
-
   fn from_strings(strings: &[String]) -> Patterns {
     let len = strings.len();
     if strings.is_empty() {
@@ -234,7 +239,7 @@ impl Patterns {
     for y in left_border..field.height() as i32 - right_border {
       for x in left_border..field.width() as i32 - right_border {
         let moves = self.dfa.run(
-          &mut Spiral::new().map(|(shift_x, shift_y)| {
+          &mut Spiral::default().map(|(shift_x, shift_y)| {
             let cur_x = x + shift_x;
             let cur_y = y + shift_y;
             if cur_x >= 0 && cur_x < field.width() as i32 && cur_y >= 0 && cur_y < field.height() as i32 {

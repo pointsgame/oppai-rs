@@ -68,8 +68,7 @@ impl<P: Clone> Dfa<P> {
       return self.clone();
     }
     let other_len = other.states.len();
-    let mut states = Vec::new();
-    states.push(build_state(other_len, &self.states[0], &other.states[0]));
+    let mut states = vec![build_state(other_len, &self.states[0], &other.states[0])];
     let mut map = HashMap::new();
     map.insert(0, 0);
     // TODO: compare performance with using a stack to minimize jumps in memory

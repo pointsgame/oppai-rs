@@ -5,7 +5,7 @@ mod config;
 mod extended_field;
 mod sgf;
 
-use crate::config::{cli_parse, Config, RGB};
+use crate::config::{cli_parse, Config, Rgb};
 use crate::extended_field::ExtendedField;
 use iced::{
   canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Clipboard, Color, Column, Command,
@@ -27,8 +27,8 @@ use std::{
   },
 };
 
-impl From<RGB> for Color {
-  fn from(rgb: RGB) -> Self {
+impl From<Rgb> for Color {
+  fn from(rgb: Rgb) -> Self {
     Self::from_rgb8(rgb.r, rgb.g, rgb.b)
   }
 }
@@ -246,15 +246,14 @@ impl Application for Game {
         if self.is_locked() {
           return Command::none();
         }
-        if self.put_point(pos) {
-          if self.ai {
-            self.thinking = true;
-            let bot = self.bot.clone();
-            let player = self.extended_field.player;
-            let time = self.config.time;
-            let should_stop = self.should_stop.clone();
-            return async move { Message::BotMove(bot.lock().unwrap().best_move_with_time(player, time, &should_stop)) }.into();
-          }
+        if self.put_point(pos) && self.ai {
+          self.thinking = true;
+          let bot = self.bot.clone();
+          let player = self.extended_field.player;
+          let time = self.config.time;
+          let should_stop = self.should_stop.clone();
+          return async move { Message::BotMove(bot.lock().unwrap().best_move_with_time(player, time, &should_stop)) }
+            .into();
         }
       }
       Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {

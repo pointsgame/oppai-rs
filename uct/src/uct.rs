@@ -96,11 +96,11 @@ impl UctNode {
   }
 
   pub fn get_sibling_ref(&self) -> Option<&UctNode> {
-    self.sibling.as_ref().map(|b| &**b)
+    self.sibling.as_deref()
   }
 
   pub fn get_sibling_mut(&mut self) -> Option<&mut UctNode> {
-    self.sibling.as_mut().map(|b| &mut **b)
+    self.sibling.as_deref_mut()
   }
 
   pub fn clear_sibling(&mut self) {

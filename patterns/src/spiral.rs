@@ -3,11 +3,13 @@ pub struct Spiral<T> {
   y: T,
 }
 
-impl Spiral<i32> {
-  pub fn new() -> Spiral<i32> {
-    Spiral { x: 0, y: 0 }
+impl Default for Spiral<i32> {
+  fn default() -> Self {
+    Self { x: 0, y: 0 }
   }
+}
 
+impl Spiral<i32> {
   fn next_state(&mut self) {
     if self.y == 0 {
       if self.x <= 0 {

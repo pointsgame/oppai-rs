@@ -13,7 +13,7 @@ use strum::{EnumString, EnumVariantNames};
 #[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
 pub enum MinimaxType {
   NegaScout,
-  MTDF,
+  Mtdf,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -486,7 +486,7 @@ impl Minimax {
     info!("Calculating of our estimation. Player is {}", player);
     let minimax_function = match self.config.minimax_type {
       MinimaxType::NegaScout => Minimax::nega_scout,
-      MinimaxType::MTDF => Minimax::mtdf,
+      MinimaxType::Mtdf => Minimax::mtdf,
     };
     let estimation = minimax_function(
       &self,
@@ -550,7 +550,7 @@ impl Minimax {
     );
     let minimax_function = match self.config.minimax_type {
       MinimaxType::NegaScout => Minimax::nega_scout,
-      MinimaxType::MTDF => Minimax::mtdf,
+      MinimaxType::Mtdf => Minimax::mtdf,
     };
     while !should_stop.load(Ordering::Relaxed) {
       let estimation = minimax_function(

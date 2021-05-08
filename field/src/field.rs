@@ -543,8 +543,7 @@ impl Field {
   }
 
   fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
-    let mut chain = Vec::new();
-    chain.push(start_pos);
+    let mut chain = vec![start_pos];
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
     let mut base_square = self.square(center_pos, pos);
@@ -579,8 +578,7 @@ impl Field {
   }
 
   fn find_chain(&self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
-    let mut chain = Vec::new();
-    chain.push(start_pos);
+    let mut chain = vec![start_pos];
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
     let mut base_square = self.square(center_pos, pos);
@@ -907,6 +905,7 @@ impl Field {
   }
 
   pub fn get_last_chain(&self) -> Vec<Pos> {
+    use std::cmp::Ordering;
     let pos = if let Some(&pos) = self.points_seq.last() {
       pos
     } else {
@@ -914,43 +913,45 @@ impl Field {
     };
     let player = self.points[pos].get_player();
     let delta_score = self.get_delta_score(player);
-    if delta_score > 0 {
-      let mut result = Vec::new();
-      let input_points = self.get_input_points(pos, player);
-      let input_points_count = input_points.len();
-      let mut chains_count = 0;
-      for (chain_pos, captured_pos) in input_points {
-        if !self.points[captured_pos].is_captured() {
-          continue;
-        }
-        if let Some(mut chain) = self.find_chain(pos, player, chain_pos) {
-          result.append(&mut chain);
-          chains_count += 1;
-          if chains_count == input_points_count - 1 {
-            break;
+    match delta_score.cmp(&0) {
+      Ordering::Greater => {
+        let mut result = Vec::new();
+        let input_points = self.get_input_points(pos, player);
+        let input_points_count = input_points.len();
+        let mut chains_count = 0;
+        for (chain_pos, captured_pos) in input_points {
+          if !self.points[captured_pos].is_captured() {
+            continue;
+          }
+          if let Some(mut chain) = self.find_chain(pos, player, chain_pos) {
+            result.append(&mut chain);
+            chains_count += 1;
+            if chains_count == input_points_count - 1 {
+              break;
+            }
           }
         }
+        result
       }
-      result
-    } else if delta_score < 0 {
-      let next_player = player.next();
-      let mut bound_pos = pos;
-      loop {
-        bound_pos = self.w(bound_pos);
-        while !self.points[bound_pos].is_bound() {
+      Ordering::Less => {
+        let next_player = player.next();
+        let mut bound_pos = pos;
+        loop {
           bound_pos = self.w(bound_pos);
-        }
-        let input_points = self.get_input_points(bound_pos, next_player);
-        for (chain_pos, _) in input_points {
-          if let Some(chain) = self.find_chain(bound_pos, next_player, chain_pos) {
-            if self.is_point_inside_ring(pos, &chain) {
-              return chain;
+          while !self.points[bound_pos].is_bound() {
+            bound_pos = self.w(bound_pos);
+          }
+          let input_points = self.get_input_points(bound_pos, next_player);
+          for (chain_pos, _) in input_points {
+            if let Some(chain) = self.find_chain(bound_pos, next_player, chain_pos) {
+              if self.is_point_inside_ring(pos, &chain) {
+                return chain;
+              }
             }
           }
         }
       }
-    } else {
-      Vec::new()
+      Ordering::Equal => Vec::new(),
     }
   }
 

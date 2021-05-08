@@ -3,6 +3,7 @@ use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use std::str::FromStr;
 
 const SEED: u64 = 7;
 

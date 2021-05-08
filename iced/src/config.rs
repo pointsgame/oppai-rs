@@ -7,13 +7,13 @@ use std::str::FromStr;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
-pub struct RGB {
+pub struct Rgb {
   pub r: u8,
   pub g: u8,
   pub b: u8,
 }
 
-impl FromStr for RGB {
+impl FromStr for Rgb {
   type Err = ParseIntError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -21,23 +21,23 @@ impl FromStr for RGB {
     let g: u8 = u8::from_str_radix(&s[3..5], 16)?;
     let b: u8 = u8::from_str_radix(&s[5..7], 16)?;
 
-    Ok(RGB { r, g, b })
+    Ok(Rgb { r, g, b })
   }
 }
 
-pub const RED: RGB = RGB {
+pub const RED: Rgb = Rgb {
   r: 0xFF,
   g: 0x00,
   b: 0x00,
 };
 
-pub const BLACK: RGB = RGB {
+pub const BLACK: Rgb = Rgb {
   r: 0x00,
   g: 0x00,
   b: 0x00,
 };
 
-pub const WHITE: RGB = RGB {
+pub const WHITE: Rgb = Rgb {
   r: 0xFF,
   g: 0xFF,
   b: 0xFF,
@@ -47,10 +47,10 @@ pub const WHITE: RGB = RGB {
 pub struct Config {
   pub width: u32,
   pub height: u32,
-  pub red_color: RGB,
-  pub black_color: RGB,
-  pub grid_color: RGB,
-  pub background_color: RGB,
+  pub red_color: Rgb,
+  pub black_color: Rgb,
+  pub grid_color: Rgb,
+  pub background_color: Rgb,
   pub grid_thickness: f32,
   pub point_radius: f32,
   pub filling_alpha: f32,
@@ -200,10 +200,10 @@ pub fn cli_parse() -> Config {
 
   let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
   let height = value_t!(matches.value_of("height"), u32).unwrap_or_else(|e| e.exit());
-  let red_color = value_t!(matches.value_of("red-color"), RGB).unwrap_or_else(|e| e.exit());
-  let black_color = value_t!(matches.value_of("black-color"), RGB).unwrap_or_else(|e| e.exit());
-  let grid_color = value_t!(matches.value_of("grid-color"), RGB).unwrap_or_else(|e| e.exit());
-  let background_color = value_t!(matches.value_of("background-color"), RGB).unwrap_or_else(|e| e.exit());
+  let red_color = value_t!(matches.value_of("red-color"), Rgb).unwrap_or_else(|e| e.exit());
+  let black_color = value_t!(matches.value_of("black-color"), Rgb).unwrap_or_else(|e| e.exit());
+  let grid_color = value_t!(matches.value_of("grid-color"), Rgb).unwrap_or_else(|e| e.exit());
+  let background_color = value_t!(matches.value_of("background-color"), Rgb).unwrap_or_else(|e| e.exit());
   let grid_thickness = value_t!(matches.value_of("grid-thickness"), f32).unwrap_or_else(|e| e.exit());
   let point_radius = value_t!(matches.value_of("point-radius"), f32).unwrap_or_else(|e| e.exit());
   let filling_alpha = value_t!(matches.value_of("filling-alpha"), f32).unwrap_or_else(|e| e.exit());
