@@ -15,7 +15,7 @@ impl<'a> PyModel<'a> {
   pub fn new(py: Python<'a>) -> PyResult<Self> {
     let locals = [("tf", py.import("tensorflow")?), ("np", py.import("numpy")?)].into_py_dict(py);
     let model: PyObject = py
-      .eval("tf.keras.models.load_model('model.tf')", None, Some(&locals))?
+      .eval("tf.keras.models.load_model('model.tf')", None, Some(locals))?
       .extract()?;
 
     Ok(Self { py, model })
@@ -40,7 +40,7 @@ impl<'a> Model for PyModel<'a> {
         "
       ),
       None,
-      Some(&locals),
+      Some(locals),
     )?;
 
     let policies: &PyArray3<f64> = locals.get_item("policies").unwrap().extract()?;
@@ -65,7 +65,7 @@ impl<'a> TrainableModel for PyModel<'a> {
     self.py.run(
       "model.fit(inputs, {'policy_output': policies, 'value_output': values})",
       None,
-      Some(&locals),
+      Some(locals),
     )?;
 
     Ok(())

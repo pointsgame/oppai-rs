@@ -56,7 +56,7 @@ uct_test!(
   1_000_000,
   7
 );
-uct_test!(uct_8, IMAGE_8, 1_00_000, 7);
+uct_test!(uct_8, IMAGE_8, 100_000, 7);
 uct_test!(uct_9, IMAGE_9, 100_000, 7);
 uct_test!(
   #[ignore]

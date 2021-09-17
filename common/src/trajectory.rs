@@ -109,8 +109,8 @@ fn build_trajectories_rec(
       continue;
     }
     let cell = field.cell(pos);
+    field.put_point(pos, player);
     if cell.is_players_empty_base(player.next()) {
-      field.put_point(pos, player);
       if field.get_delta_score(player) > 0 && (ensure_pos == 0 || field.cell(ensure_pos).is_bound()) {
         add_trajectory(
           field,
@@ -121,42 +121,38 @@ fn build_trajectories_rec(
           player,
         );
       }
-      field.undo();
-    } else {
-      field.put_point(pos, player);
-      if field.get_delta_score(player) > 0 && (ensure_pos == 0 || field.cell(ensure_pos).is_bound()) {
-        add_trajectory(
-          field,
-          trajectories,
-          field
-            .points_seq()
-            .index(field.moves_count() - cur_depth as usize..field.moves_count()),
-          player,
-        );
-      } else if depth > 0 {
-        let mut marks = Vec::new();
-        let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
-        if last_pos != 0 {
-          next_moves.retain(|&next_pos| euclidean(field.width(), last_pos, next_pos) > 2);
-        }
-        build_trajectories_rec(
-          field,
-          trajectories,
-          player,
-          cur_depth + 1,
-          depth - 1,
-          empty_board,
-          pos,
-          next_moves,
-          ensure_pos,
-          should_stop,
-        );
-        for mark_pos in marks {
-          empty_board[mark_pos] = 0;
-        }
+    } else if field.get_delta_score(player) > 0 && (ensure_pos == 0 || field.cell(ensure_pos).is_bound()) {
+      add_trajectory(
+        field,
+        trajectories,
+        field
+          .points_seq()
+          .index(field.moves_count() - cur_depth as usize..field.moves_count()),
+        player,
+      );
+    } else if depth > 0 {
+      let mut marks = Vec::new();
+      let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
+      if last_pos != 0 {
+        next_moves.retain(|&next_pos| euclidean(field.width(), last_pos, next_pos) > 2);
       }
-      field.undo();
+      build_trajectories_rec(
+        field,
+        trajectories,
+        player,
+        cur_depth + 1,
+        depth - 1,
+        empty_board,
+        pos,
+        next_moves,
+        ensure_pos,
+        should_stop,
+      );
+      for mark_pos in marks {
+        empty_board[mark_pos] = 0;
+      }
     }
+    field.undo();
   }
 }
 

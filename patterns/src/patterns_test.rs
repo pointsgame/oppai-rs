@@ -426,7 +426,7 @@ fn pattern_multiple_moves() {
     ",
   );
   let mut moves = p.find(&field, Player::Red, false);
-  moves.sort();
+  moves.sort_unstable();
   assert_eq!(moves, vec![field.to_pos(1, 0), field.to_pos(0, 1)]);
 }
 
@@ -459,7 +459,7 @@ fn multiple_patterns() {
     ",
   );
   let mut moves = p.find(&field, Player::Red, false);
-  moves.sort();
+  moves.sort_unstable();
   assert_eq!(
     moves,
     vec![

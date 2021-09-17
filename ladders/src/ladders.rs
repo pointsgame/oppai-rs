@@ -230,7 +230,7 @@ fn ladders_rec(
 pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (Option<NonZeroPos>, i32, u32) {
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
 
-  let trajectories = build_trajectories(field, player, 2, &mut empty_board, &should_stop);
+  let trajectories = build_trajectories(field, player, 2, &mut empty_board, should_stop);
 
   info!("Solving ladders for {} trajectories.", trajectories.len());
 

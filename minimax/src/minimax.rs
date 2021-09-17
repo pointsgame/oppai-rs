@@ -489,7 +489,7 @@ impl Minimax {
       MinimaxType::Mtdf => Minimax::mtdf,
     };
     let estimation = minimax_function(
-      &self,
+      self,
       field,
       player,
       &mut trajectories_pruning,
@@ -554,7 +554,7 @@ impl Minimax {
     };
     while !should_stop.load(Ordering::Relaxed) {
       let estimation = minimax_function(
-        &self,
+        self,
         field,
         player,
         &mut trajectories_pruning,

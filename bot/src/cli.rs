@@ -33,7 +33,7 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
       .long("solver")
       .help("Engine type for position estimation and the best move choosing")
       .takes_value(true)
-      .possible_values(&Solver::VARIANTS)
+      .possible_values(Solver::VARIANTS)
       .case_insensitive(true)
       .default_value("Uct"),
     Arg::with_name("time-gap")
@@ -60,7 +60,7 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
       .long("minimax-type")
       .help("Minimax type")
       .takes_value(true)
-      .possible_values(&MinimaxType::VARIANTS)
+      .possible_values(MinimaxType::VARIANTS)
       .case_insensitive(true)
       .default_value("NegaScout"),
     Arg::with_name("rebuild-trajectories")
@@ -93,7 +93,7 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
       .long("ucb-type")
       .help("Formula of the UCT value")
       .takes_value(true)
-      .possible_values(&UcbType::VARIANTS)
+      .possible_values(UcbType::VARIANTS)
       .case_insensitive(true)
       .default_value("Ucb1Tuned"),
     Arg::with_name("uctk")
@@ -133,7 +133,7 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
       .long("komi-type")
       .help("Type of komi evaluation for UTC during the game")
       .takes_value(true)
-      .possible_values(&UctKomiType::VARIANTS)
+      .possible_values(UctKomiType::VARIANTS)
       .case_insensitive(true)
       .default_value("Dynamic"),
     Arg::with_name("komi-min-iterations")

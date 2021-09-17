@@ -141,8 +141,8 @@ where
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
       if let (Some(pos), score, depth) = with_timeout(
-        || ladders(&mut self.field, player, &should_stop),
-        &should_stop,
+        || ladders(&mut self.field, player, should_stop),
+        should_stop,
         ladders_time_limit,
       ) {
         info!(
@@ -163,11 +163,11 @@ where
     let result = match self.config.solver {
       Solver::Uct => self
         .uct
-        .best_move(&self.field, player, &mut self.rng, &should_stop, uct_iterations)
+        .best_move(&self.field, player, &mut self.rng, should_stop, uct_iterations)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
-        .minimax(&mut self.field, player, minimax_depth, &should_stop)
+        .minimax(&mut self.field, player, minimax_depth, should_stop)
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     };
@@ -206,8 +206,8 @@ where
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
       if let (Some(pos), score, depth) = with_timeout(
-        || ladders(&mut self.field, player, &should_stop),
-        &should_stop,
+        || ladders(&mut self.field, player, should_stop),
+        should_stop,
         ladders_time_limit.min(time_left),
       ) {
         info!(
@@ -235,20 +235,20 @@ where
         || {
           self
             .uct
-            .best_move(&self.field, player, &mut self.rng, &should_stop, usize::max_value())
+            .best_move(&self.field, player, &mut self.rng, should_stop, usize::max_value())
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
-        &should_stop,
+        should_stop,
         time_left,
       ),
       Solver::Minimax => with_timeout(
         || {
           self
             .minimax
-            .minimax_with_time(&mut self.field, player, &should_stop)
+            .minimax_with_time(&mut self.field, player, should_stop)
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
-        &should_stop,
+        should_stop,
         time_left,
       ),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
