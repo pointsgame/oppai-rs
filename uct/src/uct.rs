@@ -375,19 +375,18 @@ impl UctRoot {
     UctRoot::random_result(field, player, komi)
   }
 
-  fn ucb(&self, parent: &UctNode, node: &UctNode, ucb_type: UcbType) -> f64 {
+  fn ucb(&self, parent_visits_ln: f64, node: &UctNode, ucb_type: UcbType) -> f64 {
     let wins = node.get_wins() as f64;
     let draws = node.get_draws() as f64;
     let visits = node.get_visits() as f64;
-    let parent_visits = parent.get_visits() as f64;
     let win_rate = (wins + draws * self.config.draw_weight) / visits;
     let uct = match ucb_type {
       UcbType::Winrate => 0f64,
-      UcbType::Ucb1 => self.config.uctk * (2.0 * parent_visits.ln() / visits).sqrt(),
+      UcbType::Ucb1 => self.config.uctk * (2.0 * parent_visits_ln / visits).sqrt(),
       UcbType::Ucb1Tuned => {
         let v = (wins + draws * self.config.draw_weight * self.config.draw_weight) / visits - win_rate * win_rate
-          + (2.0 * parent_visits.ln() / visits).sqrt();
-        self.config.uctk * (v.min(0.25) * parent_visits.ln() / visits).sqrt()
+          + (2.0 * parent_visits_ln / visits).sqrt();
+        self.config.uctk * (v.min(0.25) * parent_visits_ln / visits).sqrt()
       }
     };
     win_rate + uct
@@ -409,6 +408,7 @@ impl UctRoot {
   }
 
   fn uct_select<'a>(&self, node: &'a UctNode) -> Option<&'a UctNode> {
+    let node_visits_ln = (node.get_visits() as f64).ln();
     let mut best_uct = 0f64;
     let mut result = None;
     let mut next = node.get_child_ref();
@@ -422,7 +422,7 @@ impl UctRoot {
       } else if visits == 0 {
         return Some(next_node);
       } else {
-        let uct_value = self.ucb(node, next_node, self.config.ucb_type);
+        let uct_value = self.ucb(node_visits_ln, next_node, self.config.ucb_type);
         if uct_value > best_uct {
           best_uct = uct_value;
           result = Some(next_node);
@@ -603,9 +603,10 @@ impl UctRoot {
     let mut result = None;
     if let Some(ref root) = self.node {
       let mut next = root.get_child_ref();
+      let root_visits_ln = (root.get_visits() as f64).ln();
       while let Some(next_node) = next {
         let uct_value = if next_node.get_visits() > 0 {
-          self.ucb(root, next_node, UcbType::Winrate)
+          self.ucb(root_visits_ln, next_node, UcbType::Winrate)
         } else {
           0f64
         };
