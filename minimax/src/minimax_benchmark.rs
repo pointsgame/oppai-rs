@@ -21,7 +21,7 @@ const MINIMAX_CONFIG_NEGASCOUT: MinimaxConfig = MinimaxConfig {
 
 const MINIMAX_CONFIG_MTDF: MinimaxConfig = MinimaxConfig {
   threads_count: 1,
-  minimax_type: MinimaxType::MTDF,
+  minimax_type: MinimaxType::Mtdf,
   hash_table_size: 1_000,
   rebuild_trajectories: false,
 };
