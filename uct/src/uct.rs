@@ -604,7 +604,11 @@ impl UctRoot {
     if let Some(ref root) = self.node {
       let mut next = root.get_child_ref();
       while let Some(next_node) = next {
-        let uct_value = self.ucb(root, next_node, UcbType::Winrate);
+        let uct_value = if next_node.get_visits() > 0 {
+          self.ucb(root, next_node, UcbType::Winrate)
+        } else {
+          0f64
+        };
         let pos = next_node.get_pos();
         info!(
           "Uct for move ({}, {}) is {}, {} wins, {} draws, {} visits.",
