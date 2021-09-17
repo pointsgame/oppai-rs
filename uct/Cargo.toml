@@ -11,14 +11,14 @@ rand = "0.8"
 log = "0.4"
 crossbeam = "0.8"
 num_cpus = "1.13"
-strum = { version = "0.20", features = [ "derive" ] }
+strum = { version = "0.21", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 
 [dev-dependencies]
 criterion = "0.3"
 rand_xoshiro = "0.6"
-env_logger = "0.8"
+env_logger = "0.9"
 oppai-test-images = { path = "../test-images" }
 
 [[bench]]

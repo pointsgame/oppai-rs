@@ -8,11 +8,11 @@ edition = "2018"
 
 [dependencies]
 rand = { version = "0.8", features = [ "small_rng" ] }
-time = "0.2"
-env_logger = "0.8"
+time = "0.3"
+env_logger = "0.9"
 crossbeam = "0.8"
 clap = "2.33"
-strum = "0.20"
+strum = "0.21"
 oppai-field = { path = "field" }
 oppai-common = { path = "common" }
 oppai-ladders = { path = "ladders" }
