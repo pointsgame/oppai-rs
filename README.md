@@ -7,23 +7,21 @@ Oppai-rs
 
 Oppai-rs (acronym for "OPen Points Artificial Intelligence") is an artificial intelligence for the game of points.
 
-It's written in rust language and implements "points console AI protocol v6".
-
 You can play with it using [iced module](iced).
 
 Features
 ====
 
 * Two algorithms for searching the optimal move: UCT, Minimax.
-* Two implementations of Minimax search: NegaScout, MTD(f).
-* UCT caching that persists between moves.
+* Two implementations of Minimax search: PVS (a.k.a. NegaScout), MTD(f).
+* UCT tree reuse between moves.
 * Trajectories for moves pruning in the Minimax search tree.
 * Lock-free multi-threading for both Minimax and UCT.
 * Transposition table using Zobrist hashing for Minimax.
 * DFA-based patterns searching.
-* DSU to optimize capturing (optional).
-* Time-based (`gen_move_with_time`) and complexity-based (`gen_move_with_complexity`) calculations.
-* Ladders solver.
+* DSU to optimize capturing (behind a feature flag since it's good only for UCT).
+* Time-based and complexity-based calculations.
+* Generic ladders solver.
 
 Running
 ====
@@ -76,7 +74,7 @@ Also if you have nightly rust you can run benchmarks with:
 cargo bench --features bench
 ```
 
-TODO
+Ideas
 ====
 
 * Best Node Search algorithm (see [link](https://dspace.lu.lv/dspace/bitstream/handle/7/4903/38550-Dmitrijs_Rutko_2013.pdf)).
@@ -91,11 +89,11 @@ TODO
 * Think on enemy's move.
 * Forbid typical losing ladders.
 * Fractional komi support.
-* Split trajectories by groups for Minimax (see [link](https://www.icsi.berkeley.edu/ftp/global/pub/techreports/1996/tr-96-030.pdf)).
+* Split trajectories by groups for Minimax and solve them independently.
 
 License
 ====
 
 This project is licensed under AGPL version 3 or (at your option) any later version. See LICENSE.txt for details.
 
-Copyright (C) 2015 Kurnevsky Evgeny, Vasya Novikov
+Copyright (C) 2015-2021 Kurnevsky Evgeny, Vasya Novikov
