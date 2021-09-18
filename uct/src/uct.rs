@@ -38,6 +38,7 @@ pub struct UctConfig {
   pub red: f64,
   pub green: f64,
   pub komi_min_iterations: usize,
+  pub fpu: f64,
 }
 
 impl Default for UctConfig {
@@ -54,6 +55,7 @@ impl Default for UctConfig {
       red: 0.45,
       green: 0.5,
       komi_min_iterations: 3000,
+      fpu: 1.1,
     }
   }
 }
@@ -415,18 +417,19 @@ impl UctRoot {
     while let Some(next_node) = next {
       let visits = next_node.get_visits();
       let wins = next_node.get_wins();
-      if visits == usize::max_value() {
+      let uct_value = if visits == usize::max_value() {
         if wins == usize::max_value() {
           return Some(next_node);
         }
+        -1f64
       } else if visits == 0 {
-        return Some(next_node);
+        self.config.fpu
       } else {
-        let uct_value = self.ucb(node_visits_ln, next_node, self.config.ucb_type);
-        if uct_value > best_uct {
-          best_uct = uct_value;
-          result = Some(next_node);
-        }
+        self.ucb(node_visits_ln, next_node, self.config.ucb_type)
+      };
+      if uct_value > best_uct {
+        best_uct = uct_value;
+        result = Some(next_node);
       }
       next = next_node.get_sibling_ref();
     }

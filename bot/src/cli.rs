@@ -21,12 +21,13 @@ pub fn groups() -> [ArgGroup<'static>; 2] {
         "green",
         "komi-type",
         "komi-min-iterations",
+        "fpu",
       ])
       .multiple(true),
   ]
 }
 
-pub fn args() -> [Arg<'static, 'static>; 20] {
+pub fn args() -> [Arg<'static, 'static>; 21] {
   [
     Arg::with_name("solver")
       .short("s")
@@ -75,7 +76,7 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
         "Radius for points that will be considered by UCT search algorithm. \
          The initial points are fixed once the UCT search algorithm starts. After \
          that, only points that are close enough to staring ones are considered. \
-         Points that are more distant to any of the starting points are discarted",
+         Points that are more distant to any of the starting points are discarded",
       )
       .takes_value(true)
       .default_value("3"),
@@ -125,7 +126,7 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
       .long("green")
       .help(
         "Green zone for dynamic komi for UCT. Should be fractional number \
-         between 0 and 1. Should also be more than red zone.",
+         between 0 and 1. Should also be more than red zone",
       )
       .takes_value(true)
       .default_value("0.5"),
@@ -141,22 +142,27 @@ pub fn args() -> [Arg<'static, 'static>; 20] {
       .help("Dynamic komi for UCT will be updated after this number of iterations")
       .takes_value(true)
       .default_value("3000"),
+    Arg::with_name("fpu")
+      .long("fpu")
+      .help("First-play urgency")
+      .takes_value(true)
+      .default_value("1.1"),
     Arg::with_name("no-ladders-solver")
       .long("no-ladders-solver")
       .help("Disable ladders solver"),
     Arg::with_name("ladders-score-limit")
       .long("ladders-score-limit")
-      .help("Score that a ladder should have to be accepted.")
+      .help("Score that a ladder should have to be accepted")
       .takes_value(true)
       .default_value("0"),
     Arg::with_name("ladders-depth-limit")
       .long("ladders-depth-limit")
-      .help("Depth that a ladder should have to be accepted.")
+      .help("Depth that a ladder should have to be accepted")
       .takes_value(true)
       .default_value("0"),
     Arg::with_name("ladders-time-limit")
       .long("ladders-time-limit")
-      .help("Time limit for ladders solving.")
+      .help("Time limit for ladders solving")
       .takes_value(true)
       .default_value("1s"),
   ]
@@ -180,6 +186,7 @@ pub fn parse_config(matches: &ArgMatches<'static>) -> Config {
     red: value_t!(matches.value_of("red"), f64).unwrap_or_else(|e| e.exit()),
     green: value_t!(matches.value_of("green"), f64).unwrap_or_else(|e| e.exit()),
     komi_min_iterations: value_t!(matches.value_of("komi-min-iterations"), usize).unwrap_or_else(|e| e.exit()),
+    fpu: value_t!(matches.value_of("fpu"), f64).unwrap_or_else(|e| e.exit()),
   };
   let minimax_config = MinimaxConfig {
     threads_count: threads_count.unwrap_or_else(num_cpus::get_physical),

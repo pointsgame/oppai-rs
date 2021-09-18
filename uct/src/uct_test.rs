@@ -19,6 +19,7 @@ const UCT_CONFIG: UctConfig = UctConfig {
   red: 0.45,
   green: 0.5,
   komi_min_iterations: 3_000,
+  fpu: 1.1,
 };
 
 macro_rules! uct_test {
@@ -37,9 +38,9 @@ macro_rules! uct_test {
   }
 }
 
-uct_test!(uct_1, IMAGE_1, 100_000, 7);
+uct_test!(uct_1, IMAGE_1, 100_000, 5);
 uct_test!(uct_2, IMAGE_2, 100_000, 7);
-uct_test!(uct_3, IMAGE_3, 100_000, 5);
+uct_test!(uct_3, IMAGE_3, 100_000, 7);
 uct_test!(uct_4, IMAGE_4, 100_000, 5);
 uct_test!(uct_5, IMAGE_5, 100_000, 7);
 uct_test!(
@@ -47,7 +48,7 @@ uct_test!(
   uct_6,
   IMAGE_6,
   1_000_000,
-  7
+  3
 );
 uct_test!(
   #[ignore]
@@ -56,7 +57,7 @@ uct_test!(
   1_000_000,
   7
 );
-uct_test!(uct_8, IMAGE_8, 100_000, 7);
+uct_test!(uct_8, IMAGE_8, 100_000, 5);
 uct_test!(uct_9, IMAGE_9, 100_000, 7);
 uct_test!(
   #[ignore]
@@ -69,4 +70,4 @@ uct_test!(
 // uct_test!(uct_11, IMAGE_11, 1_000_000_000, 7);
 uct_test!(uct_12, IMAGE_12, 100_000, 7);
 uct_test!(uct_13, IMAGE_13, 100_000, 7);
-uct_test!(uct_14, IMAGE_14, 100_000, 39);
+uct_test!(uct_14, IMAGE_14, 100_000, 13);

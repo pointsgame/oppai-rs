@@ -24,6 +24,7 @@ const UCT_CONFIG: UctConfig = UctConfig {
   red: 0.45,
   green: 0.5,
   komi_min_iterations: 3_000,
+  fpu: 1.1,
 };
 
 fn find_best_move(bencher: &mut Bencher) {
