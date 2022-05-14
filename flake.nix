@@ -44,7 +44,10 @@
           glib
           gtk3
           pango
+          vulkan-loader
         ];
+
+        LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib";
       };
     };
 }
