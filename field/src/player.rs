@@ -6,6 +6,12 @@ pub enum Player {
   Black,
 }
 
+impl Default for Player {
+  fn default() -> Self {
+    Player::Red
+  }
+}
+
 impl Player {
   pub fn next(self) -> Player {
     match self {
