@@ -1044,6 +1044,14 @@ impl Field {
       .flat_map(|change| change.points_changes.iter())
       .cloned()
   }
+
+  pub fn is_game_over(&self) -> bool {
+    // TODO: check grounding
+    self
+      .points
+      .iter()
+      .all(|cell| !cell.is_putting_allowed() || cell.is_empty_base())
+  }
 }
 
 impl fmt::Display for Field {
