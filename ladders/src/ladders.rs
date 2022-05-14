@@ -6,7 +6,7 @@ use oppai_field::player::Player;
 use std::iter;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut Vec<u32>) -> Vec<Pos> {
+fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut marks = Vec::new();
   wave_diag(field.width(), start_pos, |pos| {
     if empty_board[pos] != 0 {
@@ -24,7 +24,7 @@ fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut V
   marks
 }
 
-fn collect_near_moves(field: &Field, player: Player, empty_board: &mut Vec<u32>) -> Vec<Pos> {
+fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut moves = Vec::new();
   for &pos in field
     .points_seq()
@@ -44,7 +44,7 @@ fn collect_near_moves(field: &Field, player: Player, empty_board: &mut Vec<u32>)
   moves
 }
 
-fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Player, empty_board: &mut Vec<u32>) -> bool {
+fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Player, empty_board: &mut [u32]) -> bool {
   if trajectory.points().iter().any(|&pos| !field.is_putting_allowed(pos)) {
     return false;
   }
@@ -91,7 +91,7 @@ fn is_trajectoty_viable(
   field: &mut Field,
   trajectory: &Trajectory,
   player: Player,
-  empty_board: &mut Vec<u32>,
+  empty_board: &mut [u32],
 ) -> bool {
   let moves = collect_near_moves(field, player, empty_board);
   let enemy = player.next();
@@ -228,7 +228,7 @@ fn ladders_rec(
 }
 
 pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (Option<NonZeroPos>, i32, u32) {
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
 
   let trajectories = build_trajectories(field, player, 2, &mut empty_board, should_stop);
 

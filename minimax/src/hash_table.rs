@@ -63,15 +63,9 @@ impl From<usize> for HashType {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct HashData {
   data: usize,
-}
-
-impl Default for HashData {
-  fn default() -> HashData {
-    HashData { data: 0 }
-  }
 }
 
 impl HashData {

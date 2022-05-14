@@ -1,10 +1,11 @@
 use crate::extended_field::InitialPosition;
-use clap::{crate_authors, crate_description, crate_name, crate_version, value_t, App, Arg};
+use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, Command};
 use oppai_bot::cli::*;
 use oppai_bot::config::Config as BotConfig;
 use std::num::ParseIntError;
 use std::str::FromStr;
 use std::time::Duration;
+use strum::VariantNames;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rgb {
@@ -87,110 +88,110 @@ impl Default for Config {
 }
 
 pub fn cli_parse() -> Config {
-  let matches = App::new(crate_name!())
+  let matches = Command::new(crate_name!())
     .version(crate_version!())
     .author(crate_authors!("\n"))
     .about(crate_description!())
     .groups(&groups())
     .args(&args())
     .arg(
-      Arg::with_name("width")
+      Arg::new("width")
         .long("width")
         .help("Field width")
         .takes_value(true)
         .default_value("39"),
     )
     .arg(
-      Arg::with_name("height")
+      Arg::new("height")
         .long("height")
         .help("Field height")
         .takes_value(true)
         .default_value("32"),
     )
     .arg(
-      Arg::with_name("red-color")
+      Arg::new("red-color")
         .long("red-color")
         .help("The color of first player")
         .takes_value(true)
         .default_value("#FF0000"),
     )
     .arg(
-      Arg::with_name("black-color")
+      Arg::new("black-color")
         .long("black-color")
         .help("The color of second player")
         .takes_value(true)
         .default_value("#000000"),
     )
     .arg(
-      Arg::with_name("grid-color")
+      Arg::new("grid-color")
         .long("grid-color")
         .help("The color of grid")
         .takes_value(true)
         .default_value("#000000"),
     )
     .arg(
-      Arg::with_name("background-color")
+      Arg::new("background-color")
         .long("background-color")
         .help("The background color")
         .takes_value(true)
         .default_value("#FFFFFF"),
     )
     .arg(
-      Arg::with_name("grid-thickness")
+      Arg::new("grid-thickness")
         .long("grid-thickness")
         .help("The grid thickness")
         .takes_value(true)
         .default_value("1"),
     )
     .arg(
-      Arg::with_name("point-radius")
+      Arg::new("point-radius")
         .long("point-radius")
         .help("The point radius")
         .takes_value(true)
         .default_value("0.166667"),
     )
     .arg(
-      Arg::with_name("filling-alpha")
+      Arg::new("filling-alpha")
         .long("filling-alpha")
         .help("The degree of filling transparency")
         .takes_value(true)
         .default_value("0.5"),
     )
     .arg(
-      Arg::with_name("no-extended-filling")
+      Arg::new("no-extended-filling")
         .long("no-extended-filling")
         .help("Disable extended area filling, changes appearance only"),
     )
     .arg(
-      Arg::with_name("no-maximum-area-filling")
+      Arg::new("no-maximum-area-filling")
         .long("no-maximum-area-filling")
         .help("Disable filling captures by maximum area, changes appearance only")
         .requires("no-extended-filling"),
     )
     .arg(
-      Arg::with_name("no-last-point-mark")
+      Arg::new("no-last-point-mark")
         .long("no-last-point-mark")
         .help("Don't mark last point"),
     )
     .arg(
-      Arg::with_name("initial-position")
+      Arg::new("initial-position")
         .long("initial-position")
         .help("Initial position on the field")
         .takes_value(true)
-        .possible_values(&InitialPosition::variants())
-        .case_insensitive(true)
+        .possible_values(InitialPosition::VARIANTS)
+        .ignore_case(true)
         .default_value("Cross"),
     )
     .arg(
-      Arg::with_name("patterns-file")
-        .short("p")
+      Arg::new("patterns-file")
+        .short('p')
         .long("patterns-file")
         .help("Patterns file to use")
         .takes_value(true)
-        .multiple(true),
+        .multiple_occurrences(true),
     )
     .arg(
-      Arg::with_name("time")
+      Arg::new("time")
         .long("time")
         .help("Time to think that AI will use for one move")
         .takes_value(true)
@@ -198,26 +199,27 @@ pub fn cli_parse() -> Config {
     )
     .get_matches();
 
-  let width = value_t!(matches.value_of("width"), u32).unwrap_or_else(|e| e.exit());
-  let height = value_t!(matches.value_of("height"), u32).unwrap_or_else(|e| e.exit());
-  let red_color = value_t!(matches.value_of("red-color"), Rgb).unwrap_or_else(|e| e.exit());
-  let black_color = value_t!(matches.value_of("black-color"), Rgb).unwrap_or_else(|e| e.exit());
-  let grid_color = value_t!(matches.value_of("grid-color"), Rgb).unwrap_or_else(|e| e.exit());
-  let background_color = value_t!(matches.value_of("background-color"), Rgb).unwrap_or_else(|e| e.exit());
-  let grid_thickness = value_t!(matches.value_of("grid-thickness"), f32).unwrap_or_else(|e| e.exit());
-  let point_radius = value_t!(matches.value_of("point-radius"), f32).unwrap_or_else(|e| e.exit());
-  let filling_alpha = value_t!(matches.value_of("filling-alpha"), f32).unwrap_or_else(|e| e.exit());
+  let width = matches.value_of_t("width").unwrap_or_else(|e| e.exit());
+  let height = matches.value_of_t("height").unwrap_or_else(|e| e.exit());
+  let red_color = matches.value_of_t("red-color").unwrap_or_else(|e| e.exit());
+  let black_color = matches.value_of_t("black-color").unwrap_or_else(|e| e.exit());
+  let grid_color = matches.value_of_t("grid-color").unwrap_or_else(|e| e.exit());
+  let background_color = matches.value_of_t("background-color").unwrap_or_else(|e| e.exit());
+  let grid_thickness = matches.value_of_t("grid-thickness").unwrap_or_else(|e| e.exit());
+  let point_radius = matches.value_of_t("point-radius").unwrap_or_else(|e| e.exit());
+  let filling_alpha = matches.value_of_t("filling-alpha").unwrap_or_else(|e| e.exit());
   let extended_filling = !matches.is_present("no-extended-filling");
   let maximum_area_filling = !matches.is_present("no-maximum-area-filling");
   let last_point_mark = !matches.is_present("no-last-point-mark");
-  let initial_position = value_t!(matches.value_of("initial-position"), InitialPosition).unwrap_or_else(|e| e.exit());
+  let initial_position = matches.value_of_t("initial-position").unwrap_or_else(|e| e.exit());
   let patterns = if matches.is_present("patterns-file") {
-    clap::values_t!(matches.values_of("patterns-file"), String).unwrap_or_else(|e| e.exit())
+    matches.values_of_t("patterns-file").unwrap_or_else(|e| e.exit())
   } else {
     Vec::new()
   };
   let bot_config = parse_config(&matches);
-  let time = value_t!(matches.value_of("time"), humantime::Duration)
+  let time = matches
+    .value_of_t::<humantime::Duration>("time")
     .unwrap_or_else(|e| e.exit())
     .into();
 

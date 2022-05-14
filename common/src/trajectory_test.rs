@@ -23,7 +23,7 @@ fn build_trajectories_1() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 1, &mut empty_board, &should_stop);
@@ -46,7 +46,7 @@ fn build_trajectories_2() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 2, &mut empty_board, &should_stop);
@@ -71,7 +71,7 @@ fn build_trajectories_3() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 3, &mut empty_board, &should_stop);
@@ -96,7 +96,7 @@ fn build_trajectories_with_no_extra_points() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 2, &mut empty_board, &should_stop);
@@ -121,7 +121,7 @@ fn build_trajectories_through_empty_base() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 2, &mut empty_board, &should_stop);
@@ -143,7 +143,7 @@ fn build_trajectories_crankle_1() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 29, &mut empty_board, &should_stop);
@@ -166,7 +166,7 @@ fn build_trajectories_crankle_2() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 27, &mut empty_board, &should_stop);
@@ -195,7 +195,7 @@ fn build_trajectories_crankle_3() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 61, &mut empty_board, &should_stop);
@@ -234,7 +234,7 @@ fn build_trajectories_maze_1() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 39, &mut empty_board, &should_stop);
@@ -283,7 +283,7 @@ fn build_trajectories_maze_2() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 67, &mut empty_board, &should_stop);
@@ -343,7 +343,7 @@ fn build_trajectories_maze_3() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let trajectories = build_trajectories(&mut field, Player::Red, 80, &mut empty_board, &should_stop);
@@ -365,7 +365,7 @@ fn build_trajectories_from_1() {
     ",
   );
 
-  let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+  let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
   let should_stop = AtomicBool::new(false);
 
   let pos = field.to_pos(2, 1);

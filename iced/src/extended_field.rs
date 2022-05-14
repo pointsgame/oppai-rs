@@ -1,18 +1,16 @@
-use clap::arg_enum;
 use oppai_field::field::{self, to_pos, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use rand::Rng;
 use std::sync::Arc;
+use strum::{EnumString, EnumVariantNames};
 
-arg_enum! {
-  #[derive(Clone, Copy, PartialEq, Debug)]
-  pub enum InitialPosition {
-    Empty,
-    Cross,
-    TwoCrosses,
-    TripleCross,
-  }
+#[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
+pub enum InitialPosition {
+  Empty,
+  Cross,
+  TwoCrosses,
+  TripleCross,
 }
 
 #[derive(Debug)]

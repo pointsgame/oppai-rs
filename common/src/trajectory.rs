@@ -62,7 +62,7 @@ fn next_moves(
   field: &Field,
   start_pos: Pos,
   player: Player,
-  empty_board: &mut Vec<u32>,
+  empty_board: &mut [u32],
   marks: &mut Vec<Pos>,
 ) -> Vec<Pos> {
   let mut moves = Vec::new();
@@ -95,7 +95,7 @@ fn build_trajectories_rec(
   player: Player,
   cur_depth: u32,
   depth: u32,
-  empty_board: &mut Vec<u32>,
+  empty_board: &mut [u32],
   last_pos: Pos,
   moves: Vec<Pos>,
   ensure_pos: Pos,
@@ -160,7 +160,7 @@ pub fn build_trajectories(
   field: &mut Field,
   player: Player,
   depth: u32,
-  empty_board: &mut Vec<u32>,
+  empty_board: &mut [u32],
   should_stop: &AtomicBool,
 ) -> Vec<Trajectory> {
   let mut trajectories = Vec::new();
@@ -207,7 +207,7 @@ pub fn build_trajectories_from(
   pos: Pos,
   player: Player,
   depth: u32,
-  empty_board: &mut Vec<u32>,
+  empty_board: &mut [u32],
   should_stop: &AtomicBool,
 ) -> Vec<Trajectory> {
   let mut trajectories = Vec::new();

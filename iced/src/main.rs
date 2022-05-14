@@ -8,8 +8,8 @@ mod sgf;
 use crate::config::{cli_parse, Config, Rgb};
 use crate::extended_field::ExtendedField;
 use iced::{
-  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Clipboard, Color, Column, Command,
-  Container, Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
+  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Column, Command, Container,
+  Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
 };
 use oppai_bot::bot::Bot;
 use oppai_field::field::{to_pos, NonZeroPos, Pos};
@@ -176,7 +176,7 @@ impl Application for Game {
     "OpPAI".into()
   }
 
-  fn update(&mut self, message: Self::Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
+  fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match message {
       Message::BotMove(maybe_pos) => {
         if let Some(pos) = maybe_pos {
@@ -252,8 +252,10 @@ impl Application for Game {
           let player = self.extended_field.player;
           let time = self.config.time;
           let should_stop = self.should_stop.clone();
-          return async move { Message::BotMove(bot.lock().unwrap().best_move_with_time(player, time, &should_stop)) }
-            .into();
+          return Command::perform(
+            async move { bot.lock().unwrap().best_move_with_time(player, time, &should_stop) },
+            Message::BotMove,
+          );
         }
       }
       Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
@@ -501,24 +503,24 @@ impl canvas::Program<CanvasMessage> for Game {
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::Undo)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::N,
-        modifiers: keyboard::Modifiers { control: true, .. },
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::New)),
+        modifiers,
+      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::New)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::O,
-        modifiers: keyboard::Modifiers { control: true, .. },
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
+        modifiers,
+      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::S,
-        modifiers: keyboard::Modifiers { control: true, .. },
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
+        modifiers,
+      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::E,
-        modifiers: keyboard::Modifiers { control: true, .. },
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleEditMode)),
+        modifiers,
+      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleEditMode)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::A,
-        modifiers: keyboard::Modifiers { control: true, .. },
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleAI)),
+        modifiers,
+      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleAI)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::Escape,
         ..

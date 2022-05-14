@@ -274,7 +274,7 @@ impl Minimax {
       for _ in 0..self.config.threads_count {
         scope.spawn(|_| {
           let mut local_field = field.clone();
-          let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect();
+          let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
           let mut local_best_move = 0;
           let mut local_alpha = alpha;
           let enemy = player.next();
@@ -473,7 +473,7 @@ impl Minimax {
     if depth == 0 {
       return None;
     }
-    let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+    let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
     let mut trajectories_pruning = TrajectoriesPruning::new(
       self.config.rebuild_trajectories,
       field,
@@ -539,7 +539,7 @@ impl Minimax {
     let mut best_move = None;
     let mut cur_best_move = None;
     let mut enemy_best_move = None;
-    let mut empty_board = iter::repeat(0u32).take(field.length()).collect();
+    let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
     let mut trajectories_pruning = TrajectoriesPruning::new(
       self.config.rebuild_trajectories,
       field,

@@ -14,13 +14,13 @@ pub struct TrajectoriesPruning {
 }
 
 impl TrajectoriesPruning {
-  fn project(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
+  fn project(trajectories: &[Trajectory], empty_board: &mut [u32]) {
     for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points().iter()) {
       empty_board[pos] += 1;
     }
   }
 
-  fn project_length(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
+  fn project_length(trajectories: &[Trajectory], empty_board: &mut [u32]) {
     for trajectory in trajectories {
       let len = trajectory.len() as u32;
       for &pos in trajectory.points() {
@@ -31,13 +31,13 @@ impl TrajectoriesPruning {
     }
   }
 
-  fn deproject(trajectories: &[Trajectory], empty_board: &mut Vec<u32>) {
+  fn deproject(trajectories: &[Trajectory], empty_board: &mut [u32]) {
     for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points().iter()) {
       empty_board[pos] = 0;
     }
   }
 
-  fn exclude_unnecessary_trajectories(trajectories: &mut Vec<Trajectory>, empty_board: &mut Vec<u32>) -> bool {
+  fn exclude_unnecessary_trajectories(trajectories: &mut Vec<Trajectory>, empty_board: &mut [u32]) -> bool {
     let mut need_exclude = false;
     trajectories.retain(|trajectory| {
       let single_count = trajectory.points().iter().filter(|&&pos| empty_board[pos] == 1).count();
@@ -57,7 +57,7 @@ impl TrajectoriesPruning {
   fn calculate_moves(
     trajectories1: &mut Vec<Trajectory>,
     trajectories2: &mut Vec<Trajectory>,
-    empty_board: &mut Vec<u32>,
+    empty_board: &mut [u32],
   ) -> Vec<Pos> {
     TrajectoriesPruning::project(trajectories1, empty_board);
     TrajectoriesPruning::project(trajectories2, empty_board);
@@ -99,7 +99,7 @@ impl TrajectoriesPruning {
     field: &mut Field,
     player: Player,
     depth: u32,
-    empty_board: &mut Vec<u32>,
+    empty_board: &mut [u32],
     should_stop: &AtomicBool,
   ) -> TrajectoriesPruning {
     if depth == 0 {
@@ -153,7 +153,7 @@ impl TrajectoriesPruning {
     field: &mut Field,
     player: Player,
     depth: u32,
-    empty_board: &mut Vec<u32>,
+    empty_board: &mut [u32],
     last_pos: Pos,
     should_stop: &AtomicBool,
   ) -> TrajectoriesPruning {
@@ -231,7 +231,7 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn dec_and_swap(&self, depth: u32, empty_board: &mut Vec<u32>) -> TrajectoriesPruning {
+  pub fn dec_and_swap(&self, depth: u32, empty_board: &mut [u32]) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
@@ -261,7 +261,7 @@ impl TrajectoriesPruning {
     field: &mut Field,
     player: Player,
     depth: u32,
-    empty_board: &mut Vec<u32>,
+    empty_board: &mut [u32],
     should_stop: &AtomicBool,
   ) -> TrajectoriesPruning {
     let (mut cur_trajectories, mut enemy_trajectories) = if depth % 2 == 0 {
