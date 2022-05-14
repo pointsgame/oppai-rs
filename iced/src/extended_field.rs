@@ -1,6 +1,6 @@
-use oppai_field::field::{self, to_pos, Field, Pos};
-use oppai_field::player::Player;
-use oppai_field::zobrist::Zobrist;
+use oppai_bot::field::{self, to_pos, Field, Pos};
+use oppai_bot::player::Player;
+use oppai_bot::zobrist::Zobrist;
 use rand::Rng;
 use std::sync::Arc;
 use strum::{EnumString, EnumVariantNames};

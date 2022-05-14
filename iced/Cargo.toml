@@ -16,10 +16,8 @@ clap = { version = "3.1", features = [ "cargo" ] }
 humantime = "2.1"
 rfd = { version = "0.8", features = [ "file-handle-inner" ] }
 sgf-parser = "2.6"
-oppai-field = { path = "../field" }
-oppai-patterns = { path = "../patterns" }
 oppai-bot = { path = "../bot", features = [ "cli" ] }
 
 [features]
 default = ["dsu"]
-dsu = ["oppai-field/dsu"]
+dsu = ["oppai-bot/dsu"]

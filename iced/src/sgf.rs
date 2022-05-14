@@ -1,4 +1,4 @@
-use oppai_field::player::Player;
+use oppai_bot::player::Player;
 use sgf_parser::{Action, Color, Game, GameNode, GameTree, SgfToken};
 
 pub struct SgfGame {

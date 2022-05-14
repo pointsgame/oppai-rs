@@ -21,4 +21,6 @@ oppai-patterns = { path = "../patterns" }
 oppai-ladders = { path = "../ladders" }
 
 [features]
+default = ["dsu"]
 cli = [ "clap", "num_cpus", "humantime" ]
+dsu = ["oppai-field/dsu"]

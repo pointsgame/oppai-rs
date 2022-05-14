@@ -13,17 +13,15 @@ env_logger = "0.9"
 crossbeam = "0.8"
 clap = { version = "3.1", features = [ "cargo" ] }
 strum = "0.24"
-oppai-field = { path = "field" }
 oppai-common = { path = "common" }
 oppai-ladders = { path = "ladders" }
 oppai-uct = { path = "uct" }
 oppai-minimax = { path = "minimax" }
-oppai-patterns = { path = "patterns" }
 oppai-bot = { path = "bot", features = [ "cli" ] }
 
 [features]
 default = ["dsu"]
-dsu = ["oppai-field/dsu"]
+dsu = ["oppai-bot/dsu"]
 
 [profile.dev]
 opt-level = 0

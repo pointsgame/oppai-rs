@@ -150,8 +150,8 @@ mod config;
 
 use crate::config::cli_parse;
 use oppai_bot::bot::Bot;
-use oppai_field::player::Player;
-use oppai_patterns::patterns::Patterns;
+use oppai_bot::patterns::Patterns;
+use oppai_bot::player::Player;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 use std::{
