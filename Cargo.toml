@@ -58,5 +58,6 @@ members = [
   "zero",
   "zero-tf",
   "bot",
-  "iced"
+  "iced",
+  "versus"
 ]
