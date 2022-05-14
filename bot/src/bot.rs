@@ -256,4 +256,10 @@ where
     info!("Cumulative time for best move evaluation: {:?}", now.elapsed());
     result
   }
+
+  pub fn clear(&mut self) {
+    self.field.clear();
+    self.uct.clear();
+    self.minimax.clear();
+  }
 }

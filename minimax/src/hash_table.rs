@@ -211,4 +211,10 @@ impl HashTable {
     let idx = HashTable::index(self.len(), hash);
     self.entries[idx].verified(hash)
   }
+
+  pub fn clear(&mut self) {
+    for entry in self.entries.iter_mut() {
+      *entry = HashEntry::default();
+    }
+  }
 }

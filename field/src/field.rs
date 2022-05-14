@@ -1052,6 +1052,10 @@ impl Field {
       .iter()
       .all(|cell| !cell.is_putting_allowed() || cell.is_empty_base())
   }
+
+  pub fn clear(&mut self) {
+    while self.undo() {}
+  }
 }
 
 impl fmt::Display for Field {

@@ -607,4 +607,8 @@ impl Minimax {
     }
     best_move
   }
+
+  pub fn clear(&mut self) {
+    self.hash_table.clear();
+  }
 }

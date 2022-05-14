@@ -214,7 +214,7 @@ pub struct UctRoot {
 }
 
 impl UctRoot {
-  fn clear(&mut self) {
+  pub fn clear(&mut self) {
     self.node = None;
     self.wave_pruning.clear();
     self.player = Player::Red;
