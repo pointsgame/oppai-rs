@@ -299,6 +299,146 @@ fn three_surroundings_with_common_borders() {
 }
 
 #[test]
+fn game_over_1() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .....
+    .aa..
+    aAAb.
+    .aa..
+    ...a.
+    .....
+    ",
+  );
+  assert_eq!(field.score(Player::Red), 2);
+  assert!(field.is_game_over());
+}
+
+#[test]
+fn game_over_2() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .....
+    .AA..
+    AaaB.
+    .AA..
+    ...A.
+    .....
+    ",
+  );
+  assert_eq!(field.score(Player::Black), 2);
+  assert!(field.is_game_over());
+}
+
+#[test]
+fn game_over_3() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ..........
+    .......a..
+    ..a...aAa.
+    .aAb.aAAAb
+    ..a...aAa.
+    .......a..
+    ..........
+    ",
+  );
+  assert_eq!(field.score(Player::Red), 6);
+  assert!(field.is_game_over());
+}
+
+#[test]
+fn game_over_4() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ..........
+    .......A..
+    ..A...AaA.
+    .AaB.AaaaB
+    ..A...AaA.
+    .......A..
+    ..........
+    ",
+  );
+  assert_eq!(field.score(Player::Black), 6);
+  assert!(field.is_game_over());
+}
+
+#[test]
+fn game_not_over_1() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ....
+    .a..
+    aAb.
+    .a..
+    ..a.
+    ....
+    ",
+  );
+  assert_eq!(field.score(Player::Red), 1);
+  assert!(!field.is_game_over());
+}
+
+#[test]
+fn game_not_over_2() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ....
+    .A..
+    AaB.
+    .A..
+    ..A.
+    ....
+    ",
+  );
+  assert_eq!(field.score(Player::Black), 1);
+  assert!(!field.is_game_over());
+}
+
+#[test]
+fn game_not_over_3() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ..........
+    .......a..
+    ..a...aAa.
+    .aAb.aAA.b
+    ..a...aAa.
+    .......a..
+    ..........
+    ",
+  );
+  assert_eq!(field.score(Player::Red), 5);
+  assert!(!field.is_game_over());
+}
+
+#[test]
+fn game_not_over_4() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ..........
+    .......A..
+    ..A...AaA.
+    .AaB.Aaa.B
+    ..A...AaA.
+    .......A..
+    ..........
+    ",
+  );
+  assert_eq!(field.score(Player::Black), 5);
+  assert!(!field.is_game_over());
+}
+
+#[test]
 fn undo_check() {
   let width = 20;
   let height = 20;

@@ -1045,12 +1045,47 @@ impl Field {
       .cloned()
   }
 
-  pub fn is_game_over(&self) -> bool {
-    // TODO: check grounding
-    self
-      .points
-      .iter()
-      .all(|cell| !cell.is_putting_allowed() || cell.is_empty_base())
+  fn non_grounded_points(&mut self) -> (u32, u32) {
+    let mut result = (0, 0);
+    for &pos in &self.points_seq {
+      let player = self.points[pos].get_owner().unwrap();
+      let mut points = 0;
+      let mut grounded = false;
+      wave(self.width, pos, |pos| {
+        let cell = self.points[pos];
+        grounded |= cell.is_bad();
+        if !cell.is_tagged() && cell.is_owner(player) {
+          if cell.is_put() {
+            points += 1;
+          }
+          self.points[pos].set_tag();
+          true
+        } else {
+          false
+        }
+      });
+      if !grounded {
+        match player {
+          Player::Red => result.0 += points,
+          Player::Black => result.1 += points,
+        }
+      }
+    }
+    for pos in self.min_pos()..=self.max_pos() {
+      self.points[pos].clear_tag();
+    }
+    result
+  }
+
+  pub fn is_game_over(&mut self) -> bool {
+    let score = self.score(Player::Red);
+    let non_grounded_points = self.non_grounded_points();
+    score > non_grounded_points.0 as i32
+      || score < -(non_grounded_points.1 as i32)
+      || self
+        .points
+        .iter()
+        .all(|cell| !cell.is_putting_allowed() || cell.is_empty_base())
   }
 
   pub fn clear(&mut self) {
