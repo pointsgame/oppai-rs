@@ -1905,9 +1905,18 @@ dependencies = [
  "iced",
  "log",
  "oppai-bot 0.1.0",
+ "oppai-initial",
  "rand",
  "rfd",
  "sgf-parser",
+ "strum",
+]
+
+[[package]]
+name = "oppai-initial"
+version = "0.1.0"
+dependencies = [
+ "oppai-field 0.1.0",
  "strum",
 ]
 
@@ -2024,7 +2033,6 @@ version = "0.1.0"
 dependencies = [
  "clap 3.1.18",
  "env_logger",
- "iced",
  "log",
  "oppai-bot 0.1.0",
  "oppai-bot 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",

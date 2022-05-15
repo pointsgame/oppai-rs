@@ -1,7 +1,7 @@
-use crate::extended_field::InitialPosition;
 use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, Command};
 use oppai_bot::cli::*;
 use oppai_bot::config::Config as BotConfig;
+use oppai_initial::initial::InitialPosition;
 use std::num::ParseIntError;
 use std::str::FromStr;
 use std::time::Duration;
