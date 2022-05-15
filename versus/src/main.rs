@@ -139,6 +139,9 @@ impl Game {
 }
 
 fn main() {
+  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  env_logger::Builder::from_env(env).init();
+
   let mut rng1 = SmallRng::from_entropy();
   let rng2 = SmallRng::from_seed(rng1.gen());
   let mut game = Game {
