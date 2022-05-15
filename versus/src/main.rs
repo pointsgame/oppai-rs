@@ -87,7 +87,8 @@ impl Game {
     self.bot1.field.put_point(pos, player.0) && self.bot2.field.put_point(pos, player.1)
   }
 
-  fn is_game_over(&self) -> bool {
+  #[allow(clippy::wrong_self_convention)]
+  fn is_game_over(&mut self) -> bool {
     self.bot1.field.is_game_over()
   }
 
