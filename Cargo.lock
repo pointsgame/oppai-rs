@@ -1845,7 +1845,7 @@ dependencies = [
 [[package]]
 name = "oppai-bot"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#5a20ed502e23403b08a2cb7eb9db3c4bab46fa38"
+source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
 dependencies = [
  "clap 3.1.18",
  "crossbeam",
@@ -1873,7 +1873,7 @@ dependencies = [
 [[package]]
 name = "oppai-common"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#5a20ed502e23403b08a2cb7eb9db3c4bab46fa38"
+source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
 dependencies = [
  "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
 ]
@@ -1890,7 +1890,7 @@ dependencies = [
 [[package]]
 name = "oppai-field"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#5a20ed502e23403b08a2cb7eb9db3c4bab46fa38"
+source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
 dependencies = [
  "rand",
 ]
@@ -1925,7 +1925,7 @@ dependencies = [
 [[package]]
 name = "oppai-ladders"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#5a20ed502e23403b08a2cb7eb9db3c4bab46fa38"
+source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
 dependencies = [
  "log",
  "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
@@ -1952,7 +1952,7 @@ dependencies = [
 [[package]]
 name = "oppai-minimax"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#5a20ed502e23403b08a2cb7eb9db3c4bab46fa38"
+source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
 dependencies = [
  "crossbeam",
  "log",
@@ -1976,7 +1976,7 @@ dependencies = [
 [[package]]
 name = "oppai-patterns"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#5a20ed502e23403b08a2cb7eb9db3c4bab46fa38"
+source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
 dependencies = [
  "log",
  "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
@@ -2007,7 +2007,7 @@ dependencies = [
 [[package]]
 name = "oppai-uct"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#5a20ed502e23403b08a2cb7eb9db3c4bab46fa38"
+source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
 dependencies = [
  "crossbeam",
  "log",
