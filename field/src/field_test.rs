@@ -302,20 +302,23 @@ fn three_surroundings_with_common_borders() {
 fn undo_check() {
   let width = 20;
   let height = 20;
+  let checks = 100;
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
-  let zobrist = Zobrist::new(field::length(width, height) * 2, &mut rng);
-  let mut field = Field::new(width, height, Arc::new(zobrist));
+  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
   let mut moves = (field::min_pos(width)..=field::max_pos(width, height)).collect::<Vec<Pos>>();
-  moves.shuffle(&mut rng);
-  let mut player = Player::Red;
-  for &pos in &moves {
-    if field.is_putting_allowed(pos) {
-      let field_before = field.clone();
-      field.put_point(pos, player);
-      field.undo();
-      assert!(field_before == field);
-      field.put_point(pos, player);
-      player = player.next();
+  for _ in 0..checks {
+    let mut field = Field::new(width, height, zobrist.clone());
+    moves.shuffle(&mut rng);
+    let mut player = Player::Red;
+    for &pos in &moves {
+      if field.is_putting_allowed(pos) {
+        let field_before = field.clone();
+        field.put_point(pos, player);
+        field.undo();
+        assert!(field_before == field);
+        field.put_point(pos, player);
+        player = player.next();
+      }
     }
   }
 }
