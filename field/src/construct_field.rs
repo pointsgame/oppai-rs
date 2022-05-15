@@ -43,7 +43,7 @@ pub fn construct_field<T: Rng>(rng: &mut T, image: &str) -> Field {
   let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, rng));
   let mut field = Field::new(width, height, zobrist);
   for (player, pos) in moves {
-    field.put_point(pos, player);
+    assert!(field.put_point(pos, player));
   }
   field
 }
