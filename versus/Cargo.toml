@@ -11,8 +11,9 @@ rand = { version = "0.8", features = [ "small_rng" ] }
 log = "0.4"
 env_logger = "0.9"
 clap = { version = "3.1", features = [ "cargo" ] }
-oppai-bot-1 = { package = "oppai-bot", git = "https://github.com/pointsgame/oppai-rs.git", features = [ "cli" ] }
-oppai-bot-2 = { package = "oppai-bot", path = "../bot", features = [ "cli" ] }
+oppai-initial = { path = "../initial" }
+oppai-bot-1 = { package = "oppai-bot", path = "../bot", features = [ "cli" ] }
+oppai-bot-2 = { package = "oppai-bot", git = "https://github.com/pointsgame/oppai-rs.git", features = [ "cli" ] }
 
 [features]
 default = ["dsu"]

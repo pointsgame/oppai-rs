@@ -8,11 +8,13 @@ use oppai_bot_1::field::{NonZeroPos, Pos};
 use oppai_bot_1::player::Player as Player1;
 use oppai_bot_2::bot::Bot as Bot2;
 use oppai_bot_2::player::Player as Player2;
+use oppai_initial::initial::InitialPosition;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
 const WIDTH: u32 = 10;
 const HEIGHT: u32 = 10;
+const INITIAL_POSITION: InitialPosition = InitialPosition::Cross;
 const TIME: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
@@ -21,6 +23,16 @@ struct Player(Player1, Player2);
 impl Player {
   fn next(self) -> Player {
     Player(self.0.next(), self.1.next())
+  }
+}
+
+impl From<Player1> for Player {
+  fn from(player1: Player1) -> Self {
+    let player2 = match player1 {
+      Player1::Red => Player2::Red,
+      Player1::Black => Player2::Black,
+    };
+    Player(player1, player2)
   }
 }
 
@@ -87,6 +99,12 @@ impl Game {
     self.bot1.field.put_point(pos, player.0) && self.bot2.field.put_point(pos, player.1)
   }
 
+  pub fn place_initial_position(&mut self, player: Player, initial_position: InitialPosition) {
+    for (pos, player) in initial_position.points(self.bot1.field.width(), self.bot1.field.height(), player.0) {
+      self.put_point(pos, player.into());
+    }
+  }
+
   #[allow(clippy::wrong_self_convention)]
   fn is_game_over(&mut self) -> bool {
     self.bot1.field.is_game_over()
@@ -112,8 +130,7 @@ impl Game {
     }
   }
 
-  fn play(&mut self, swap: bool, stats: &mut Stats) {
-    let mut player = Player::default();
+  fn play(&mut self, mut player: Player, swap: bool, stats: &mut Stats) {
     let mut cur_swap = swap;
     print!("\x1B[2J\x1B[1;1H");
     print!("{}\n{}", stats, self.bot1.field);
@@ -149,10 +166,12 @@ fn main() {
     bot2: Bot2::new(WIDTH, HEIGHT, rng2, Default::default(), Default::default()),
   };
 
+  let player = Player::default();
   let mut stats = Stats::default();
   let mut swap = false;
   loop {
-    game.play(swap, &mut stats);
+    game.place_initial_position(player, INITIAL_POSITION);
+    game.play(player, swap, &mut stats);
     game.clear();
     swap = !swap;
   }

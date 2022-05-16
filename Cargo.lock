@@ -1340,9 +1340,9 @@ checksum = "b71991ff56294aa922b450139ee08b3bfc70982c6b2c7562771375cf73542dd4"
 
 [[package]]
 name = "itoa"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
+checksum = "112c678d4050afce233f4f2852bb2eb519230b3cf12f33585275537d7e41578d"
 
 [[package]]
 name = "jni-sys"
@@ -1845,7 +1845,7 @@ dependencies = [
 [[package]]
 name = "oppai-bot"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
+source = "git+https://github.com/pointsgame/oppai-rs.git#a11baa346f0ae29878ac81a380b177ece2bf62e0"
 dependencies = [
  "clap 3.1.18",
  "crossbeam",
@@ -1873,7 +1873,7 @@ dependencies = [
 [[package]]
 name = "oppai-common"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
+source = "git+https://github.com/pointsgame/oppai-rs.git#a11baa346f0ae29878ac81a380b177ece2bf62e0"
 dependencies = [
  "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
 ]
@@ -1890,7 +1890,7 @@ dependencies = [
 [[package]]
 name = "oppai-field"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
+source = "git+https://github.com/pointsgame/oppai-rs.git#a11baa346f0ae29878ac81a380b177ece2bf62e0"
 dependencies = [
  "rand",
 ]
@@ -1934,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "oppai-ladders"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
+source = "git+https://github.com/pointsgame/oppai-rs.git#a11baa346f0ae29878ac81a380b177ece2bf62e0"
 dependencies = [
  "log",
  "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
@@ -1961,7 +1961,7 @@ dependencies = [
 [[package]]
 name = "oppai-minimax"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
+source = "git+https://github.com/pointsgame/oppai-rs.git#a11baa346f0ae29878ac81a380b177ece2bf62e0"
 dependencies = [
  "crossbeam",
  "log",
@@ -1985,7 +1985,7 @@ dependencies = [
 [[package]]
 name = "oppai-patterns"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
+source = "git+https://github.com/pointsgame/oppai-rs.git#a11baa346f0ae29878ac81a380b177ece2bf62e0"
 dependencies = [
  "log",
  "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
@@ -2016,7 +2016,7 @@ dependencies = [
 [[package]]
 name = "oppai-uct"
 version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#dd09b9af63d1f3b23c261354e83ace247adc39d3"
+source = "git+https://github.com/pointsgame/oppai-rs.git#a11baa346f0ae29878ac81a380b177ece2bf62e0"
 dependencies = [
  "crossbeam",
  "log",
@@ -2036,6 +2036,7 @@ dependencies = [
  "log",
  "oppai-bot 0.1.0",
  "oppai-bot 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-initial",
  "rand",
 ]
 
@@ -2509,9 +2510,9 @@ checksum = "f2cc38e8fa666e2de3c4aba7edeb5ffc5246c1c2ed0e3d17e560aeeba736b23f"
 
 [[package]]
 name = "ryu"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73b4b750c782965c211b42f022f59af1fbceabdd026623714f104152f1ec149f"
+checksum = "f3f6f92acf49d1b98f7a81226834412ada05458b7364277387724a237f062695"
 
 [[package]]
 name = "same-file"
@@ -2573,7 +2574,7 @@ version = "1.0.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b7ce2b32a1aed03c558dc61a5cd328f15aff2dbc17daad8fb8af04d2100e15c"
 dependencies = [
- "itoa 1.0.1",
+ "itoa 1.0.2",
  "ryu",
  "serde",
 ]
