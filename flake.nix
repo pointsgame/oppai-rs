@@ -4,7 +4,7 @@
       type = "github";
       owner = "NixOS";
       repo = "nixpkgs";
-      ref = "nixos-21.11";
+      ref = "nixos-unstable";
     };
 
     fenix = {
