@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 ndarray = "0.15"
-pyo3 = "0.14"
-numpy = "0.14"
+pyo3 = "0.17"
+numpy = "0.17"
 indoc = "1.0"
 oppai-zero = { path = "../zero" }

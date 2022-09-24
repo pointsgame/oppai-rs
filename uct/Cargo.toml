@@ -16,7 +16,7 @@ oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4"
 rand_xoshiro = "0.6"
 env_logger = "0.9"
 oppai-test-images = { path = "../test-images" }

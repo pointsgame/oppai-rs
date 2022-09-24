@@ -10,7 +10,7 @@ edition = "2021"
 rand = { version = "0.8", features = [ "small_rng" ] }
 log = "0.4"
 env_logger = "0.9"
-clap = { version = "3.1", features = [ "cargo" ] }
+clap = { version = "3.2", features = [ "cargo" ] }
 oppai-initial = { path = "../initial" }
 oppai-bot-1 = { package = "oppai-bot", path = "../bot", features = [ "cli" ] }
 oppai-bot-2 = { package = "oppai-bot", git = "https://github.com/pointsgame/oppai-rs.git", features = [ "cli" ] }

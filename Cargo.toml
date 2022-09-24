@@ -11,7 +11,7 @@ rand = { version = "0.8", features = [ "small_rng" ] }
 time = "0.3"
 env_logger = "0.9"
 crossbeam = "0.8"
-clap = { version = "3.1", features = [ "cargo" ] }
+clap = { version = "3.2", features = [ "cargo" ] }
 strum = "0.24"
 oppai-common = { path = "common" }
 oppai-ladders = { path = "ladders" }

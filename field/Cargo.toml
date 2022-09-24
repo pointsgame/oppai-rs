@@ -10,7 +10,7 @@ edition = "2021"
 rand = "0.8"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4"
 rand_xoshiro = "0.6"
 
 [features]
