@@ -7,10 +7,6 @@ use oppai_field::player::Player;
 use rand::Rng;
 use std::iter;
 
-fn is_game_ended(field: &Field) -> bool {
-  field.points_seq().len() > 50
-}
-
 fn winner(field: &Field, player: Player) -> i64 {
   use std::cmp::Ordering;
   match field.score(player).cmp(&0) {
@@ -90,7 +86,7 @@ where
 {
   let mut node = MctsNode::new(0, 0f64, 0f64);
 
-  while !is_game_ended(field) {
+  while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
       let leafs = iter::repeat_with(|| node.select())
         .take(PARALLEL_READOUTS)
@@ -104,15 +100,18 @@ where
         .map(|leaf| make_moves(field, leaf, player))
         .collect::<Vec<_>>();
 
-      for cur_field in fields.iter().filter(|field| is_game_ended(field)) {
-        node.add_result(
-          &field.points_seq()[field.moves_count()..],
-          winner(cur_field, player) as f64,
-          Vec::new(),
-        );
-      }
-
-      fields.retain(|field| !is_game_ended(field));
+      fields.retain_mut(|field| {
+        if field.is_game_over() {
+          node.add_result(
+            &field.points_seq()[field.moves_count()..],
+            winner(field, player) as f64,
+            Vec::new(),
+          );
+          false
+        } else {
+          true
+        }
+      });
       fields.sort_by_key(|field| field.hash());
       fields.dedup_by_key(|field| field.hash());
 
