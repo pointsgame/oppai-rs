@@ -51,7 +51,7 @@ impl FromStr for Patterns {
     let moves = Patterns::get_pattern_moves(width, &chars)?;
 
     let mut dfa = Dfa::default();
-    for rotation in 0..8 {
+    for rotation in 0..ROTATIONS {
       let cur_dfa = Patterns::build_dfa(width, height, &moves, rotation, &chars)?;
       dfa = dfa.product(&cur_dfa);
     }
