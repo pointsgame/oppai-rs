@@ -18,8 +18,18 @@ fn field_features_square() {
     ",
   );
 
-  let red = array![[1., 0., 1.], [0., 1., 0.], [0., 1., 0.]];
-  let black = array![[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]];
+  #[rustfmt::skip]
+  let red = array![
+    [1., 0., 1.],
+    [0., 1., 0.],
+    [0., 1., 0.]
+  ];
+  #[rustfmt::skip]
+  let black = array![
+    [0., 0., 0.],
+    [1., 0., 0.],
+    [0., 0., 1.]
+  ];
 
   let features = field_features(&field, Player::Red);
   assert_eq!(features.slice(s![.., .., 0]), red);
@@ -41,8 +51,18 @@ fn field_features_rectangle() {
     ",
   );
 
-  let red = array![[1., 0.], [0., 1.], [1., 0.]];
-  let black = array![[0., 1.], [1., 0.], [0., 1.]];
+  #[rustfmt::skip]
+  let red = array![
+    [1., 0.],
+    [0., 1.],
+    [1., 0.]
+  ];
+  #[rustfmt::skip]
+  let black = array![
+    [0., 1.],
+    [1., 0.],
+    [0., 1.]
+  ];
 
   let features = field_features(&field, Player::Red);
   assert_eq!(features.slice(s![.., .., 0]), red);
@@ -64,8 +84,18 @@ fn field_features_capture() {
     ",
   );
 
-  let red = array![[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]];
-  let black = array![[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]];
+  #[rustfmt::skip]
+  let red = array![
+    [0., 1., 0.],
+    [1., 1., 1.],
+    [0., 1., 0.]
+  ];
+  #[rustfmt::skip]
+  let black = array![
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.]
+  ];
 
   let features = field_features(&field, Player::Red);
   assert_eq!(features.slice(s![.., .., 0]), red);
