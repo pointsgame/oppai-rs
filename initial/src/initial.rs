@@ -43,7 +43,7 @@ fn triple_cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 8] {
   ]
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
 pub enum InitialPosition {
   Empty,
   Cross,

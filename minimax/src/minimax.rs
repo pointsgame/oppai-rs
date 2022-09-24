@@ -10,13 +10,13 @@ use std::{
 };
 use strum::{EnumString, EnumVariantNames};
 
-#[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
 pub enum MinimaxType {
   NegaScout,
   Mtdf,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MinimaxConfig {
   pub threads_count: usize,
   pub minimax_type: MinimaxType,

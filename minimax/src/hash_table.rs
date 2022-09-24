@@ -44,7 +44,7 @@ const POS_SHIFT: usize = 16;
 #[cfg(target_pointer_width = "64")]
 const ESTIMATION_SHIFT: usize = 32;
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum HashType {
   Empty = 0,
   Alpha = 1,
@@ -63,7 +63,7 @@ impl From<usize> for HashType {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct HashData {
   data: usize,
 }

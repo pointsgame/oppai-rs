@@ -2,7 +2,7 @@ use crate::field::Pos;
 use rand::Rng;
 use std::iter;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Zobrist {
   hashes: Vec<u64>,
 }

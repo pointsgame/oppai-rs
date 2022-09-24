@@ -87,12 +87,7 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Playe
   result
 }
 
-fn is_trajectoty_viable(
-  field: &mut Field,
-  trajectory: &Trajectory,
-  player: Player,
-  empty_board: &mut [u32],
-) -> bool {
+fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Player, empty_board: &mut [u32]) -> bool {
   let moves = collect_near_moves(field, player, empty_board);
   let enemy = player.next();
   moves.into_iter().all(|enemy_pos| {

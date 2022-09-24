@@ -3,7 +3,7 @@ use oppai_uct::uct::UctConfig;
 use std::time::Duration;
 use strum::{EnumString, EnumVariantNames};
 
-#[derive(Clone, Copy, PartialEq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
 pub enum Solver {
   Uct,
   Minimax,
