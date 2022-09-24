@@ -50,6 +50,7 @@ codegen-units = 1
 members = [
   "field",
   "common",
+  "rotate",
   "ladders",
   "test-images",
   "uct",

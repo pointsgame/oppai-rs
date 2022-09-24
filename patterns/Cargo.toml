@@ -10,6 +10,7 @@ edition = "2021"
 log = "0.4"
 rayon = "1.5"
 oppai-field = { path = "../field" }
+oppai-rotate = { path = "../rotate" }
 
 [dev-dependencies]
 rand = "0.8"

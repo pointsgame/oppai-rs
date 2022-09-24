@@ -1,9 +1,9 @@
 use crate::dfa::{Dfa, DfaState};
-use crate::rotate::*;
 use crate::spiral::Spiral;
 use oppai_field::cell::Cell;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
+use oppai_rotate::rotate::*;
 use std::{
   cmp,
   fs::File,
@@ -73,7 +73,7 @@ impl Patterns {
     width: u32,
     height: u32,
     moves: &[Move],
-    rotation: u32,
+    rotation: u8,
     chars: &[char],
   ) -> Result<Dfa<Move>, &'static str> {
     let (rotated_width, rotated_height) = rotate_sizes(width, height, rotation);

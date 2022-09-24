@@ -1,11 +1,11 @@
 /// Rotations that preserve demensions, i.e. mirrors.
-pub const MIRRORS: u32 = 4;
+pub const MIRRORS: u8 = 4;
 
 /// Total number of rotations.
-pub const ROTATIONS: u32 = 8;
+pub const ROTATIONS: u8 = 8;
 
 /// Rotate coordinates using rotation number.
-pub fn rotate(width: u32, height: u32, x: u32, y: u32, rotation: u32) -> (u32, u32) {
+pub fn rotate(width: u32, height: u32, x: u32, y: u32, rotation: u8) -> (u32, u32) {
   match rotation {
     0 => (x, y),
     1 => (width - x - 1, y),
@@ -20,7 +20,7 @@ pub fn rotate(width: u32, height: u32, x: u32, y: u32, rotation: u32) -> (u32, u
 }
 
 /// Rotate coordinates backward using rotation number.
-pub fn rotate_back(width: u32, height: u32, x: u32, y: u32, rotation: u32) -> (u32, u32) {
+pub fn rotate_back(width: u32, height: u32, x: u32, y: u32, rotation: u8) -> (u32, u32) {
   let back_rotation = match rotation {
     5 => 6,
     6 => 5,
@@ -30,7 +30,7 @@ pub fn rotate_back(width: u32, height: u32, x: u32, y: u32, rotation: u32) -> (u
 }
 
 /// Rotate dimensions using rotation number.
-pub fn rotate_sizes(width: u32, height: u32, rotation: u32) -> (u32, u32) {
+pub fn rotate_sizes(width: u32, height: u32, rotation: u8) -> (u32, u32) {
   if rotation < MIRRORS {
     (width, height)
   } else {

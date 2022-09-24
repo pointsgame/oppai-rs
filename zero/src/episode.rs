@@ -116,9 +116,10 @@ where
       fields.sort_by_key(|field| field.hash());
       fields.dedup_by_key(|field| field.hash());
 
+      // TODO: rotations
       let feautures = fields
         .iter()
-        .map(|field| field_features(field, player))
+        .map(|field| field_features(field, player, 0))
         .collect::<Vec<_>>();
       let features = ndarray::stack(
         Axis(0),

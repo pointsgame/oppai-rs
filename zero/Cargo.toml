@@ -11,6 +11,7 @@ rand = "0.8"
 ndarray = "0.15"
 decorum = "0.3"
 oppai-field = { path = "../field" }
+oppai-rotate = { path = "../rotate" }
 
 [dev-dependencies]
 rand_xoshiro = "0.6"

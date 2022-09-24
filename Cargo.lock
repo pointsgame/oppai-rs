@@ -1940,6 +1940,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "oppai-field 0.1.0",
+ "oppai-rotate",
  "rand",
  "rand_xoshiro",
  "rayon",
@@ -1954,6 +1955,10 @@ dependencies = [
  "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
  "rayon",
 ]
+
+[[package]]
+name = "oppai-rotate"
+version = "0.1.0"
 
 [[package]]
 name = "oppai-test-images"
@@ -2010,6 +2015,7 @@ dependencies = [
  "decorum",
  "ndarray",
  "oppai-field 0.1.0",
+ "oppai-rotate",
  "rand",
  "rand_xoshiro",
 ]
