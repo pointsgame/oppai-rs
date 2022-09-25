@@ -45,6 +45,7 @@
           gtk3
           pango
           vulkan-loader
+          (python3.withPackages (pkgs: with pkgs; [ tensorflow keras pydot ]))
         ];
 
         LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib";
