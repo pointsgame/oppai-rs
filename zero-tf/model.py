@@ -122,7 +122,7 @@ model = tf.keras.Model(
 )
 
 model.compile(
-  optimizer = tf.keras.optimizers.SGD(lr = 0.001, momentum = 0.9, decay = 0., nesterov = False),
+  optimizer = tf.keras.optimizers.SGD(learning_rate = 0.001, momentum = 0.9, decay = 0., nesterov = False),
   loss = {
     'policy_output': tf.keras.losses.CategoricalCrossentropy(),
     'value_output': tf.keras.losses.MSE
