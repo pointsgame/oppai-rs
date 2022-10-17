@@ -166,6 +166,8 @@ where
     field.put_point(node.pos, player);
     player = player.next();
     moves_count += 1;
+
+    log::debug!("Score: {}\n{:?}", field.score(Player::Red), field);
   }
 
   let inputs = ndarray::stack(Axis(0), inputs.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice()).unwrap();
