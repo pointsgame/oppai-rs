@@ -29,6 +29,6 @@ fn main() {
     field.put_point(pos, player);
   }
 
-  let model = PyModel::new().unwrap();
+  let model = PyModel::new(width, height, 4).unwrap();
   self_play(&field, player, &model, &mut rng).unwrap();
 }

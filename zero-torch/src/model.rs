@@ -13,12 +13,19 @@ pub struct PyModel {
 }
 
 impl PyModel {
-  pub fn new() -> PyResult<Self> {
+  pub fn new(width: u32, height: u32, channels: u32) -> PyResult<Self> {
     Python::with_gil(|py| {
       let oppai_net = PyModule::from_code(py, OPPAI_NET, "oppai_net.py", "oppai_net")?;
       let locals = [("torch", py.import("torch")?), ("oppai_net", oppai_net)].into_py_dict(py);
+      locals.set_item("width", width.into_py(py))?;
+      locals.set_item("height", height.into_py(py))?;
+      locals.set_item("channels", channels.into_py(py))?;
       let model: PyObject = py
-        .eval("oppai_net.OppaiNet(16, 16, 4).double()", None, Some(locals))?
+        .eval(
+          "oppai_net.OppaiNet(width, height, channels).double()",
+          None,
+          Some(locals),
+        )?
         .extract()?;
       locals.set_item("model", &model)?;
       let optimizer: PyObject = py
