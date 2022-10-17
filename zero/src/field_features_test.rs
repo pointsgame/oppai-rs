@@ -32,16 +32,16 @@ fn field_features_square() {
   ];
 
   let features = field_features(&field, Player::Red, 0);
-  assert_eq!(features.slice(s![.., .., 0]), red);
-  assert_eq!(features.slice(s![.., .., 1]), black);
-  assert_eq!(features.slice(s![.., .., 2]), red);
-  assert_eq!(features.slice(s![.., .., 3]), black);
+  assert_eq!(features.slice(s![0, .., ..]), red);
+  assert_eq!(features.slice(s![1, .., ..]), black);
+  assert_eq!(features.slice(s![2, .., ..]), red);
+  assert_eq!(features.slice(s![3, .., ..]), black);
 
   let features = field_features(&field, Player::Black, 0);
-  assert_eq!(features.slice(s![.., .., 0]), black);
-  assert_eq!(features.slice(s![.., .., 1]), red);
-  assert_eq!(features.slice(s![.., .., 2]), black);
-  assert_eq!(features.slice(s![.., .., 3]), red);
+  assert_eq!(features.slice(s![0, .., ..]), black);
+  assert_eq!(features.slice(s![1, .., ..]), red);
+  assert_eq!(features.slice(s![2, .., ..]), black);
+  assert_eq!(features.slice(s![3, .., ..]), red);
 }
 
 #[test]
@@ -69,16 +69,16 @@ fn field_features_rectangle() {
   ];
 
   let features = field_features(&field, Player::Red, 0);
-  assert_eq!(features.slice(s![.., .., 0]), red);
-  assert_eq!(features.slice(s![.., .., 1]), black);
-  assert_eq!(features.slice(s![.., .., 2]), red);
-  assert_eq!(features.slice(s![.., .., 3]), black);
+  assert_eq!(features.slice(s![0, .., ..]), red);
+  assert_eq!(features.slice(s![1, .., ..]), black);
+  assert_eq!(features.slice(s![2, .., ..]), red);
+  assert_eq!(features.slice(s![3, .., ..]), black);
 
   let features = field_features(&field, Player::Black, 0);
-  assert_eq!(features.slice(s![.., .., 0]), black);
-  assert_eq!(features.slice(s![.., .., 1]), red);
-  assert_eq!(features.slice(s![.., .., 2]), black);
-  assert_eq!(features.slice(s![.., .., 3]), red);
+  assert_eq!(features.slice(s![0, .., ..]), black);
+  assert_eq!(features.slice(s![1, .., ..]), red);
+  assert_eq!(features.slice(s![2, .., ..]), black);
+  assert_eq!(features.slice(s![3, .., ..]), red);
 }
 
 #[test]
@@ -118,14 +118,14 @@ fn field_features_capture() {
   ];
 
   let features = field_features(&field, Player::Red, 0);
-  assert_eq!(features.slice(s![.., .., 0]), red_owner);
-  assert_eq!(features.slice(s![.., .., 1]), black_owner);
-  assert_eq!(features.slice(s![.., .., 2]), red);
-  assert_eq!(features.slice(s![.., .., 3]), black);
+  assert_eq!(features.slice(s![0, .., ..]), red_owner);
+  assert_eq!(features.slice(s![1, .., ..]), black_owner);
+  assert_eq!(features.slice(s![2, .., ..]), red);
+  assert_eq!(features.slice(s![3, .., ..]), black);
 
   let features = field_features(&field, Player::Black, 0);
-  assert_eq!(features.slice(s![.., .., 0]), black_owner);
-  assert_eq!(features.slice(s![.., .., 1]), red_owner);
-  assert_eq!(features.slice(s![.., .., 2]), black);
-  assert_eq!(features.slice(s![.., .., 3]), red);
+  assert_eq!(features.slice(s![0, .., ..]), black_owner);
+  assert_eq!(features.slice(s![1, .., ..]), red_owner);
+  assert_eq!(features.slice(s![2, .., ..]), black);
+  assert_eq!(features.slice(s![3, .., ..]), red);
 }

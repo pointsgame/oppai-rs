@@ -1,5 +1,7 @@
 use decorum::R64;
-use oppai_field::field::Pos;
+use ndarray::Array2;
+use oppai_field::field::{to_x, to_y, Pos};
+use oppai_rotate::rotate::{rotate, rotate_sizes};
 
 pub struct MctsNode {
   /// Current move.
@@ -89,5 +91,20 @@ impl MctsNode {
     if !children.is_empty() {
       node.children = children;
     }
+  }
+
+  /// Improved stochastic policy values.
+  pub fn policies(&self, width: u32, height: u32, rotation: u8) -> Array2<f64> {
+    let (width, height) = rotate_sizes(width, height, rotation);
+    let mut policies = Array2::zeros((height as usize, width as usize));
+
+    for child in &self.children {
+      let x = to_x(width, child.pos);
+      let y = to_y(width, child.pos);
+      let (x, y) = rotate(width, height, x, y, rotation);
+      policies[(y as usize, x as usize)] = child.n as f64 / self.n as f64;
+    }
+
+    policies
   }
 }

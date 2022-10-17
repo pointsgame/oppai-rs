@@ -1,14 +1,15 @@
 use crate::field_features::field_features;
 use crate::mcts::MctsNode;
-use crate::model::TrainableModel;
-use ndarray::{s, ArrayView2, Axis};
+use crate::model::Model;
+use ndarray::{s, Array, Array1, Array3, Array4, ArrayView2, Axis};
 use oppai_field::field::{manhattan, to_x, to_y, wave, Field, Pos};
 use oppai_field::player::Player;
+use oppai_rotate::rotate::ROTATIONS;
 use rand::Rng;
+use std::cmp::Ordering;
 use std::iter;
 
 fn winner(field: &Field, player: Player) -> i64 {
-  use std::cmp::Ordering;
   match field.score(player).cmp(&0) {
     Ordering::Less => -1,
     Ordering::Equal => 0,
@@ -46,8 +47,16 @@ fn find_children(field: &Field, max_distance: u32) -> Vec<Pos> {
   for &pos in field.points_seq() {
     values[pos] = 0;
     wave(field.width(), pos, |next_pos| {
+      if next_pos == pos {
+        return true;
+      }
+
+      if !field.cell(next_pos).is_putting_allowed() {
+        return false;
+      }
+
       let distance = manhattan(field.width(), next_pos, pos);
-      if field.cell(next_pos).is_putting_allowed() && values[next_pos] > distance {
+      if values[next_pos] > distance {
         if values[next_pos] == u32::max_value() {
           result.push(next_pos);
         }
@@ -67,7 +76,7 @@ fn create_children(field: &Field, policy: &ArrayView2<f64>, value: f64) -> Vec<M
     .map(|pos| {
       let x = to_x(field.width(), pos);
       let y = to_y(field.width(), pos);
-      let p = policy[(x as usize, y as usize)];
+      let p = policy[(y as usize, x as usize)];
       MctsNode::new(pos, p, value)
     })
     .collect::<Vec<_>>();
@@ -79,12 +88,20 @@ fn create_children(field: &Field, policy: &ArrayView2<f64>, value: f64) -> Vec<M
   children
 }
 
-pub fn episode<E, M, R>(field: &mut Field, mut player: Player, model: &M, rng: &mut R) -> Result<(), E>
+pub fn episode<E, M, R>(
+  field: &mut Field,
+  mut player: Player,
+  model: &M,
+  rng: &mut R,
+) -> Result<(Array4<f64>, Array3<f64>, Array1<f64>), E>
 where
-  M: TrainableModel<E = E>,
+  M: Model<E = E>,
   R: Rng,
 {
   let mut node = MctsNode::new(0, 0f64, 0f64);
+  let mut inputs = Vec::new();
+  let mut policies = Vec::new();
+  let mut moves_count = 0;
 
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
@@ -100,11 +117,11 @@ where
         .map(|leaf| make_moves(field, leaf, player))
         .collect::<Vec<_>>();
 
-      fields.retain_mut(|field| {
-        if field.is_game_over() {
+      fields.retain_mut(|cur_field| {
+        if cur_field.is_game_over() {
           node.add_result(
-            &field.points_seq()[field.moves_count()..],
-            winner(field, player) as f64,
+            &cur_field.points_seq()[field.moves_count()..],
+            winner(cur_field, player) as f64,
             Vec::new(),
           );
           false
@@ -115,7 +132,10 @@ where
       fields.sort_by_key(|field| field.hash());
       fields.dedup_by_key(|field| field.hash());
 
-      // TODO: rotations
+      if fields.is_empty() {
+        break;
+      }
+
       let feautures = fields
         .iter()
         .map(|field| field_features(field, player, 0))
@@ -136,10 +156,35 @@ where
       }
     }
 
+    // TODO: check dimensions
+    for rotation in 0..ROTATIONS {
+      inputs.push(field_features(field, player, rotation));
+      policies.push(node.policies(field.width(), field.height(), rotation));
+    }
+
     node = select(node.children, rng);
     field.put_point(node.pos, player);
     player = player.next();
+    moves_count += 1;
   }
 
-  Ok(())
+  let inputs = ndarray::stack(Axis(0), inputs.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice()).unwrap();
+
+  let policies = ndarray::stack(
+    Axis(0),
+    policies.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice(),
+  )
+  .unwrap();
+
+  let mut value = winner(field, if moves_count % 2 == 1 { player.next() } else { player });
+  let mut values = Vec::with_capacity(moves_count * ROTATIONS as usize);
+  for _ in 0..moves_count {
+    for _ in 0..ROTATIONS {
+      values.push(value as f64);
+    }
+    value = -value;
+  }
+  let values = Array::from(values);
+
+  Ok((inputs, policies, values))
 }

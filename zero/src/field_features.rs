@@ -44,5 +44,4 @@ pub fn field_features(field: &Field, player: Player, rotation: u8) -> Array3<f64
   Array::from(features)
     .into_shape((4, field.height() as usize, field.width() as usize))
     .unwrap()
-    .permuted_axes((1, 2, 0))
 }

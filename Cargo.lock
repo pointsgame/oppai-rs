@@ -2013,6 +2013,7 @@ name = "oppai-zero"
 version = "0.1.0"
 dependencies = [
  "decorum",
+ "log",
  "ndarray",
  "oppai-field 0.1.0",
  "oppai-rotate",
@@ -2021,14 +2022,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "oppai-zero-tf"
+name = "oppai-zero-torch"
 version = "0.1.0"
 dependencies = [
- "indoc",
  "ndarray",
  "numpy",
  "oppai-zero",
  "pyo3",
+]
+
+[[package]]
+name = "oppai-zero-train"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "ndarray",
+ "oppai-field 0.1.0",
+ "oppai-initial",
+ "oppai-zero",
+ "oppai-zero-torch",
+ "pyo3",
+ "rand",
 ]
 
 [[package]]
