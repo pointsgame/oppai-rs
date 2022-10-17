@@ -35,6 +35,22 @@ impl PyModel {
       Ok(Self { model, optimizer })
     })
   }
+
+  pub fn try_clone(&self) -> PyResult<Self> {
+    Python::with_gil(|py| {
+      let locals = PyDict::new(py);
+      locals.set_item("copy", py.import("copy")?)?;
+      locals.set_item("torch", py.import("torch")?)?;
+      locals.set_item("model", &self.model)?;
+      let model: PyObject = py.eval("copy.deepcopy(model)", None, Some(locals))?.extract()?;
+      locals.set_item("model", &model)?;
+      let optimizer: PyObject = py
+        .eval("torch.optim.Adam(model.parameters())", None, Some(locals))?
+        .extract()?;
+
+      Ok(Self { model, optimizer })
+    })
+  }
 }
 
 impl Model for PyModel {
@@ -85,5 +101,11 @@ impl TrainableModel for PyModel {
 
       Ok(())
     })
+  }
+}
+
+impl Clone for PyModel {
+  fn clone(&self) -> Self {
+    self.try_clone().unwrap()
   }
 }
