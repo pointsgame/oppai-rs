@@ -8,9 +8,10 @@ use oppai_field::{
 use oppai_initial::initial::InitialPosition;
 use oppai_zero::self_play::self_play;
 use oppai_zero_torch::model::PyModel;
+use pyo3::PyResult;
 use rand::{rngs::SmallRng, SeedableRng};
 
-fn main() {
+fn main() -> PyResult<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
 
@@ -29,6 +30,6 @@ fn main() {
     field.put_point(pos, player);
   }
 
-  let model = PyModel::new(width, height, 4).unwrap();
-  self_play(&field, player, &model, &mut rng).unwrap();
+  let model = PyModel::new(width, height, 4)?;
+  self_play(&field, player, &model, &mut rng)
 }
