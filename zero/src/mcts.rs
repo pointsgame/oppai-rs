@@ -107,4 +107,9 @@ impl MctsNode {
 
     policies
   }
+
+  pub fn best_move(&self) -> Option<Pos> {
+    // TODO: option to use winrate?
+    self.children.iter().max_by_key(|child| child.n).map(|child| child.pos)
+  }
 }
