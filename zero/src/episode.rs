@@ -88,6 +88,63 @@ fn create_children(field: &Field, policy: &ArrayView2<f64>, value: f64) -> Vec<M
   children
 }
 
+pub fn mcts<E, M>(field: &mut Field, player: Player, node: &mut MctsNode, model: &M) -> Result<bool, E>
+where
+  M: Model<E = E>,
+{
+  let leafs = iter::repeat_with(|| node.select())
+    .take(PARALLEL_READOUTS)
+    .collect::<Vec<_>>();
+  for moves in &leafs {
+    node.revert_virtual_loss(moves);
+  }
+
+  let mut fields = leafs
+    .iter()
+    .map(|leaf| make_moves(field, leaf, player))
+    .collect::<Vec<_>>();
+
+  fields.retain_mut(|cur_field| {
+    if cur_field.is_game_over() {
+      node.add_result(
+        &cur_field.points_seq()[field.moves_count()..],
+        winner(cur_field, player) as f64,
+        Vec::new(),
+      );
+      false
+    } else {
+      true
+    }
+  });
+  fields.sort_by_key(|field| field.hash());
+  fields.dedup_by_key(|field| field.hash());
+
+  if fields.is_empty() {
+    return Ok(false);
+  }
+
+  let feautures = fields
+    .iter()
+    .map(|field| field_features(field, player, 0))
+    .collect::<Vec<_>>();
+  let features = ndarray::stack(
+    Axis(0),
+    feautures.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice(),
+  )
+  .unwrap();
+
+  let (policies, values) = model.predict(features)?;
+
+  for (i, cur_field) in fields.into_iter().enumerate() {
+    let policy = policies.slice(s![i, .., ..]);
+    let value = values[i];
+    let children = create_children(&cur_field, &policy, value);
+    node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
+  }
+
+  Ok(true)
+}
+
 pub fn episode<E, M, R>(
   field: &mut Field,
   mut player: Player,
@@ -105,54 +162,9 @@ where
 
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
-      let leafs = iter::repeat_with(|| node.select())
-        .take(PARALLEL_READOUTS)
-        .collect::<Vec<_>>();
-      for moves in &leafs {
-        node.revert_virtual_loss(moves);
-      }
-
-      let mut fields = leafs
-        .iter()
-        .map(|leaf| make_moves(field, leaf, player))
-        .collect::<Vec<_>>();
-
-      fields.retain_mut(|cur_field| {
-        if cur_field.is_game_over() {
-          node.add_result(
-            &cur_field.points_seq()[field.moves_count()..],
-            winner(cur_field, player) as f64,
-            Vec::new(),
-          );
-          false
-        } else {
-          true
-        }
-      });
-      fields.sort_by_key(|field| field.hash());
-      fields.dedup_by_key(|field| field.hash());
-
-      if fields.is_empty() {
+      let executed = mcts(field, player, &mut node, model)?;
+      if !executed {
         break;
-      }
-
-      let feautures = fields
-        .iter()
-        .map(|field| field_features(field, player, 0))
-        .collect::<Vec<_>>();
-      let features = ndarray::stack(
-        Axis(0),
-        feautures.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice(),
-      )
-      .unwrap();
-
-      let (policies, values) = model.predict(features)?;
-
-      for (i, cur_field) in fields.into_iter().enumerate() {
-        let policy = policies.slice(s![i, .., ..]);
-        let value = values[i];
-        let children = create_children(&cur_field, &policy, value);
-        node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
       }
     }
 
