@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+kernel_size = 3
+inner_channels = 8
+linear_first = 1024
+linear_second = 512
+
 def loss_policy(targets, outputs):
   return -torch.sum(targets * outputs) / targets.size()[0]
 
@@ -14,26 +19,25 @@ class OppaiNet(nn.Module):
 
     self.width = width
     self.height = height
-    self.num_channels = num_channels
 
-    self.conv1 = nn.Conv2d(num_channels, num_channels, kernel_size = 3, padding = 1)
-    self.conv2 = nn.Conv2d(num_channels, num_channels, kernel_size = 3, padding = 1)
-    self.conv3 = nn.Conv2d(num_channels, num_channels, kernel_size = 3)
-    self.conv4 = nn.Conv2d(num_channels, num_channels, kernel_size = 3)
+    self.conv1 = nn.Conv2d(num_channels, inner_channels, kernel_size, padding = 1)
+    self.conv2 = nn.Conv2d(inner_channels, inner_channels, kernel_size, padding = 1)
+    self.conv3 = nn.Conv2d(inner_channels, inner_channels, kernel_size)
+    self.conv4 = nn.Conv2d(inner_channels, inner_channels, kernel_size)
 
-    self.bn1 = nn.BatchNorm2d(num_channels)
-    self.bn2 = nn.BatchNorm2d(num_channels)
-    self.bn3 = nn.BatchNorm2d(num_channels)
-    self.bn4 = nn.BatchNorm2d(num_channels)
+    self.bn1 = nn.BatchNorm2d(inner_channels)
+    self.bn2 = nn.BatchNorm2d(inner_channels)
+    self.bn3 = nn.BatchNorm2d(inner_channels)
+    self.bn4 = nn.BatchNorm2d(inner_channels)
 
-    self.fc1 = nn.Linear(num_channels * (width - 4) * (height - 4), 1024)
-    self.fc_bn1 = nn.BatchNorm1d(1024)
+    self.fc1 = nn.Linear(inner_channels * (width - 4) * (height - 4), linear_first)
+    self.fc_bn1 = nn.BatchNorm1d(linear_first)
 
-    self.fc2 = nn.Linear(1024, 512)
-    self.fc_bn2 = nn.BatchNorm1d(512)
+    self.fc2 = nn.Linear(linear_first, linear_second)
+    self.fc_bn2 = nn.BatchNorm1d(linear_second)
 
-    self.fc3 = nn.Linear(512, width * height)
-    self.fc4 = nn.Linear(512, 1)
+    self.fc3 = nn.Linear(linear_second, width * height)
+    self.fc4 = nn.Linear(linear_second, 1)
 
   def forward(self, x):
     x = F.relu(self.bn1(self.conv1(x)))
@@ -41,7 +45,7 @@ class OppaiNet(nn.Module):
     x = F.relu(self.bn3(self.conv3(x)))
     x = F.relu(self.bn4(self.conv4(x)))
 
-    x = x.view(-1, self.num_channels * (self.width - 4) * (self.height - 4))
+    x = x.view(-1, inner_channels * (self.width - 4) * (self.height - 4))
 
     x = F.dropout(F.relu(self.fc_bn1(self.fc1(x))), p = 0.3)
     x = F.dropout(F.relu(self.fc_bn2(self.fc2(x))), p = 0.3)
