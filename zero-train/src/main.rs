@@ -30,6 +30,6 @@ fn main() -> PyResult<()> {
     field.put_point(pos, player);
   }
 
-  let model = PyModel::new(width, height, 4)?;
+  let model = PyModel::new("model.pt".to_string(), width, height, 4)?;
   self_play(&field, player, &model, &mut rng)
 }

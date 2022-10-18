@@ -8,4 +8,6 @@ pub trait Model {
 
 pub trait TrainableModel: Model {
   fn train(&self, inputs: Array4<f64>, policies: Array3<f64>, values: Array1<f64>) -> Result<(), Self::E>;
+
+  fn save(&self) -> Result<(), Self::E>;
 }

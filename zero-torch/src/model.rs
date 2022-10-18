@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use ndarray::{Array1, Array3, Array4};
 use numpy::array::{PyArray1, PyArray3};
 use numpy::IntoPyArray;
@@ -8,12 +10,13 @@ use pyo3::types::{IntoPyDict, PyDict};
 const OPPAI_NET: &str = include_str!("../oppai_net.py");
 
 pub struct PyModel {
+  path: Rc<String>,
   model: PyObject,
   optimizer: PyObject,
 }
 
 impl PyModel {
-  pub fn new(width: u32, height: u32, channels: u32) -> PyResult<Self> {
+  pub fn new(path: String, width: u32, height: u32, channels: u32) -> PyResult<Self> {
     Python::with_gil(|py| {
       let oppai_net = PyModule::from_code(py, OPPAI_NET, "oppai_net.py", "oppai_net")?;
       let locals = [("torch", py.import("torch")?), ("oppai_net", oppai_net)].into_py_dict(py);
@@ -32,7 +35,11 @@ impl PyModel {
         .eval("torch.optim.Adam(model.parameters())", None, Some(locals))?
         .extract()?;
 
-      Ok(Self { model, optimizer })
+      Ok(Self {
+        path: Rc::new(path),
+        model,
+        optimizer,
+      })
     })
   }
 
@@ -48,7 +55,11 @@ impl PyModel {
         .eval("torch.optim.Adam(model.parameters())", None, Some(locals))?
         .extract()?;
 
-      Ok(Self { model, optimizer })
+      Ok(Self {
+        path: self.path.clone(),
+        model,
+        optimizer,
+      })
     })
   }
 }
@@ -100,6 +111,17 @@ impl TrainableModel for PyModel {
       )?;
 
       Ok(())
+    })
+  }
+
+  fn save(&self) -> Result<(), Self::E> {
+    Python::with_gil(|py| {
+      let locals = PyDict::new(py);
+      locals.set_item("torch", py.import("torch")?)?;
+      locals.set_item("model", &self.model)?;
+      locals.set_item("path", self.path.as_ref().into_py(py))?;
+
+      py.run("torch.save(model.state_dict(), path)", None, Some(locals))
     })
   }
 }

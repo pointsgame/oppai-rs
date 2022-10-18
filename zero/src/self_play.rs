@@ -17,6 +17,7 @@ where
     let mut cur_field = field.clone();
     let (inputs, policies, values) = episode(&mut cur_field, player, model, rng)?;
     model.train(inputs, policies, values)?;
+    model.save()?;
   }
 
   Ok(())
