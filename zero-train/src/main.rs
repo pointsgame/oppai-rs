@@ -31,5 +31,5 @@ fn main() -> PyResult<()> {
   }
 
   let model = PyModel::new("model.pt".to_string(), width, height, 4)?;
-  self_play(&field, player, &model, &mut rng)
+  self_play(&field, player, model, &mut rng)
 }

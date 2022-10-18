@@ -1,7 +1,7 @@
 use crate::field_features::field_features;
 use crate::mcts::MctsNode;
 use crate::model::Model;
-use ndarray::{s, Array, Array1, Array3, Array4, ArrayView2, Axis};
+use ndarray::{s, Array2, Array3, ArrayView2, Axis};
 use oppai_field::field::{manhattan, to_x, to_y, wave, Field, Pos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::ROTATIONS;
@@ -150,14 +150,15 @@ pub fn episode<E, M, R>(
   mut player: Player,
   model: &M,
   rng: &mut R,
-) -> Result<(Array4<f64>, Array3<f64>, Array1<f64>), E>
+  inputs: &mut Vec<Array3<f64>>,
+  policies: &mut Vec<Array2<f64>>,
+  values: &mut Vec<f64>,
+) -> Result<(), E>
 where
   M: Model<E = E>,
   R: Rng,
 {
   let mut node = MctsNode::new(0, 0f64, 0f64);
-  let mut inputs = Vec::new();
-  let mut policies = Vec::new();
   let mut moves_count = 0;
 
   while !field.is_game_over() {
@@ -182,23 +183,13 @@ where
     log::debug!("Score: {}\n{:?}", field.score(Player::Red), field);
   }
 
-  let inputs = ndarray::stack(Axis(0), inputs.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice()).unwrap();
-
-  let policies = ndarray::stack(
-    Axis(0),
-    policies.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice(),
-  )
-  .unwrap();
-
   let mut value = winner(field, if moves_count % 2 == 1 { player.next() } else { player });
-  let mut values = Vec::with_capacity(moves_count * ROTATIONS as usize);
   for _ in 0..moves_count {
     for _ in 0..ROTATIONS {
       values.push(value as f64);
     }
     value = -value;
   }
-  let values = Array::from(values);
 
-  Ok((inputs, policies, values))
+  Ok(())
 }
