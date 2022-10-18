@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::episode::episode;
 use crate::model::TrainableModel;
 use oppai_field::field::Field;
@@ -11,8 +13,10 @@ where
   M: TrainableModel<E = E> + Clone,
   R: Rng,
 {
+  let start_time = Instant::now();
+
   for i in 0..ITERATIONS_NUMBER {
-    log::info!("Episode {}", i);
+    log::info!("Episode {}, elapsed {:?}", i, start_time.elapsed());
 
     let mut cur_field = field.clone();
     let (inputs, policies, values) = episode(&mut cur_field, player, model, rng)?;
