@@ -88,7 +88,7 @@ fn create_children(field: &Field, policy: &ArrayView2<f64>, value: f64) -> Vec<M
   children
 }
 
-pub fn mcts<E, M>(field: &mut Field, player: Player, node: &mut MctsNode, model: &M) -> Result<bool, E>
+pub fn mcts<E, M>(field: &mut Field, player: Player, node: &mut MctsNode, model: &M) -> Result<(), E>
 where
   M: Model<E = E>,
 {
@@ -116,11 +116,9 @@ where
       true
     }
   });
-  fields.sort_by_key(|field| field.hash());
-  fields.dedup_by_key(|field| field.hash());
 
   if fields.is_empty() {
-    return Ok(false);
+    return Ok(());
   }
 
   let feautures = fields
@@ -142,7 +140,7 @@ where
     node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
   }
 
-  Ok(true)
+  Ok(())
 }
 
 pub fn episode<E, M, R>(
@@ -163,10 +161,7 @@ where
 
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
-      let executed = mcts(field, player, &mut node, model)?;
-      if !executed {
-        break;
-      }
+      mcts(field, player, &mut node, model)?;
     }
 
     // TODO: check dimensions
