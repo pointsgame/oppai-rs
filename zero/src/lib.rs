@@ -1,4 +1,6 @@
 pub mod episode;
+#[cfg(test)]
+pub mod episode_test;
 pub mod self_play;
 pub mod field_features;
 #[cfg(test)]

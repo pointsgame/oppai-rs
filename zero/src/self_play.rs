@@ -10,12 +10,12 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 const ITERATIONS_NUMBER: u32 = 10000;
-const PIT_GAMES: u32 = 10;
+const PIT_GAMES: u32 = 50;
 const WIN_RATE_THRESHOLD: f64 = 0.55;
 const BATCH_SIZE: usize = 128;
 const EPOCHS: u32 = 200;
 const EPISODES: u32 = 10;
-const MCTS_SIMS: u32 = 20;
+const MCTS_SIMS: u32 = 10;
 
 fn play_single_move<E, M>(field: &mut Field, player: Player, model: &M) -> Result<(), E>
 where

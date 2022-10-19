@@ -123,7 +123,17 @@ where
 
   let feautures = fields
     .iter()
-    .map(|field| field_features(field, player, 0))
+    .map(|cur_field| {
+      field_features(
+        cur_field,
+        if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+          player
+        } else {
+          player.next()
+        },
+        0,
+      )
+    })
     .collect::<Vec<_>>();
   let features = ndarray::stack(
     Axis(0),
@@ -137,6 +147,11 @@ where
     let policy = policies.slice(s![i, .., ..]);
     let value = values[i];
     let children = create_children(&cur_field, &policy, value);
+    let value = if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+      value
+    } else {
+      -value
+    };
     node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
   }
 
