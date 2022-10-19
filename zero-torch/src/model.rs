@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use indoc::indoc;
 use ndarray::{Array1, Array3, Array4};
 use numpy::array::{PyArray1, PyArray3};
 use numpy::IntoPyArray;
@@ -48,9 +49,18 @@ impl PyModel {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("model", &self.model)?;
+      locals.set_item("optimizer", &self.optimizer)?;
       locals.set_item("path", self.path.as_ref().into_py(py))?;
 
-      py.run("model.load_state_dict(torch.load(path))", None, Some(locals))
+      py.run(
+        indoc! {"
+          checkpoint = torch.load(path)
+          model.load_state_dict(checkpoint['model_state_dict'])
+          optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        "},
+        None,
+        Some(locals),
+      )
     })
   }
 
@@ -140,9 +150,14 @@ impl TrainableModel for PyModel {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("model", &self.model)?;
+      locals.set_item("optimizer", &self.optimizer)?;
       locals.set_item("path", self.path.as_ref().into_py(py))?;
 
-      py.run("torch.save(model.state_dict(), path)", None, Some(locals))
+      py.run(
+        "torch.save({ 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict() }, path)",
+        None,
+        Some(locals),
+      )
     })
   }
 }

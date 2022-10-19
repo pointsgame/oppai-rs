@@ -2025,6 +2025,7 @@ dependencies = [
 name = "oppai-zero-torch"
 version = "0.1.0"
 dependencies = [
+ "indoc",
  "ndarray",
  "numpy",
  "oppai-zero",
