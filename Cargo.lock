@@ -2037,6 +2037,7 @@ name = "oppai-zero-train"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "log",
  "ndarray",
  "oppai-field 0.1.0",
  "oppai-initial",

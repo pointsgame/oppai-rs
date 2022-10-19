@@ -32,6 +32,9 @@ fn main() -> PyResult<()> {
 
   let path = PathBuf::from("model.pt");
   let exists = path.exists();
+  if exists {
+    log::info!("Loading the model from {}", path.display());
+  }
   let model = PyModel::new(path, width, height, 4)?;
   if exists {
     model.load()?;
