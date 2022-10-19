@@ -60,11 +60,21 @@ impl PyModel {
       locals.set_item("copy", py.import("copy")?)?;
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("model", &self.model)?;
+
       let model: PyObject = py.eval("copy.deepcopy(model)", None, Some(locals))?.extract()?;
+
       locals.set_item("model", &model)?;
       let optimizer: PyObject = py
         .eval("torch.optim.Adam(model.parameters())", None, Some(locals))?
         .extract()?;
+
+      locals.set_item("old_optimizer", &self.optimizer)?;
+      locals.set_item("new_optimizer", &optimizer)?;
+      py.run(
+        "new_optimizer.load_state_dict(old_optimizer.state_dict())",
+        None,
+        Some(locals),
+      )?;
 
       Ok(Self {
         path: self.path.clone(),
