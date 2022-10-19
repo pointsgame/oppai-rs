@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use oppai_field::{
   field::{length, Field},
@@ -30,6 +30,11 @@ fn main() -> PyResult<()> {
     field.put_point(pos, player);
   }
 
-  let model = PyModel::new("model.pt".to_string(), width, height, 4)?;
+  let path = PathBuf::from("model.pt");
+  let exists = path.exists();
+  let model = PyModel::new(path, width, height, 4)?;
+  if exists {
+    model.load()?;
+  }
   self_play(&field, player, model, &mut rng)
 }

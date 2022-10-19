@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use indoc::indoc;
@@ -11,13 +12,13 @@ use pyo3::types::{IntoPyDict, PyDict};
 const OPPAI_NET: &str = include_str!("../oppai_net.py");
 
 pub struct PyModel {
-  path: Rc<String>,
+  path: Rc<PathBuf>,
   model: PyObject,
   optimizer: PyObject,
 }
 
 impl PyModel {
-  pub fn new(path: String, width: u32, height: u32, channels: u32) -> PyResult<Self> {
+  pub fn new(path: PathBuf, width: u32, height: u32, channels: u32) -> PyResult<Self> {
     Python::with_gil(|py| {
       let oppai_net = PyModule::from_code(py, OPPAI_NET, "oppai_net.py", "oppai_net")?;
       let locals = [("torch", py.import("torch")?), ("oppai_net", oppai_net)].into_py_dict(py);
