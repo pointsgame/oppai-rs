@@ -43,6 +43,17 @@ impl PyModel {
     })
   }
 
+  pub fn load(&self) -> PyResult<()> {
+    Python::with_gil(|py| {
+      let locals = PyDict::new(py);
+      locals.set_item("torch", py.import("torch")?)?;
+      locals.set_item("model", &self.model)?;
+      locals.set_item("path", self.path.as_ref().into_py(py))?;
+
+      py.run("model.load_state_dict(torch.load(path))", None, Some(locals))
+    })
+  }
+
   pub fn try_clone(&self) -> PyResult<Self> {
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
