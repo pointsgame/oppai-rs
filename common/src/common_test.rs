@@ -42,6 +42,74 @@ fn is_last_move_stupid_2() {
 }
 
 #[test]
+fn is_last_move_stupid_corner_1() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    a...
+    ....
+    ....
+    ....
+    ",
+  );
+
+  let pos = field.to_pos(0, 0);
+  assert!(is_last_move_stupid(&field, pos, Player::Red));
+}
+
+#[test]
+fn is_last_move_stupid_corner_2() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ...a
+    ....
+    ....
+    ....
+    ",
+  );
+
+  let pos = field.to_pos(3, 0);
+  assert!(is_last_move_stupid(&field, pos, Player::Red));
+}
+
+#[test]
+fn is_last_move_stupid_corner_3() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ....
+    ....
+    ....
+    a...
+    ",
+  );
+
+  let pos = field.to_pos(0, 3);
+  assert!(is_last_move_stupid(&field, pos, Player::Red));
+}
+
+#[test]
+fn is_last_move_stupid_corner_4() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ....
+    ....
+    ....
+    ...a
+    ",
+  );
+
+  let pos = field.to_pos(3, 3);
+  assert!(is_last_move_stupid(&field, pos, Player::Red));
+}
+
+#[test]
 fn is_last_move_not_stupid() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
