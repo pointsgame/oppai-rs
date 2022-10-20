@@ -10,7 +10,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 const ITERATIONS_NUMBER: u32 = 10000;
-const PIT_GAMES: u32 = 50;
+const PIT_GAMES: u64 = 50;
 const WIN_RATE_THRESHOLD: f64 = 0.55;
 const BATCH_SIZE: usize = 128;
 const EPOCHS: u32 = 200;
@@ -52,6 +52,15 @@ where
   Ok(field.score(player))
 }
 
+fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
+  if games == 0 {
+    0.0
+  } else {
+    let draws = games - wins - losses;
+    (wins as f64 + draws as f64 / 2.0) / games as f64
+  }
+}
+
 fn pit<E, M>(field: &Field, player: Player, new_model: &M, old_model: &M) -> Result<bool, E>
 where
   M: Model<E = E>,
@@ -60,7 +69,7 @@ where
   let mut losses = 0;
 
   for i in 0..PIT_GAMES {
-    log::info!("Game {}", i * 2);
+    log::info!("Game {}, win rate {}", i * 2, win_rate(wins, losses, i * 2));
 
     match play(&mut field.clone(), player, new_model, old_model)?.cmp(&0) {
       Ordering::Less => losses += 1,
@@ -68,7 +77,7 @@ where
       Ordering::Equal => {}
     };
 
-    log::info!("Game {}", i * 2 + 1);
+    log::info!("Game {}, win rate {}", i * 2 + 1, win_rate(wins, losses, i * 2 + 1));
 
     match play(&mut field.clone(), player, old_model, new_model)?.cmp(&0) {
       Ordering::Less => wins += 1,
@@ -77,8 +86,7 @@ where
     };
   }
 
-  let draws = PIT_GAMES * 2 - wins - losses;
-  let win_rate = (wins as f64 + draws as f64 / 2.0) / (PIT_GAMES * 2) as f64;
+  let win_rate = win_rate(wins, losses, PIT_GAMES * 2);
   log::info!("Win rate is {}", win_rate);
 
   Ok(win_rate > WIN_RATE_THRESHOLD)
