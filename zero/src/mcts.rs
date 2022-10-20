@@ -102,7 +102,7 @@ impl MctsNode {
       let x = to_x(width, child.pos);
       let y = to_y(width, child.pos);
       let (x, y) = rotate(width, height, x, y, rotation);
-      policies[(y as usize, x as usize)] = child.n as f64 / self.n as f64;
+      policies[(y as usize, x as usize)] = child.n as f64 / (self.n - 1) as f64;
     }
 
     policies

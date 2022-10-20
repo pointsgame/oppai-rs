@@ -92,12 +92,15 @@ pub fn mcts<E, M>(field: &mut Field, player: Player, node: &mut MctsNode, model:
 where
   M: Model<E = E>,
 {
-  let leafs = iter::repeat_with(|| node.select())
+  let mut leafs = iter::repeat_with(|| node.select())
     .take(PARALLEL_READOUTS)
     .collect::<Vec<_>>();
   for moves in &leafs {
     node.revert_virtual_loss(moves);
   }
+
+  leafs.sort_unstable();
+  leafs.dedup();
 
   let mut fields = leafs
     .iter()
