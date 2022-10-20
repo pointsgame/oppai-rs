@@ -15,35 +15,37 @@ const WIN_RATE_THRESHOLD: f64 = 0.55;
 const BATCH_SIZE: usize = 128;
 const EPOCHS: u32 = 200;
 const EPISODES: u32 = 10;
-const MCTS_SIMS: u32 = 10;
+const MCTS_SIMS: u32 = 32;
 
-fn play_single_move<E, M>(field: &mut Field, player: Player, model: &M) -> Result<(), E>
+fn play_single_move<E, M, R>(field: &mut Field, player: Player, model: &M, rng: &mut R) -> Result<(), E>
 where
   M: Model<E = E>,
+  R: Rng,
 {
   let mut node = MctsNode::new(0, 0f64, 0f64);
   for _ in 0..MCTS_SIMS {
     mcts(field, player, &mut node, model)?;
   }
 
-  let pos = node.best_move().unwrap();
+  let pos = node.best_move(rng).unwrap();
   field.put_point(pos, player);
 
   Ok(())
 }
 
-fn play<E, M>(field: &mut Field, player: Player, model1: &M, model2: &M) -> Result<i32, E>
+fn play<E, M, R>(field: &mut Field, player: Player, model1: &M, model2: &M, rng: &mut R) -> Result<i32, E>
 where
   M: Model<E = E>,
+  R: Rng,
 {
   loop {
     // TODO: persistent tree?
-    play_single_move(field, player, model1)?;
+    play_single_move(field, player, model1, rng)?;
     if field.is_game_over() {
       break;
     }
 
-    play_single_move(field, player.next(), model2)?;
+    play_single_move(field, player.next(), model2, rng)?;
     if field.is_game_over() {
       break;
     }
@@ -61,9 +63,10 @@ fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
   }
 }
 
-fn pit<E, M>(field: &Field, player: Player, new_model: &M, old_model: &M) -> Result<bool, E>
+fn pit<E, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, E>
 where
   M: Model<E = E>,
+  R: Rng,
 {
   let mut wins = 0;
   let mut losses = 0;
@@ -71,7 +74,7 @@ where
   for i in 0..PIT_GAMES {
     log::info!("Game {}, win rate {}", i * 2, win_rate(wins, losses, i * 2));
 
-    match play(&mut field.clone(), player, new_model, old_model)?.cmp(&0) {
+    match play(&mut field.clone(), player, new_model, old_model, rng)?.cmp(&0) {
       Ordering::Less => losses += 1,
       Ordering::Greater => wins += 1,
       Ordering::Equal => {}
@@ -79,7 +82,7 @@ where
 
     log::info!("Game {}, win rate {}", i * 2 + 1, win_rate(wins, losses, i * 2 + 1));
 
-    match play(&mut field.clone(), player, old_model, new_model)?.cmp(&0) {
+    match play(&mut field.clone(), player, old_model, new_model, rng)?.cmp(&0) {
       Ordering::Less => wins += 1,
       Ordering::Greater => losses += 1,
       Ordering::Equal => {}
@@ -159,7 +162,7 @@ where
     }
 
     log::info!("Pit the new model");
-    if pit(field, player, &model, &copy)? {
+    if pit(field, player, &model, &copy, rng)? {
       model.save()?;
     } else {
       log::warn!("Rejecting new model");

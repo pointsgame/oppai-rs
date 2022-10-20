@@ -2,6 +2,7 @@ use decorum::R64;
 use ndarray::Array2;
 use oppai_field::field::{to_x, to_y, Pos};
 use oppai_rotate::rotate::{rotate, rotate_sizes};
+use rand::Rng;
 
 pub struct MctsNode {
   /// Current move.
@@ -108,8 +109,17 @@ impl MctsNode {
     policies
   }
 
-  pub fn best_move(&self) -> Option<Pos> {
+  pub fn best_move<R: Rng>(&self, rng: &mut R) -> Option<Pos> {
     // TODO: option to use winrate?
-    self.children.iter().max_by_key(|child| child.n).map(|child| child.pos)
+    let mut result = None;
+    for child in &self.children {
+      if result
+        .map(|(_, n)| child.n > n || child.n == n && rng.gen())
+        .unwrap_or(true)
+      {
+        result = Some((child.pos, child.n))
+      }
+    }
+    result.map(|(pos, _)| pos)
   }
 }

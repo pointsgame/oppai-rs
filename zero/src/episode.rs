@@ -26,7 +26,7 @@ fn make_moves(initial: &Field, moves: &[Pos], mut player: Player) -> Field {
   field
 }
 
-const MCTS_SIMS: u32 = 100;
+const MCTS_SIMS: u32 = 128;
 
 const PARALLEL_READOUTS: usize = 8;
 
