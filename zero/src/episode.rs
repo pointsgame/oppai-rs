@@ -196,7 +196,7 @@ where
     log::debug!("Score: {}\n{:?}", field.score(Player::Red), field);
   }
 
-  let mut value = winner(field, if moves_count % 2 == 1 { player.next() } else { player });
+  let mut value = winner(field, if moves_count % 2 == 0 { player } else { player.next() });
   for _ in 0..moves_count {
     for _ in 0..ROTATIONS {
       values.push(value as f64);
