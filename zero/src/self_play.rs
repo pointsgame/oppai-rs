@@ -136,25 +136,18 @@ where
         shift = 0;
       }
 
+      let slice = &indices[shift..(shift + BATCH_SIZE).min(indices.len())];
       let inputs = ndarray::stack(
         Axis(0),
-        indices[shift..shift + BATCH_SIZE]
-          .iter()
-          .map(|&i| inputs[i].view())
-          .collect::<Vec<_>>()
-          .as_slice(),
+        slice.iter().map(|&i| inputs[i].view()).collect::<Vec<_>>().as_slice(),
       )
       .unwrap();
       let policies = ndarray::stack(
         Axis(0),
-        indices[shift..shift + BATCH_SIZE]
-          .iter()
-          .map(|&i| policies[i].view())
-          .collect::<Vec<_>>()
-          .as_slice(),
+        slice.iter().map(|&i| policies[i].view()).collect::<Vec<_>>().as_slice(),
       )
       .unwrap();
-      let values = Array::from_iter(indices[shift..shift + BATCH_SIZE].iter().map(|&i| values[i]));
+      let values = Array::from_iter(slice.iter().map(|&i| values[i]));
 
       model.train(inputs, policies, values)?;
 
