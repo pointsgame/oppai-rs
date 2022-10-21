@@ -107,3 +107,27 @@ fn mcts_last_iterations() {
   assert_eq!(node.w, -1.0);
   assert!(node.children.is_empty());
 }
+
+#[test]
+fn mcts_stupid_moves() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .A.
+    ..A
+    .A.
+    ",
+  );
+  let mut node = MctsNode::new(0, 0f64, 0f64);
+  let model = StubModel {
+    width: field.width(),
+    height: field.height(),
+    value: 0.0,
+  };
+
+  mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
+  assert_eq!(node.n, 1);
+  assert_eq!(node.w, 0.0);
+  assert_eq!(node.children.len(), 1);
+}
