@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::mem;
 
 use crate::episode::{episode, mcts};
 use crate::mcts::MctsNode;
@@ -10,48 +11,45 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 const ITERATIONS_NUMBER: u32 = 10000;
-const PIT_GAMES: u64 = 50;
+const PIT_GAMES: u64 = 100;
 const WIN_RATE_THRESHOLD: f64 = 0.55;
 const BATCH_SIZE: usize = 128;
 const EPOCHS: u32 = 200;
 const EPISODES: u32 = 10;
 const MCTS_SIMS: u32 = 32;
 
-fn play_single_move<E, M, R>(field: &mut Field, player: Player, model: &M, rng: &mut R) -> Result<bool, E>
+fn play<'a, E, M, R>(
+  field: &mut Field,
+  mut player: Player,
+  mut model1: &'a M,
+  mut model2: &'a M,
+  rng: &mut R,
+) -> Result<i32, E>
 where
   M: Model<E = E>,
   R: Rng,
 {
-  let mut node = MctsNode::new(0, 0f64, 0f64);
-  for _ in 0..MCTS_SIMS {
-    mcts(field, player, &mut node, model, rng)?;
-  }
+  let mut moves_count = 0;
 
-  if let Some(pos) = node.best_move() {
-    field.put_point(pos, player);
-    Ok(true)
-  } else {
-    Ok(false)
-  }
-}
-
-fn play<E, M, R>(field: &mut Field, player: Player, model1: &M, model2: &M, rng: &mut R) -> Result<i32, E>
-where
-  M: Model<E = E>,
-  R: Rng,
-{
-  loop {
+  while !field.is_game_over() {
     // TODO: persistent tree?
-    if !play_single_move(field, player, model1, rng)? || field.is_game_over() {
+    let mut node = MctsNode::new(0, 0f64, 0f64);
+    for _ in 0..MCTS_SIMS {
+      mcts(field, player, &mut node, model1, rng)?;
+    }
+
+    if let Some(pos) = node.best_move() {
+      field.put_point(pos, player);
+    } else {
       break;
     }
 
-    if !play_single_move(field, player.next(), model2, rng)? || field.is_game_over() {
-      break;
-    }
+    mem::swap(&mut model1, &mut model2);
+    player = player.next();
+    moves_count += 1;
   }
 
-  Ok(field.score(player))
+  Ok(field.score(if moves_count % 2 == 0 { player } else { player.next() }))
 }
 
 fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
@@ -72,24 +70,22 @@ where
   let mut losses = 0;
 
   for i in 0..PIT_GAMES {
-    log::info!("Game {}, win rate {}", i * 2, win_rate(wins, losses, i * 2));
+    log::info!("Game {}, win rate {}", i, win_rate(wins, losses, i));
 
-    match play(&mut field.clone(), player, new_model, old_model, rng)?.cmp(&0) {
+    let result = if i % 2 == 0 {
+      play(&mut field.clone(), player, new_model, old_model, rng)?
+    } else {
+      -play(&mut field.clone(), player, old_model, new_model, rng)?
+    };
+
+    match result.cmp(&0) {
       Ordering::Less => losses += 1,
       Ordering::Greater => wins += 1,
       Ordering::Equal => {}
     };
-
-    log::info!("Game {}, win rate {}", i * 2 + 1, win_rate(wins, losses, i * 2 + 1));
-
-    match play(&mut field.clone(), player, old_model, new_model, rng)?.cmp(&0) {
-      Ordering::Less => wins += 1,
-      Ordering::Greater => losses += 1,
-      Ordering::Equal => {}
-    };
   }
 
-  let win_rate = win_rate(wins, losses, PIT_GAMES * 2);
+  let win_rate = win_rate(wins, losses, PIT_GAMES);
   log::info!("Win rate is {}", win_rate);
 
   Ok(win_rate > WIN_RATE_THRESHOLD)
