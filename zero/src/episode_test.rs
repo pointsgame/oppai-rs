@@ -5,7 +5,7 @@ use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::iter;
 
-use crate::episode::mcts;
+use crate::episode::{episode, mcts};
 use crate::mcts::MctsNode;
 use crate::model::Model;
 
@@ -130,4 +130,72 @@ fn mcts_stupid_moves() {
   assert_eq!(node.n, 1);
   assert_eq!(node.w, 0.0);
   assert_eq!(node.children.len(), 1);
+}
+
+#[test]
+fn episode_simple_surrounding() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .a.
+    .Aa
+    .a.
+    ",
+  );
+  let model = StubModel {
+    width: field.width(),
+    height: field.height(),
+    value: 0.0,
+  };
+
+  let mut inputs = Vec::new();
+  let mut policies = Vec::new();
+  let mut values = Vec::new();
+  episode(
+    &mut field,
+    Player::Red,
+    &model,
+    &mut rng,
+    &mut inputs,
+    &mut policies,
+    &mut values,
+  )
+  .unwrap();
+
+  assert_eq!(values, vec![1.0; 8]);
+}
+
+#[test]
+fn episode_trap() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .A.
+    ..A
+    .A.
+    ",
+  );
+  let model = StubModel {
+    width: field.width(),
+    height: field.height(),
+    value: 0.0,
+  };
+
+  let mut inputs = Vec::new();
+  let mut policies = Vec::new();
+  let mut values = Vec::new();
+  episode(
+    &mut field,
+    Player::Red,
+    &model,
+    &mut rng,
+    &mut inputs,
+    &mut policies,
+    &mut values,
+  )
+  .unwrap();
+
+  assert_eq!(values, vec![0.0; 16]);
 }
