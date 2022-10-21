@@ -45,8 +45,9 @@ impl Model for StubModel {
 
 #[test]
 fn mcts_first_iterations() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    &mut rng,
     "
     ......
     ..aA..
@@ -60,15 +61,16 @@ fn mcts_first_iterations() {
     value: 1.0,
   };
 
-  mcts(&mut field, Player::Red, &mut node, &model).unwrap();
+  mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
   assert_eq!(node.n, 1);
   assert_eq!(node.w, -1.0);
-  assert_eq!(node.children.len(), (field.width() * field.height()) as usize - 2);
+  // corner moves are not considered
+  assert_eq!(node.children.len(), (field.width() * field.height()) as usize - 6);
   assert!(node.children.iter().all(|child| child.w == 1.0));
   assert!(node.children.iter().all(|child| child.children.is_empty()));
 
   model.value = -1.0;
-  mcts(&mut field, Player::Red, &mut node, &model).unwrap();
+  mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
   assert_eq!(node.n, 9);
   assert_eq!(node.w, -9.0);
   assert_eq!(node.children.iter().map(|child| child.n).sum::<u64>(), 8);
@@ -76,7 +78,7 @@ fn mcts_first_iterations() {
     node
       .children
       .iter()
-      .filter(|child| child.children.len() == (field.width() * field.height()) as usize - 3)
+      .filter(|child| child.children.len() == (field.width() * field.height()) as usize - 7)
       .count(),
     8
   );
@@ -84,8 +86,9 @@ fn mcts_first_iterations() {
 
 #[test]
 fn mcts_last_iterations() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    &mut rng,
     "
     .a.
     aAa
@@ -99,7 +102,7 @@ fn mcts_last_iterations() {
     value: 0.0,
   };
 
-  mcts(&mut field, Player::Red, &mut node, &model).unwrap();
+  mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
   assert_eq!(node.n, 1);
   assert_eq!(node.w, -1.0);
   assert!(node.children.is_empty());

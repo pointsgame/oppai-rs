@@ -24,10 +24,10 @@ where
 {
   let mut node = MctsNode::new(0, 0f64, 0f64);
   for _ in 0..MCTS_SIMS {
-    mcts(field, player, &mut node, model)?;
+    mcts(field, player, &mut node, model, rng)?;
   }
 
-  if let Some(pos) = node.best_move(rng) {
+  if let Some(pos) = node.best_move() {
     field.put_point(pos, player);
     Ok(true)
   } else {

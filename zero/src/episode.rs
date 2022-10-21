@@ -6,6 +6,7 @@ use oppai_common::common::is_last_move_stupid;
 use oppai_field::field::{to_x, to_y, Field, Pos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::ROTATIONS;
+use rand::seq::SliceRandom;
 use rand::Rng;
 use std::cmp::Ordering;
 use std::iter;
@@ -42,7 +43,13 @@ fn select<R: Rng>(mut nodes: Vec<MctsNode>, rng: &mut R) -> MctsNode {
   node
 }
 
-fn create_children(field: &mut Field, player: Player, policy: &ArrayView2<f64>, value: f64) -> Vec<MctsNode> {
+fn create_children<R: Rng>(
+  field: &mut Field,
+  player: Player,
+  policy: &ArrayView2<f64>,
+  value: f64,
+  rng: &mut R,
+) -> Vec<MctsNode> {
   let width = field.width();
   let mut children = (field.min_pos()..=field.max_pos())
     .filter(|&pos| {
@@ -60,6 +67,7 @@ fn create_children(field: &mut Field, player: Player, policy: &ArrayView2<f64>, 
       MctsNode::new(pos, p, value)
     })
     .collect::<Vec<_>>();
+  children.shuffle(rng);
   // renormalize
   let sum: f64 = children.iter().map(|child| child.p).sum();
   for child in children.iter_mut() {
@@ -68,9 +76,10 @@ fn create_children(field: &mut Field, player: Player, policy: &ArrayView2<f64>, 
   children
 }
 
-pub fn mcts<E, M>(field: &mut Field, player: Player, node: &mut MctsNode, model: &M) -> Result<(), E>
+pub fn mcts<E, M, R>(field: &mut Field, player: Player, node: &mut MctsNode, model: &M, rng: &mut R) -> Result<(), E>
 where
   M: Model<E = E>,
+  R: Rng,
 {
   let mut leafs = iter::repeat_with(|| node.select())
     .take(PARALLEL_READOUTS)
@@ -131,7 +140,7 @@ where
     let value = values[i];
     let even = (cur_field.moves_count() - field.moves_count()) % 2 == 0;
     let player = if even { player } else { player.next() };
-    let children = create_children(&mut cur_field, player, &policy, value);
+    let children = create_children(&mut cur_field, player, &policy, value, rng);
     let value = if even { value } else { -value };
     node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
   }
@@ -157,7 +166,7 @@ where
 
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
-      mcts(field, player, &mut node, model)?;
+      mcts(field, player, &mut node, model, rng)?;
     }
 
     if node.children.is_empty() {
