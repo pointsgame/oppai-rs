@@ -2015,6 +2015,7 @@ dependencies = [
  "decorum",
  "log",
  "ndarray",
+ "oppai-common 0.1.0",
  "oppai-field 0.1.0",
  "oppai-rotate",
  "rand",

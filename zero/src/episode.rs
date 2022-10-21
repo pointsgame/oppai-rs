@@ -2,7 +2,8 @@ use crate::field_features::field_features;
 use crate::mcts::MctsNode;
 use crate::model::Model;
 use ndarray::{s, Array2, Array3, ArrayView2, Axis};
-use oppai_field::field::{manhattan, to_x, to_y, wave, Field, Pos};
+use oppai_common::common::is_last_move_stupid;
+use oppai_field::field::{to_x, to_y, Field, Pos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::ROTATIONS;
 use rand::Rng;
@@ -41,41 +42,20 @@ fn select<R: Rng>(mut nodes: Vec<MctsNode>, rng: &mut R) -> MctsNode {
   node
 }
 
-fn find_children(field: &Field, max_distance: u32) -> Vec<Pos> {
-  let mut result = Vec::new();
-  let mut values = vec![u32::max_value(); field.length()];
-  for &pos in field.points_seq() {
-    values[pos] = 0;
-    wave(field.width(), pos, |next_pos| {
-      if next_pos == pos {
-        return true;
+fn create_children(field: &mut Field, player: Player, policy: &ArrayView2<f64>, value: f64) -> Vec<MctsNode> {
+  let width = field.width();
+  let mut children = (field.min_pos()..=field.max_pos())
+    .filter(|&pos| {
+      field.is_putting_allowed(pos) && {
+        field.put_point(pos, player);
+        let is_stupid = is_last_move_stupid(field, pos, player);
+        field.undo();
+        !is_stupid
       }
-
-      if !field.cell(next_pos).is_putting_allowed() {
-        return false;
-      }
-
-      let distance = manhattan(field.width(), next_pos, pos);
-      if values[next_pos] > distance {
-        if values[next_pos] == u32::max_value() {
-          result.push(next_pos);
-        }
-        values[next_pos] = distance;
-        distance < max_distance
-      } else {
-        false
-      }
-    });
-  }
-  result
-}
-
-fn create_children(field: &Field, policy: &ArrayView2<f64>, value: f64) -> Vec<MctsNode> {
-  let mut children = find_children(field, 3)
-    .into_iter()
+    })
     .map(|pos| {
-      let x = to_x(field.width(), pos);
-      let y = to_y(field.width(), pos);
+      let x = to_x(width, pos);
+      let y = to_y(width, pos);
       let p = policy[(y as usize, x as usize)];
       MctsNode::new(pos, p, value)
     })
@@ -146,15 +126,13 @@ where
 
   let (policies, values) = model.predict(features)?;
 
-  for (i, cur_field) in fields.into_iter().enumerate() {
+  for (i, mut cur_field) in fields.into_iter().enumerate() {
     let policy = policies.slice(s![i, .., ..]);
     let value = values[i];
-    let children = create_children(&cur_field, &policy, value);
-    let value = if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
-      value
-    } else {
-      -value
-    };
+    let even = (cur_field.moves_count() - field.moves_count()) % 2 == 0;
+    let player = if even { player } else { player.next() };
+    let children = create_children(&mut cur_field, player, &policy, value);
+    let value = if even { value } else { -value };
     node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
   }
 
@@ -180,6 +158,11 @@ where
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
       mcts(field, player, &mut node, model)?;
+    }
+
+    if node.children.is_empty() {
+      // no good moves left, but game is not over yet
+      break;
     }
 
     // TODO: check dimensions

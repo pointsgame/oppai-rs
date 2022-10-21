@@ -17,7 +17,7 @@ const EPOCHS: u32 = 200;
 const EPISODES: u32 = 10;
 const MCTS_SIMS: u32 = 32;
 
-fn play_single_move<E, M, R>(field: &mut Field, player: Player, model: &M, rng: &mut R) -> Result<(), E>
+fn play_single_move<E, M, R>(field: &mut Field, player: Player, model: &M, rng: &mut R) -> Result<bool, E>
 where
   M: Model<E = E>,
   R: Rng,
@@ -27,10 +27,12 @@ where
     mcts(field, player, &mut node, model)?;
   }
 
-  let pos = node.best_move(rng).unwrap();
-  field.put_point(pos, player);
-
-  Ok(())
+  if let Some(pos) = node.best_move(rng) {
+    field.put_point(pos, player);
+    Ok(true)
+  } else {
+    Ok(false)
+  }
 }
 
 fn play<E, M, R>(field: &mut Field, player: Player, model1: &M, model2: &M, rng: &mut R) -> Result<i32, E>
@@ -40,13 +42,11 @@ where
 {
   loop {
     // TODO: persistent tree?
-    play_single_move(field, player, model1, rng)?;
-    if field.is_game_over() {
+    if !play_single_move(field, player, model1, rng)? || field.is_game_over() {
       break;
     }
 
-    play_single_move(field, player.next(), model2, rng)?;
-    if field.is_game_over() {
+    if !play_single_move(field, player.next(), model2, rng)? || field.is_game_over() {
       break;
     }
   }
