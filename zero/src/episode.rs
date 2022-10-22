@@ -32,15 +32,18 @@ const MCTS_SIMS: u32 = 256;
 
 const PARALLEL_READOUTS: usize = 8;
 
+const EXPLORATION_THRESHOLD: u32 = 30;
+
 fn select<R: Rng>(mut nodes: Vec<MctsNode>, rng: &mut R) -> MctsNode {
   let r = rng.gen_range(0f64..nodes.iter().map(|child| child.probability()).sum::<f64>());
-  let mut node = nodes.pop().unwrap();
-  let mut sum = node.probability();
-  while sum < r {
-    node = nodes.pop().unwrap();
+  let mut sum = 0.0;
+  while let Some(node) = nodes.pop() {
     sum += node.probability();
+    if sum > r {
+      return node;
+    }
   }
-  node
+  unreachable!()
 }
 
 fn create_children<R: Rng>(
@@ -180,7 +183,11 @@ where
       policies.push(node.policies(field.width(), field.height(), rotation));
     }
 
-    node = select(node.children, rng);
+    node = if moves_count < EXPLORATION_THRESHOLD {
+      select(node.children, rng)
+    } else {
+      node.children.into_iter().max_by_key(|child| child.n).unwrap()
+    };
     field.put_point(node.pos, player);
     player = player.next();
     moves_count += 1;
