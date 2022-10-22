@@ -7,14 +7,11 @@ use crate::model::{Model, TrainableModel};
 use ndarray::{Array, Axis};
 use oppai_field::field::Field;
 use oppai_field::player::Player;
-use rand::seq::SliceRandom;
 use rand::Rng;
 
 const ITERATIONS_NUMBER: u32 = 10000;
 const PIT_GAMES: u64 = 100;
 const WIN_RATE_THRESHOLD: f64 = 0.55;
-const BATCH_SIZE: usize = 128;
-const EPOCHS: u32 = 200;
 const EPISODES: u32 = 10;
 const MCTS_SIMS: u32 = 32;
 
@@ -96,14 +93,18 @@ where
   M: TrainableModel<E = E> + Clone,
   R: Rng,
 {
+  let mut inputs = Vec::new();
+  let mut policies = Vec::new();
   for i in 0..ITERATIONS_NUMBER {
     log::info!("Iteration {}", i);
 
-    let mut inputs = Vec::new();
-    let mut policies = Vec::new();
-    let mut values = Vec::new();
+    let copy = model.clone();
     for j in 0..EPISODES {
       log::info!("Episode {}", j);
+
+      inputs.clear();
+      policies.clear();
+      let mut values = Vec::new();
       episode(
         &mut field.clone(),
         player,
@@ -113,41 +114,16 @@ where
         &mut policies,
         &mut values,
       )?;
-    }
 
-    log::info!("Train the model");
-    let copy = model.clone();
-
-    if inputs.len() > BATCH_SIZE * EPOCHS as usize {
-      log::warn!("Learning doesn't use all {} inputs", inputs.len());
-    }
-
-    let mut indices = (0..inputs.len()).collect::<Vec<_>>();
-    let mut shift = inputs.len();
-    for j in 0..EPOCHS {
-      log::info!("Epoch {}", j);
-
-      if indices.len() - shift < BATCH_SIZE {
-        indices.shuffle(rng);
-        shift = 0;
-      }
-
-      let slice = &indices[shift..(shift + BATCH_SIZE).min(indices.len())];
-      let inputs = ndarray::stack(
-        Axis(0),
-        slice.iter().map(|&i| inputs[i].view()).collect::<Vec<_>>().as_slice(),
-      )
-      .unwrap();
+      log::info!("Train the model");
+      let inputs = ndarray::stack(Axis(0), inputs.iter().map(|i| i.view()).collect::<Vec<_>>().as_slice()).unwrap();
       let policies = ndarray::stack(
         Axis(0),
-        slice.iter().map(|&i| policies[i].view()).collect::<Vec<_>>().as_slice(),
+        policies.iter().map(|p| p.view()).collect::<Vec<_>>().as_slice(),
       )
       .unwrap();
-      let values = Array::from_iter(slice.iter().map(|&i| values[i]));
-
+      let values = Array::from(values);
       model.train(inputs, policies, values)?;
-
-      shift += BATCH_SIZE;
     }
 
     log::info!("Pit the new model");
