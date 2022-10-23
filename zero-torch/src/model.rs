@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use indoc::indoc;
 use ndarray::{Array1, Array3, Array4};
@@ -12,7 +12,7 @@ use pyo3::types::{IntoPyDict, PyDict};
 const OPPAI_NET: &str = include_str!("../oppai_net.py");
 
 pub struct PyModel {
-  path: Rc<PathBuf>,
+  path: Arc<PathBuf>,
   model: PyObject,
   optimizer: PyObject,
 }
@@ -38,7 +38,7 @@ impl PyModel {
         .extract()?;
 
       Ok(Self {
-        path: Rc::new(path),
+        path: Arc::new(path),
         model,
         optimizer,
       })

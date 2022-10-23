@@ -7,3 +7,4 @@ pub mod field_features;
 pub mod field_features_test;
 pub mod mcts;
 pub mod model;
+pub mod zero;

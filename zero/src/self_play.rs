@@ -36,7 +36,7 @@ where
     }
 
     if let Some(pos) = node.best_move() {
-      field.put_point(pos, player);
+      field.put_point(pos.get(), player);
     } else {
       break;
     }

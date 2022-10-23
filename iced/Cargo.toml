@@ -17,8 +17,9 @@ humantime = "2.1"
 rfd = { version = "0.8", features = [ "file-handle-inner" ] }
 sgf-parser = "2.6"
 oppai-initial = { path = "../initial" }
-oppai-bot = { path = "../bot", features = [ "cli" ] }
+oppai-bot = { path = "../bot", features = [ "cli" ], default-features = false }
 
 [features]
-default = ["dsu"]
+default = ["dsu", "zero"]
 dsu = ["oppai-bot/dsu"]
+zero = ["oppai-bot/zero"]

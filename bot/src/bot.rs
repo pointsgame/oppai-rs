@@ -7,9 +7,15 @@ use oppai_ladders::ladders::ladders;
 use oppai_minimax::minimax::Minimax;
 use oppai_patterns::patterns::Patterns;
 use oppai_uct::uct::UctRoot;
+#[cfg(feature = "zero")]
+use oppai_zero::zero::Zero;
+#[cfg(feature = "zero")]
+use oppai_zero_torch::model::PyModel;
 use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+#[cfg(feature = "zero")]
+use std::path::PathBuf;
 use std::{
   cmp,
   sync::atomic::{AtomicBool, Ordering},
@@ -48,6 +54,8 @@ pub struct Bot<R> {
   pub field: Field,
   pub uct: UctRoot,
   pub minimax: Minimax,
+  #[cfg(feature = "zero")]
+  pub zero: Zero<PyModel>,
   pub config: Config,
 }
 
@@ -66,6 +74,20 @@ where
       patterns,
       field: Field::new(width, height, field_zobrist),
       uct: UctRoot::new(config.uct.clone(), length),
+      #[cfg(feature = "zero")]
+      zero: Zero::new({
+        // TODO: move to config
+        let path = PathBuf::from("model.pt");
+        let exists = path.exists();
+        if !exists {
+          log::warn!("No model at {}", path.display());
+        }
+        let model = PyModel::new(path, width, height, 4).unwrap();
+        if exists {
+          model.load().unwrap();
+        }
+        model
+      }),
       minimax: Minimax::new(config.minimax.clone()),
       config,
     }
@@ -169,6 +191,12 @@ where
         .minimax
         .minimax(&mut self.field, player, minimax_depth, should_stop)
         .or_else(|| heuristic::heuristic(&self.field, player)),
+      #[cfg(feature = "zero")]
+      Solver::Zero => self
+        .zero
+        .best_move(&self.field, player, &mut self.rng, should_stop, uct_iterations)
+        .unwrap()
+        .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     };
     info!("Cumulative time for best move evaluation: {:?}", now.elapsed());
@@ -246,6 +274,18 @@ where
           self
             .minimax
             .minimax_with_time(&mut self.field, player, should_stop)
+            .or_else(|| heuristic::heuristic(&self.field, player))
+        },
+        should_stop,
+        time_left,
+      ),
+      #[cfg(feature = "zero")]
+      Solver::Zero => with_timeout(
+        || {
+          self
+            .zero
+            .best_move(&self.field, player, &mut self.rng, should_stop, usize::max_value())
+            .unwrap()
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
         should_stop,

@@ -7,6 +7,8 @@ use strum::{EnumString, EnumVariantNames};
 pub enum Solver {
   Uct,
   Minimax,
+  #[cfg(feature = "zero")]
+  Zero,
   Heuristic,
 }
 

@@ -19,8 +19,11 @@ oppai-minimax = { path = "../minimax" }
 oppai-uct = { path = "../uct" }
 oppai-patterns = { path = "../patterns" }
 oppai-ladders = { path = "../ladders" }
+oppai-zero = { path = "../zero", optional = true }
+oppai-zero-torch = { path = "../zero-torch", optional = true }
 
 [features]
-default = ["dsu"]
+default = ["dsu", "zero"]
 cli = [ "clap", "num_cpus", "humantime" ]
 dsu = ["oppai-field/dsu"]
+zero = [ "oppai-zero", "oppai-zero-torch" ]

@@ -1801,6 +1801,8 @@ dependencies = [
  "oppai-minimax 0.1.0",
  "oppai-patterns 0.1.0",
  "oppai-uct 0.1.0",
+ "oppai-zero",
+ "oppai-zero-torch",
  "rand",
  "strum",
 ]

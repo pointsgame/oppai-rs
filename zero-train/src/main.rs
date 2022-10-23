@@ -15,8 +15,6 @@ fn main() -> PyResult<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
 
-  pyo3::prepare_freethreaded_python();
-
   let width = 16;
   let height = 16;
   let player = Player::Red;

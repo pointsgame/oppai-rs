@@ -1,6 +1,6 @@
 use decorum::R64;
 use ndarray::Array2;
-use oppai_field::field::{to_x, to_y, Pos};
+use oppai_field::field::{to_x, to_y, NonZeroPos, Pos};
 use oppai_rotate::rotate::{rotate, rotate_sizes};
 
 pub struct MctsNode {
@@ -114,8 +114,12 @@ impl MctsNode {
     policies
   }
 
-  pub fn best_move(&self) -> Option<Pos> {
+  pub fn best_move(&self) -> Option<NonZeroPos> {
     // TODO: option to use winrate?
-    self.children.iter().max_by_key(|child| child.n).map(|child| child.pos)
+    self
+      .children
+      .iter()
+      .max_by_key(|child| child.n)
+      .and_then(|child| NonZeroPos::new(child.pos))
   }
 }
