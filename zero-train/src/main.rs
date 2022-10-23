@@ -1,5 +1,8 @@
+mod config;
+
 use std::{path::PathBuf, sync::Arc};
 
+use config::cli_parse;
 use oppai_field::{
   field::{length, Field},
   player::Player,
@@ -15,15 +18,14 @@ fn main() -> PyResult<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
 
-  let width = 16;
-  let height = 16;
+  let config = cli_parse();
   let player = Player::Red;
 
   let mut rng = SmallRng::from_entropy();
-  let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, &mut rng));
-  let mut field = Field::new(width, height, zobrist);
+  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
+  let mut field = Field::new(config.width, config.height, zobrist);
 
-  for (pos, player) in InitialPosition::Cross.points(width, height, player) {
+  for (pos, player) in InitialPosition::Cross.points(config.width, config.height, player) {
     // TODO: random shift
     field.put_point(pos, player);
   }
@@ -33,7 +35,7 @@ fn main() -> PyResult<()> {
   if exists {
     log::info!("Loading the model from {}", path.display());
   }
-  let model = PyModel::new(path, width, height, 4)?;
+  let model = PyModel::new(path, config.width, config.height, 4)?;
   if exists {
     model.load()?;
   }

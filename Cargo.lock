@@ -2039,6 +2039,7 @@ dependencies = [
 name = "oppai-zero-train"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "env_logger",
  "log",
  "ndarray",
