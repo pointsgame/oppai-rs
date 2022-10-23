@@ -54,7 +54,7 @@ fn mcts_first_iterations() {
     ......
     ",
   );
-  let mut node = MctsNode::new(0, 0f64, 0f64);
+  let mut node = MctsNode::default();
   let mut model = StubModel {
     width: field.width(),
     height: field.height(),
@@ -95,7 +95,7 @@ fn mcts_last_iterations() {
     .a.
     ",
   );
-  let mut node = MctsNode::new(0, 0f64, 0f64);
+  let mut node = MctsNode::default();
   let model = StubModel {
     width: field.width(),
     height: field.height(),
@@ -119,7 +119,7 @@ fn mcts_stupid_moves() {
     .A.
     ",
   );
-  let mut node = MctsNode::new(0, 0f64, 0f64);
+  let mut node = MctsNode::default();
   let model = StubModel {
     width: field.width(),
     height: field.height(),

@@ -30,7 +30,7 @@ where
 
   while !field.is_game_over() {
     // TODO: persistent tree?
-    let mut node = MctsNode::new(0, 0f64, 0f64);
+    let mut node = MctsNode::default();
     for _ in 0..MCTS_SIMS {
       mcts(field, player, &mut node, model1, rng)?;
     }

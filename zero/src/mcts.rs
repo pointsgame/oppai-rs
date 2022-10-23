@@ -16,6 +16,12 @@ pub struct MctsNode {
   pub children: Vec<MctsNode>,
 }
 
+impl Default for MctsNode {
+  fn default() -> Self {
+    MctsNode::new(0, 0.0, 0.0)
+  }
+}
+
 const C_PUCT: f64 = 1f64;
 
 const TEMPERATURE: f64 = 1f64;

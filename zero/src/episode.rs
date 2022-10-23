@@ -164,7 +164,7 @@ where
   M: Model<E = E>,
   R: Rng,
 {
-  let mut node = MctsNode::new(0, 0f64, 0f64);
+  let mut node = MctsNode::default();
   let mut moves_count = 0;
 
   while !field.is_game_over() {
