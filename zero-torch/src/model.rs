@@ -22,9 +22,9 @@ impl PyModel {
     Python::with_gil(|py| {
       let oppai_net = PyModule::from_code(py, OPPAI_NET, "oppai_net.py", "oppai_net")?;
       let locals = [("torch", py.import("torch")?), ("oppai_net", oppai_net)].into_py_dict(py);
-      locals.set_item("width", width.into_py(py))?;
-      locals.set_item("height", height.into_py(py))?;
-      locals.set_item("channels", channels.into_py(py))?;
+      locals.set_item("width", width)?;
+      locals.set_item("height", height)?;
+      locals.set_item("channels", channels)?;
       let model: PyObject = py
         .eval(
           "oppai_net.OppaiNet(width, height, channels).double()",
@@ -51,7 +51,7 @@ impl PyModel {
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("model", &self.model)?;
       locals.set_item("optimizer", &self.optimizer)?;
-      locals.set_item("path", self.path.as_ref().into_py(py))?;
+      locals.set_item("path", self.path.as_ref())?;
 
       py.run(
         indoc! {"
@@ -152,7 +152,7 @@ impl TrainableModel for PyModel {
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("model", &self.model)?;
       locals.set_item("optimizer", &self.optimizer)?;
-      locals.set_item("path", self.path.as_ref().into_py(py))?;
+      locals.set_item("path", self.path.as_ref())?;
 
       py.run(
         "torch.save({ 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict() }, path)",
