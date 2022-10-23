@@ -550,9 +550,6 @@ impl UctRoot {
     }
   }
 
-  // TODO: move this to exact place once stmt_expr_attributes gets stabilized
-  // (see #15701)
-  #[allow(clippy::float_cmp)]
   pub fn best_move<S, R>(
     &mut self,
     field: &Field,
@@ -623,6 +620,7 @@ impl UctRoot {
           next_node.get_draws(),
           next_node.get_visits()
         );
+        #[allow(clippy::float_cmp)]
         if uct_value > best_uct || uct_value == best_uct && rng.gen::<bool>() {
           best_uct = uct_value;
           result = NonZeroPos::new(pos);
