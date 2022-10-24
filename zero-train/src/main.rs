@@ -1,6 +1,6 @@
 mod config;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use config::cli_parse;
 use oppai_field::{
@@ -11,7 +11,7 @@ use oppai_field::{
 use oppai_initial::initial::InitialPosition;
 use oppai_zero::self_play::self_play;
 use oppai_zero_torch::model::PyModel;
-use pyo3::PyResult;
+use pyo3::{types::IntoPyDict, PyResult, Python};
 use rand::{rngs::SmallRng, SeedableRng};
 
 fn main() -> PyResult<()> {
@@ -35,9 +35,10 @@ fn main() -> PyResult<()> {
   if exists {
     log::info!("Loading the model from {}", path.display());
   }
-  let model = PyModel::new(path, config.width, config.height, 4)?;
+  let mut model = PyModel::new(path, config.width, config.height, 4)?;
   if exists {
     model.load()?;
   }
+  model.to_device(Cow::Owned(config.device))?;
   self_play(&field, player, model, &mut rng)
 }

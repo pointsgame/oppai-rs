@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ const OPPAI_NET: &str = include_str!("../oppai_net.py");
 
 pub struct PyModel {
   path: Arc<PathBuf>,
+  device: Arc<Cow<'static, str>>,
   model: PyObject,
   optimizer: PyObject,
 }
@@ -39,6 +41,7 @@ impl PyModel {
 
       Ok(Self {
         path: Arc::new(path),
+        device: Arc::new(Cow::Borrowed("cpu")),
         model,
         optimizer,
       })
@@ -46,6 +49,8 @@ impl PyModel {
   }
 
   pub fn load(&self) -> PyResult<()> {
+    PyModel::transfer(&self.model, "cpu")?;
+
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;
@@ -62,11 +67,15 @@ impl PyModel {
         None,
         Some(locals),
       )
-    })
+    })?;
+
+    PyModel::transfer(&self.model, self.device.as_ref())
   }
 
   pub fn try_clone(&self) -> PyResult<Self> {
-    Python::with_gil(|py| {
+    PyModel::transfer(&self.model, "cpu")?;
+
+    let result = Python::with_gil(|py| -> PyResult<PyModel> {
       let locals = PyDict::new(py);
       locals.set_item("copy", py.import("copy")?)?;
       locals.set_item("torch", py.import("torch")?)?;
@@ -89,10 +98,32 @@ impl PyModel {
 
       Ok(Self {
         path: self.path.clone(),
+        device: self.device.clone(),
         model,
         optimizer,
       })
+    })?;
+
+    PyModel::transfer(&self.model, self.device.as_ref())?;
+    PyModel::transfer(&result.model, result.device.as_ref())?;
+
+    Ok(result)
+  }
+
+  fn transfer(model: &PyObject, device: &str) -> PyResult<()> {
+    Python::with_gil(|py| {
+      let locals = PyDict::new(py);
+      locals.set_item("model", model)?;
+      locals.set_item("device", device)?;
+
+      py.run("model.to(device)", None, Some(locals))
     })
+  }
+
+  pub fn to_device(&mut self, device: Cow<'static, str>) -> PyResult<()> {
+    self.device = Arc::new(device);
+
+    PyModel::transfer(&self.model, self.device.as_ref())
   }
 }
 
@@ -105,10 +136,11 @@ impl Model for PyModel {
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("inputs", inputs.into_pyarray(py))?;
       locals.set_item("model", &self.model)?;
+      locals.set_item("device", &self.device.as_ref())?;
 
       py.run("model.eval()", None, Some(locals))?;
       py.run(
-        "policies, values = map(lambda x : x.detach().numpy(), model.predict(torch.from_numpy(inputs)))",
+        "policies, values = map(lambda x : x.detach().cpu().numpy(), model.predict(torch.from_numpy(inputs).to(device)))",
         None,
         Some(locals),
       )?;
@@ -147,6 +179,8 @@ impl TrainableModel for PyModel {
   }
 
   fn save(&self) -> Result<(), Self::E> {
+    PyModel::transfer(&self.model, "cpu")?;
+
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;
@@ -159,7 +193,9 @@ impl TrainableModel for PyModel {
         None,
         Some(locals),
       )
-    })
+    })?;
+
+    PyModel::transfer(&self.model, self.device.as_ref())
   }
 }
 
