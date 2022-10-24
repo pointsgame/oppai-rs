@@ -8,8 +8,8 @@ stdenv.mkDerivation {
   src = fetchFromGitHub {
     owner = "artyom-beilis";
     repo = "pytorch_dlprim";
-    sha256 = "sha256-cWjjqvmFbYs4a8Vkx255zjuHnAK5qJvcjhgHQZc9yQo=";
-    rev = "58de5cfd922f0d7d11f5b5da094b27c82d095519";
+    sha256 = "sha256-et7psx+WP7KR01Op4cMJXdDNa9xY6zpYccJgedpRohg=";
+    rev = "525956ab8fd549210aaafdc0908ee31afaf99211";
   };
 
   installPhase = ''
