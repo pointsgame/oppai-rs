@@ -189,10 +189,11 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
       locals.set_item("values", values.into_pyarray(py))?;
       locals.set_item("model", &self.model)?;
       locals.set_item("optimizer", &self.optimizer)?;
+      locals.set_item("device", &self.device.as_ref())?;
 
       py.run("model.train()", None, Some(locals))?;
       py.run(
-        "model.train_on(optimizer, torch.from_numpy(inputs), torch.from_numpy(policies), torch.from_numpy(values))",
+        "model.train_on(optimizer, torch.from_numpy(inputs).to(device), torch.from_numpy(policies).to(device), torch.from_numpy(values).to(device))",
         None,
         Some(locals),
       )?;
