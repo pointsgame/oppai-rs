@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 rand = "0.8"
 ndarray = "0.15"
-decorum = "0.3"
+num-traits = "0.2"
 log = "0.4"
 oppai-common = { path = "../common" }
 oppai-field = { path = "../field" }

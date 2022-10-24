@@ -55,7 +55,7 @@ pub struct Bot<R> {
   pub uct: UctRoot,
   pub minimax: Minimax,
   #[cfg(feature = "zero")]
-  pub zero: Zero<PyModel>,
+  pub zero: Zero<f64, PyModel>,
   pub config: Config,
 }
 
@@ -82,7 +82,7 @@ where
         if !exists {
           log::warn!("No model at {}", path.display());
         }
-        let model = PyModel::new(path, width, height, 4).unwrap();
+        let model = PyModel::new::<f64>(path, width, height, 4).unwrap();
         if exists {
           model.load().unwrap();
         }

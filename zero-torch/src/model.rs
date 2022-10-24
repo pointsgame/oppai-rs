@@ -4,13 +4,30 @@ use std::sync::Arc;
 
 use indoc::indoc;
 use ndarray::{Array1, Array3, Array4};
+use num_traits::Float;
 use numpy::array::{PyArray1, PyArray3};
-use numpy::IntoPyArray;
+use numpy::{Element, IntoPyArray};
 use oppai_zero::model::{Model, TrainableModel};
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 
 const OPPAI_NET: &str = include_str!("../oppai_net.py");
+
+pub trait DType {
+  fn dtype() -> &'static str;
+}
+
+impl DType for f32 {
+  fn dtype() -> &'static str {
+    "torch.float32"
+  }
+}
+
+impl DType for f64 {
+  fn dtype() -> &'static str {
+    "torch.float64"
+  }
+}
 
 pub struct PyModel {
   path: Arc<PathBuf>,
@@ -20,16 +37,18 @@ pub struct PyModel {
 }
 
 impl PyModel {
-  pub fn new(path: PathBuf, width: u32, height: u32, channels: u32) -> PyResult<Self> {
+  pub fn new<N: DType>(path: PathBuf, width: u32, height: u32, channels: u32) -> PyResult<Self> {
     Python::with_gil(|py| {
       let oppai_net = PyModule::from_code(py, OPPAI_NET, "oppai_net.py", "oppai_net")?;
       let locals = [("torch", py.import("torch")?), ("oppai_net", oppai_net)].into_py_dict(py);
       locals.set_item("width", width)?;
       locals.set_item("height", height)?;
       locals.set_item("channels", channels)?;
+      let dtype = py.eval(N::dtype(), None, Some(locals))?;
+      locals.set_item("dtype", dtype)?;
       let model: PyObject = py
         .eval(
-          "oppai_net.OppaiNet(width, height, channels).double()",
+          "oppai_net.OppaiNet(width, height, channels).to(dtype)",
           None,
           Some(locals),
         )?
@@ -127,10 +146,10 @@ impl PyModel {
   }
 }
 
-impl Model for PyModel {
+impl<N: Float + Element + DType> Model<N> for PyModel {
   type E = PyErr;
 
-  fn predict(&self, inputs: Array4<f64>) -> Result<(Array3<f64>, Array1<f64>), Self::E> {
+  fn predict(&self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E> {
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;
@@ -145,8 +164,8 @@ impl Model for PyModel {
         Some(locals),
       )?;
 
-      let policies: &PyArray3<f64> = locals.get_item("policies").unwrap().extract()?;
-      let values: &PyArray1<f64> = locals.get_item("values").unwrap().extract()?;
+      let policies: &PyArray3<N> = locals.get_item("policies").unwrap().extract()?;
+      let values: &PyArray1<N> = locals.get_item("values").unwrap().extract()?;
 
       Ok((
         policies.readonly().as_array().to_owned(),
@@ -156,8 +175,8 @@ impl Model for PyModel {
   }
 }
 
-impl TrainableModel for PyModel {
-  fn train(&self, inputs: Array4<f64>, policies: Array3<f64>, values: Array1<f64>) -> Result<(), Self::E> {
+impl<N: Float + Element + DType> TrainableModel<N> for PyModel {
+  fn train(&self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::E> {
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;

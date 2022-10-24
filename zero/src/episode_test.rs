@@ -17,7 +17,7 @@ struct StubModel {
   value: f64,
 }
 
-impl Model for StubModel {
+impl Model<f64> for StubModel {
   type E = ();
 
   fn predict(&self, inputs: Array4<f64>) -> Result<(Array3<f64>, Array1<f64>), Self::E> {

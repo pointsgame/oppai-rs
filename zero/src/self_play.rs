@@ -1,29 +1,33 @@
 use std::cmp::Ordering;
+use std::iter::Sum;
 use std::mem;
 
 use crate::episode::{episode, mcts};
 use crate::mcts::MctsNode;
 use crate::model::{Model, TrainableModel};
 use ndarray::{Array, Axis};
+use num_traits::Float;
 use oppai_field::field::Field;
 use oppai_field::player::Player;
+use rand::distributions::uniform::SampleUniform;
 use rand::Rng;
 
 const ITERATIONS_NUMBER: u32 = 10000;
 const PIT_GAMES: u64 = 100;
 const WIN_RATE_THRESHOLD: f64 = 0.55;
-const EPISODES: u32 = 10;
+const EPISODES: u32 = 20;
 const MCTS_SIMS: u32 = 32;
 
-fn play<'a, E, M, R>(
+fn play<'a, N, M, R>(
   field: &mut Field,
   mut player: Player,
   mut model1: &'a M,
   mut model2: &'a M,
   rng: &mut R,
-) -> Result<i32, E>
+) -> Result<i32, M::E>
 where
-  M: Model<E = E>,
+  M: Model<N>,
+  N: Float + Sum,
   R: Rng,
 {
   let mut moves_count = 0;
@@ -58,9 +62,10 @@ fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
   }
 }
 
-fn pit<E, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, E>
+fn pit<N, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, M::E>
 where
-  M: Model<E = E>,
+  M: Model<N>,
+  N: Float + Sum,
   R: Rng,
 {
   let mut wins = 0;
@@ -88,9 +93,10 @@ where
   Ok(win_rate > WIN_RATE_THRESHOLD)
 }
 
-pub fn self_play<E, M, R>(field: &Field, player: Player, mut model: M, rng: &mut R) -> Result<(), E>
+pub fn self_play<N, M, R>(field: &Field, player: Player, mut model: M, rng: &mut R) -> Result<(), M::E>
 where
-  M: TrainableModel<E = E> + Clone,
+  M: TrainableModel<N> + Clone,
+  N: Float + Sum + SampleUniform,
   R: Rng,
 {
   let mut inputs = Vec::new();

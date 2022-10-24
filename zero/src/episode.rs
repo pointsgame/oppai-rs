@@ -2,16 +2,18 @@ use crate::field_features::field_features;
 use crate::mcts::MctsNode;
 use crate::model::Model;
 use ndarray::{s, Array2, Array3, ArrayView2, Axis};
+use num_traits::Float;
 use oppai_common::common::is_last_move_stupid;
 use oppai_field::field::{to_x, to_y, Field, Pos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::ROTATIONS;
+use rand::distributions::uniform::SampleUniform;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use std::cmp::Ordering;
-use std::iter;
+use std::iter::{self, Sum};
 
-fn winner(field: &Field, player: Player) -> i64 {
+fn winner(field: &Field, player: Player) -> i8 {
   match field.score(player).cmp(&0) {
     Ordering::Less => -1,
     Ordering::Equal => 0,
@@ -34,11 +36,11 @@ const PARALLEL_READOUTS: usize = 8;
 
 const EXPLORATION_THRESHOLD: u32 = 30;
 
-fn select<R: Rng>(mut nodes: Vec<MctsNode>, rng: &mut R) -> MctsNode {
-  let r = rng.gen_range(0f64..nodes.iter().map(|child| child.probability()).sum::<f64>());
-  let mut sum = 0.0;
+fn select<N: Float + Sum + SampleUniform, R: Rng>(mut nodes: Vec<MctsNode<N>>, rng: &mut R) -> MctsNode<N> {
+  let r = rng.gen_range(N::zero()..nodes.iter().map(|child| child.probability()).sum::<N>());
+  let mut sum = N::zero();
   while let Some(node) = nodes.pop() {
-    sum += node.probability();
+    sum = sum + node.probability();
     if sum > r {
       return node;
     }
@@ -46,13 +48,13 @@ fn select<R: Rng>(mut nodes: Vec<MctsNode>, rng: &mut R) -> MctsNode {
   unreachable!()
 }
 
-fn create_children<R: Rng>(
+fn create_children<N: Float + Sum, R: Rng>(
   field: &mut Field,
   player: Player,
-  policy: &ArrayView2<f64>,
-  value: f64,
+  policy: &ArrayView2<N>,
+  value: N,
   rng: &mut R,
-) -> Vec<MctsNode> {
+) -> Vec<MctsNode<N>> {
   let width = field.width();
   let mut children = (field.min_pos()..=field.max_pos())
     .filter(|&pos| {
@@ -72,16 +74,23 @@ fn create_children<R: Rng>(
     .collect::<Vec<_>>();
   children.shuffle(rng);
   // renormalize
-  let sum: f64 = children.iter().map(|child| child.p).sum();
+  let sum: N = children.iter().map(|child| child.p).sum();
   for child in children.iter_mut() {
-    child.p /= sum;
+    child.p = child.p / sum;
   }
   children
 }
 
-pub fn mcts<E, M, R>(field: &mut Field, player: Player, node: &mut MctsNode, model: &M, rng: &mut R) -> Result<(), E>
+pub fn mcts<N, M, R>(
+  field: &mut Field,
+  player: Player,
+  node: &mut MctsNode<N>,
+  model: &M,
+  rng: &mut R,
+) -> Result<(), M::E>
 where
-  M: Model<E = E>,
+  M: Model<N>,
+  N: Float + Sum,
   R: Rng,
 {
   let mut leafs = iter::repeat_with(|| node.select())
@@ -103,7 +112,7 @@ where
     if cur_field.is_game_over() {
       node.add_result(
         &cur_field.points_seq()[field.moves_count()..],
-        winner(cur_field, player) as f64,
+        N::from(winner(cur_field, player)).unwrap(),
         Vec::new(),
       );
       false
@@ -151,17 +160,18 @@ where
   Ok(())
 }
 
-pub fn episode<E, M, R>(
+pub fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
   model: &M,
   rng: &mut R,
-  inputs: &mut Vec<Array3<f64>>,
-  policies: &mut Vec<Array2<f64>>,
-  values: &mut Vec<f64>,
-) -> Result<(), E>
+  inputs: &mut Vec<Array3<N>>,
+  policies: &mut Vec<Array2<N>>,
+  values: &mut Vec<N>,
+) -> Result<(), M::E>
 where
-  M: Model<E = E>,
+  M: Model<N>,
+  N: Float + Sum + SampleUniform,
   R: Rng,
 {
   let mut node = MctsNode::default();
@@ -198,7 +208,7 @@ where
   let mut value = winner(field, if moves_count % 2 == 0 { player } else { player.next() });
   for _ in 0..moves_count {
     for _ in 0..ROTATIONS {
-      values.push(value as f64);
+      values.push(N::from(value).unwrap());
     }
     value = -value;
   }

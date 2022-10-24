@@ -1,5 +1,9 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+  iter::Sum,
+  sync::atomic::{AtomicBool, Ordering},
+};
 
+use num_traits::Float;
 use oppai_field::{
   field::{Field, NonZeroPos},
   player::Player,
@@ -8,12 +12,16 @@ use rand::Rng;
 
 use crate::{episode::mcts, mcts::MctsNode, model::Model};
 
-pub struct Zero<M> {
+pub struct Zero<N: Float, M: Model<N>> {
   model: M,
-  node: MctsNode,
+  node: MctsNode<N>,
 }
 
-impl<M: Model> Zero<M> {
+impl<N, M> Zero<N, M>
+where
+  M: Model<N>,
+  N: Float + Sum,
+{
   pub fn new(model: M) -> Self {
     Zero {
       model,
@@ -32,7 +40,7 @@ impl<M: Model> Zero<M> {
     rng: &mut R,
     should_stop: &AtomicBool,
     max_iterations_count: usize,
-  ) -> Result<Option<NonZeroPos>, <M as Model>::E> {
+  ) -> Result<Option<NonZeroPos>, <M as Model<N>>::E> {
     // TODO: persistent tree
     self.clear();
 

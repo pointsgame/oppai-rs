@@ -1,10 +1,11 @@
 use ndarray::{Array, Array3};
+use num_traits::{One, Zero};
 use oppai_field::cell::Cell;
 use oppai_field::field::Field;
 use oppai_field::player::Player;
 use oppai_rotate::rotate::rotate;
 
-fn push_features<F: Fn(Cell) -> f64 + Copy>(field: &Field, f: F, features: &mut Vec<f64>, rotation: u8) {
+fn push_features<N, F: Fn(Cell) -> N + Copy>(field: &Field, f: F, features: &mut Vec<N>, rotation: u8) {
   features.extend((0..field.height()).flat_map(|y| {
     (0..field.width()).map(move |x| {
       let (x, y) = rotate(field.width(), field.height(), x, y, rotation);
@@ -14,30 +15,42 @@ fn push_features<F: Fn(Cell) -> f64 + Copy>(field: &Field, f: F, features: &mut 
   }));
 }
 
-pub fn field_features(field: &Field, player: Player, rotation: u8) -> Array3<f64> {
+pub fn field_features<N: Zero + One>(field: &Field, player: Player, rotation: u8) -> Array3<N> {
   let mut features = Vec::with_capacity((field.width() * field.height() * 2) as usize);
   let enemy = player.next();
   push_features(
     field,
-    |cell| if cell.is_owner(player) { 1f64 } else { 0f64 },
+    |cell| if cell.is_owner(player) { N::one() } else { N::zero() },
     &mut features,
     rotation,
   );
   push_features(
     field,
-    |cell| if cell.is_owner(enemy) { 1f64 } else { 0f64 },
+    |cell| if cell.is_owner(enemy) { N::one() } else { N::zero() },
     &mut features,
     rotation,
   );
   push_features(
     field,
-    |cell| if cell.is_players_point(player) { 1f64 } else { 0f64 },
+    |cell| {
+      if cell.is_players_point(player) {
+        N::one()
+      } else {
+        N::zero()
+      }
+    },
     &mut features,
     rotation,
   );
   push_features(
     field,
-    |cell| if cell.is_players_point(enemy) { 1f64 } else { 0f64 },
+    |cell| {
+      if cell.is_players_point(enemy) {
+        N::one()
+      } else {
+        N::zero()
+      }
+    },
     &mut features,
     rotation,
   );

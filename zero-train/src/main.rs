@@ -35,10 +35,10 @@ fn main() -> PyResult<()> {
   if exists {
     log::info!("Loading the model from {}", path.display());
   }
-  let mut model = PyModel::new(path, config.width, config.height, 4)?;
+  let mut model = PyModel::new::<f64>(path, config.width, config.height, 4)?;
   if exists {
     model.load()?;
   }
   model.to_device(Cow::Owned(config.device))?;
-  self_play(&field, player, model, &mut rng)
+  self_play::<f64, _, _>(&field, player, model, &mut rng)
 }

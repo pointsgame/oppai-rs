@@ -46,15 +46,6 @@ checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
 name = "approx"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0e60b75072ecd4168020818c0107f2857bb6c4e64252d8d3983f6263b40a5c3"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
-name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
@@ -644,18 +635,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "decorum"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "281759d3c8a14f5c3f0c49363be56810fcd7f910422f97f2db850c2920fde5cf"
-dependencies = [
- "approx 0.3.2",
- "num-traits",
- "serde",
- "serde_derive",
-]
-
-[[package]]
 name = "derive_more"
 version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1006,7 +985,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc32c2334f00ca5ac3695c5009ae35da21da8c62d255b5b96d56e2597a637a38"
 dependencies = [
  "ab_glyph",
- "approx 0.5.1",
+ "approx",
  "xi-unicode",
 ]
 
@@ -2014,9 +1993,9 @@ dependencies = [
 name = "oppai-zero"
 version = "0.1.0"
 dependencies = [
- "decorum",
  "log",
  "ndarray",
+ "num-traits",
  "oppai-common 0.1.0",
  "oppai-field 0.1.0",
  "oppai-rotate",
@@ -2030,6 +2009,7 @@ version = "0.1.0"
 dependencies = [
  "indoc",
  "ndarray",
+ "num-traits",
  "numpy",
  "oppai-zero",
  "pyo3",
