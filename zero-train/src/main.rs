@@ -1,8 +1,10 @@
 mod config;
 
-use std::{borrow::Cow, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, iter::Sum, path::PathBuf, sync::Arc};
 
-use config::cli_parse;
+use config::{cli_parse, Config};
+use num_traits::Float;
+use numpy::Element;
 use oppai_field::{
   field::{length, Field},
   player::Player,
@@ -10,15 +12,11 @@ use oppai_field::{
 };
 use oppai_initial::initial::InitialPosition;
 use oppai_zero::self_play::self_play;
-use oppai_zero_torch::model::PyModel;
+use oppai_zero_torch::model::{DType, PyModel};
 use pyo3::{types::IntoPyDict, PyResult, Python};
-use rand::{rngs::SmallRng, SeedableRng};
+use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
 
-fn main() -> PyResult<()> {
-  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
-  env_logger::Builder::from_env(env).init();
-
-  let config = cli_parse();
+fn run<N: Float + Sum + SampleUniform + DType + Element>(config: Config) -> PyResult<()> {
   let player = Player::Red;
 
   let mut rng = SmallRng::from_entropy();
@@ -40,14 +38,30 @@ fn main() -> PyResult<()> {
   }
 
   let path = PathBuf::from("model.pt");
+
   let exists = path.exists();
   if exists {
     log::info!("Loading the model from {}", path.display());
   }
-  let mut model = PyModel::new::<f64>(path, config.width, config.height, 4)?;
+
+  let mut model = PyModel::<N>::new(path, config.width, config.height, 4)?;
   if exists {
     model.load()?;
   }
   model.to_device(Cow::Owned(config.device))?;
-  self_play::<f64, _, _>(&field, player, model, &mut rng)
+
+  self_play(&field, player, model, &mut rng)
+}
+
+fn main() -> PyResult<()> {
+  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  env_logger::Builder::from_env(env).init();
+
+  let config = cli_parse();
+
+  if config.double {
+    run::<f64>(config)
+  } else {
+    run::<f32>(config)
+  }
 }

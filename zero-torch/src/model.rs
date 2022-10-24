@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -29,15 +30,16 @@ impl DType for f64 {
   }
 }
 
-pub struct PyModel {
+pub struct PyModel<N> {
+  phantom: PhantomData<N>,
   path: Arc<PathBuf>,
   device: Arc<Cow<'static, str>>,
   model: PyObject,
   optimizer: PyObject,
 }
 
-impl PyModel {
-  pub fn new<N: DType>(path: PathBuf, width: u32, height: u32, channels: u32) -> PyResult<Self> {
+impl<N: DType> PyModel<N> {
+  pub fn new(path: PathBuf, width: u32, height: u32, channels: u32) -> PyResult<Self> {
     Python::with_gil(|py| {
       let oppai_net = PyModule::from_code(py, OPPAI_NET, "oppai_net.py", "oppai_net")?;
       let locals = [("torch", py.import("torch")?), ("oppai_net", oppai_net)].into_py_dict(py);
@@ -59,6 +61,7 @@ impl PyModel {
         .extract()?;
 
       Ok(Self {
+        phantom: PhantomData::default(),
         path: Arc::new(path),
         device: Arc::new(Cow::Borrowed("cpu")),
         model,
@@ -68,7 +71,7 @@ impl PyModel {
   }
 
   pub fn load(&self) -> PyResult<()> {
-    PyModel::transfer(&self.model, "cpu")?;
+    PyModel::<N>::transfer(&self.model, "cpu")?;
 
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
@@ -88,13 +91,13 @@ impl PyModel {
       )
     })?;
 
-    PyModel::transfer(&self.model, self.device.as_ref())
+    PyModel::<N>::transfer(&self.model, self.device.as_ref())
   }
 
   pub fn try_clone(&self) -> PyResult<Self> {
-    PyModel::transfer(&self.model, "cpu")?;
+    PyModel::<N>::transfer(&self.model, "cpu")?;
 
-    let result = Python::with_gil(|py| -> PyResult<PyModel> {
+    let result = Python::with_gil(|py| -> PyResult<PyModel<N>> {
       let locals = PyDict::new(py);
       locals.set_item("copy", py.import("copy")?)?;
       locals.set_item("torch", py.import("torch")?)?;
@@ -116,6 +119,7 @@ impl PyModel {
       )?;
 
       Ok(Self {
+        phantom: self.phantom,
         path: self.path.clone(),
         device: self.device.clone(),
         model,
@@ -123,8 +127,8 @@ impl PyModel {
       })
     })?;
 
-    PyModel::transfer(&self.model, self.device.as_ref())?;
-    PyModel::transfer(&result.model, result.device.as_ref())?;
+    PyModel::<N>::transfer(&self.model, self.device.as_ref())?;
+    PyModel::<N>::transfer(&result.model, result.device.as_ref())?;
 
     Ok(result)
   }
@@ -142,11 +146,11 @@ impl PyModel {
   pub fn to_device(&mut self, device: Cow<'static, str>) -> PyResult<()> {
     self.device = Arc::new(device);
 
-    PyModel::transfer(&self.model, self.device.as_ref())
+    PyModel::<N>::transfer(&self.model, self.device.as_ref())
   }
 }
 
-impl<N: Float + Element + DType> Model<N> for PyModel {
+impl<N: Float + Element + DType> Model<N> for PyModel<N> {
   type E = PyErr;
 
   fn predict(&self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E> {
@@ -175,7 +179,7 @@ impl<N: Float + Element + DType> Model<N> for PyModel {
   }
 }
 
-impl<N: Float + Element + DType> TrainableModel<N> for PyModel {
+impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
   fn train(&self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::E> {
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
@@ -198,7 +202,7 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel {
   }
 
   fn save(&self) -> Result<(), Self::E> {
-    PyModel::transfer(&self.model, "cpu")?;
+    PyModel::<N>::transfer(&self.model, "cpu")?;
 
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
@@ -214,11 +218,11 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel {
       )
     })?;
 
-    PyModel::transfer(&self.model, self.device.as_ref())
+    PyModel::<N>::transfer(&self.model, self.device.as_ref())
   }
 }
 
-impl Clone for PyModel {
+impl<N: DType> Clone for PyModel<N> {
   fn clone(&self) -> Self {
     self.try_clone().unwrap()
   }

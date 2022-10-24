@@ -5,6 +5,7 @@ pub struct Config {
   pub height: u32,
   pub device: String,
   pub library: Option<String>,
+  pub double: bool,
 }
 
 impl Default for Config {
@@ -14,6 +15,7 @@ impl Default for Config {
       height: 16,
       device: "cpu".to_string(),
       library: None,
+      double: false,
     }
   }
 }
@@ -50,17 +52,24 @@ pub fn cli_parse() -> Config {
         .help("Load pytorch dynamic library")
         .takes_value(true),
     )
+    .arg(
+      Arg::new("double")
+        .long("double")
+        .help("Use double precision type (float64) for calculations"),
+    )
     .get_matches();
 
   let width = matches.value_of_t("width").unwrap_or_else(|e| e.exit());
   let height = matches.value_of_t("height").unwrap_or_else(|e| e.exit());
   let device = matches.value_of_t("device").unwrap_or_else(|e| e.exit());
   let library = matches.get_one::<String>("library").cloned();
+  let double = matches.is_present("double");
 
   Config {
     width,
     height,
     device,
     library,
+    double,
   }
 }

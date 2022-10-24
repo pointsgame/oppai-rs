@@ -2023,6 +2023,8 @@ dependencies = [
  "env_logger",
  "log",
  "ndarray",
+ "num-traits",
+ "numpy",
  "oppai-field 0.1.0",
  "oppai-initial",
  "oppai-zero",
