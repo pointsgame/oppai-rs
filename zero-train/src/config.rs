@@ -4,6 +4,7 @@ pub struct Config {
   pub width: u32,
   pub height: u32,
   pub device: String,
+  pub library: Option<String>,
 }
 
 impl Default for Config {
@@ -12,6 +13,7 @@ impl Default for Config {
       width: 16,
       height: 16,
       device: "cpu".to_string(),
+      library: None,
     }
   }
 }
@@ -42,11 +44,23 @@ pub fn cli_parse() -> Config {
         .takes_value(true)
         .default_value("cpu"),
     )
+    .arg(
+      Arg::new("library")
+        .long("library")
+        .help("Load pytorch dynamic library")
+        .takes_value(true),
+    )
     .get_matches();
 
   let width = matches.value_of_t("width").unwrap_or_else(|e| e.exit());
   let height = matches.value_of_t("height").unwrap_or_else(|e| e.exit());
   let device = matches.value_of_t("device").unwrap_or_else(|e| e.exit());
+  let library = matches.get_one::<String>("library").cloned();
 
-  Config { width, height, device }
+  Config {
+    width,
+    height,
+    device,
+    library,
+  }
 }

@@ -30,6 +30,15 @@ fn main() -> PyResult<()> {
     field.put_point(pos, player);
   }
 
+  if let Some(library) = config.library {
+    Python::with_gil(|py| {
+      let locals = [("torch", py.import("torch")?)].into_py_dict(py);
+      locals.set_item("library", library)?;
+
+      py.run("torch.ops.load_library(library)", None, Some(locals))
+    })?;
+  }
+
   let path = PathBuf::from("model.pt");
   let exists = path.exists();
   if exists {
