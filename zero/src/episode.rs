@@ -196,7 +196,7 @@ where
     node = if moves_count < EXPLORATION_THRESHOLD {
       select(node.children, rng)
     } else {
-      node.children.into_iter().max_by_key(|child| child.n).unwrap()
+      node.best_child().unwrap()
     };
     field.put_point(node.pos, player);
     player = player.next();

@@ -116,6 +116,11 @@ impl<N: Float> MctsNode<N> {
     policies
   }
 
+  pub fn best_child(self) -> Option<MctsNode<N>> {
+    // TODO: option to use winrate?
+    self.children.into_iter().max_by_key(|child| child.n)
+  }
+
   pub fn best_move(&self) -> Option<NonZeroPos> {
     // TODO: option to use winrate?
     self

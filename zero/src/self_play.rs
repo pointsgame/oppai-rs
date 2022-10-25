@@ -31,21 +31,28 @@ where
   R: Rng,
 {
   let mut moves_count = 0;
+  let mut node1 = MctsNode::default();
+  let mut node2 = MctsNode::default();
 
   while !field.is_game_over() {
-    // TODO: persistent tree?
-    let mut node = MctsNode::default();
     for _ in 0..MCTS_SIMS {
-      mcts(field, player, &mut node, model1, rng)?;
+      mcts(field, player, &mut node1, model1, rng)?;
     }
 
-    if let Some(pos) = node.best_move() {
-      field.put_point(pos.get(), player);
+    if let Some(child) = node1.best_child() {
+      field.put_point(child.pos, player);
+      node1 = child;
     } else {
       break;
     }
+    node2 = node2
+      .children
+      .into_iter()
+      .find(|child| child.pos == node1.pos)
+      .unwrap_or_default();
 
     mem::swap(&mut model1, &mut model2);
+    mem::swap(&mut node1, &mut node2);
     player = player.next();
     moves_count += 1;
   }
