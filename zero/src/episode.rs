@@ -6,7 +6,7 @@ use num_traits::Float;
 use oppai_common::common::is_last_move_stupid;
 use oppai_field::field::{to_x, to_y, Field, Pos};
 use oppai_field::player::Player;
-use oppai_rotate::rotate::ROTATIONS;
+use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
 use rand::distributions::uniform::SampleUniform;
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -176,6 +176,11 @@ where
 {
   let mut node = MctsNode::default();
   let mut moves_count = 0;
+  let rotations = if field.width() == field.height() {
+    ROTATIONS
+  } else {
+    MIRRORS
+  };
 
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
@@ -187,8 +192,7 @@ where
       break;
     }
 
-    // TODO: check dimensions
-    for rotation in 0..ROTATIONS {
+    for rotation in 0..rotations {
       inputs.push(field_features(field, player, rotation));
       policies.push(node.policies(field.width(), field.height(), rotation));
     }
@@ -207,7 +211,7 @@ where
 
   let mut value = winner(field, if moves_count % 2 == 0 { player } else { player.next() });
   for _ in 0..moves_count {
-    for _ in 0..ROTATIONS {
+    for _ in 0..rotations {
       values.push(N::from(value).unwrap());
     }
     value = -value;
