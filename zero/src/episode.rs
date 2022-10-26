@@ -13,14 +13,19 @@ use rand::Rng;
 use std::fmt::Display;
 use std::iter::{self, Sum};
 
-fn winner(field: &Field, player: Player) -> i8 {
-  match field.score(player).cmp(&0) {
-    Ordering::Less => -1,
-    Ordering::Equal => 0,
-    Ordering::Greater => 1,
-  }
+#[inline]
+pub fn logistic<N: Float>(p: N) -> N {
+  let l = N::one() + N::one();
+  let k = N::one();
+  l / ((-p * k).exp() + N::one()) - N::one()
 }
 
+#[inline]
+fn game_result<N: Float>(field: &Field, player: Player) -> N {
+  logistic(N::from(field.score(player)).unwrap())
+}
+
+#[inline]
 fn make_moves(initial: &Field, moves: &[Pos], mut player: Player) -> Field {
   let mut field = initial.clone();
   for &pos in moves {
@@ -112,7 +117,7 @@ where
     if cur_field.is_game_over() {
       node.add_result(
         &cur_field.points_seq()[field.moves_count()..],
-        N::from(winner(cur_field, player)).unwrap(),
+        game_result(cur_field, player),
         Vec::new(),
       );
       false
@@ -216,10 +221,10 @@ where
     );
   }
 
-  let mut value = winner(field, if moves_count % 2 == 0 { player } else { player.next() });
+  let mut value = game_result(field, if moves_count % 2 == 0 { player } else { player.next() });
   for _ in 0..moves_count {
     for _ in 0..rotations {
-      values.push(N::from(value).unwrap());
+      values.push(value);
     }
     value = -value;
   }

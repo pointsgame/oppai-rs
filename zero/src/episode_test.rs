@@ -5,7 +5,7 @@ use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::iter;
 
-use crate::episode::{episode, mcts};
+use crate::episode::{episode, logistic, mcts};
 use crate::mcts::MctsNode;
 use crate::model::Model;
 
@@ -104,7 +104,7 @@ fn mcts_last_iterations() {
 
   mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
   assert_eq!(node.n, 1);
-  assert_eq!(node.w, -1.0);
+  assert_eq!(node.w, logistic(-1.0));
   assert!(node.children.is_empty());
 }
 
@@ -163,7 +163,7 @@ fn episode_simple_surrounding() {
   )
   .unwrap();
 
-  assert_eq!(values, vec![1.0; 8]);
+  assert_eq!(values, vec![logistic(1.0); 8]);
 }
 
 #[test]

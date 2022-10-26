@@ -61,6 +61,7 @@ where
   Ok(field.score(if moves_count % 2 == 0 { player } else { player.next() }))
 }
 
+#[inline]
 fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
   if games == 0 {
     0.0

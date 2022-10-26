@@ -17,6 +17,7 @@ pub struct MctsNode<N> {
 }
 
 impl<N: Zero> Default for MctsNode<N> {
+  #[inline]
   fn default() -> Self {
     MctsNode::new(0, N::zero(), N::zero())
   }
@@ -27,6 +28,7 @@ const C_PUCT: f64 = 1f64;
 const TEMPERATURE: f64 = 1f64;
 
 impl<N: Zero> MctsNode<N> {
+  #[inline]
   pub fn new(pos: Pos, p: N, w: N) -> Self {
     Self {
       pos,
@@ -40,14 +42,17 @@ impl<N: Zero> MctsNode<N> {
 
 impl<N: Float> MctsNode<N> {
   /// Mean action value.
+  #[inline]
   pub fn q(&self) -> N {
     self.w / N::from(self.n + 1).unwrap()
   }
 
+  #[inline]
   pub fn probability(&self) -> N {
     N::from(self.n).unwrap().powf(N::one() / N::from(TEMPERATURE).unwrap())
   }
 
+  #[inline]
   pub fn mcts_value(&self, parent_n_sqrt: N) -> N {
     // TODO: moinigo uses a more complex formula
     // 2.0 * (log((1.0 + parent_n + c_puct_base) / c_puct_base) + c_puct_init) instead of C_PUCT
