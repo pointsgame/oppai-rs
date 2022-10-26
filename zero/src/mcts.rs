@@ -48,19 +48,20 @@ impl<N: Float> MctsNode<N> {
     N::from(self.n).unwrap().powf(N::one() / N::from(TEMPERATURE).unwrap())
   }
 
-  pub fn mcts_value(&self, parent_n: u64) -> N {
+  pub fn mcts_value(&self, parent_n_sqrt: N) -> N {
     // TODO: moinigo uses a more complex formula
-    // max(1, parent_n - 1) instead of parent_n
     // 2.0 * (log((1.0 + parent_n + c_puct_base) / c_puct_base) + c_puct_init) instead of C_PUCT
-    self.q() + N::from(C_PUCT).unwrap() * self.p * N::from(parent_n).unwrap().sqrt() / N::from(1 + self.n).unwrap()
+    self.q() + N::from(C_PUCT).unwrap() * self.p * parent_n_sqrt / N::from(1 + self.n).unwrap()
   }
 
   fn select_child(&mut self) -> Option<&mut MctsNode<N>> {
-    let n = self.n;
-    self
-      .children
-      .iter_mut()
-      .max_by(|child1, child2| child1.mcts_value(n).partial_cmp(&child2.mcts_value(n)).unwrap())
+    let n_sqrt = N::from(self.n).unwrap().sqrt();
+    self.children.iter_mut().max_by(|child1, child2| {
+      child1
+        .mcts_value(n_sqrt)
+        .partial_cmp(&child2.mcts_value(n_sqrt))
+        .unwrap()
+    })
   }
 
   pub fn select(&mut self) -> Vec<Pos> {
