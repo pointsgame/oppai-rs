@@ -1,11 +1,13 @@
 use ndarray::{Array, Array1, Array3, Array4, Axis};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
+use oppai_rotate::rotate::ROTATIONS;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::iter;
 
 use crate::episode::{episode, logistic, mcts};
+use crate::field_features::field_features;
 use crate::mcts::MctsNode;
 use crate::model::Model;
 
@@ -163,6 +165,13 @@ fn episode_simple_surrounding() {
   )
   .unwrap();
 
+  assert_eq!(field.moves_count(), 5);
+
+  field.undo();
+  for rotation in 0..ROTATIONS {
+    assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
+  }
+
   assert_eq!(values, vec![logistic(1.0); 8]);
 }
 
@@ -196,6 +205,21 @@ fn episode_trap() {
     &mut values,
   )
   .unwrap();
+
+  assert_eq!(field.moves_count(), 5);
+
+  field.undo();
+  for rotation in 0..ROTATIONS {
+    assert_eq!(
+      inputs[(ROTATIONS + rotation) as usize],
+      field_features(&field, Player::Black, rotation)
+    );
+  }
+
+  field.undo();
+  for rotation in 0..ROTATIONS {
+    assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
+  }
 
   assert_eq!(values, vec![0.0; 16]);
 }

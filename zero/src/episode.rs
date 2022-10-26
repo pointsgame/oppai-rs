@@ -1,7 +1,7 @@
-use crate::field_features::field_features;
+use crate::field_features::{field_features, field_features_len, field_features_to_vec, CHANNELS};
 use crate::mcts::MctsNode;
 use crate::model::Model;
-use ndarray::{s, Array2, Array3, ArrayView2, Axis};
+use ndarray::{s, Array, Array2, Array3, ArrayView2};
 use num_traits::Float;
 use oppai_common::common::is_last_move_stupid;
 use oppai_field::field::{to_x, to_y, Field, Pos};
@@ -130,23 +130,22 @@ where
     return Ok(());
   }
 
-  let feautures = fields
-    .iter()
-    .map(|cur_field| {
-      field_features(
-        cur_field,
-        if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
-          player
-        } else {
-          player.next()
-        },
-        0,
-      )
-    })
-    .collect::<Vec<_>>();
-  let features = ndarray::stack(
-    Axis(0),
-    feautures.iter().map(|f| f.view()).collect::<Vec<_>>().as_slice(),
+  let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()) * fields.len());
+  for cur_field in &fields {
+    field_features_to_vec::<N>(
+      cur_field,
+      if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+        player
+      } else {
+        player.next()
+      },
+      0,
+      &mut features,
+    )
+  }
+  let features = Array::from_shape_vec(
+    (fields.len(), CHANNELS, field.height() as usize, field.width() as usize),
+    features,
   )
   .unwrap();
 
