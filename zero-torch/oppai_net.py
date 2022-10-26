@@ -11,7 +11,9 @@ def loss_policy(targets, outputs):
   return -torch.sum(targets * outputs) / targets.size()[0]
 
 def loss_value(targets, outputs):
-  return torch.sum((targets - outputs) ** 2) / targets.size()[0]
+  # pytorch dlprimitives backend doesn't support pow (** 2)
+  diff = targets - outputs
+  return torch.sum(diff * diff) / targets.size()[0]
 
 class OppaiNet(nn.Module):
   def __init__(self, width, height, num_channels):
