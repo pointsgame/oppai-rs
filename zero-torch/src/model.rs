@@ -57,7 +57,7 @@ impl<N: DType> PyModel<N> {
         .extract()?;
       locals.set_item("model", &model)?;
       let optimizer: PyObject = py
-        .eval("torch.optim.Adam(model.parameters())", None, Some(locals))?
+        .eval("torch.optim.Adam(model.parameters(), weight_decay = 1e-4)", None, Some(locals))?
         .extract()?;
 
       Ok(Self {
