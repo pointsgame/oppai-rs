@@ -1,7 +1,7 @@
 use ndarray::{Array, Array1, Array3, Array4, Axis};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use oppai_rotate::rotate::ROTATIONS;
+use oppai_rotate::rotate::{rotate, ROTATIONS};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::iter;
@@ -169,6 +169,10 @@ fn episode_simple_surrounding() {
 
   field.undo();
   for rotation in 0..ROTATIONS {
+    let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
+    assert_eq!(policies[rotation as usize][(y as usize, x as usize)], 1.0);
+  }
+  for rotation in 0..ROTATIONS {
     assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
   }
 
@@ -210,6 +214,10 @@ fn episode_trap() {
 
   field.undo();
   for rotation in 0..ROTATIONS {
+    let (x, y) = rotate(field.width(), field.height(), 1, 1, rotation);
+    assert_eq!(policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)], 1.0);
+  }
+  for rotation in 0..ROTATIONS {
     assert_eq!(
       inputs[(ROTATIONS + rotation) as usize],
       field_features(&field, Player::Black, rotation)
@@ -217,6 +225,10 @@ fn episode_trap() {
   }
 
   field.undo();
+  for rotation in 0..ROTATIONS {
+    let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
+    assert_eq!(policies[rotation as usize][(y as usize, x as usize)], 1.0);
+  }
   for rotation in 0..ROTATIONS {
     assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
   }

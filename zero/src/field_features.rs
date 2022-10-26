@@ -3,7 +3,7 @@ use num_traits::{One, Zero};
 use oppai_field::cell::Cell;
 use oppai_field::field::Field;
 use oppai_field::player::Player;
-use oppai_rotate::rotate::rotate;
+use oppai_rotate::rotate::rotate_back;
 
 pub const CHANNELS: usize = 4;
 
@@ -15,7 +15,7 @@ pub fn field_features_len(width: u32, height: u32) -> usize {
 fn push_features<N, F: Fn(Cell) -> N + Copy>(field: &Field, f: F, features: &mut Vec<N>, rotation: u8) {
   features.extend((0..field.height()).flat_map(|y| {
     (0..field.width()).map(move |x| {
-      let (x, y) = rotate(field.width(), field.height(), x, y, rotation);
+      let (x, y) = rotate_back(field.width(), field.height(), x, y, rotation);
       let pos = field.to_pos(x, y);
       f(field.cell(pos))
     })
