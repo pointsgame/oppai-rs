@@ -96,9 +96,7 @@ impl<N: Float> MctsNode<N> {
       node.w = node.w + result;
       result = -result;
     }
-    if !children.is_empty() {
-      node.children = children;
-    }
+    node.children = children;
   }
 
   /// Improved stochastic policy values.
