@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::fmt::Display;
 use std::iter::Sum;
 use std::mem;
 
@@ -103,7 +104,7 @@ where
 pub fn self_play<N, M, R>(field: &Field, player: Player, mut model: M, rng: &mut R) -> Result<(), M::E>
 where
   M: TrainableModel<N> + Clone,
-  N: Float + Sum + SampleUniform,
+  N: Float + Sum + SampleUniform + Display,
   R: Rng,
 {
   let mut inputs = Vec::new();

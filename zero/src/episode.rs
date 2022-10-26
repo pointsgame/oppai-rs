@@ -10,7 +10,7 @@ use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
 use rand::distributions::uniform::SampleUniform;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use std::cmp::Ordering;
+use std::fmt::Display;
 use std::iter::{self, Sum};
 
 fn winner(field: &Field, player: Player) -> i8 {
@@ -171,7 +171,7 @@ pub fn episode<N, M, R>(
 ) -> Result<(), M::E>
 where
   M: Model<N>,
-  N: Float + Sum + SampleUniform,
+  N: Float + Sum + SampleUniform + Display,
   R: Rng,
 {
   let mut node = MctsNode::default();
@@ -206,7 +206,14 @@ where
     player = player.next();
     moves_count += 1;
 
-    log::debug!("Score: {}\n{:?}", field.score(Player::Red), field);
+    log::debug!(
+      "Score: {}, n: {}, p: {}, w: {}\n{:?}",
+      field.score(Player::Red),
+      node.n,
+      node.p,
+      node.w,
+      field
+    );
   }
 
   let mut value = winner(field, if moves_count % 2 == 0 { player } else { player.next() });
