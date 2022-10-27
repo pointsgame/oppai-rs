@@ -28,7 +28,7 @@ fn play<'a, N, M, R>(
 ) -> Result<i32, M::E>
 where
   M: Model<N>,
-  N: Float + Sum,
+  N: Float + Sum + Display,
   R: Rng,
 {
   let mut moves_count = 0;
@@ -47,6 +47,15 @@ where
       .find(|child| child.pos == node1.pos)
       .unwrap_or_default();
     field.put_point(node1.pos, player);
+
+    log::debug!(
+      "Score: {}, n: {}, p: {}, w: {}\n{:?}",
+      field.score(Player::Red),
+      node1.n,
+      node1.p,
+      node1.w,
+      field
+    );
 
     mem::swap(&mut model1, &mut model2);
     mem::swap(&mut node1, &mut node2);
@@ -70,7 +79,7 @@ fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
 fn pit<N, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, M::E>
 where
   M: Model<N>,
-  N: Float + Sum,
+  N: Float + Sum + Display,
   R: Rng,
 {
   let mut wins = 0;
