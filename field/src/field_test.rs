@@ -369,6 +369,20 @@ fn game_over_4() {
 }
 
 #[test]
+fn game_over_5() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .a.
+    aaa
+    .a.
+    ",
+  );
+  assert_eq!(field.score(Player::Red), 0);
+  assert!(field.is_game_over());
+}
+
+#[test]
 fn game_not_over_1() {
   let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),

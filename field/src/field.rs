@@ -125,6 +125,12 @@ pub fn is_near(width: u32, pos1: Pos, pos2: Pos) -> bool {
     || se(width, pos1) == pos2
 }
 
+pub fn is_corner(width: u32, height: u32, pos: Pos) -> bool {
+  let x = to_x(width, pos);
+  let y = to_y(width, pos);
+  (x == 0 || x == width - 1) && (y == 0 || y == height - 1)
+}
+
 fn get_intersection_state(width: u32, pos: Pos, next_pos: Pos) -> IntersectionState {
   let pos_x = to_x(width, pos);
   let pos_y = to_y(width, pos);
@@ -1045,6 +1051,10 @@ impl Field {
       .cloned()
   }
 
+  pub fn is_corner(&self, pos: Pos) -> bool {
+    is_corner(self.width, self.height, pos)
+  }
+
   fn non_grounded_points(&mut self) -> (u32, u32) {
     let mut result = (0, 0);
     for &pos in &self.points_seq {
@@ -1085,7 +1095,8 @@ impl Field {
       || self
         .points
         .iter()
-        .all(|cell| !cell.is_putting_allowed() || cell.is_empty_base())
+        .enumerate()
+        .all(|(pos, cell)| !cell.is_putting_allowed() || cell.is_empty_base() || self.is_corner(pos))
   }
 
   pub fn clear(&mut self) {
