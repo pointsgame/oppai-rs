@@ -4,19 +4,28 @@ use oppai_field::player::Player;
 use oppai_rotate::rotate::{rotate, ROTATIONS};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use std::cell::RefCell;
 use std::iter;
 
 use crate::episode::{episode, logistic, mcts};
-use crate::field_features::field_features;
+use crate::field_features::{field_features, CHANNELS};
 use crate::mcts::MctsNode;
 use crate::model::Model;
 
 const SEED: u64 = 7;
 
 struct StubModel {
-  width: u32,
-  height: u32,
   value: f64,
+  inputs: RefCell<Vec<Array4<f64>>>,
+}
+
+impl StubModel {
+  fn new(value: f64) -> Self {
+    StubModel {
+      value,
+      inputs: Default::default(),
+    }
+  }
 }
 
 impl Model<f64> for StubModel {
@@ -27,8 +36,7 @@ impl Model<f64> for StubModel {
     let height = inputs.len_of(Axis(2));
     let width = inputs.len_of(Axis(3));
 
-    assert_eq!(width, self.width as usize);
-    assert_eq!(height, self.height as usize);
+    self.inputs.borrow_mut().push(inputs);
 
     let policy = 1f64 / (width * height) as f64;
 
@@ -57,11 +65,7 @@ fn mcts_first_iterations() {
     ",
   );
   let mut node = MctsNode::default();
-  let mut model = StubModel {
-    width: field.width(),
-    height: field.height(),
-    value: 1.0,
-  };
+  let mut model = StubModel::new(1.0);
 
   mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
   assert_eq!(node.n, 1);
@@ -98,11 +102,7 @@ fn mcts_last_iterations() {
     ",
   );
   let mut node = MctsNode::default();
-  let model = StubModel {
-    width: field.width(),
-    height: field.height(),
-    value: 0.0,
-  };
+  let model = StubModel::new(0.0);
 
   mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
   assert_eq!(node.n, 1);
@@ -122,11 +122,7 @@ fn mcts_stupid_moves() {
     ",
   );
   let mut node = MctsNode::default();
-  let model = StubModel {
-    width: field.width(),
-    height: field.height(),
-    value: 0.0,
-  };
+  let model = StubModel::new(0.0);
 
   mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
   assert_eq!(node.n, 1);
@@ -145,11 +141,7 @@ fn episode_simple_surrounding() {
     .a.
     ",
   );
-  let model = StubModel {
-    width: field.width(),
-    height: field.height(),
-    value: 0.0,
-  };
+  let model = StubModel::new(0.0);
 
   let mut inputs = Vec::new();
   let mut policies = Vec::new();
@@ -171,10 +163,21 @@ fn episode_simple_surrounding() {
   for rotation in 0..ROTATIONS {
     let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
     assert_eq!(policies[rotation as usize][(y as usize, x as usize)], 1.0);
+    for channel in 0..CHANNELS {
+      assert_eq!(inputs[rotation as usize][(channel, y as usize, x as usize)], 0.0);
+    }
   }
   for rotation in 0..ROTATIONS {
     assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
   }
+
+  assert_eq!(model.inputs.borrow().len(), 1);
+  assert_eq!(
+    model.inputs.borrow()[0],
+    field_features(&field, Player::Red, 0)
+      .into_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
+      .unwrap()
+  );
 
   assert_eq!(values, vec![logistic(1.0); 8]);
 }
@@ -190,11 +193,7 @@ fn episode_trap() {
     .A.
     ",
   );
-  let model = StubModel {
-    width: field.width(),
-    height: field.height(),
-    value: 0.0,
-  };
+  let model = StubModel::new(0.0);
 
   let mut inputs = Vec::new();
   let mut policies = Vec::new();
@@ -216,6 +215,9 @@ fn episode_trap() {
   for rotation in 0..ROTATIONS {
     let (x, y) = rotate(field.width(), field.height(), 1, 1, rotation);
     assert_eq!(policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)], 1.0);
+    for channel in 0..CHANNELS {
+      assert_eq!(inputs[rotation as usize][(channel, y as usize, x as usize)], 0.0);
+    }
   }
   for rotation in 0..ROTATIONS {
     assert_eq!(
@@ -224,14 +226,30 @@ fn episode_trap() {
     );
   }
 
+  let features1 = field_features(&field, Player::Black, 0)
+    .into_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
+    .unwrap();
+
   field.undo();
   for rotation in 0..ROTATIONS {
     let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
     assert_eq!(policies[rotation as usize][(y as usize, x as usize)], 1.0);
+    for channel in 0..CHANNELS {
+      assert_eq!(inputs[rotation as usize][(channel, y as usize, x as usize)], 0.0);
+    }
   }
   for rotation in 0..ROTATIONS {
     assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
   }
+
+  let features2 = field_features(&field, Player::Red, 0)
+    .into_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
+    .unwrap();
+
+  // TODO: why?
+  assert_eq!(model.inputs.borrow().len(), 256 * 3);
+  assert_eq!(model.inputs.borrow()[0], features2);
+  assert_eq!(model.inputs.borrow()[1], features1);
 
   assert_eq!(values, vec![0.0; 16]);
 }
