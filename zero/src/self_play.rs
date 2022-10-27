@@ -40,17 +40,13 @@ where
       mcts(field, player, &mut node1, model1, rng)?;
     }
 
-    if let Some(child) = node1.best_child() {
-      field.put_point(child.pos, player);
-      node1 = child;
-    } else {
-      break;
-    }
+    node1 = node1.best_child().unwrap();
     node2 = node2
       .children
       .into_iter()
       .find(|child| child.pos == node1.pos)
       .unwrap_or_default();
+    field.put_point(node1.pos, player);
 
     mem::swap(&mut model1, &mut model2);
     mem::swap(&mut node1, &mut node2);

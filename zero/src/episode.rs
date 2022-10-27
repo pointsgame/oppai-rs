@@ -3,7 +3,6 @@ use crate::mcts::MctsNode;
 use crate::model::Model;
 use ndarray::{s, Array, Array2, Array3, ArrayView2};
 use num_traits::Float;
-use oppai_common::common::is_last_move_stupid;
 use oppai_field::field::{to_x, to_y, Field, Pos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
@@ -55,21 +54,13 @@ fn select<N: Float + Sum + SampleUniform, R: Rng>(mut nodes: Vec<MctsNode<N>>, r
 
 fn create_children<N: Float + Sum, R: Rng>(
   field: &mut Field,
-  player: Player,
   policy: &ArrayView2<N>,
   value: N,
   rng: &mut R,
 ) -> Vec<MctsNode<N>> {
   let width = field.width();
   let mut children = (field.min_pos()..=field.max_pos())
-    .filter(|&pos| {
-      field.is_putting_allowed(pos) && {
-        field.put_point(pos, player);
-        let is_stupid = is_last_move_stupid(field, pos, player);
-        field.undo();
-        !is_stupid
-      }
-    })
+    .filter(|&pos| field.is_putting_allowed(pos) && !field.is_corner(pos))
     .map(|pos| {
       let x = to_x(width, pos);
       let y = to_y(width, pos);
@@ -154,10 +145,12 @@ where
   for (i, mut cur_field) in fields.into_iter().enumerate() {
     let policy = policies.slice(s![i, .., ..]);
     let value = values[i];
-    let even = (cur_field.moves_count() - field.moves_count()) % 2 == 0;
-    let player = if even { player } else { player.next() };
-    let children = create_children(&mut cur_field, player, &policy, value, rng);
-    let value = if even { value } else { -value };
+    let children = create_children(&mut cur_field, &policy, value, rng);
+    let value = if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+      value
+    } else {
+      -value
+    };
     node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
   }
 
@@ -189,11 +182,6 @@ where
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
       mcts(field, player, &mut node, model, rng)?;
-    }
-
-    if node.children.is_empty() {
-      // no good moves left, but game is not over yet
-      break;
     }
 
     for rotation in 0..rotations {

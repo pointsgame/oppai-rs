@@ -1996,7 +1996,6 @@ dependencies = [
  "log",
  "ndarray",
  "num-traits",
- "oppai-common 0.1.0",
  "oppai-field 0.1.0",
  "oppai-rotate",
  "rand",
