@@ -1,4 +1,5 @@
 use std::{
+  fmt::{Debug, Display},
   iter::Sum,
   sync::atomic::{AtomicBool, Ordering},
 };
@@ -20,7 +21,7 @@ pub struct Zero<N: Float, M: Model<N>> {
 impl<N, M> Zero<N, M>
 where
   M: Model<N>,
-  N: Float + Sum,
+  N: Float + Sum + Display + Debug,
 {
   pub fn new(model: M) -> Self {
     Zero {

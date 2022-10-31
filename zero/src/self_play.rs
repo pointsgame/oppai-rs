@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::iter::Sum;
 use std::mem;
 
@@ -28,7 +28,7 @@ fn play<'a, N, M, R>(
 ) -> Result<i32, M::E>
 where
   M: Model<N>,
-  N: Float + Sum + Display,
+  N: Float + Sum + Display + Debug,
   R: Rng,
 {
   let mut moves_count = 0;
@@ -79,7 +79,7 @@ fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
 fn pit<N, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, M::E>
 where
   M: Model<N>,
-  N: Float + Sum + Display,
+  N: Float + Sum + Display + Debug,
   R: Rng,
 {
   let mut wins = 0;
@@ -110,7 +110,7 @@ where
 pub fn self_play<N, M, R>(field: &Field, player: Player, mut model: M, rng: &mut R) -> Result<(), M::E>
 where
   M: TrainableModel<N> + Clone,
-  N: Float + Sum + SampleUniform + Display,
+  N: Float + Sum + SampleUniform + Display + Debug,
   R: Rng,
 {
   let mut inputs = Vec::new();

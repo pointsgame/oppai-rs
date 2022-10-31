@@ -9,7 +9,7 @@ use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
 use rand::distributions::uniform::SampleUniform;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
 
 #[inline]
@@ -86,7 +86,7 @@ pub fn mcts<N, M, R>(
 ) -> Result<(), M::E>
 where
   M: Model<N>,
-  N: Float + Sum,
+  N: Float + Sum + Display + Debug,
   R: Rng,
 {
   let mut leafs = iter::repeat_with(|| node.select())
@@ -142,6 +142,10 @@ where
 
   let (policies, values) = model.predict(features)?;
 
+  if node.children.is_empty() {
+    log::info!("Value: {}, policies:\n{:.3?}", values[0], policies.slice(s![0, .., ..]));
+  }
+
   for (i, mut cur_field) in fields.into_iter().enumerate() {
     let policy = policies.slice(s![i, .., ..]);
     let value = values[i];
@@ -168,7 +172,7 @@ pub fn episode<N, M, R>(
 ) -> Result<(), M::E>
 where
   M: Model<N>,
-  N: Float + Sum + SampleUniform + Display,
+  N: Float + Sum + SampleUniform + Display + Debug,
   R: Rng,
 {
   let mut node = MctsNode::default();

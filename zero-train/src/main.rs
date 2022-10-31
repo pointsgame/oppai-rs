@@ -1,6 +1,12 @@
 mod config;
 
-use std::{borrow::Cow, fmt::Display, iter::Sum, path::PathBuf, sync::Arc};
+use std::{
+  borrow::Cow,
+  fmt::{Debug, Display},
+  iter::Sum,
+  path::PathBuf,
+  sync::Arc,
+};
 
 use config::{cli_parse, Config};
 use num_traits::Float;
@@ -16,7 +22,7 @@ use oppai_zero_torch::model::{DType, PyModel};
 use pyo3::{types::IntoPyDict, PyResult, Python};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
 
-fn run<N: Float + Sum + SampleUniform + DType + Element + Display>(config: Config) -> PyResult<()> {
+fn run<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(config: Config) -> PyResult<()> {
   let player = Player::Red;
 
   let mut rng = SmallRng::from_entropy();
