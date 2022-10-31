@@ -20,6 +20,6 @@ oppai-initial = { path = "../initial" }
 oppai-bot = { path = "../bot", features = [ "cli" ], default-features = false }
 
 [features]
-default = ["dsu", "zero"]
+default = ["dsu"]
 dsu = ["oppai-bot/dsu"]
 zero = ["oppai-bot/zero"]
