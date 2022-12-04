@@ -142,10 +142,6 @@ where
 
   let (policies, values) = model.predict(features)?;
 
-  if node.children.is_empty() {
-    log::info!("Value: {}, policies:\n{:.3?}", values[0], policies.slice(s![0, .., ..]));
-  }
-
   for (i, mut cur_field) in fields.into_iter().enumerate() {
     let policy = policies.slice(s![i, .., ..]);
     let value = values[i];
