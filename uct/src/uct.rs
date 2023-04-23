@@ -246,10 +246,10 @@ impl UctRoot {
     } else {
       let mut next = node.get_child_mut();
       while next.as_ref().unwrap().get_sibling_ref().is_some() {
-        UctRoot::expand_node(*next.as_mut().unwrap(), moves, rng);
+        UctRoot::expand_node(next.as_mut().unwrap(), moves, rng);
         next = next.unwrap().get_sibling_mut();
       }
-      UctRoot::expand_node(*next.as_mut().unwrap(), moves, rng);
+      UctRoot::expand_node(next.as_mut().unwrap(), moves, rng);
       moves.shuffle(rng);
       for &pos in moves.iter() {
         next.as_mut().unwrap().set_sibling(Box::new(UctNode::new(pos)));

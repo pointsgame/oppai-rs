@@ -18,7 +18,7 @@ oppai-common = { path = "../common" }
 criterion = "0.4"
 rand = "0.8"
 rand_xoshiro = "0.6"
-env_logger = "0.9"
+env_logger = "0.10"
 oppai-test-images = { path = "../test-images" }
 
 [[bench]]

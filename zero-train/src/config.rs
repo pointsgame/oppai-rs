@@ -1,4 +1,4 @@
-use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, Command};
+use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, Command};
 
 pub struct Config {
   pub width: u32,
@@ -29,28 +29,30 @@ pub fn cli_parse() -> Config {
       Arg::new("width")
         .long("width")
         .help("Field width")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(u32))
         .default_value("16"),
     )
     .arg(
       Arg::new("height")
         .long("height")
         .help("Field height")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(u32))
         .default_value("16"),
     )
     .arg(
       Arg::new("device")
         .long("device")
         .help("Device to run pytorch network")
-        .takes_value(true)
+        .num_args(1)
         .default_value("cpu"),
     )
     .arg(
       Arg::new("library")
         .long("library")
         .help("Load pytorch dynamic library")
-        .takes_value(true),
+        .num_args(1),
     )
     .arg(
       Arg::new("double")
@@ -59,11 +61,11 @@ pub fn cli_parse() -> Config {
     )
     .get_matches();
 
-  let width = matches.value_of_t("width").unwrap_or_else(|e| e.exit());
-  let height = matches.value_of_t("height").unwrap_or_else(|e| e.exit());
-  let device = matches.value_of_t("device").unwrap_or_else(|e| e.exit());
-  let library = matches.get_one::<String>("library").cloned();
-  let double = matches.is_present("double");
+  let width = matches.get_one("width").copied().unwrap();
+  let height = matches.get_one("height").copied().unwrap();
+  let device = matches.get_one("device").cloned().unwrap();
+  let library = matches.get_one("library").cloned();
+  let double = matches.get_flag("double");
 
   Config {
     width,

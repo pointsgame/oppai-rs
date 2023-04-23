@@ -1,11 +1,10 @@
-use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, Command};
+use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
 use oppai_bot::cli::*;
 use oppai_bot::config::Config as BotConfig;
 use oppai_initial::initial::InitialPosition;
 use std::num::ParseIntError;
 use std::str::FromStr;
 use std::time::Duration;
-use strum::VariantNames;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rgb {
@@ -92,93 +91,105 @@ pub fn cli_parse() -> Config {
     .version(crate_version!())
     .author(crate_authors!("\n"))
     .about(crate_description!())
-    .groups(&groups())
+    .groups(groups())
     .args(&args())
     .arg(
       Arg::new("width")
         .long("width")
         .help("Field width")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(u32))
         .default_value("39"),
     )
     .arg(
       Arg::new("height")
         .long("height")
         .help("Field height")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(u32))
         .default_value("32"),
     )
     .arg(
       Arg::new("red-color")
         .long("red-color")
         .help("The color of first player")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(Rgb))
         .default_value("#FF0000"),
     )
     .arg(
       Arg::new("black-color")
         .long("black-color")
         .help("The color of second player")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(Rgb))
         .default_value("#000000"),
     )
     .arg(
       Arg::new("grid-color")
         .long("grid-color")
         .help("The color of grid")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(Rgb))
         .default_value("#000000"),
     )
     .arg(
       Arg::new("background-color")
         .long("background-color")
         .help("The background color")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(Rgb))
         .default_value("#FFFFFF"),
     )
     .arg(
       Arg::new("grid-thickness")
         .long("grid-thickness")
         .help("The grid thickness")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(f32))
         .default_value("1"),
     )
     .arg(
       Arg::new("point-radius")
         .long("point-radius")
         .help("The point radius")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(f32))
         .default_value("0.166667"),
     )
     .arg(
       Arg::new("filling-alpha")
         .long("filling-alpha")
         .help("The degree of filling transparency")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(f32))
         .default_value("0.5"),
     )
     .arg(
       Arg::new("no-extended-filling")
         .long("no-extended-filling")
-        .help("Disable extended area filling, changes appearance only"),
+        .help("Disable extended area filling, changes appearance only")
+        .action(ArgAction::SetFalse),
     )
     .arg(
       Arg::new("no-maximum-area-filling")
         .long("no-maximum-area-filling")
         .help("Disable filling captures by maximum area, changes appearance only")
-        .requires("no-extended-filling"),
+        .requires("no-extended-filling")
+        .action(ArgAction::SetFalse),
     )
     .arg(
       Arg::new("no-last-point-mark")
         .long("no-last-point-mark")
-        .help("Don't mark last point"),
+        .help("Don't mark last point")
+        .action(ArgAction::SetFalse),
     )
     .arg(
       Arg::new("initial-position")
         .long("initial-position")
         .help("Initial position on the field")
-        .takes_value(true)
-        .possible_values(InitialPosition::VARIANTS)
+        .num_args(1)
+        .value_parser(value_parser!(InitialPosition))
         .ignore_case(true)
         .default_value("Cross"),
     )
@@ -187,41 +198,36 @@ pub fn cli_parse() -> Config {
         .short('p')
         .long("patterns-file")
         .help("Patterns file to use")
-        .takes_value(true)
-        .multiple_occurrences(true),
+        .num_args(1..),
     )
     .arg(
       Arg::new("time")
         .long("time")
         .help("Time to think that AI will use for one move")
-        .takes_value(true)
+        .num_args(1)
+        .value_parser(value_parser!(humantime::Duration))
         .default_value("5s"),
     )
     .get_matches();
 
-  let width = matches.value_of_t("width").unwrap_or_else(|e| e.exit());
-  let height = matches.value_of_t("height").unwrap_or_else(|e| e.exit());
-  let red_color = matches.value_of_t("red-color").unwrap_or_else(|e| e.exit());
-  let black_color = matches.value_of_t("black-color").unwrap_or_else(|e| e.exit());
-  let grid_color = matches.value_of_t("grid-color").unwrap_or_else(|e| e.exit());
-  let background_color = matches.value_of_t("background-color").unwrap_or_else(|e| e.exit());
-  let grid_thickness = matches.value_of_t("grid-thickness").unwrap_or_else(|e| e.exit());
-  let point_radius = matches.value_of_t("point-radius").unwrap_or_else(|e| e.exit());
-  let filling_alpha = matches.value_of_t("filling-alpha").unwrap_or_else(|e| e.exit());
-  let extended_filling = !matches.is_present("no-extended-filling");
-  let maximum_area_filling = !matches.is_present("no-maximum-area-filling");
-  let last_point_mark = !matches.is_present("no-last-point-mark");
-  let initial_position = matches.value_of_t("initial-position").unwrap_or_else(|e| e.exit());
-  let patterns = if matches.is_present("patterns-file") {
-    matches.values_of_t("patterns-file").unwrap_or_else(|e| e.exit())
-  } else {
-    Vec::new()
-  };
+  let width = matches.get_one("width").copied().unwrap();
+  let height = matches.get_one("height").copied().unwrap();
+  let red_color = matches.get_one("red-color").copied().unwrap();
+  let black_color = matches.get_one("black-color").copied().unwrap();
+  let grid_color = matches.get_one("grid-color").copied().unwrap();
+  let background_color = matches.get_one("background-color").copied().unwrap();
+  let grid_thickness = matches.get_one("grid-thickness").copied().unwrap();
+  let point_radius = matches.get_one("point-radius").copied().unwrap();
+  let filling_alpha = matches.get_one("filling-alpha").copied().unwrap();
+  let extended_filling = matches.get_flag("no-extended-filling");
+  let maximum_area_filling = matches.get_flag("no-maximum-area-filling");
+  let last_point_mark = matches.get_flag("no-last-point-mark");
+  let initial_position = matches.get_one("initial-position").copied().unwrap();
+  let patterns = matches
+    .get_many("patterns-file")
+    .map_or_else(Vec::new, |patterns| patterns.cloned().collect());
   let bot_config = parse_config(&matches);
-  let time = matches
-    .value_of_t::<humantime::Duration>("time")
-    .unwrap_or_else(|e| e.exit())
-    .into();
+  let time = matches.get_one::<humantime::Duration>("time").copied().unwrap().into();
 
   Config {
     width,

@@ -1,15 +1,10 @@
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum Player {
+  #[default]
   Red,
   Black,
-}
-
-impl Default for Player {
-  fn default() -> Self {
-    Player::Red
-  }
 }
 
 impl Player {

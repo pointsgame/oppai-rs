@@ -159,7 +159,7 @@ impl<N: Float + Element + DType> Model<N> for PyModel<N> {
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("inputs", inputs.into_pyarray(py))?;
       locals.set_item("model", &self.model)?;
-      locals.set_item("device", &self.device.as_ref())?;
+      locals.set_item("device", self.device.as_ref())?;
 
       py.run("model.eval()", None, Some(locals))?;
       py.run(
@@ -189,7 +189,7 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
       locals.set_item("values", values.into_pyarray(py))?;
       locals.set_item("model", &self.model)?;
       locals.set_item("optimizer", &self.optimizer)?;
-      locals.set_item("device", &self.device.as_ref())?;
+      locals.set_item("device", self.device.as_ref())?;
 
       py.run("model.train()", None, Some(locals))?;
       py.run(

@@ -253,8 +253,8 @@ impl Patterns {
           first_match,
         );
         for m in moves {
-          let move_x = (x as i32 + m.x) as u32;
-          let move_y = (y as i32 + m.y) as u32;
+          let move_x = (x + m.x) as u32;
+          let move_y = (y + m.y) as u32;
           matched.push(field.to_pos(move_x, move_y));
         }
         if first_match && !matched.is_empty() {

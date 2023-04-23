@@ -78,7 +78,7 @@ impl HashData {
   }
 
   fn pack_pos(pos: Pos) -> usize {
-    ((pos as usize) << POS_SHIFT) & POS_MASK
+    (pos << POS_SHIFT) & POS_MASK
   }
 
   #[cfg(target_pointer_width = "64")]
