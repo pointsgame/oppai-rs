@@ -1,16 +1,13 @@
-Oppai-rs
-====
-
-[![Travis Build Status](https://travis-ci.org/pointsgame/oppai-rs.svg?branch=master)](https://travis-ci.org/pointsgame/oppai-rs)
+# Oppai-rs
 
 ![Logo](/Logo.svg)
 
-Oppai-rs (acronym for "OPen Points Artificial Intelligence") is an artificial intelligence for the game of points.
+Oppai-rs (acronym for "OPen Points Artificial Intelligence") is an artificial
+intelligence for the game of points.
 
 You can play with it using [iced module](iced).
 
-Features
-====
+## Features
 
 * Two algorithms for searching the optimal move: UCT, Minimax.
 * Two implementations of Minimax search: PVS (a.k.a. NegaScout), MTD(f).
@@ -23,8 +20,7 @@ Features
 * Time-based and complexity-based calculations.
 * Generic ladders solver.
 
-Running
-====
+## Running
 
 Once you have rust installed on your system, compile with:
 
@@ -44,7 +40,8 @@ or with:
 ./target/release/oppai-rs
 ```
 
-If you are running the produced binary on the same CPU it was built on you might want to specify `target-cpu` flag:
+If you are running the produced binary on the same CPU it was built on you might
+want to specify `target-cpu` flag:
 
 ```sh
 RUSTFLAGS="-C target-cpu=native" \
@@ -53,8 +50,7 @@ RUSTFLAGS="-C target-cpu=native" \
 
 Depending on your hardware it might increase the performance by up to 10%.
 
-Testing
-====
+## Testing
 
 You can run test with:
 
@@ -62,7 +58,8 @@ You can run test with:
 cargo test
 ```
 
-If you want to see log output during tests running you can use RUST_LOG environment variable:
+If you want to see log output during tests running you can use RUST_LOG
+environment variable:
 
 ```sh
 RUST_LOG=debug cargo test
@@ -74,8 +71,7 @@ Also if you have nightly rust you can run benchmarks with:
 cargo bench --features bench
 ```
 
-Ideas
-====
+## Ideas
 
 * Best Node Search algorithm (see [link](https://dspace.lu.lv/dspace/bitstream/handle/7/4903/38550-Dmitrijs_Rutko_2013.pdf)).
 * Cache built DFA for fast patterns loading.
@@ -91,9 +87,9 @@ Ideas
 * Fractional komi support.
 * Split trajectories by groups for Minimax and solve them independently.
 
-License
-====
+## License
 
-This project is licensed under AGPL version 3 or (at your option) any later version. See LICENSE.txt for details.
+This project is licensed under AGPL version 3 or (at your option) any later
+version. See LICENSE.txt for details.
 
 Copyright (C) 2015-2021 Kurnevsky Evgeny, Vasya Novikov
