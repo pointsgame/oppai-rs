@@ -43,6 +43,7 @@
           gdk-pixbuf
           glib
           gtk3
+          librsvg
           pango
           vulkan-loader
           (python3.withPackages (pkgs: with pkgs; [ pytorch torchvision ]))
@@ -50,6 +51,9 @@
         ];
 
         LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib";
+        XDG_DATA_DIRS =
+          "${pkgs.gtk3}/share/gsettings-schemas/gtk+3-${pkgs.gtk3.version}:"
+          + "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/gsettings-desktop-schemas-${pkgs.gsettings-desktop-schemas.version}";
       };
     };
 }
