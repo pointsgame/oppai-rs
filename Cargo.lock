@@ -1651,6 +1651,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
 
 [[package]]
+name = "indoc"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f2cb48b81b1dc9f39676bf99f5499babfec7cd8fe14307f7b3d747208fb5690"
+
+[[package]]
 name = "instant"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2140,17 +2146,17 @@ dependencies = [
 
 [[package]]
 name = "numpy"
-version = "0.17.2"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a462c1af5ba1fddec1488c4646993a23ae7931f9e170ccba23e9c7c834277797"
+checksum = "96b0fee4571867d318651c24f4a570c3f18408cf95f16ccb576b3ce85496a46e"
 dependencies = [
- "ahash",
  "libc",
  "ndarray",
  "num-complex",
  "num-integer",
  "num-traits",
  "pyo3",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -2220,11 +2226,11 @@ dependencies = [
  "clap 4.2.4",
  "crossbeam",
  "env_logger",
- "oppai-bot 0.1.0",
- "oppai-common 0.1.0",
- "oppai-ladders 0.1.0",
- "oppai-minimax 0.1.0",
- "oppai-uct 0.1.0",
+ "oppai-bot",
+ "oppai-common",
+ "oppai-ladders",
+ "oppai-minimax",
+ "oppai-uct",
  "rand",
  "strum",
  "time",
@@ -2239,34 +2245,13 @@ dependencies = [
  "humantime",
  "log",
  "num_cpus",
- "oppai-field 0.1.0",
- "oppai-ladders 0.1.0",
- "oppai-minimax 0.1.0",
- "oppai-patterns 0.1.0",
- "oppai-uct 0.1.0",
- "oppai-zero 0.1.0",
- "oppai-zero-torch 0.1.0",
- "rand",
- "strum",
-]
-
-[[package]]
-name = "oppai-bot"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "clap 4.2.4",
- "crossbeam",
- "humantime",
- "log",
- "num_cpus",
- "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-ladders 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-minimax 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-patterns 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-uct 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-zero 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-zero-torch 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-field",
+ "oppai-ladders",
+ "oppai-minimax",
+ "oppai-patterns",
+ "oppai-uct",
+ "oppai-zero",
+ "oppai-zero-torch",
  "rand",
  "strum",
 ]
@@ -2275,17 +2260,9 @@ dependencies = [
 name = "oppai-common"
 version = "0.1.0"
 dependencies = [
- "oppai-field 0.1.0",
+ "oppai-field",
  "rand",
  "rand_xoshiro",
-]
-
-[[package]]
-name = "oppai-common"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
 ]
 
 [[package]]
@@ -2295,14 +2272,6 @@ dependencies = [
  "criterion",
  "rand",
  "rand_xoshiro",
-]
-
-[[package]]
-name = "oppai-field"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "rand",
 ]
 
 [[package]]
@@ -2314,7 +2283,7 @@ dependencies = [
  "humantime",
  "iced",
  "log",
- "oppai-bot 0.1.0",
+ "oppai-bot",
  "oppai-initial",
  "rand",
  "rfd",
@@ -2326,7 +2295,7 @@ dependencies = [
 name = "oppai-initial"
 version = "0.1.0"
 dependencies = [
- "oppai-field 0.1.0",
+ "oppai-field",
  "strum",
 ]
 
@@ -2335,20 +2304,10 @@ name = "oppai-ladders"
 version = "0.1.0"
 dependencies = [
  "log",
- "oppai-common 0.1.0",
- "oppai-field 0.1.0",
+ "oppai-common",
+ "oppai-field",
  "rand",
  "rand_xoshiro",
-]
-
-[[package]]
-name = "oppai-ladders"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "log",
- "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
 ]
 
 [[package]]
@@ -2360,8 +2319,8 @@ dependencies = [
  "env_logger",
  "log",
  "num_cpus",
- "oppai-common 0.1.0",
- "oppai-field 0.1.0",
+ "oppai-common",
+ "oppai-field",
  "oppai-test-images",
  "rand",
  "rand_xoshiro",
@@ -2369,49 +2328,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "oppai-minimax"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "crossbeam",
- "log",
- "num_cpus",
- "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "strum",
-]
-
-[[package]]
 name = "oppai-patterns"
 version = "0.1.0"
 dependencies = [
  "log",
- "oppai-field 0.1.0",
- "oppai-rotate 0.1.0",
+ "oppai-field",
+ "oppai-rotate",
  "rand",
  "rand_xoshiro",
  "rayon",
 ]
 
 [[package]]
-name = "oppai-patterns"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "log",
- "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-rotate 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "rayon",
-]
-
-[[package]]
 name = "oppai-rotate"
 version = "0.1.0"
-
-[[package]]
-name = "oppai-rotate"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
 
 [[package]]
 name = "oppai-test-images"
@@ -2426,8 +2356,8 @@ dependencies = [
  "env_logger",
  "log",
  "num_cpus",
- "oppai-common 0.1.0",
- "oppai-field 0.1.0",
+ "oppai-common",
+ "oppai-field",
  "oppai-test-images",
  "rand",
  "rand_xoshiro",
@@ -2435,80 +2365,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "oppai-uct"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "crossbeam",
- "log",
- "num_cpus",
- "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "rand",
- "strum",
-]
-
-[[package]]
-name = "oppai-versus"
-version = "0.1.0"
-dependencies = [
- "clap 4.2.4",
- "env_logger",
- "log",
- "oppai-bot 0.1.0",
- "oppai-bot 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-initial",
- "rand",
-]
-
-[[package]]
 name = "oppai-zero"
 version = "0.1.0"
 dependencies = [
  "log",
  "ndarray",
  "num-traits",
- "oppai-field 0.1.0",
- "oppai-rotate 0.1.0",
+ "oppai-field",
+ "oppai-rotate",
  "rand",
  "rand_xoshiro",
 ]
 
 [[package]]
-name = "oppai-zero"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "log",
- "ndarray",
- "num-traits",
- "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "oppai-rotate 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
- "rand",
-]
-
-[[package]]
 name = "oppai-zero-torch"
 version = "0.1.0"
 dependencies = [
- "indoc",
+ "indoc 2.0.1",
  "ndarray",
  "num-traits",
  "numpy",
- "oppai-zero 0.1.0",
- "pyo3",
-]
-
-[[package]]
-name = "oppai-zero-torch"
-version = "0.1.0"
-source = "git+https://github.com/pointsgame/oppai-rs.git#18a212b8b5ec7347dd1f4718f26032884a5989e8"
-dependencies = [
- "indoc",
- "ndarray",
- "num-traits",
- "numpy",
- "oppai-zero 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-zero",
  "pyo3",
 ]
 
@@ -2522,10 +2399,10 @@ dependencies = [
  "ndarray",
  "num-traits",
  "numpy",
- "oppai-field 0.1.0",
+ "oppai-field",
  "oppai-initial",
- "oppai-zero 0.1.0",
- "oppai-zero-torch 0.1.0",
+ "oppai-zero",
+ "oppai-zero-torch",
  "pyo3",
  "rand",
 ]
@@ -2844,14 +2721,14 @@ checksum = "332cd62e95873ea4f41f3dfd6bbbfc5b52aec892d7e8d534197c4720a0bbbab2"
 
 [[package]]
 name = "pyo3"
-version = "0.17.3"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "268be0c73583c183f2b14052337465768c07726936a260f480f0857cb95ba543"
+checksum = "e3b1ac5b3731ba34fdaa9785f8d74d17448cd18f30cf19e0c7e7b1fdb5272109"
 dependencies = [
  "cfg-if",
- "indoc",
+ "indoc 1.0.9",
  "libc",
- "memoffset 0.6.5",
+ "memoffset 0.8.0",
  "parking_lot 0.12.1",
  "pyo3-build-config",
  "pyo3-ffi",
@@ -2861,9 +2738,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-build-config"
-version = "0.17.3"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28fcd1e73f06ec85bf3280c48c67e731d8290ad3d730f8be9dc07946923005c8"
+checksum = "9cb946f5ac61bb61a5014924910d936ebd2b23b705f7a4a3c40b05c720b079a3"
 dependencies = [
  "once_cell",
  "target-lexicon",
@@ -2871,9 +2748,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-ffi"
-version = "0.17.3"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f6cb136e222e49115b3c51c32792886defbfb0adead26a688142b346a0b9ffc"
+checksum = "fd4d7c5337821916ea2a1d21d1092e8443cf34879e53a0ac653fbb98f44ff65c"
 dependencies = [
  "libc",
  "pyo3-build-config",
@@ -2881,9 +2758,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros"
-version = "0.17.3"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94144a1266e236b1c932682136dc35a9dee8d3589728f68130c7c3861ef96b28"
+checksum = "a9d39c55dab3fc5a4b25bbd1ac10a2da452c4aca13bb450f22818a002e29648d"
 dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
@@ -2893,9 +2770,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros-backend"
-version = "0.17.3"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8df9be978a2d2f0cdebabb03206ed73b11314701a5bfe71b0d753b81997777f"
+checksum = "97daff08a4c48320587b5224cc98d609e3c27b6d437315bd40b605c98eeb5918"
 dependencies = [
  "proc-macro2",
  "quote",

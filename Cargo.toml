@@ -62,5 +62,5 @@ members = [
   "bot",
   "initial",
   "iced",
-  "versus"
+  # "versus"
 ]

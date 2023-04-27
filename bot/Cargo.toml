@@ -11,7 +11,7 @@ log = "0.4"
 rand = "0.8"
 strum = { version = "0.24", features = [ "derive" ] }
 clap = { version = "4.2", optional = true }
-num_cpus = { version = "1.13", optional = true }
+num_cpus = { version = "1.15", optional = true }
 humantime = { version = "2.1", optional = true }
 crossbeam = "0.8"
 oppai-field = { path = "../field" }

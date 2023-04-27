@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 ndarray = "0.15"
 num-traits = "0.2"
-indoc = "1.0"
-pyo3 = { version = "0.17", features = ["auto-initialize"] }
-numpy = "0.17"
+indoc = "2.0"
+pyo3 = { version = "0.18", features = ["auto-initialize"] }
+numpy = "0.18"
 oppai-zero = { path = "../zero" }
