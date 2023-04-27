@@ -2226,11 +2226,11 @@ dependencies = [
  "clap 4.2.4",
  "crossbeam",
  "env_logger",
- "oppai-bot",
- "oppai-common",
- "oppai-ladders",
- "oppai-minimax",
- "oppai-uct",
+ "oppai-bot 0.1.0",
+ "oppai-common 0.1.0",
+ "oppai-ladders 0.1.0",
+ "oppai-minimax 0.1.0",
+ "oppai-uct 0.1.0",
  "rand",
  "strum",
  "time",
@@ -2245,13 +2245,34 @@ dependencies = [
  "humantime",
  "log",
  "num_cpus",
- "oppai-field",
- "oppai-ladders",
- "oppai-minimax",
- "oppai-patterns",
- "oppai-uct",
- "oppai-zero",
- "oppai-zero-torch",
+ "oppai-field 0.1.0",
+ "oppai-ladders 0.1.0",
+ "oppai-minimax 0.1.0",
+ "oppai-patterns 0.1.0",
+ "oppai-uct 0.1.0",
+ "oppai-zero 0.1.0",
+ "oppai-zero-torch 0.1.0",
+ "rand",
+ "strum",
+]
+
+[[package]]
+name = "oppai-bot"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "clap 4.2.4",
+ "crossbeam",
+ "humantime",
+ "log",
+ "num_cpus",
+ "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-ladders 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-minimax 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-patterns 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-uct 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-zero 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-zero-torch 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
  "rand",
  "strum",
 ]
@@ -2260,9 +2281,17 @@ dependencies = [
 name = "oppai-common"
 version = "0.1.0"
 dependencies = [
- "oppai-field",
+ "oppai-field 0.1.0",
  "rand",
  "rand_xoshiro",
+]
+
+[[package]]
+name = "oppai-common"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
 ]
 
 [[package]]
@@ -2275,6 +2304,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "oppai-field"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "rand",
+]
+
+[[package]]
 name = "oppai-iced"
 version = "0.1.0"
 dependencies = [
@@ -2283,7 +2320,7 @@ dependencies = [
  "humantime",
  "iced",
  "log",
- "oppai-bot",
+ "oppai-bot 0.1.0",
  "oppai-initial",
  "rand",
  "rfd",
@@ -2295,7 +2332,7 @@ dependencies = [
 name = "oppai-initial"
 version = "0.1.0"
 dependencies = [
- "oppai-field",
+ "oppai-field 0.1.0",
  "strum",
 ]
 
@@ -2304,10 +2341,20 @@ name = "oppai-ladders"
 version = "0.1.0"
 dependencies = [
  "log",
- "oppai-common",
- "oppai-field",
+ "oppai-common 0.1.0",
+ "oppai-field 0.1.0",
  "rand",
  "rand_xoshiro",
+]
+
+[[package]]
+name = "oppai-ladders"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "log",
+ "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
 ]
 
 [[package]]
@@ -2319,11 +2366,24 @@ dependencies = [
  "env_logger",
  "log",
  "num_cpus",
- "oppai-common",
- "oppai-field",
+ "oppai-common 0.1.0",
+ "oppai-field 0.1.0",
  "oppai-test-images",
  "rand",
  "rand_xoshiro",
+ "strum",
+]
+
+[[package]]
+name = "oppai-minimax"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "crossbeam",
+ "log",
+ "num_cpus",
+ "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
  "strum",
 ]
 
@@ -2332,16 +2392,32 @@ name = "oppai-patterns"
 version = "0.1.0"
 dependencies = [
  "log",
- "oppai-field",
- "oppai-rotate",
+ "oppai-field 0.1.0",
+ "oppai-rotate 0.1.0",
  "rand",
  "rand_xoshiro",
  "rayon",
 ]
 
 [[package]]
+name = "oppai-patterns"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "log",
+ "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-rotate 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "rayon",
+]
+
+[[package]]
 name = "oppai-rotate"
 version = "0.1.0"
+
+[[package]]
+name = "oppai-rotate"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
 
 [[package]]
 name = "oppai-test-images"
@@ -2356,12 +2432,39 @@ dependencies = [
  "env_logger",
  "log",
  "num_cpus",
- "oppai-common",
- "oppai-field",
+ "oppai-common 0.1.0",
+ "oppai-field 0.1.0",
  "oppai-test-images",
  "rand",
  "rand_xoshiro",
  "strum",
+]
+
+[[package]]
+name = "oppai-uct"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "crossbeam",
+ "log",
+ "num_cpus",
+ "oppai-common 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "rand",
+ "strum",
+]
+
+[[package]]
+name = "oppai-versus"
+version = "0.1.0"
+dependencies = [
+ "clap 4.2.4",
+ "env_logger",
+ "log",
+ "oppai-bot 0.1.0",
+ "oppai-bot 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-initial",
+ "rand",
 ]
 
 [[package]]
@@ -2371,10 +2474,23 @@ dependencies = [
  "log",
  "ndarray",
  "num-traits",
- "oppai-field",
- "oppai-rotate",
+ "oppai-field 0.1.0",
+ "oppai-rotate 0.1.0",
  "rand",
  "rand_xoshiro",
+]
+
+[[package]]
+name = "oppai-zero"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "log",
+ "ndarray",
+ "num-traits",
+ "oppai-field 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "oppai-rotate 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
+ "rand",
 ]
 
 [[package]]
@@ -2385,7 +2501,20 @@ dependencies = [
  "ndarray",
  "num-traits",
  "numpy",
- "oppai-zero",
+ "oppai-zero 0.1.0",
+ "pyo3",
+]
+
+[[package]]
+name = "oppai-zero-torch"
+version = "0.1.0"
+source = "git+https://github.com/pointsgame/oppai-rs.git#afcd28b28af6fc23ead29a6310575112e0ea3705"
+dependencies = [
+ "indoc 2.0.1",
+ "ndarray",
+ "num-traits",
+ "numpy",
+ "oppai-zero 0.1.0 (git+https://github.com/pointsgame/oppai-rs.git)",
  "pyo3",
 ]
 
@@ -2399,10 +2528,10 @@ dependencies = [
  "ndarray",
  "num-traits",
  "numpy",
- "oppai-field",
+ "oppai-field 0.1.0",
  "oppai-initial",
- "oppai-zero",
- "oppai-zero-torch",
+ "oppai-zero 0.1.0",
+ "oppai-zero-torch 0.1.0",
  "pyo3",
  "rand",
 ]
