@@ -7,9 +7,11 @@ mod sgf;
 
 use crate::config::{cli_parse, Config, Rgb};
 use crate::extended_field::ExtendedField;
+use iced::theme::Palette;
+use iced::widget::{canvas, Canvas, Column, Container, Row, Text};
 use iced::{
-  canvas, container, executor, keyboard, mouse, Application, Background, Canvas, Color, Column, Command, Container,
-  Element, Length, Point, Rectangle, Row, Settings, Size, Text, Vector,
+  executor, keyboard, mouse, Application, Color, Command, Element, Length, Point, Rectangle, Settings, Size, Theme,
+  Vector,
 };
 use oppai_bot::bot::Bot;
 use oppai_bot::field::{to_pos, NonZeroPos, Pos};
@@ -132,6 +134,7 @@ impl Application for Game {
   type Executor = executor::Default;
   type Message = Message;
   type Flags = Config;
+  type Theme = Theme;
 
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = SmallRng::from_entropy();
@@ -328,7 +331,7 @@ impl Application for Game {
     Command::none()
   }
 
-  fn view(&mut self) -> iced::Element<'_, Self::Message> {
+  fn view(&self) -> iced::Element<'_, Self::Message> {
     let mode = Text::new(if self.edit_mode {
       "Mode: Editing"
     } else {
@@ -345,10 +348,14 @@ impl Application for Game {
 
     let score = Row::new()
       .push(Text::new("Score: "))
-      .push(Text::new(self.extended_field.field.captured_count(Player::Red).to_string()).color(self.config.red_color))
+      .push(
+        Text::new(self.extended_field.field.captured_count(Player::Red).to_string())
+          .style(Color::from(self.config.red_color)),
+      )
       .push(Text::new(":"))
       .push(
-        Text::new(self.extended_field.field.captured_count(Player::Black).to_string()).color(self.config.black_color),
+        Text::new(self.extended_field.field.captured_count(Player::Black).to_string())
+          .style(Color::from(self.config.black_color)),
       );
 
     let moves_count = Text::new(format!("Moves: {}", self.extended_field.field.moves_count()));
@@ -359,9 +366,6 @@ impl Application for Game {
       "Coords: -".to_owned()
     });
 
-    let background_color = self.config.background_color;
-    let text_color = self.config.grid_color;
-
     let canvas = Canvas::new(self).height(Length::Fill).width(Length::Fill);
     let canvas_element = Element::<CanvasMessage>::from(canvas).map(Message::Canvas);
 
@@ -371,40 +375,29 @@ impl Application for Game {
       .push(score)
       .push(moves_count)
       .push(coordinates)
-      .width(Length::Units(130))
+      .width(Length::Shrink)
       .padding(2);
 
     let content = Row::new().push(canvas_element).push(info);
 
-    Container::new(content)
-      .width(Length::Fill)
-      .height(Length::Fill)
-      .style(ContainerStyle {
-        background: background_color.into(),
-        text: text_color.into(),
-      })
-      .into()
+    Container::new(content).width(Length::Fill).height(Length::Fill).into()
   }
-}
 
-pub struct ContainerStyle {
-  background: Color,
-  text: Color,
-}
-
-impl container::StyleSheet for ContainerStyle {
-  fn style(&self) -> container::Style {
-    container::Style {
-      background: Some(Background::Color(self.background)),
-      text_color: Some(self.text),
-      ..container::Style::default()
-    }
+  fn theme(&self) -> Theme {
+    Theme::custom(Palette {
+      background: self.config.background_color.into(),
+      text: self.config.grid_color.into(),
+      ..Palette::LIGHT
+    })
   }
 }
 
 impl canvas::Program<CanvasMessage> for Game {
+  type State = ();
+
   fn update(
-    &mut self,
+    &self,
+    _state: &mut (),
     event: canvas::Event,
     bounds: Rectangle,
     cursor: canvas::Cursor,
@@ -529,7 +522,7 @@ impl canvas::Program<CanvasMessage> for Game {
     }
   }
 
-  fn draw(&self, bounds: Rectangle, cursor: canvas::Cursor) -> Vec<canvas::Geometry> {
+  fn draw(&self, _state: &(), _theme: &Theme, bounds: Rectangle, cursor: canvas::Cursor) -> Vec<canvas::Geometry> {
     fn color(config: &Config, player: Player) -> Color {
       (match player {
         Player::Red => config.red_color,
@@ -587,7 +580,7 @@ impl canvas::Program<CanvasMessage> for Game {
         &grid,
         canvas::Stroke {
           width: self.config.grid_thickness,
-          color: self.config.grid_color.into(),
+          style: canvas::Style::Solid(self.config.grid_color.into()),
           ..canvas::Stroke::default()
         },
       );
@@ -761,7 +754,7 @@ impl canvas::Program<CanvasMessage> for Game {
             &last_point,
             canvas::Stroke {
               width: 2.0,
-              color,
+              style: canvas::Style::Solid(color),
               ..canvas::Stroke::default()
             },
           );

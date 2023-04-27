@@ -7,14 +7,14 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.4", features = [ "canvas" ] }
+iced = { version = "0.9", features = [ "canvas" ] }
 rand = { version = "0.8", features = [ "small_rng" ] }
 log = "0.4"
 env_logger = "0.10"
 strum = { version = "0.24", features = [ "derive" ] }
 clap = { version = "4.2", features = [ "cargo" ] }
 humantime = "2.1"
-rfd = { version = "0.8", features = [ "file-handle-inner" ] }
+rfd = { version = "0.11", features = [ "file-handle-inner" ] }
 sgf-parser = "2.6"
 oppai-initial = { path = "../initial" }
 oppai-bot = { path = "../bot", features = [ "cli" ], default-features = false }
