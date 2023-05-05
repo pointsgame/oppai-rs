@@ -1,4 +1,4 @@
-use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, Command};
+use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
 
 pub struct Config {
   pub width: u32,
@@ -57,7 +57,8 @@ pub fn cli_parse() -> Config {
     .arg(
       Arg::new("double")
         .long("double")
-        .help("Use double precision type (float64) for calculations"),
+        .help("Use double precision type (float64) for calculations")
+        .action(ArgAction::SetTrue),
     )
     .get_matches();
 
