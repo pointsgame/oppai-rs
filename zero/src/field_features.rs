@@ -66,6 +66,6 @@ pub fn field_features<N: Zero + One>(field: &Field, player: Player, rotation: u8
   let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()));
   field_features_to_vec::<N>(field, player, rotation, &mut features);
   Array::from(features)
-    .into_shape((4, field.height() as usize, field.width() as usize))
+    .into_shape((CHANNELS, field.height() as usize, field.width() as usize))
     .unwrap()
 }

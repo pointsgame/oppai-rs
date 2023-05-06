@@ -17,7 +17,7 @@ use oppai_field::{
   zobrist::Zobrist,
 };
 use oppai_initial::initial::InitialPosition;
-use oppai_zero::self_play::self_play;
+use oppai_zero::{field_features::CHANNELS, self_play::self_play};
 use oppai_zero_torch::model::{DType, PyModel};
 use pyo3::{types::IntoPyDict, PyResult, Python};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
@@ -50,7 +50,7 @@ fn run<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(confi
     log::info!("Loading the model from {}", path.display());
   }
 
-  let mut model = PyModel::<N>::new(path, config.width, config.height, 4)?;
+  let mut model = PyModel::<N>::new(path, config.width, config.height, CHANNELS as u32)?;
   if exists {
     model.load()?;
   }
