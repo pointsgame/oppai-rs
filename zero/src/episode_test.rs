@@ -5,7 +5,6 @@ use oppai_rotate::rotate::{rotate, ROTATIONS};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::cell::RefCell;
-use std::iter;
 
 use crate::episode::{episode, logistic, mcts};
 use crate::field_features::{field_features, CHANNELS};
@@ -14,42 +13,27 @@ use crate::model::Model;
 
 const SEED: u64 = 7;
 
-struct StubModel {
-  value: f64,
-  inputs: RefCell<Vec<Array4<f64>>>,
+fn uniform_policies(inputs: &Array4<f64>) -> Array3<f64> {
+  let batch_size = inputs.len_of(Axis(0));
+  let height = inputs.len_of(Axis(2));
+  let width = inputs.len_of(Axis(3));
+  let policy = 1f64 / (width * height) as f64;
+  Array::from_elem((batch_size, height, width), policy)
 }
 
-impl StubModel {
-  fn new(value: f64) -> Self {
-    StubModel {
-      value,
-      inputs: Default::default(),
-    }
-  }
+fn const_value(inputs: &Array4<f64>, value: f64) -> Array1<f64> {
+  let batch_size = inputs.len_of(Axis(0));
+  Array::from_elem(batch_size, value)
 }
 
-impl Model<f64> for StubModel {
+impl<T> Model<f64> for T
+where
+  T: Fn(Array4<f64>) -> (Array3<f64>, Array1<f64>),
+{
   type E = ();
 
   fn predict(&self, inputs: Array4<f64>) -> Result<(Array3<f64>, Array1<f64>), Self::E> {
-    let batch_size = inputs.len_of(Axis(0));
-    let height = inputs.len_of(Axis(2));
-    let width = inputs.len_of(Axis(3));
-
-    self.inputs.borrow_mut().push(inputs);
-
-    let policy = 1f64 / (width * height) as f64;
-
-    let mut policies = Vec::with_capacity(batch_size * width * height);
-    let mut values = Vec::with_capacity(batch_size);
-    for _ in 0..batch_size {
-      policies.extend(iter::repeat(policy).take(width * height));
-      values.push(self.value);
-    }
-
-    let policies = Array::from_shape_vec((batch_size, height, width), policies).unwrap();
-    let values = Array::from(values);
-    Ok((policies, values))
+    Ok(self(inputs))
   }
 }
 
@@ -65,9 +49,15 @@ fn mcts_first_iterations() {
     ",
   );
   let mut node = MctsNode::default();
-  let mut model = StubModel::new(1.0);
 
-  mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
+  mcts(
+    &mut field,
+    Player::Red,
+    &mut node,
+    &|inputs: Array4<f64>| (uniform_policies(&inputs), const_value(&inputs, 1.0)),
+    &mut rng,
+  )
+  .unwrap();
   assert_eq!(node.n, 1);
   assert_eq!(node.w, -1.0);
   // corner moves are not considered
@@ -75,8 +65,14 @@ fn mcts_first_iterations() {
   assert!(node.children.iter().all(|child| child.w == 1.0));
   assert!(node.children.iter().all(|child| child.children.is_empty()));
 
-  model.value = -1.0;
-  mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
+  mcts(
+    &mut field,
+    Player::Red,
+    &mut node,
+    &|inputs: Array4<f64>| (uniform_policies(&inputs), const_value(&inputs, -1.0)),
+    &mut rng,
+  )
+  .unwrap();
   assert_eq!(node.n, 9);
   assert_eq!(node.w, -9.0);
   assert_eq!(node.children.iter().map(|child| child.n).sum::<u64>(), 8);
@@ -102,9 +98,15 @@ fn mcts_last_iterations() {
     ",
   );
   let mut node = MctsNode::default();
-  let model = StubModel::new(0.0);
 
-  mcts(&mut field, Player::Red, &mut node, &model, &mut rng).unwrap();
+  mcts(
+    &mut field,
+    Player::Red,
+    &mut node,
+    &|inputs: Array4<f64>| (uniform_policies(&inputs), const_value(&inputs, 0.0)),
+    &mut rng,
+  )
+  .unwrap();
   assert_eq!(node.n, 1);
   assert_eq!(node.w, logistic(-1.0));
   assert!(node.children.is_empty());
@@ -121,7 +123,8 @@ fn episode_simple_surrounding() {
     .a.
     ",
   );
-  let model = StubModel::new(0.0);
+
+  let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
   let mut inputs = Vec::new();
   let mut policies = Vec::new();
@@ -129,7 +132,11 @@ fn episode_simple_surrounding() {
   episode(
     &mut field,
     Player::Red,
-    &model,
+    &|inputs: Array4<f64>| {
+      let result = (uniform_policies(&inputs), const_value(&inputs, 0.0));
+      model_inputs.borrow_mut().push(inputs);
+      result
+    },
     &mut rng,
     &mut inputs,
     &mut policies,
@@ -151,9 +158,9 @@ fn episode_simple_surrounding() {
     assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
   }
 
-  assert_eq!(model.inputs.borrow().len(), 1);
+  assert_eq!(model_inputs.borrow().len(), 1);
   assert_eq!(
-    model.inputs.borrow()[0],
+    model_inputs.borrow()[0],
     field_features(&field, Player::Red, 0)
       .into_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
       .unwrap()
@@ -173,7 +180,8 @@ fn episode_trap() {
     .A.
     ",
   );
-  let model = StubModel::new(0.0);
+
+  let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
   let mut inputs = Vec::new();
   let mut policies = Vec::new();
@@ -181,7 +189,11 @@ fn episode_trap() {
   episode(
     &mut field,
     Player::Red,
-    &model,
+    &|inputs: Array4<f64>| {
+      let result = (uniform_policies(&inputs), const_value(&inputs, 0.0));
+      model_inputs.borrow_mut().push(inputs);
+      result
+    },
     &mut rng,
     &mut inputs,
     &mut policies,
@@ -218,12 +230,12 @@ fn episode_trap() {
     assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
   }
 
-  assert_eq!(model.inputs.borrow().len(), 2);
+  assert_eq!(model_inputs.borrow().len(), 2);
 
   let features = field_features(&field, Player::Red, 0)
     .into_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
     .unwrap();
-  assert_eq!(model.inputs.borrow()[0], features);
+  assert_eq!(model_inputs.borrow()[0], features);
 
   field.put_point(field.to_pos(0, 1), Player::Red);
   let features1 = field_features::<f64>(&field, Player::Black, 0);
@@ -231,8 +243,63 @@ fn episode_trap() {
   field.put_point(field.to_pos(1, 1), Player::Red);
   let features2 = field_features::<f64>(&field, Player::Black, 0);
   // order depends on rng
-  assert_eq!(features1, model.inputs.borrow()[1].index_axis(Axis(0), 0));
-  assert_eq!(features2, model.inputs.borrow()[1].index_axis(Axis(0), 1));
+  assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
+  assert_eq!(features2, model_inputs.borrow()[1].index_axis(Axis(0), 1));
 
   assert_eq!(values, vec![0.0; 16]);
+}
+
+#[test]
+fn episode_winning_game() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ..........
+    ..........
+    ..aaaaaa..
+    ..aAAAAa..
+    ..aAAAAa..
+    ..aAAAAa..
+    ..aAAAAa..
+    ..aaaaaa..
+    ..........
+    ..........
+    ",
+  );
+
+  let center_x = (field.width() / 2) as usize;
+  let center_y = (field.height() / 2) as usize;
+
+  let mut inputs = Vec::new();
+  let mut policies = Vec::new();
+  let mut values = Vec::new();
+  episode(
+    &mut field,
+    Player::Red,
+    &|inputs: Array4<f64>| {
+      let batch_size = inputs.len_of(Axis(0));
+      let values = Array::from_iter((0..batch_size).map(|i| {
+        if inputs[(i, 0, center_y, center_x)] > 0.0 {
+          1.0
+        } else {
+          0.0
+        }
+      }));
+      (uniform_policies(&inputs), values)
+    },
+    &mut rng,
+    &mut inputs,
+    &mut policies,
+    &mut values,
+  )
+  .unwrap();
+
+  for (value, input) in values.into_iter().zip(inputs.into_iter()) {
+    assert!(if input[(0, center_y, center_x)] > 0.0 {
+      value > 0.0
+    } else {
+      value < 0.0
+    });
+  }
 }
