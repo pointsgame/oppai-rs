@@ -10,5 +10,6 @@ edition = "2021"
 ndarray = "0.15"
 thiserror = "1.0"
 safetensors = "0.3"
+num-traits = "0.2"
 dfdx = { version = "0.11", features = [ "cpu-par-matmul", "safetensors", "nightly" ] }
 oppai-zero = { path = "../zero" }

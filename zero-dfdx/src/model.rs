@@ -1,6 +1,7 @@
 use ::safetensors::SafeTensorError;
 use dfdx::{optim::Adam, prelude::*};
 use ndarray::{Array1, Array3, Array4, Axis, ShapeError};
+use num_traits::Float;
 use oppai_zero::{
   field_features::CHANNELS,
   model::{Model, TrainableModel},
@@ -90,22 +91,34 @@ type ValueShape = (
   Const<1>,
 );
 
-pub struct DfdxModel {
+pub struct DfdxModel<N>
+where
+  N: Float + Dtype,
+  AutoDevice: Device<N>,
+{
   device: AutoDevice,
-  model: <DfdxModule as BuildOnDevice<AutoDevice, f32>>::Built,
-  adam: Adam<<DfdxModule as BuildOnDevice<AutoDevice, f32>>::Built, f32, AutoDevice>,
+  model: <DfdxModule as BuildOnDevice<AutoDevice, N>>::Built,
+  adam: Adam<<DfdxModule as BuildOnDevice<AutoDevice, N>>::Built, N, AutoDevice>,
 }
 
-impl Default for DfdxModel {
+impl<N> Default for DfdxModel<N>
+where
+  N: Float + Dtype,
+  AutoDevice: Device<N>,
+{
   fn default() -> Self {
     let device = AutoDevice::default();
-    let model = device.build_module::<DfdxModule, f32>();
+    let model = device.build_module::<DfdxModule, N>();
     let adam = Adam::new(&model, Default::default());
     Self { device, model, adam }
   }
 }
 
-impl Clone for DfdxModel {
+impl<N> Clone for DfdxModel<N>
+where
+  N: Float + Dtype,
+  AutoDevice: Device<N>,
+{
   fn clone(&self) -> Self {
     let device = self.device.clone();
     let model = self.model.clone();
@@ -128,7 +141,7 @@ impl From<ShapeError> for PredictError {
   }
 }
 
-impl Model<f32> for DfdxModel {
+impl Model<f32> for DfdxModel<f32> {
   type E = PredictError;
 
   fn predict(&self, inputs: Array4<f32>) -> Result<(Array3<f32>, Array1<f32>), Self::E> {
@@ -177,7 +190,7 @@ impl From<SafeTensorError> for TrainError {
   }
 }
 
-impl TrainableModel<f32> for DfdxModel {
+impl TrainableModel<f32> for DfdxModel<f32> {
   type TE = TrainError;
 
   fn train(&mut self, inputs: Array4<f32>, policies: Array3<f32>, values: Array1<f32>) -> Result<(), Self::TE> {
