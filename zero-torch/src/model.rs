@@ -180,7 +180,9 @@ impl<N: Float + Element + DType> Model<N> for PyModel<N> {
 }
 
 impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
-  fn train(&self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::E> {
+  type TE = Self::E;
+
+  fn train(&mut self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::E> {
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;

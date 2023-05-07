@@ -107,7 +107,7 @@ where
   Ok(win_rate > WIN_RATE_THRESHOLD)
 }
 
-pub fn self_play<N, M, R>(field: &Field, player: Player, mut model: M, rng: &mut R) -> Result<(), M::E>
+pub fn self_play<N, M, R>(field: &Field, player: Player, mut model: M, rng: &mut R) -> Result<(), M::TE>
 where
   M: TrainableModel<N> + Clone,
   N: Float + Sum + SampleUniform + Display + Debug,

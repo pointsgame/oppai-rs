@@ -26,7 +26,7 @@
         nativeBuildInputs = with pkgs; [
           cmake
           pkg-config
-          (fenix.stable.withComponents [
+          (fenix.latest.withComponents [
             "cargo"
             "clippy"
             "rust-src"

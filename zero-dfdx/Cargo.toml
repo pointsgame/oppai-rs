@@ -1,0 +1,14 @@
+[package]
+name = "oppai-zero-dfdx"
+version = "0.1.0"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
+edition = "2021"
+
+[dependencies]
+ndarray = "0.15"
+thiserror = "1.0"
+safetensors = "0.3"
+dfdx = { version = "0.11", features = [ "cpu-par-matmul", "safetensors", "nightly" ] }
+oppai-zero = { path = "../zero" }

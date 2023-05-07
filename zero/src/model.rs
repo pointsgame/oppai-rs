@@ -8,7 +8,9 @@ pub trait Model<N: Float> {
 }
 
 pub trait TrainableModel<N: Float>: Model<N> {
-  fn train(&self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::E>;
+  type TE: From<Self::E>;
 
-  fn save(&self) -> Result<(), Self::E>;
+  fn train(&mut self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::TE>;
+
+  fn save(&self) -> Result<(), Self::TE>;
 }
