@@ -94,7 +94,7 @@ impl UctNode {
   }
 
   pub fn get_sibling(&mut self) -> Option<Box<UctNode>> {
-    mem::replace(&mut self.sibling, None)
+    self.sibling.take()
   }
 
   pub fn get_sibling_ref(&self) -> Option<&UctNode> {
