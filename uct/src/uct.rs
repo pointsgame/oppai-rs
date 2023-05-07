@@ -6,7 +6,7 @@ use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use std::{
-  mem, ptr,
+  ptr,
   sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
 };
 use strum::{EnumString, EnumVariantNames};
