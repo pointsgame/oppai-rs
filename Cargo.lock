@@ -2408,6 +2408,7 @@ version = "0.1.0"
 dependencies = [
  "dfdx",
  "ndarray",
+ "num-traits",
  "oppai-zero",
  "safetensors",
  "thiserror",

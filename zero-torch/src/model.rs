@@ -57,7 +57,11 @@ impl<N: DType> PyModel<N> {
         .extract()?;
       locals.set_item("model", &model)?;
       let optimizer: PyObject = py
-        .eval("torch.optim.AdamW(model.parameters(), weight_decay = 1e-4)", None, Some(locals))?
+        .eval(
+          "torch.optim.AdamW(model.parameters(), weight_decay = 1e-4)",
+          None,
+          Some(locals),
+        )?
         .extract()?;
 
       Ok(Self {
@@ -190,8 +194,24 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
       locals.set_item("policies", policies.into_pyarray(py))?;
       locals.set_item("values", values.into_pyarray(py))?;
       locals.set_item("model", &self.model)?;
-      locals.set_item("optimizer", &self.optimizer)?;
       locals.set_item("device", self.device.as_ref())?;
+
+      // Need to create a new optimizer to make sure it points to correct model
+      // after moving it to a different device. Probably it can be improved somehow...
+      locals.set_item("old_optimizer", &self.optimizer)?;
+      self.optimizer = py
+        .eval(
+          "torch.optim.AdamW(model.parameters(), weight_decay = 1e-4)",
+          None,
+          Some(locals),
+        )?
+        .extract()?;
+      locals.set_item("optimizer", &self.optimizer)?;
+      py.run(
+        "optimizer.load_state_dict(old_optimizer.state_dict())",
+        None,
+        Some(locals),
+      )?;
 
       py.run("model.train()", None, Some(locals))?;
       py.run(
