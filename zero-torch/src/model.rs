@@ -58,7 +58,7 @@ impl<N: DType> PyModel<N> {
       locals.set_item("model", &model)?;
       let optimizer: PyObject = py
         .eval(
-          "torch.optim.AdamW(model.parameters(), weight_decay = 1e-4)",
+          "torch.optim.SGD(model.parameters(), lr = 0.01, weight_decay = 1e-4)",
           None,
           Some(locals),
         )?
@@ -111,7 +111,11 @@ impl<N: DType> PyModel<N> {
 
       locals.set_item("model", &model)?;
       let optimizer: PyObject = py
-        .eval("torch.optim.Adam(model.parameters())", None, Some(locals))?
+        .eval(
+          "torch.optim.SGD(model.parameters(), lr = 0.01, weight_decay = 1e-4)",
+          None,
+          Some(locals),
+        )?
         .extract()?;
 
       locals.set_item("old_optimizer", &self.optimizer)?;
@@ -201,7 +205,7 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
       locals.set_item("old_optimizer", &self.optimizer)?;
       self.optimizer = py
         .eval(
-          "torch.optim.AdamW(model.parameters(), weight_decay = 1e-4)",
+          "torch.optim.SGD(model.parameters(), lr = 0.01, weight_decay = 1e-4)",
           None,
           Some(locals),
         )?
