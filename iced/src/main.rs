@@ -375,7 +375,7 @@ impl Application for Game {
       .push(score)
       .push(moves_count)
       .push(coordinates)
-      .width(Length::Shrink)
+      .width(Length::Fixed(130.0))
       .padding(2);
 
     let content = Row::new().push(canvas_element).push(info);
