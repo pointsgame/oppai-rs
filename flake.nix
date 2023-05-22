@@ -33,14 +33,19 @@
           nativeBuildInputs = with pkgs; [
             cmake
             pkg-config
-            (fenix.latest.withComponents [
-              "cargo"
-              "clippy"
-              "rust-src"
-              "rustc"
-              "rustfmt"
+            (fenix.combine [
+              (fenix.latest.withComponents [
+                "cargo"
+                "clippy"
+                "rust-src"
+                "rustc"
+                "rustfmt"
+              ])
+              fenix.targets.wasm32-unknown-unknown.latest.rust-std
             ])
             rust-analyzer
+            wasm-bindgen-cli
+            trunk
           ];
 
           buildInputs = with pkgs; [
