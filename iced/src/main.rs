@@ -545,12 +545,12 @@ impl canvas::Program<CanvasMessage> for Game {
       }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::E,
-        modifiers,
-      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleEditMode)),
+        ..
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleEditMode)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::A,
-        modifiers,
-      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleAI)),
+        ..
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleAI)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::Escape,
         ..
