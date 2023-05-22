@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
 use oppai_bot::cli::*;
 use oppai_bot::config::Config as BotConfig;
@@ -86,6 +87,7 @@ impl Default for Config {
   }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn cli_parse() -> Config {
   let matches = Command::new(crate_name!())
     .version(crate_version!())
