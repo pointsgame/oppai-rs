@@ -44,7 +44,10 @@ pub struct UctConfig {
 impl Default for UctConfig {
   fn default() -> Self {
     Self {
+      #[cfg(not(target_arch = "wasm32"))]
       threads_count: num_cpus::get(),
+      #[cfg(target_arch = "wasm32")]
+      threads_count: 1,
       radius: 3,
       ucb_type: UcbType::Ucb1Tuned,
       draw_weight: 0.4,
@@ -578,27 +581,44 @@ impl UctRoot {
       self.komi.load(Ordering::Relaxed),
       self.config.komi_type
     );
-    let iterations = AtomicUsize::new(0);
     let ratched = AtomicIsize::new(isize::max_value());
-    crossbeam::scope(|scope| {
-      for _ in 0..self.config.threads_count {
-        let new_rng = R::from_seed(rng.gen());
-        scope.spawn(|_| {
-          let mut local_field = field.clone();
-          let mut local_rng = new_rng;
-          let mut possible_moves = self.wave_pruning.moves().clone();
-          while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
-            self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
-            for _ in 0..local_field.moves_count() - self.moves_count {
-              local_field.undo();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+      let iterations = AtomicUsize::new(0);
+      crossbeam::scope(|scope| {
+        for _ in 0..self.config.threads_count {
+          let new_rng = R::from_seed(rng.gen());
+          scope.spawn(|_| {
+            let mut local_field = field.clone();
+            let mut local_rng = new_rng;
+            let mut possible_moves = self.wave_pruning.moves().clone();
+            while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
+              self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
+              for _ in 0..local_field.moves_count() - self.moves_count {
+                local_field.undo();
+              }
+              iterations.fetch_add(1, Ordering::Relaxed);
             }
-            iterations.fetch_add(1, Ordering::Relaxed);
-          }
-        });
+          });
+        }
+      })
+      .expect("UCT best_move_generic panic");
+      info!("Iterations count: {}.", iterations.load(Ordering::Relaxed));
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+      let mut iterations = 0;
+      let mut local_field = field.clone();
+      let mut possible_moves = self.wave_pruning.moves().clone();
+      while !should_stop.load(Ordering::Relaxed) && iterations < max_iterations_count {
+        self.play_simulation(&mut local_field, player, &mut possible_moves, rng, &ratched);
+        for _ in 0..local_field.moves_count() - self.moves_count {
+          local_field.undo();
+        }
+        iterations += 1;
       }
-    })
-    .expect("UCT best_move_generic panic");
-    info!("Iterations count: {}.", iterations.load(Ordering::Relaxed));
+      info!("Iterations count: {}.", iterations);
+    }
     let mut best_uct = 0f64;
     let mut result = None;
     if let Some(ref root) = self.node {
