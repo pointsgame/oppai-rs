@@ -41,6 +41,8 @@ pub fn main() -> iced::Result {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   #[cfg(not(target_arch = "wasm32"))]
   env_logger::Builder::from_env(env).init();
+  #[cfg(target_arch = "wasm32")]
+  wasm_logger::init(wasm_logger::Config::default());
 
   #[cfg(not(target_arch = "wasm32"))]
   let config = cli_parse();

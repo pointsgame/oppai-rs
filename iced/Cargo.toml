@@ -20,6 +20,7 @@ oppai-initial = { path = "../initial" }
 oppai-bot = { path = "../bot", features = [ "cli" ], default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-logger = "0.2"
 # for js feature
 getrandom = { version = "0.2", features = [ "js" ] }
 # for changing canvas size hack
