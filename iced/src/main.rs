@@ -5,7 +5,9 @@ mod config;
 mod extended_field;
 mod sgf;
 
-use crate::config::{cli_parse, Config, Rgb};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::cli_parse;
+use crate::config::{Config, Rgb};
 use crate::extended_field::ExtendedField;
 use iced::theme::Palette;
 use iced::widget::{canvas, Canvas, Column, Container, Row, Text};
@@ -19,15 +21,14 @@ use oppai_bot::patterns::Patterns;
 use oppai_bot::player::Player;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+#[cfg(not(target_arch = "wasm32"))]
 use rfd::{AsyncFileDialog, FileHandle};
-use std::{
-  fs,
-  fs::File,
-  sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-  },
+use std::sync::{
+  atomic::{AtomicBool, Ordering},
+  Arc, Mutex,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use std::{fs, fs::File};
 
 impl From<Rgb> for Color {
   fn from(rgb: Rgb) -> Self {
@@ -36,10 +37,15 @@ impl From<Rgb> for Color {
 }
 
 pub fn main() -> iced::Result {
+  #[cfg(not(target_arch = "wasm32"))]
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  #[cfg(not(target_arch = "wasm32"))]
   env_logger::Builder::from_env(env).init();
 
+  #[cfg(not(target_arch = "wasm32"))]
   let config = cli_parse();
+  #[cfg(target_arch = "wasm32")]
+  let config = Config::default();
 
   Game::run(Settings {
     antialiasing: true,
@@ -113,7 +119,9 @@ enum CanvasMessage {
   PutPlayersPoint(Pos, Player),
   Undo,
   New,
+  #[cfg(not(target_arch = "wasm32"))]
   Open,
+  #[cfg(not(target_arch = "wasm32"))]
   Save,
   ToggleEditMode,
   ToggleAI,
@@ -126,7 +134,9 @@ enum CanvasMessage {
 enum Message {
   Canvas(CanvasMessage),
   BotMove(Option<NonZeroPos>),
+  #[cfg(not(target_arch = "wasm32"))]
   OpenFile(Option<FileHandle>),
+  #[cfg(not(target_arch = "wasm32"))]
   SaveFile(Option<FileHandle>),
 }
 
@@ -139,6 +149,7 @@ impl Application for Game {
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = SmallRng::from_entropy();
     let mut extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
+    #[cfg(not(target_arch = "wasm32"))]
     let patterns = if flags.patterns.is_empty() {
       Patterns::default()
     } else {
@@ -150,6 +161,8 @@ impl Application for Game {
       )
       .expect("Failed to read patterns file.")
     };
+    #[cfg(target_arch = "wasm32")]
+    let patterns = Patterns::default();
     let bot = Bot::new(
       flags.width,
       flags.height,
@@ -172,6 +185,24 @@ impl Application for Game {
       should_stop: Arc::new(AtomicBool::new(false)),
     };
     game.put_all_bot_points();
+
+    #[cfg(target_arch = "wasm32")]
+    {
+      // hack to resize canvas
+      // https://github.com/iced-rs/iced/issues/1265
+      use iced_native::{command, window};
+      let window = web_sys::window().unwrap();
+      let (width, height) = (
+        (window.inner_width().unwrap().as_f64().unwrap()) as u32,
+        (window.inner_height().unwrap().as_f64().unwrap()) as u32,
+      );
+      (
+        game,
+        Command::single(command::Action::Window(window::Action::Resize { width, height })),
+      )
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     (game, Command::none())
   }
 
@@ -188,6 +219,7 @@ impl Application for Game {
         self.thinking = false;
         self.should_stop.store(false, Ordering::Relaxed);
       }
+      #[cfg(not(target_arch = "wasm32"))]
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(text) = fs::read_to_string(file.inner()) {
@@ -220,6 +252,7 @@ impl Application for Game {
         }
         self.file_choosing = false;
       }
+      #[cfg(not(target_arch = "wasm32"))]
       Message::SaveFile(maybe_file) => {
         if let Some(file) = maybe_file {
           let moves = self
@@ -289,6 +322,7 @@ impl Application for Game {
         self.put_all_bot_points();
         self.field_cache.clear();
       }
+      #[cfg(not(target_arch = "wasm32"))]
       Message::Canvas(CanvasMessage::Open) => {
         if self.is_locked() {
           return Command::none();
@@ -299,6 +333,7 @@ impl Application for Game {
           Message::OpenFile,
         );
       }
+      #[cfg(not(target_arch = "wasm32"))]
       Message::Canvas(CanvasMessage::Save) => {
         if self.file_choosing {
           return Command::none();
@@ -498,10 +533,12 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::N,
         modifiers,
       }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::New)),
+      #[cfg(not(target_arch = "wasm32"))]
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::O,
         modifiers,
       }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
+      #[cfg(not(target_arch = "wasm32"))]
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::S,
         modifiers,

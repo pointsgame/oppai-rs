@@ -19,6 +19,13 @@ sgf-parser = "2.6"
 oppai-initial = { path = "../initial" }
 oppai-bot = { path = "../bot", features = [ "cli" ], default-features = false }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# for js feature
+getrandom = { version = "0.2", features = [ "js" ] }
+# for changing canvas size hack
+web-sys = "0.3"
+iced_native = "0.10"
+
 [features]
 default = ["dsu"]
 dsu = ["oppai-bot/dsu"]
