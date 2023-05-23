@@ -1,12 +1,15 @@
 use crate::hash_table::{HashData, HashTable, HashType};
 use crate::trajectories_pruning::TrajectoriesPruning;
+#[cfg(not(target_arch = "wasm32"))]
 use crossbeam::{self, queue::SegQueue};
 use oppai_common::common;
 use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::AtomicIsize;
 use std::{
   iter,
-  sync::atomic::{AtomicBool, AtomicIsize, Ordering},
+  sync::atomic::{AtomicBool, Ordering},
 };
 use strum::{EnumString, EnumVariantNames};
 
@@ -27,7 +30,10 @@ pub struct MinimaxConfig {
 impl Default for MinimaxConfig {
   fn default() -> Self {
     Self {
+      #[cfg(not(target_arch = "wasm32"))]
       threads_count: num_cpus::get_physical(),
+      #[cfg(target_arch = "wasm32")]
+      threads_count: 1,
       minimax_type: MinimaxType::NegaScout,
       hash_table_size: 10000,
       rebuild_trajectories: false,
@@ -255,149 +261,226 @@ impl Minimax {
     if moves.is_empty() || should_stop.load(Ordering::Relaxed) {
       return field.score(player);
     }
-    let queue = SegQueue::new();
-    if let Some(best_pos) = *best_move {
-      queue.push(best_pos.get());
-      for &pos in moves.iter().filter(|&&pos| pos != best_pos.get()) {
-        queue.push(pos);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+      let queue = SegQueue::new();
+      if let Some(best_pos) = *best_move {
+        queue.push(best_pos.get());
+        for &pos in moves.iter().filter(|&&pos| pos != best_pos.get()) {
+          queue.push(pos);
+        }
+      } else {
+        for &pos in moves.iter() {
+          queue.push(pos);
+        }
       }
-    } else {
-      for &pos in moves.iter() {
-        queue.push(pos);
-      }
-    }
-    let atomic_alpha = AtomicIsize::new(alpha as isize);
-    let best_moves = SegQueue::new();
-    let skipped_moves = SegQueue::new();
-    let first_move_considered = AtomicBool::new(best_move.is_none());
-    crossbeam::scope(|scope| {
-      for _ in 0..self.config.threads_count {
-        scope.spawn(|_| {
-          let mut local_field = field.clone();
-          let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
-          let mut local_best_move = 0;
-          let mut local_alpha = alpha;
-          let enemy = player.next();
-          while let Some(pos) = queue.pop() {
-            if should_stop.load(Ordering::Relaxed) {
-              break;
-            }
-            local_field.put_point(pos, player);
-            let next_trajectories_pruning = trajectories_pruning.next(
-              &mut local_field,
-              enemy,
-              depth - 1,
-              &mut local_empty_board,
-              pos,
-              should_stop,
-            );
-            if should_stop.load(Ordering::Relaxed) {
-              break;
-            }
-            let cur_alpha = atomic_alpha.load(Ordering::Relaxed) as i32;
-            if cur_alpha >= beta {
-              skipped_moves.push(pos);
-              break;
-            }
-            let mut cur_estimation = -Minimax::alpha_beta(
-              &mut local_field,
-              depth - 1,
-              NonZeroPos::new(pos),
-              enemy,
-              &next_trajectories_pruning,
-              -cur_alpha - 1,
-              -cur_alpha,
-              &mut local_empty_board,
-              &self.hash_table,
-              should_stop,
-            );
-            if should_stop.load(Ordering::Relaxed) {
-              break;
-            }
-            if cur_estimation > cur_alpha && cur_estimation < beta {
-              cur_estimation = -Minimax::alpha_beta(
+      let atomic_alpha = AtomicIsize::new(alpha as isize);
+      let best_moves = SegQueue::new();
+      let skipped_moves = SegQueue::new();
+      let first_move_considered = AtomicBool::new(best_move.is_none());
+      crossbeam::scope(|scope| {
+        for _ in 0..self.config.threads_count {
+          scope.spawn(|_| {
+            let mut local_field = field.clone();
+            let mut local_empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
+            let mut local_best_move = 0;
+            let mut local_alpha = alpha;
+            let enemy = player.next();
+            while let Some(pos) = queue.pop() {
+              if should_stop.load(Ordering::Relaxed) {
+                break;
+              }
+              local_field.put_point(pos, player);
+              let next_trajectories_pruning = trajectories_pruning.next(
+                &mut local_field,
+                enemy,
+                depth - 1,
+                &mut local_empty_board,
+                pos,
+                should_stop,
+              );
+              if should_stop.load(Ordering::Relaxed) {
+                break;
+              }
+              let cur_alpha = atomic_alpha.load(Ordering::Relaxed) as i32;
+              if cur_alpha >= beta {
+                skipped_moves.push(pos);
+                break;
+              }
+              let mut cur_estimation = -Minimax::alpha_beta(
                 &mut local_field,
                 depth - 1,
                 NonZeroPos::new(pos),
                 enemy,
                 &next_trajectories_pruning,
-                -beta,
-                -cur_estimation,
+                -cur_alpha - 1,
+                -cur_alpha,
                 &mut local_empty_board,
                 &self.hash_table,
                 should_stop,
               );
-            }
-            // We should check it before the best move assignment because it's possible
-            // that current estimation is higher than real in case of time out.
-            if should_stop.load(Ordering::Relaxed) {
-              break;
-            }
-            debug!(
-              "Estimation for move ({}, {}) is {}, alpha is {}, beta is {}.",
-              field.to_x(pos),
-              field.to_y(pos),
-              cur_estimation,
-              cur_alpha,
-              beta
-            );
-            local_field.undo();
-            if cur_estimation > cur_alpha {
-              local_alpha = cur_estimation;
-              local_best_move = pos;
-            }
-            loop {
-              let last_alpha = atomic_alpha.load(Ordering::SeqCst);
-              if cur_estimation <= last_alpha as i32
-                || atomic_alpha
-                  .compare_exchange_weak(last_alpha, cur_estimation as isize, Ordering::SeqCst, Ordering::SeqCst)
-                  .is_ok()
-              {
+              if should_stop.load(Ordering::Relaxed) {
                 break;
               }
+              if cur_estimation > cur_alpha && cur_estimation < beta {
+                cur_estimation = -Minimax::alpha_beta(
+                  &mut local_field,
+                  depth - 1,
+                  NonZeroPos::new(pos),
+                  enemy,
+                  &next_trajectories_pruning,
+                  -beta,
+                  -cur_estimation,
+                  &mut local_empty_board,
+                  &self.hash_table,
+                  should_stop,
+                );
+              }
+              // We should check it before the best move assignment because it's possible
+              // that current estimation is higher than real in case of time out.
+              if should_stop.load(Ordering::Relaxed) {
+                break;
+              }
+              debug!(
+                "Estimation for move ({}, {}) is {}, alpha is {}, beta is {}.",
+                field.to_x(pos),
+                field.to_y(pos),
+                cur_estimation,
+                cur_alpha,
+                beta
+              );
+              local_field.undo();
+              if cur_estimation > cur_alpha {
+                local_alpha = cur_estimation;
+                local_best_move = pos;
+              }
+              loop {
+                let last_alpha = atomic_alpha.load(Ordering::SeqCst);
+                if cur_estimation <= last_alpha as i32
+                  || atomic_alpha
+                    .compare_exchange_weak(last_alpha, cur_estimation as isize, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
+                  break;
+                }
+              }
+              if *best_move == NonZeroPos::new(pos) {
+                first_move_considered.store(true, Ordering::SeqCst);
+              }
             }
-            if *best_move == NonZeroPos::new(pos) {
-              first_move_considered.store(true, Ordering::SeqCst);
+            if local_best_move != 0 {
+              best_moves.push((local_best_move, local_alpha));
             }
+          });
+        }
+      })
+      .expect("Minimax alpha_beta_parallel panic");
+      let mut result = 0;
+      let best_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
+      if best_alpha > alpha {
+        let moves = trajectories_pruning.moves_mut();
+        moves.clear();
+        while let Some((pos, pos_alpha)) = best_moves.pop() {
+          if pos_alpha == best_alpha || pos_alpha >= beta {
+            moves.push(pos);
           }
-          if local_best_move != 0 {
-            best_moves.push((local_best_move, local_alpha));
+          if pos_alpha == best_alpha && result == 0 {
+            result = pos;
           }
-        });
-      }
-    })
-    .expect("Minimax alpha_beta_parallel panic");
-    let mut result = 0;
-    let best_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
-    if best_alpha > alpha {
-      let moves = trajectories_pruning.moves_mut();
-      moves.clear();
-      while let Some((pos, pos_alpha)) = best_moves.pop() {
-        if pos_alpha == best_alpha || pos_alpha >= beta {
+        }
+        while let Some(pos) = skipped_moves.pop() {
           moves.push(pos);
         }
-        if pos_alpha == best_alpha && result == 0 {
-          result = pos;
+        while let Some(pos) = queue.pop() {
+          moves.push(pos);
         }
       }
-      while let Some(pos) = skipped_moves.pop() {
-        moves.push(pos);
+      if !first_move_considered.load(Ordering::SeqCst) {
+        info!("First move was not considered.");
+      } else if result == 0 {
+        info!("Best move is not found.");
+        *best_move = None;
+      } else {
+        info!("Best move is ({}, {}).", field.to_x(result), field.to_y(result));
+        *best_move = NonZeroPos::new(result);
       }
-      while let Some(pos) = queue.pop() {
-        moves.push(pos);
+      info!("Estimation is {}.", best_alpha);
+      best_alpha
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+      let mut best_alpha = alpha;
+      let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
+      let enemy = player.next();
+      let first_pos = best_move.map_or(0, |pos| pos.get());
+      for pos in NonZeroPos::new(first_pos)
+        .iter()
+        .map(|pos| pos.get())
+        .chain(moves.iter().filter(|&&pos| pos != first_pos).copied())
+      {
+        if should_stop.load(Ordering::Relaxed) {
+          break;
+        }
+        field.put_point(pos, player);
+        let next_trajectories_pruning =
+          trajectories_pruning.next(field, enemy, depth - 1, &mut empty_board, pos, should_stop);
+        if should_stop.load(Ordering::Relaxed) {
+          break;
+        }
+        let mut cur_estimation = -Minimax::alpha_beta(
+          field,
+          depth - 1,
+          NonZeroPos::new(pos),
+          enemy,
+          &next_trajectories_pruning,
+          -best_alpha - 1,
+          -best_alpha,
+          &mut empty_board,
+          &self.hash_table,
+          should_stop,
+        );
+        if should_stop.load(Ordering::Relaxed) {
+          break;
+        }
+        if cur_estimation > best_alpha && cur_estimation < beta {
+          cur_estimation = -Minimax::alpha_beta(
+            field,
+            depth - 1,
+            NonZeroPos::new(pos),
+            enemy,
+            &next_trajectories_pruning,
+            -beta,
+            -cur_estimation,
+            &mut empty_board,
+            &self.hash_table,
+            should_stop,
+          );
+        }
+        // We should check it before the best move assignment because it's possible
+        // that current estimation is higher than real in case of time out.
+        if should_stop.load(Ordering::Relaxed) {
+          break;
+        }
+        debug!(
+          "Estimation for move ({}, {}) is {}, alpha is {}, beta is {}.",
+          field.to_x(pos),
+          field.to_y(pos),
+          cur_estimation,
+          best_alpha,
+          beta
+        );
+        field.undo();
+        if cur_estimation > best_alpha {
+          best_alpha = cur_estimation;
+          *best_move = NonZeroPos::new(pos);
+        }
       }
+      if best_alpha == alpha {
+        info!("Best move is not found.");
+        *best_move = None;
+      }
+      best_alpha
     }
-    if !first_move_considered.load(Ordering::SeqCst) {
-      info!("First move was not considered.");
-    } else if result == 0 {
-      info!("Best move is not found.");
-      *best_move = None;
-    } else {
-      info!("Best move is ({}, {}).", field.to_x(result), field.to_y(result));
-      *best_move = NonZeroPos::new(result);
-    }
-    info!("Estimation is {}.", best_alpha);
-    best_alpha
   }
 
   fn mtdf(
@@ -565,8 +648,7 @@ impl Minimax {
       if should_stop.load(Ordering::Relaxed) {
         // If we found the best move on the previous iteration then the current best
         // move can't be worse than that move. Otherwise it's possible that the
-        // current best move is just a
-        // random move.
+        // current best move is just a random move.
         if best_move.is_some() {
           best_move = cur_best_move;
         }

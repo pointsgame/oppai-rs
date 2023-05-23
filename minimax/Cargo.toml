@@ -8,11 +8,13 @@ edition = "2021"
 
 [dependencies]
 log = "0.4"
-crossbeam = "0.8"
-num_cpus = "1.15"
 strum = { version = "0.24", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+crossbeam = "0.8"
+num_cpus = "1.15"
 
 [dev-dependencies]
 criterion = "0.4"
