@@ -32,6 +32,7 @@ fn is_field_occupied(field: &Field) -> bool {
   true
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, should_stop: &AtomicBool, time: Duration) -> T {
   let (s, r) = crossbeam::channel::bounded(1);
   crossbeam::scope(|scope| {
@@ -46,6 +47,11 @@ fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, should_stop: &AtomicBool
     r.recv().unwrap()
   })
   .unwrap()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, should_stop: &AtomicBool, time: Duration) -> T {
+  f()
 }
 
 pub struct Bot<R> {

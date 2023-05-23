@@ -1,5 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
+#[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::cli::*;
 use oppai_bot::config::Config as BotConfig;
 use oppai_initial::initial::InitialPosition;

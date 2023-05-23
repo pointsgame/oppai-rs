@@ -12,8 +12,8 @@ log = "0.4"
 env_logger = "0.10"
 clap = { version = "4.2", features = [ "cargo" ] }
 oppai-initial = { path = "../initial" }
-oppai-bot-1 = { package = "oppai-bot", path = "../bot", features = [ "cli" ] }
-oppai-bot-2 = { package = "oppai-bot", git = "https://github.com/pointsgame/oppai-rs.git", features = [ "cli" ] }
+oppai-bot-1 = { package = "oppai-bot", path = "../bot" }
+oppai-bot-2 = { package = "oppai-bot", git = "https://github.com/pointsgame/oppai-rs.git" }
 
 [features]
 default = ["dsu"]

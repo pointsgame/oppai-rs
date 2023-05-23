@@ -10,10 +10,6 @@ edition = "2021"
 log = "0.4"
 rand = "0.8"
 strum = { version = "0.24", features = [ "derive" ] }
-clap = { version = "4.2", optional = true }
-num_cpus = { version = "1.15", optional = true }
-humantime = { version = "2.1", optional = true }
-crossbeam = "0.8"
 oppai-field = { path = "../field" }
 oppai-minimax = { path = "../minimax" }
 oppai-uct = { path = "../uct" }
@@ -22,8 +18,13 @@ oppai-ladders = { path = "../ladders" }
 oppai-zero = { path = "../zero", optional = true }
 oppai-zero-torch = { path = "../zero-torch", optional = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+crossbeam = "0.8"
+num_cpus = "1.15"
+clap = "4.2"
+humantime = "2.1"
+
 [features]
 default = ["dsu", "zero"]
-cli = [ "clap", "num_cpus", "humantime" ]
 dsu = ["oppai-field/dsu"]
 zero = [ "oppai-zero", "oppai-zero-torch" ]

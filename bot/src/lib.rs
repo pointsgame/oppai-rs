@@ -2,7 +2,7 @@
 extern crate log;
 
 pub mod bot;
-#[cfg(feature = "cli")]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
 pub mod config;
 pub mod heuristic;

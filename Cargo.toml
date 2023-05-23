@@ -17,7 +17,7 @@ oppai-common = { path = "common" }
 oppai-ladders = { path = "ladders" }
 oppai-uct = { path = "uct" }
 oppai-minimax = { path = "minimax" }
-oppai-bot = { path = "bot", features = [ "cli" ] }
+oppai-bot = { path = "bot" }
 
 [features]
 default = ["dsu"]
