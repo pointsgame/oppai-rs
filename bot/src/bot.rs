@@ -151,6 +151,7 @@ where
     minimax_depth: u32,
     should_stop: &AtomicBool,
   ) -> Option<NonZeroPos> {
+    #[cfg(not(target_arch = "wasm32"))]
     let now = Instant::now();
     if self.field.width() < 3 || self.field.height() < 3 || is_field_occupied(&self.field) {
       return None;
@@ -159,14 +160,15 @@ where
       return Some(pos);
     }
     if let Some(&pos) = self.patterns.find(&self.field, player, false).choose(&mut self.rng) {
+      #[cfg(not(target_arch = "wasm32"))]
       info!(
         "Cumulative time for patterns evaluation (move is found): {:?}.",
         now.elapsed()
       );
       return NonZeroPos::new(pos);
     }
-    let elapsed = now.elapsed();
-    info!("Cumulative time for patterns evaluation: {:?}.", elapsed);
+    #[cfg(not(target_arch = "wasm32"))]
+    info!("Cumulative time for patterns evaluation: {:?}.", now.elapsed());
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
       if let (Some(pos), score, depth) = with_timeout(
@@ -174,6 +176,7 @@ where
         should_stop,
         ladders_time_limit,
       ) {
+        #[cfg(not(target_arch = "wasm32"))]
         info!(
           "Cumulative time for ladders evaluation (move is found with score {} and depth {}): {:?}.",
           score,
@@ -187,8 +190,8 @@ where
         }
       };
     }
-    let elapsed = now.elapsed();
-    info!("Cumulative time for ladders evaluation: {:?}.", elapsed);
+    #[cfg(not(target_arch = "wasm32"))]
+    info!("Cumulative time for ladders evaluation: {:?}.", now.elapsed());
     let result = match self.config.solver {
       Solver::Uct => self
         .uct
@@ -206,6 +209,7 @@ where
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     };
+    #[cfg(not(target_arch = "wasm32"))]
     info!("Cumulative time for best move evaluation: {:?}", now.elapsed());
     result
   }
