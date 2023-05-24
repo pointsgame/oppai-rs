@@ -80,6 +80,21 @@ impl Drop for UctNode {
   }
 }
 
+impl Clone for UctNode {
+  fn clone(&self) -> Self {
+    Self {
+      wins: AtomicUsize::new(self.wins.load(Ordering::SeqCst)),
+      draws: AtomicUsize::new(self.draws.load(Ordering::SeqCst)),
+      visits: AtomicUsize::new(self.visits.load(Ordering::SeqCst)),
+      pos: self.pos,
+      child: self.get_child_ref().cloned().map_or(AtomicPtr::default(), |child| {
+        AtomicPtr::new(Box::into_raw(Box::new(child)))
+      }),
+      sibling: self.sibling.clone(),
+    }
+  }
+}
+
 impl UctNode {
   pub fn new(pos: Pos) -> UctNode {
     UctNode {
@@ -214,6 +229,23 @@ pub struct UctRoot {
   komi_visits: AtomicUsize,
   komi_wins: AtomicUsize,
   komi_draws: AtomicUsize,
+}
+
+impl Clone for UctRoot {
+  fn clone(&self) -> Self {
+    Self {
+      config: self.config.clone(),
+      node: self.node.clone(),
+      player: self.player,
+      moves_count: self.moves_count,
+      hash: self.hash,
+      wave_pruning: self.wave_pruning.clone(),
+      komi: AtomicIsize::new(self.komi.load(Ordering::SeqCst)),
+      komi_visits: AtomicUsize::new(self.komi_visits.load(Ordering::SeqCst)),
+      komi_wins: AtomicUsize::new(self.komi_wins.load(Ordering::SeqCst)),
+      komi_draws: AtomicUsize::new(self.komi_draws.load(Ordering::SeqCst)),
+    }
+  }
 }
 
 impl UctRoot {

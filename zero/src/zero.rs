@@ -13,6 +13,7 @@ use rand::Rng;
 
 use crate::{episode::mcts, mcts::MctsNode, model::Model};
 
+#[derive(Clone)]
 pub struct Zero<N: Float, M: Model<N>> {
   model: M,
   node: MctsNode<N>,

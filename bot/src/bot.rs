@@ -54,6 +54,7 @@ fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, should_stop: &AtomicBool
   f()
 }
 
+#[derive(Clone)]
 pub struct Bot<R> {
   pub rng: R,
   pub patterns: Arc<Patterns>,

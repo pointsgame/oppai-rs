@@ -1,6 +1,7 @@
 use oppai_field::field::{self, Field, Pos};
 use std::iter;
 
+#[derive(Clone)]
 pub struct WavePruning {
   moves: Vec<Pos>,
   moves_field: Vec<Pos>,

@@ -41,6 +41,7 @@ impl Default for MinimaxConfig {
   }
 }
 
+#[derive(Clone)]
 pub struct Minimax {
   config: MinimaxConfig,
   hash_table: HashTable,

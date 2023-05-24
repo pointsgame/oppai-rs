@@ -129,6 +129,15 @@ struct HashEntry {
   data: AtomicUsize,
 }
 
+impl Clone for HashEntry {
+  fn clone(&self) -> Self {
+    Self {
+      hash: AtomicUsize::new(self.hash.load(Ordering::SeqCst)),
+      data: AtomicUsize::new(self.data.load(Ordering::SeqCst)),
+    }
+  }
+}
+
 impl Default for HashEntry {
   fn default() -> HashEntry {
     HashEntry {
@@ -150,7 +159,7 @@ impl HashEntry {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HashTable {
   entries: Vec<HashEntry>,
 }

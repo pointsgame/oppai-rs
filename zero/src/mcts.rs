@@ -3,6 +3,7 @@ use num_traits::{Float, Zero};
 use oppai_field::field::{to_x, to_y, NonZeroPos, Pos};
 use oppai_rotate::rotate::{rotate, rotate_sizes};
 
+#[derive(Clone)]
 pub struct MctsNode<N> {
   /// Current move.
   pub pos: Pos,
