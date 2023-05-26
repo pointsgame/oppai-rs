@@ -16,9 +16,11 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 #[cfg(feature = "zero")]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::Ordering;
 use std::{
   cmp,
-  sync::atomic::{AtomicBool, Ordering},
+  sync::atomic::AtomicBool,
   sync::Arc,
   time::{Duration, Instant},
 };
@@ -50,7 +52,7 @@ fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, should_stop: &AtomicBool
 }
 
 #[cfg(target_arch = "wasm32")]
-fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, should_stop: &AtomicBool, time: Duration) -> T {
+fn with_timeout<T: Send, F: FnOnce() -> T + Send>(f: F, _should_stop: &AtomicBool, _time: Duration) -> T {
   f()
 }
 

@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8"
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 criterion = "0.4"
@@ -15,6 +16,7 @@ rand_xoshiro = "0.6"
 
 [features]
 dsu = []
+serde = [ "dep:serde" ]
 
 [[bench]]
 name = "field_benchmark"

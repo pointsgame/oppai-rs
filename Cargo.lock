@@ -535,6 +535,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "const_panic"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2299,6 +2309,7 @@ dependencies = [
  "criterion",
  "rand",
  "rand_xoshiro",
+ "serde",
 ]
 
 [[package]]
@@ -2306,18 +2317,24 @@ name = "oppai-iced"
 version = "0.1.0"
 dependencies = [
  "clap 4.3.0",
+ "console_error_panic_hook",
  "env_logger",
  "getrandom",
  "humantime",
  "iced",
  "iced_native",
+ "js-sys",
  "log",
  "oppai-bot",
+ "oppai-field",
  "oppai-initial",
  "rand",
  "rfd",
+ "serde",
+ "serde-wasm-bindgen",
  "sgf-parser",
  "strum",
+ "wasm-bindgen",
  "wasm-logger",
  "web-sys",
 ]
@@ -3108,6 +3125,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2113ab51b87a539ae008b5c6c02dc020ffa39afd2d83cffcb3f4eb2722cebec2"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-wasm-bindgen"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3b143e2833c57ab9ad3ea280d21fd34e285a42837aeb0ee301f4f41890fa00e"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]

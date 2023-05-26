@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter, Result};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Player {
   #[default]
   Red,

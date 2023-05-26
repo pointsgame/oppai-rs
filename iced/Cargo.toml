@@ -5,31 +5,54 @@ authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
 license = "AGPL-3.0+"
 description = "Open Points Artificial Intelligence"
 edition = "2021"
+default-run = "main"
 
 [dependencies]
-iced = { version = "0.9", features = [ "canvas" ] }
-rand = { version = "0.8", features = [ "small_rng" ] }
+iced = { version = "0.9", features = ["canvas"] }
+rand = { version = "0.8", features = ["small_rng"] }
 log = "0.4"
-strum = { version = "0.24", features = [ "derive" ] }
+strum = { version = "0.24", features = ["derive"] }
 humantime = "2.1"
-rfd = { version = "0.11", features = [ "file-handle-inner" ] }
+rfd = { version = "0.11", features = ["file-handle-inner"] }
 sgf-parser = "2.6"
 oppai-initial = { path = "../initial" }
 oppai-bot = { path = "../bot", default-features = false }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.10"
-clap = { version = "4.2", features = [ "cargo" ] }
+clap = { version = "4.2", features = ["cargo"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = [
+  "Worker",
+  "MessageEvent",
+  "Url",
+  "Location",
+  "Blob",
+  "BlobPropertyBag",
+  "DedicatedWorkerGlobalScope"
+] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
 wasm-logger = "0.2"
+console_error_panic_hook = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.5"
+oppai-field = { path = "../field", features = ["serde"] }
 # for js feature
-getrandom = { version = "0.2", features = [ "js" ] }
+getrandom = { version = "0.2", features = ["js"] }
 # for changing canvas size hack
-web-sys = "0.3"
 iced_native = "0.10"
 
 [features]
 default = ["dsu"]
 dsu = ["oppai-bot/dsu"]
 zero = ["oppai-bot/zero"]
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[[bin]]
+name = "worker"
+path = "src/worker.rs"

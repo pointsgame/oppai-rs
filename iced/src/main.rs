@@ -4,31 +4,41 @@ extern crate log;
 mod config;
 mod extended_field;
 mod sgf;
+#[cfg(target_arch = "wasm32")]
+mod worker_message;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::cli_parse;
 use crate::config::{Config, Rgb};
 use crate::extended_field::ExtendedField;
+#[cfg(target_arch = "wasm32")]
+use crate::worker_message::{Request, Response};
 use iced::theme::Palette;
 use iced::widget::{canvas, Canvas, Column, Container, Row, Text};
 use iced::{
   executor, keyboard, mouse, Application, Color, Command, Element, Length, Point, Rectangle, Settings, Size, Theme,
   Vector,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::bot::Bot;
-use oppai_bot::field::{to_pos, NonZeroPos, Pos};
+#[cfg(not(target_arch = "wasm32"))]
+use oppai_bot::field::to_pos;
+use oppai_bot::field::{NonZeroPos, Pos};
+#[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::patterns::Patterns;
 use oppai_bot::player::Player;
 use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+#[cfg(not(target_arch = "wasm32"))]
+use rand::Rng;
+use rand::SeedableRng;
 #[cfg(not(target_arch = "wasm32"))]
 use rfd::{AsyncFileDialog, FileHandle};
 use std::sync::{
   atomic::{AtomicBool, Ordering},
-  Arc, Mutex,
+  Arc,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use std::{fs, fs::File};
+use std::{fs, fs::File, sync::Mutex};
 
 impl From<Rgb> for Color {
   fn from(rgb: Rgb) -> Self {
@@ -41,6 +51,9 @@ pub fn main() -> iced::Result {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   #[cfg(not(target_arch = "wasm32"))]
   env_logger::Builder::from_env(env).init();
+
+  #[cfg(target_arch = "wasm32")]
+  console_error_panic_hook::set_once();
   #[cfg(target_arch = "wasm32")]
   wasm_logger::init(wasm_logger::Config::default());
 
@@ -61,7 +74,10 @@ struct Game {
   rng: SmallRng,
   extended_field: ExtendedField,
   field_cache: canvas::Cache,
+  #[cfg(not(target_arch = "wasm32"))]
   bot: Arc<Mutex<Bot<SmallRng>>>,
+  #[cfg(target_arch = "wasm32")]
+  worker: web_sys::Worker,
   edit_mode: bool,
   ai: bool,
   thinking: bool,
@@ -71,10 +87,21 @@ struct Game {
 }
 
 impl Game {
+  #[cfg(target_arch = "wasm32")]
+  fn send_worker_message(&self, message: Request) {
+    self
+      .worker
+      .post_message(&serde_wasm_bindgen::to_value(&message).unwrap())
+      .unwrap();
+  }
+
   pub fn put_point(&mut self, pos: Pos) -> bool {
     let player = self.extended_field.player;
     if self.extended_field.put_point(pos) {
+      #[cfg(not(target_arch = "wasm32"))]
       self.bot.lock().unwrap().field.put_point(pos, player);
+      #[cfg(target_arch = "wasm32")]
+      self.send_worker_message(Request::PutPoint(pos, player));
       self.field_cache.clear();
       true
     } else {
@@ -84,7 +111,10 @@ impl Game {
 
   pub fn put_players_point(&mut self, pos: Pos, player: Player) -> bool {
     if self.extended_field.put_players_point(pos, player) {
+      #[cfg(not(target_arch = "wasm32"))]
       self.bot.lock().unwrap().field.put_point(pos, player);
+      #[cfg(target_arch = "wasm32")]
+      self.send_worker_message(Request::PutPoint(pos, player));
       self.field_cache.clear();
       true
     } else {
@@ -94,7 +124,10 @@ impl Game {
 
   pub fn undo(&mut self) -> bool {
     if self.extended_field.undo() {
+      #[cfg(not(target_arch = "wasm32"))]
       self.bot.lock().unwrap().field.undo();
+      #[cfg(target_arch = "wasm32")]
+      self.send_worker_message(Request::Undo);
       self.field_cache.clear();
       true
     } else {
@@ -102,11 +135,20 @@ impl Game {
     }
   }
 
+  #[cfg(not(target_arch = "wasm32"))]
   pub fn put_all_bot_points(&self) {
     let mut bot = self.bot.lock().unwrap();
     for &pos in self.extended_field.field.points_seq() {
       let player = self.extended_field.field.cell(pos).get_player();
       bot.field.put_point(pos, player);
+    }
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  pub fn put_all_bot_points(&self) {
+    for &pos in self.extended_field.field.points_seq() {
+      let player = self.extended_field.field.cell(pos).get_player();
+      self.send_worker_message(Request::PutPoint(pos, player));
     }
   }
 
@@ -140,6 +182,10 @@ enum Message {
   OpenFile(Option<FileHandle>),
   #[cfg(not(target_arch = "wasm32"))]
   SaveFile(Option<FileHandle>),
+  #[cfg(target_arch = "wasm32")]
+  SetWorkerListener(iced::futures::channel::mpsc::UnboundedSender<Message>),
+  #[cfg(target_arch = "wasm32")]
+  InitWorker,
 }
 
 impl Application for Game {
@@ -163,8 +209,7 @@ impl Application for Game {
       )
       .expect("Failed to read patterns file.")
     };
-    #[cfg(target_arch = "wasm32")]
-    let patterns = Patterns::default();
+    #[cfg(not(target_arch = "wasm32"))]
     let bot = Bot::new(
       flags.width,
       flags.height,
@@ -178,7 +223,23 @@ impl Application for Game {
       rng,
       extended_field,
       field_cache: Default::default(),
+      #[cfg(not(target_arch = "wasm32"))]
       bot: Arc::new(Mutex::new(bot)),
+      #[cfg(target_arch = "wasm32")]
+      worker: {
+        const NAME: &'static str = "worker";
+        let origin = web_sys::window().unwrap().location().origin().unwrap();
+        let script = js_sys::Array::new();
+        script.push(&format!(r#"importScripts("{origin}/{NAME}.js");wasm_bindgen("{origin}/{NAME}_bg.wasm");"#).into());
+        let blob = web_sys::Blob::new_with_str_sequence_and_options(
+          &script,
+          web_sys::BlobPropertyBag::new().type_("text/javascript"),
+        )
+        .unwrap();
+
+        let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
+        web_sys::Worker::new(&url).unwrap()
+      },
       edit_mode: false,
       ai: true,
       thinking: false,
@@ -210,6 +271,32 @@ impl Application for Game {
 
   fn title(&self) -> String {
     "OpPAI".into()
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  fn subscription(&self) -> iced::Subscription<Message> {
+    struct WorkerListener;
+    enum State {
+      Starting,
+      Ready(iced::futures::channel::mpsc::UnboundedReceiver<Message>),
+    }
+    iced::subscription::channel(std::any::TypeId::of::<WorkerListener>(), 16, |mut output| async move {
+      use iced::futures::{sink::SinkExt, StreamExt};
+      let mut state = State::Starting;
+      loop {
+        match &mut state {
+          State::Starting => {
+            let (tx, rx) = iced::futures::channel::mpsc::unbounded();
+            output.send(Message::SetWorkerListener(tx)).await.unwrap();
+            state = State::Ready(rx);
+          }
+          State::Ready(rx) => {
+            let message = rx.select_next_some().await;
+            output.send(message).await.unwrap();
+          }
+        }
+      }
+    })
   }
 
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
@@ -286,14 +373,22 @@ impl Application for Game {
         }
         if self.put_point(pos) && self.ai {
           self.thinking = true;
-          let bot = self.bot.clone();
+
           let player = self.extended_field.player;
-          let time = self.config.time;
-          let should_stop = self.should_stop.clone();
-          return Command::perform(
-            async move { bot.lock().unwrap().best_move_with_time(player, time, &should_stop) },
-            Message::BotMove,
-          );
+
+          #[cfg(not(target_arch = "wasm32"))]
+          {
+            let bot = self.bot.clone();
+            let time = self.config.time;
+            let should_stop = self.should_stop.clone();
+            return Command::perform(
+              async move { bot.lock().unwrap().best_move_with_time(player, time, &should_stop) },
+              Message::BotMove,
+            );
+          }
+
+          #[cfg(target_arch = "wasm32")]
+          self.send_worker_message(Request::BestMove(player));
         }
       }
       Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
@@ -313,13 +408,16 @@ impl Application for Game {
           return Command::none();
         }
         self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
-        self.bot = Arc::new(Mutex::new(Bot::new(
-          self.config.width,
-          self.config.height,
-          SmallRng::from_seed(self.rng.gen()),
-          Arc::new(Patterns::default()),
-          self.config.bot_config.clone(),
-        )));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+          self.bot = Arc::new(Mutex::new(Bot::new(
+            self.config.width,
+            self.config.height,
+            SmallRng::from_seed(self.rng.gen()),
+            Arc::new(Patterns::default()),
+            self.config.bot_config.clone(),
+          )));
+        }
         self.extended_field.place_initial_position(self.config.initial_position);
         self.put_all_bot_points();
         self.field_cache.clear();
@@ -361,6 +459,33 @@ impl Application for Game {
       Message::Canvas(CanvasMessage::Interrupt) => {
         if self.thinking {
           self.should_stop.store(true, Ordering::Relaxed);
+        }
+      }
+      #[cfg(target_arch = "wasm32")]
+      Message::SetWorkerListener(tx) => {
+        use wasm_bindgen::JsCast;
+        let callback = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::MessageEvent)>::new(
+          move |event: web_sys::MessageEvent| {
+            let response: Response = serde_wasm_bindgen::from_value(event.data()).unwrap();
+            let message = match response {
+              Response::BestMove(pos) => Message::BotMove(NonZeroPos::new(pos as usize)),
+              Response::Init => Message::InitWorker,
+            };
+            tx.unbounded_send(message).unwrap();
+          },
+        );
+        self.worker.set_onmessage(Some(callback.as_ref().unchecked_ref()));
+        callback.forget();
+      }
+      #[cfg(target_arch = "wasm32")]
+      Message::InitWorker => {
+        self.send_worker_message(Request::New(
+          self.extended_field.field.width(),
+          self.extended_field.field.height(),
+        ));
+        self.put_all_bot_points();
+        if self.thinking {
+          self.send_worker_message(Request::BestMove(self.extended_field.player));
         }
       }
     }
