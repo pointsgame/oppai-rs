@@ -21,9 +21,7 @@ use iced::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::bot::Bot;
-#[cfg(not(target_arch = "wasm32"))]
-use oppai_bot::field::to_pos;
-use oppai_bot::field::{NonZeroPos, Pos};
+use oppai_bot::field::{to_pos, NonZeroPos, Pos};
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::patterns::Patterns;
 use oppai_bot::player::Player;
@@ -31,8 +29,9 @@ use rand::rngs::SmallRng;
 #[cfg(not(target_arch = "wasm32"))]
 use rand::Rng;
 use rand::SeedableRng;
+use rfd::AsyncFileDialog;
 #[cfg(not(target_arch = "wasm32"))]
-use rfd::{AsyncFileDialog, FileHandle};
+use rfd::FileHandle;
 use std::sync::{
   atomic::{AtomicBool, Ordering},
   Arc,
@@ -170,7 +169,6 @@ enum CanvasMessage {
   PutPlayersPoint(Pos, Player),
   Undo,
   New,
-  #[cfg(not(target_arch = "wasm32"))]
   Open,
   Save,
   ToggleEditMode,
@@ -188,6 +186,8 @@ enum Message {
   OpenFile(Option<FileHandle>),
   #[cfg(not(target_arch = "wasm32"))]
   SaveFile(Option<FileHandle>),
+  #[cfg(target_arch = "wasm32")]
+  OpenFile(Option<Vec<u8>>),
   #[cfg(target_arch = "wasm32")]
   SetWorkerListener(iced::futures::channel::mpsc::UnboundedSender<Message>),
   #[cfg(target_arch = "wasm32")]
@@ -348,6 +348,35 @@ impl Application for Game {
         }
         self.file_choosing = false;
       }
+      #[cfg(target_arch = "wasm32")]
+      Message::OpenFile(maybe_file) => {
+        if let Some(file) = maybe_file {
+          if let Ok(text) = std::str::from_utf8(&file) {
+            if let Ok(game_tree) = sgf_parser::parse(&text) {
+              if let Some(extended_field) = sgf::from_sgf(game_tree).and_then(|game| {
+                let width = game.width;
+                ExtendedField::from_moves(
+                  game.width,
+                  game.height,
+                  &mut self.rng,
+                  game
+                    .moves
+                    .into_iter()
+                    .map(|(player, x, y)| (to_pos(width, x, y), player)),
+                )
+              }) {
+                self.extended_field = extended_field;
+                self.send_worker_message(Request::New(
+                  self.extended_field.field.width(),
+                  self.extended_field.field.height(),
+                ));
+                self.put_all_bot_points();
+                self.field_cache.clear();
+              }
+            }
+          }
+        }
+      }
       #[cfg(not(target_arch = "wasm32"))]
       Message::SaveFile(maybe_file) => {
         if let Some(file) = maybe_file {
@@ -413,16 +442,32 @@ impl Application for Game {
         self.put_all_bot_points();
         self.field_cache.clear();
       }
-      #[cfg(not(target_arch = "wasm32"))]
       Message::Canvas(CanvasMessage::Open) => {
         if self.is_locked() {
           return Command::none();
         }
-        self.file_choosing = true;
-        return Command::perform(
-          AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
-          Message::OpenFile,
-        );
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+          self.file_choosing = true;
+          return Command::perform(
+            AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
+            Message::OpenFile,
+          );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+          return Command::perform(
+            async {
+              let maybe_file = AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file().await;
+              if let Some(file) = maybe_file {
+                Some(file.read().await)
+              } else {
+                None
+              }
+            },
+            Message::OpenFile,
+          );
+        }
       }
       #[cfg(not(target_arch = "wasm32"))]
       Message::Canvas(CanvasMessage::Save) => {
@@ -692,6 +737,11 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::S,
         ..
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
+      #[cfg(target_arch = "wasm32")]
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::O,
+        ..
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::E,
         ..
