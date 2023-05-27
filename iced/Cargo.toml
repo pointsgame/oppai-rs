@@ -12,6 +12,7 @@ iced = { version = "0.9", features = ["canvas"] }
 rand = { version = "0.8", features = ["small_rng"] }
 log = "0.4"
 strum = { version = "0.24", features = ["derive"] }
+clap = { version = "4.2", features = ["cargo"] }
 humantime = "2.1"
 rfd = "0.11"
 sgf-parser = "2.6"
@@ -20,7 +21,6 @@ oppai-bot = { path = "../bot", default-features = false }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.10"
-clap = { version = "4.2", features = ["cargo"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = [

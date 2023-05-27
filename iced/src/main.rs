@@ -7,9 +7,7 @@ mod sgf;
 #[cfg(target_arch = "wasm32")]
 mod worker_message;
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::cli_parse;
-use crate::config::{Config, Rgb};
+use crate::config::{cli_parse, Config, Rgb};
 use crate::extended_field::ExtendedField;
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
@@ -56,10 +54,7 @@ pub fn main() -> iced::Result {
   #[cfg(target_arch = "wasm32")]
   wasm_logger::init(wasm_logger::Config::default());
 
-  #[cfg(not(target_arch = "wasm32"))]
   let config = cli_parse();
-  #[cfg(target_arch = "wasm32")]
-  let config = Config::default();
 
   Game::run(Settings {
     antialiasing: true,

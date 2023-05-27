@@ -1,6 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
-#[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::cli::*;
 use oppai_bot::config::Config as BotConfig;
 use oppai_initial::initial::InitialPosition;
@@ -88,9 +86,8 @@ impl Default for Config {
   }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub fn cli_parse() -> Config {
-  let matches = Command::new(crate_name!())
+  let command = Command::new(crate_name!())
     .version(crate_version!())
     .author(crate_authors!("\n"))
     .about(crate_description!())
@@ -210,8 +207,31 @@ pub fn cli_parse() -> Config {
         .num_args(1)
         .value_parser(value_parser!(humantime::Duration))
         .default_value("5s"),
-    )
-    .get_matches();
+    );
+
+  #[cfg(not(target_arch = "wasm32"))]
+  let matches = command.get_matches();
+
+  #[cfg(target_arch = "wasm32")]
+  let matches = {
+    let mut args = vec!["oppai".to_owned()];
+
+    let window = web_sys::window().unwrap();
+    let search = window.location().search().unwrap();
+    for pair in search.trim_start_matches('?').split('&') {
+      let mut it = pair.split('=').take(2);
+      if let Some(k) = it.next() {
+        let mut k = k.to_owned();
+        k.insert_str(0, "--");
+        args.push(k);
+      }
+      if let Some(v) = it.next() {
+        args.push(v.to_owned());
+      }
+    }
+
+    command.get_matches_from(args)
+  };
 
   let width = matches.get_one("width").copied().unwrap();
   let height = matches.get_one("height").copied().unwrap();
