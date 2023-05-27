@@ -318,7 +318,7 @@ impl Application for Game {
       #[cfg(not(target_arch = "wasm32"))]
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
-          if let Ok(text) = fs::read_to_string(file.inner()) {
+          if let Ok(text) = fs::read_to_string(file.path()) {
             if let Ok(game_tree) = sgf_parser::parse(&text) {
               if let Some(extended_field) = sgf::from_sgf(game_tree).and_then(|game| {
                 let width = game.width;
@@ -353,7 +353,7 @@ impl Application for Game {
         if let Some(file) = maybe_file {
           let game_tree = sgf::to_sgf(sgf::SgfGame::from(&self.extended_field.field));
           let s: String = game_tree.into();
-          fs::write(file.inner(), s).ok();
+          fs::write(file.path(), s).ok();
         }
         self.file_choosing = false;
       }
