@@ -81,6 +81,7 @@ struct Game {
   edit_mode: bool,
   ai: bool,
   thinking: bool,
+  #[cfg(not(target_arch = "wasm32"))]
   file_choosing: bool,
   coordinates: Option<(u32, u32)>,
   should_stop: Arc<AtomicBool>,
@@ -152,8 +153,14 @@ impl Game {
     }
   }
 
+  #[cfg(not(target_arch = "wasm32"))]
   pub fn is_locked(&self) -> bool {
     self.thinking || self.file_choosing
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  pub fn is_locked(&self) -> bool {
+    self.thinking
   }
 }
 
@@ -165,7 +172,6 @@ enum CanvasMessage {
   New,
   #[cfg(not(target_arch = "wasm32"))]
   Open,
-  #[cfg(not(target_arch = "wasm32"))]
   Save,
   ToggleEditMode,
   ToggleAI,
@@ -243,6 +249,7 @@ impl Application for Game {
       edit_mode: false,
       ai: true,
       thinking: false,
+      #[cfg(not(target_arch = "wasm32"))]
       file_choosing: false,
       coordinates: None,
       should_stop: Arc::new(AtomicBool::new(false)),
@@ -344,29 +351,13 @@ impl Application for Game {
       #[cfg(not(target_arch = "wasm32"))]
       Message::SaveFile(maybe_file) => {
         if let Some(file) = maybe_file {
-          let moves = self
-            .extended_field
-            .field
-            .points_seq()
-            .iter()
-            .map(|&pos| {
-              (
-                self.extended_field.field.cell(pos).get_player(),
-                self.extended_field.field.to_x(pos),
-                self.extended_field.field.to_y(pos),
-              )
-            })
-            .collect();
-          let game_tree = sgf::to_sgf(sgf::SgfGame {
-            width: self.extended_field.field.width(),
-            height: self.extended_field.field.height(),
-            moves,
-          });
+          let game_tree = sgf::to_sgf(sgf::SgfGame::from(&self.extended_field.field));
           let s: String = game_tree.into();
           fs::write(file.inner(), s).ok();
         }
         self.file_choosing = false;
       }
+
       Message::Canvas(CanvasMessage::PutPoint(pos)) => {
         if self.is_locked() {
           return Command::none();
@@ -443,6 +434,32 @@ impl Application for Game {
           AsyncFileDialog::new().add_filter("SGF", &["sgf"]).save_file(),
           Message::SaveFile,
         );
+      }
+      #[cfg(target_arch = "wasm32")]
+      Message::Canvas(CanvasMessage::Save) => {
+        let game_tree = sgf::to_sgf(sgf::SgfGame::from(&self.extended_field.field));
+        let s: String = game_tree.into();
+
+        use wasm_bindgen::JsCast;
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let element = document.create_element("a").unwrap();
+        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
+        element
+          .set_attribute(
+            "href",
+            &(String::from("data:text/plain;charset=utf-8,") + &String::from(js_sys::encode_uri_component(&s))),
+          )
+          .unwrap();
+        element.set_attribute("download", "game.sgf").unwrap();
+        element.style().set_property("display", "none").unwrap();
+        let body = document.body().unwrap();
+        let element = element.dyn_into::<web_sys::Node>().unwrap();
+        body.append_child(&element).unwrap();
+        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
+        element.click();
+        let element = element.dyn_into::<web_sys::Node>().unwrap();
+        body.remove_child(&element).unwrap();
       }
       Message::Canvas(CanvasMessage::ToggleEditMode) => {
         self.edit_mode = !self.edit_mode;
@@ -670,6 +687,11 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::S,
         modifiers,
       }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
+      #[cfg(target_arch = "wasm32")]
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::S,
+        ..
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::E,
         ..

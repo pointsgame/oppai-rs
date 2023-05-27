@@ -1,4 +1,4 @@
-use oppai_bot::player::Player;
+use oppai_bot::{field::Field, player::Player};
 use sgf_parser::{Action, Color, Game, GameNode, GameTree, SgfToken};
 
 pub struct SgfGame {
@@ -106,5 +106,20 @@ pub fn to_sgf(game: SgfGame) -> GameTree {
   GameTree {
     nodes,
     variations: Vec::new(),
+  }
+}
+
+impl From<&Field> for SgfGame {
+  fn from(field: &Field) -> Self {
+    let moves = field
+      .points_seq()
+      .iter()
+      .map(|&pos| (field.cell(pos).get_player(), field.to_x(pos), field.to_y(pos)))
+      .collect();
+    SgfGame {
+      width: field.width(),
+      height: field.height(),
+      moves,
+    }
   }
 }
