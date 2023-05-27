@@ -438,6 +438,11 @@ impl Application for Game {
             self.config.bot_config.clone(),
           )));
         }
+        #[cfg(target_arch = "wasm32")]
+        self.send_worker_message(Request::New(
+          self.extended_field.field.width(),
+          self.extended_field.field.height(),
+        ));
         self.extended_field.place_initial_position(self.config.initial_position);
         self.put_all_bot_points();
         self.field_cache.clear();
@@ -718,6 +723,7 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::Backspace,
         ..
       }) => (canvas::event::Status::Captured, Some(CanvasMessage::Undo)),
+      #[cfg(not(target_arch = "wasm32"))]
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::N,
         modifiers,
@@ -732,6 +738,11 @@ impl canvas::Program<CanvasMessage> for Game {
         key_code: keyboard::KeyCode::S,
         modifiers,
       }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
+      #[cfg(target_arch = "wasm32")]
+      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::N,
+        ..
+      }) => (canvas::event::Status::Captured, Some(CanvasMessage::New)),
       #[cfg(target_arch = "wasm32")]
       canvas::Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::S,
