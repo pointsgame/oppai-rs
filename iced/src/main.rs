@@ -30,6 +30,7 @@ use rand::SeedableRng;
 use rfd::AsyncFileDialog;
 #[cfg(not(target_arch = "wasm32"))]
 use rfd::FileHandle;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
   atomic::{AtomicBool, Ordering},
   Arc,
@@ -78,6 +79,7 @@ struct Game {
   #[cfg(not(target_arch = "wasm32"))]
   file_choosing: bool,
   coordinates: Option<(u32, u32)>,
+  #[cfg(not(target_arch = "wasm32"))]
   should_stop: Arc<AtomicBool>,
 }
 
@@ -247,6 +249,7 @@ impl Application for Game {
       #[cfg(not(target_arch = "wasm32"))]
       file_choosing: false,
       coordinates: None,
+      #[cfg(not(target_arch = "wasm32"))]
       should_stop: Arc::new(AtomicBool::new(false)),
     };
     game.put_all_bot_points();
@@ -308,6 +311,7 @@ impl Application for Game {
           self.put_point(pos.get());
         }
         self.thinking = false;
+        #[cfg(not(target_arch = "wasm32"))]
         self.should_stop.store(false, Ordering::Relaxed);
       }
       #[cfg(not(target_arch = "wasm32"))]
@@ -518,7 +522,9 @@ impl Application for Game {
       Message::Canvas(CanvasMessage::ClearCoordinates) => {
         self.coordinates = None;
       }
-      Message::Canvas(CanvasMessage::Interrupt) => {
+      Message::Canvas(CanvasMessage::Interrupt) =>
+      {
+        #[cfg(not(target_arch = "wasm32"))]
         if self.thinking {
           self.should_stop.store(true, Ordering::Relaxed);
         }
