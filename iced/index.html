@@ -4,11 +4,32 @@
     <meta charset="utf-8" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
-  <body style="margin:0px; overflow:hidden;">
+  <style>
+    canvas {
+      outline: none;
+    }
+  </style>
+  <body style="margin: 0px; overflow: hidden">
     <script>
-      document.addEventListener('contextmenu', event => event.preventDefault());
+      document.addEventListener("contextmenu", (event) =>
+        event.preventDefault()
+      );
     </script>
-    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="4" data-bin="main" data-type="main" />
-    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="4" data-bin="worker" data-type="worker" />
+    <link
+      data-trunk
+      rel="rust"
+      href="Cargo.toml"
+      data-wasm-opt="4"
+      data-bin="main"
+      data-type="main"
+    />
+    <link
+      data-trunk
+      rel="rust"
+      href="Cargo.toml"
+      data-wasm-opt="4"
+      data-bin="worker"
+      data-type="worker"
+    />
   </body>
 </html>
