@@ -65,7 +65,7 @@ impl<N: DType> PyModel<N> {
         .extract()?;
 
       Ok(Self {
-        phantom: PhantomData::default(),
+        phantom: PhantomData,
         path: Arc::new(path),
         device: Arc::new(Cow::Borrowed("cpu")),
         model,

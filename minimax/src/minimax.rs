@@ -5,12 +5,11 @@ use crossbeam::{self, queue::SegQueue};
 use oppai_common::common;
 use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
+use std::iter;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::AtomicIsize;
-use std::{
-  iter,
-  sync::atomic::{AtomicBool, Ordering},
-};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::{AtomicBool, Ordering};
 use strum::{EnumString, EnumVariantNames};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
@@ -64,7 +63,7 @@ impl Minimax {
     hash_table.put(hash, new_hash_value);
   }
 
-  fn alpha_beta(
+  fn alpha_beta<SS: Fn() -> bool>(
     field: &mut Field,
     depth: u32,
     last_pos: Option<NonZeroPos>,
@@ -74,9 +73,9 @@ impl Minimax {
     beta: i32,
     empty_board: &mut Vec<u32>,
     hash_table: &HashTable,
-    should_stop: &AtomicBool,
+    should_stop: &SS,
   ) -> i32 {
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       return alpha;
     }
     let enemy = player.next();
@@ -159,7 +158,7 @@ impl Minimax {
       // We should check it before putting the best move to the hash table because
       // it's possible that current estimation is higher than real in case of time
       // out.
-      if should_stop.load(Ordering::Relaxed) {
+      if should_stop() {
         return cur_alpha;
       }
       if cur_estimation > cur_alpha {
@@ -215,7 +214,7 @@ impl Minimax {
       // We should check it before putting the best move to the hash table because
       // it's possible that current estimation is higher than real in case of time
       // out.
-      if should_stop.load(Ordering::Relaxed) {
+      if should_stop() {
         return cur_alpha;
       }
       if cur_estimation > cur_alpha {
@@ -233,7 +232,7 @@ impl Minimax {
     cur_alpha
   }
 
-  pub fn alpha_beta_parallel(
+  pub fn alpha_beta_parallel<SS: Fn() -> bool + Sync>(
     &self,
     field: &mut Field,
     player: Player,
@@ -242,13 +241,13 @@ impl Minimax {
     beta: i32,
     trajectories_pruning: &mut TrajectoriesPruning,
     best_move: &mut Option<NonZeroPos>,
-    should_stop: &AtomicBool,
+    should_stop: &SS,
   ) -> i32 {
     info!(
       "Starting parallel alpha beta with depth {}, player {} and beta {}.",
       depth, player, beta
     );
-    if depth == 0 || should_stop.load(Ordering::Relaxed) {
+    if depth == 0 || should_stop() {
       return field.score(player);
     }
     let moves = trajectories_pruning.moves();
@@ -259,7 +258,7 @@ impl Minimax {
         .map(|&pos| (field.to_x(pos), field.to_y(pos)))
         .collect::<Vec<(u32, u32)>>()
     );
-    if moves.is_empty() || should_stop.load(Ordering::Relaxed) {
+    if moves.is_empty() || should_stop() {
       return field.score(player);
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -288,7 +287,7 @@ impl Minimax {
             let mut local_alpha = alpha;
             let enemy = player.next();
             while let Some(pos) = queue.pop() {
-              if should_stop.load(Ordering::Relaxed) {
+              if should_stop() {
                 break;
               }
               local_field.put_point(pos, player);
@@ -300,7 +299,7 @@ impl Minimax {
                 pos,
                 should_stop,
               );
-              if should_stop.load(Ordering::Relaxed) {
+              if should_stop() {
                 break;
               }
               let cur_alpha = atomic_alpha.load(Ordering::Relaxed) as i32;
@@ -320,7 +319,7 @@ impl Minimax {
                 &self.hash_table,
                 should_stop,
               );
-              if should_stop.load(Ordering::Relaxed) {
+              if should_stop() {
                 break;
               }
               if cur_estimation > cur_alpha && cur_estimation < beta {
@@ -339,7 +338,7 @@ impl Minimax {
               }
               // We should check it before the best move assignment because it's possible
               // that current estimation is higher than real in case of time out.
-              if should_stop.load(Ordering::Relaxed) {
+              if should_stop() {
                 break;
               }
               debug!(
@@ -419,13 +418,13 @@ impl Minimax {
         .map(|pos| pos.get())
         .chain(moves.iter().filter(|&&pos| pos != first_pos).copied())
       {
-        if should_stop.load(Ordering::Relaxed) {
+        if should_stop() {
           break;
         }
         field.put_point(pos, player);
         let next_trajectories_pruning =
           trajectories_pruning.next(field, enemy, depth - 1, &mut empty_board, pos, should_stop);
-        if should_stop.load(Ordering::Relaxed) {
+        if should_stop() {
           break;
         }
         let mut cur_estimation = -Minimax::alpha_beta(
@@ -440,7 +439,7 @@ impl Minimax {
           &self.hash_table,
           should_stop,
         );
-        if should_stop.load(Ordering::Relaxed) {
+        if should_stop() {
           break;
         }
         if cur_estimation > best_alpha && cur_estimation < beta {
@@ -459,7 +458,7 @@ impl Minimax {
         }
         // We should check it before the best move assignment because it's possible
         // that current estimation is higher than real in case of time out.
-        if should_stop.load(Ordering::Relaxed) {
+        if should_stop() {
           break;
         }
         debug!(
@@ -484,14 +483,14 @@ impl Minimax {
     }
   }
 
-  fn mtdf(
+  fn mtdf<SS: Fn() -> bool + Sync>(
     &self,
     field: &mut Field,
     player: Player,
     trajectories_pruning: &mut TrajectoriesPruning,
     depth: u32,
     best_move: &mut Option<NonZeroPos>,
-    should_stop: &AtomicBool,
+    should_stop: &SS,
   ) -> i32 {
     let mut alpha = trajectories_pruning.alpha().unwrap_or_else(|| field.score(player));
     let mut beta = trajectories_pruning.beta().unwrap_or_else(|| field.score(player));
@@ -500,7 +499,7 @@ impl Minimax {
         *best_move = NonZeroPos::new(single_move);
         return alpha;
       }
-      if should_stop.load(Ordering::Relaxed) {
+      if should_stop() {
         return alpha;
       }
       let mut cur_best_move = *best_move;
@@ -529,14 +528,14 @@ impl Minimax {
     alpha
   }
 
-  fn nega_scout(
+  fn nega_scout<SS: Fn() -> bool + Sync>(
     &self,
     field: &mut Field,
     player: Player,
     trajectories_pruning: &mut TrajectoriesPruning,
     depth: u32,
     best_move: &mut Option<NonZeroPos>,
-    should_stop: &AtomicBool,
+    should_stop: &SS,
   ) -> i32 {
     let alpha = trajectories_pruning.alpha().unwrap_or_else(|| field.score(player));
     let beta = trajectories_pruning.beta().unwrap_or_else(|| field.score(player));
@@ -552,7 +551,13 @@ impl Minimax {
     )
   }
 
-  pub fn minimax(&self, field: &mut Field, player: Player, depth: u32, should_stop: &AtomicBool) -> Option<NonZeroPos> {
+  pub fn minimax<SS: Fn() -> bool + Sync>(
+    &self,
+    field: &mut Field,
+    player: Player,
+    depth: u32,
+    should_stop: &SS,
+  ) -> Option<NonZeroPos> {
     info!("Starting minimax with depth {} and player {}.", depth, player);
     if depth == 0 {
       return None;
@@ -617,7 +622,12 @@ impl Minimax {
     }
   }
 
-  pub fn minimax_with_time(&self, field: &mut Field, player: Player, should_stop: &AtomicBool) -> Option<NonZeroPos> {
+  pub fn minimax_with_time<SS: Fn() -> bool + Sync>(
+    &self,
+    field: &mut Field,
+    player: Player,
+    should_stop: &SS,
+  ) -> Option<NonZeroPos> {
     let enemy = player.next();
     let mut depth = 1;
     let mut best_move = None;
@@ -636,7 +646,7 @@ impl Minimax {
       MinimaxType::NegaScout => Minimax::nega_scout,
       MinimaxType::Mtdf => Minimax::mtdf,
     };
-    while !should_stop.load(Ordering::Relaxed) {
+    while !should_stop() {
       let estimation = minimax_function(
         self,
         field,
@@ -646,7 +656,7 @@ impl Minimax {
         &mut cur_best_move,
         should_stop,
       );
-      if should_stop.load(Ordering::Relaxed) {
+      if should_stop() {
         // If we found the best move on the previous iteration then the current best
         // move can't be worse than that move. Otherwise it's possible that the
         // current best move is just a random move.
@@ -682,7 +692,7 @@ impl Minimax {
       } else {
         None
       };
-      if should_stop.load(Ordering::Relaxed) {
+      if should_stop() {
         break;
       }
       depth += 1;

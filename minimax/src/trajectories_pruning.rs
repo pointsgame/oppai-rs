@@ -1,10 +1,7 @@
 use oppai_common::trajectory::{build_trajectories, Trajectory};
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
-use std::{
-  collections::HashSet,
-  sync::atomic::{AtomicBool, Ordering},
-};
+use std::collections::HashSet;
 
 pub struct TrajectoriesPruning {
   rebuild_trajectories: bool,
@@ -94,23 +91,23 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn new(
+  pub fn new<SS: Fn() -> bool>(
     rebuild_trajectories: bool,
     field: &mut Field,
     player: Player,
     depth: u32,
     empty_board: &mut [u32],
-    should_stop: &AtomicBool,
+    should_stop: &SS,
   ) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
     let mut cur_trajectories = build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop);
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
     let mut enemy_trajectories = build_trajectories(field, player.next(), depth / 2, empty_board, should_stop);
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);
@@ -148,14 +145,14 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn next(
+  pub fn next<SS: Fn() -> bool>(
     &self,
     field: &mut Field,
     player: Player,
     depth: u32,
     empty_board: &mut [u32],
     last_pos: Pos,
-    should_stop: &AtomicBool,
+    should_stop: &SS,
   ) -> TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
@@ -176,7 +173,7 @@ impl TrajectoriesPruning {
         .chain(TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos).into_iter())
         .collect()
     };
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
     let enemy_depth = depth / 2;
@@ -219,7 +216,7 @@ impl TrajectoriesPruning {
     } else {
       Vec::new()
     };
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);
@@ -256,28 +253,28 @@ impl TrajectoriesPruning {
     }
   }
 
-  pub fn inc(
+  pub fn inc<SS: Fn() -> bool>(
     &self,
     field: &mut Field,
     player: Player,
     depth: u32,
     empty_board: &mut [u32],
-    should_stop: &AtomicBool,
+    should_stop: &SS,
   ) -> TrajectoriesPruning {
     let (mut cur_trajectories, mut enemy_trajectories) = if depth % 2 == 0 {
       let enemy_trajectories = build_trajectories(field, player.next(), depth / 2, empty_board, should_stop);
-      if should_stop.load(Ordering::Relaxed) {
+      if should_stop() {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }
       (self.cur_trajectories.clone(), enemy_trajectories)
     } else {
       let cur_trajectories = build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop);
-      if should_stop.load(Ordering::Relaxed) {
+      if should_stop() {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }
       (cur_trajectories, self.enemy_trajectories.clone())
     };
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
     let moves = TrajectoriesPruning::calculate_moves(&mut cur_trajectories, &mut enemy_trajectories, empty_board);

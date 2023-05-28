@@ -7,7 +7,7 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use std::{
   ptr,
-  sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+  sync::atomic::{AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
 };
 use strum::{EnumString, EnumVariantNames};
 
@@ -585,17 +585,18 @@ impl UctRoot {
     }
   }
 
-  pub fn best_move<S, R>(
+  pub fn best_move<S, R, SS>(
     &mut self,
     field: &Field,
     player: Player,
     rng: &mut R,
-    should_stop: &AtomicBool,
+    should_stop: &SS,
     max_iterations_count: usize,
   ) -> Option<NonZeroPos>
   where
     R: Rng + SeedableRng<Seed = S> + Send,
     Standard: Distribution<S>,
+    SS: Fn() -> bool + Sync,
   {
     info!("Generating best move for player {}.", player);
     debug!(
@@ -624,7 +625,7 @@ impl UctRoot {
             let mut local_field = field.clone();
             let mut local_rng = new_rng;
             let mut possible_moves = self.wave_pruning.moves().clone();
-            while !should_stop.load(Ordering::Relaxed) && iterations.load(Ordering::Relaxed) < max_iterations_count {
+            while !should_stop() && iterations.load(Ordering::Relaxed) < max_iterations_count {
               self.play_simulation(&mut local_field, player, &mut possible_moves, &mut local_rng, &ratched);
               for _ in 0..local_field.moves_count() - self.moves_count {
                 local_field.undo();

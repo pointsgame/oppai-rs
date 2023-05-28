@@ -16,7 +16,6 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 #[cfg(feature = "zero")]
 use std::path::PathBuf;
-#[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::Ordering;
 use std::{
   cmp,
@@ -174,7 +173,7 @@ where
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
       if let (Some(pos), score, depth) = with_timeout(
-        || ladders(&mut self.field, player, should_stop),
+        || ladders(&mut self.field, player, &|| should_stop.load(Ordering::Relaxed)),
         should_stop,
         ladders_time_limit,
       ) {
@@ -197,11 +196,19 @@ where
     let result = match self.config.solver {
       Solver::Uct => self
         .uct
-        .best_move(&self.field, player, &mut self.rng, should_stop, uct_iterations)
+        .best_move(
+          &self.field,
+          player,
+          &mut self.rng,
+          &|| should_stop.load(Ordering::Relaxed),
+          uct_iterations,
+        )
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
-        .minimax(&mut self.field, player, minimax_depth, should_stop)
+        .minimax(&mut self.field, player, minimax_depth, &|| {
+          should_stop.load(Ordering::Relaxed)
+        })
         .or_else(|| heuristic::heuristic(&self.field, player)),
       #[cfg(feature = "zero")]
       Solver::Zero => self
@@ -247,7 +254,7 @@ where
     if self.config.ladders {
       let ladders_time_limit = self.config.ladders_time_limit;
       if let (Some(pos), score, depth) = with_timeout(
-        || ladders(&mut self.field, player, should_stop),
+        || ladders(&mut self.field, player, &|| should_stop.load(Ordering::Relaxed)),
         should_stop,
         ladders_time_limit.min(time_left),
       ) {
@@ -276,7 +283,13 @@ where
         || {
           self
             .uct
-            .best_move(&self.field, player, &mut self.rng, should_stop, usize::max_value())
+            .best_move(
+              &self.field,
+              player,
+              &mut self.rng,
+              &|| should_stop.load(Ordering::Relaxed),
+              usize::max_value(),
+            )
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
         should_stop,
@@ -286,7 +299,7 @@ where
         || {
           self
             .minimax
-            .minimax_with_time(&mut self.field, player, should_stop)
+            .minimax_with_time(&mut self.field, player, &|| should_stop.load(Ordering::Relaxed))
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
         should_stop,

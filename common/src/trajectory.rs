@@ -1,9 +1,6 @@
 use oppai_field::field::{euclidean, wave_diag, Field, Pos};
 use oppai_field::player::Player;
-use std::{
-  ops::Index,
-  sync::atomic::{AtomicBool, Ordering},
-};
+use std::ops::Index;
 
 #[derive(Debug, Clone)]
 pub struct Trajectory {
@@ -89,7 +86,7 @@ fn next_moves(
   moves
 }
 
-fn build_trajectories_rec(
+fn build_trajectories_rec<SS: Fn() -> bool>(
   field: &mut Field,
   trajectories: &mut Vec<Trajectory>,
   player: Player,
@@ -99,10 +96,10 @@ fn build_trajectories_rec(
   last_pos: Pos,
   moves: Vec<Pos>,
   ensure_pos: Pos,
-  should_stop: &AtomicBool,
+  should_stop: &SS,
 ) {
   for pos in moves {
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       break;
     }
     if field.number_near_points(pos, player) >= 3 {
@@ -156,12 +153,12 @@ fn build_trajectories_rec(
   }
 }
 
-pub fn build_trajectories(
+pub fn build_trajectories<SS: Fn() -> bool>(
   field: &mut Field,
   player: Player,
   depth: u32,
   empty_board: &mut [u32],
-  should_stop: &AtomicBool,
+  should_stop: &SS,
 ) -> Vec<Trajectory> {
   let mut trajectories = Vec::new();
 
@@ -175,7 +172,7 @@ pub fn build_trajectories(
       continue;
     }
 
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       break;
     }
 
@@ -202,13 +199,13 @@ pub fn build_trajectories(
   trajectories
 }
 
-pub fn build_trajectories_from(
+pub fn build_trajectories_from<SS: Fn() -> bool>(
   field: &mut Field,
   pos: Pos,
   player: Player,
   depth: u32,
   empty_board: &mut [u32],
-  should_stop: &AtomicBool,
+  should_stop: &SS,
 ) -> Vec<Trajectory> {
   let mut trajectories = Vec::new();
 

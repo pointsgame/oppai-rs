@@ -4,7 +4,6 @@ use oppai_field::field::wave_diag;
 use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use std::iter;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut marks = Vec::new();
@@ -106,14 +105,14 @@ fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Play
   })
 }
 
-fn ladders_rec(
+fn ladders_rec<SS: Fn() -> bool>(
   field: &mut Field,
   player: Player,
   trajectory: &Trajectory,
   mut alpha: i32,
   beta: i32,
   empty_board: &mut Vec<u32>,
-  should_stop: &AtomicBool,
+  should_stop: &SS,
   depth: u32,
 ) -> (Option<NonZeroPos>, i32, u32) {
   match *trajectory.points().as_slice() {
@@ -128,7 +127,7 @@ fn ladders_rec(
       let mut capture_depth = 0;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
-        if trajectory.score() <= alpha || alpha >= beta || should_stop.load(Ordering::Relaxed) {
+        if trajectory.score() <= alpha || alpha >= beta || should_stop() {
           break;
         }
 
@@ -172,7 +171,7 @@ fn ladders_rec(
 
         let trajectories = build_trajectories_from(field, our_pos, player, 2, empty_board, should_stop);
 
-        if should_stop.load(Ordering::Relaxed) {
+        if should_stop() {
           field.undo();
           field.undo();
           break;
@@ -181,7 +180,7 @@ fn ladders_rec(
         let marks = mark_group(field, our_pos, player, empty_board);
 
         for trajectory in trajectories {
-          if alpha >= beta || should_stop.load(Ordering::Relaxed) {
+          if alpha >= beta || should_stop() {
             break;
           }
 
@@ -222,7 +221,11 @@ fn ladders_rec(
   }
 }
 
-pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (Option<NonZeroPos>, i32, u32) {
+pub fn ladders<SS: Fn() -> bool>(
+  field: &mut Field,
+  player: Player,
+  should_stop: &SS,
+) -> (Option<NonZeroPos>, i32, u32) {
   let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
 
   let trajectories = build_trajectories(field, player, 2, &mut empty_board, should_stop);
@@ -234,7 +237,7 @@ pub fn ladders(field: &mut Field, player: Player, should_stop: &AtomicBool) -> (
   let mut best_move = None;
 
   for trajectory in trajectories {
-    if should_stop.load(Ordering::Relaxed) {
+    if should_stop() {
       break;
     }
 
