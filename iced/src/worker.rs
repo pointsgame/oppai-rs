@@ -1,17 +1,23 @@
-mod worker_message;
-
-use oppai_bot::bot::Bot;
-use oppai_bot::config::Config as BotConfig;
-use oppai_bot::patterns::Patterns;
-use rand::rngs::SmallRng;
-use rand::SeedableRng;
-use std::sync::Arc;
-use std::{sync::atomic::AtomicBool, unreachable};
-use wasm_bindgen::prelude::*;
-use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
-use worker_message::{Request, Response};
-
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
+  panic!("not available");
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+  mod worker_message;
+
+  use oppai_bot::bot::Bot;
+  use oppai_bot::config::Config as BotConfig;
+  use oppai_bot::patterns::Patterns;
+  use rand::rngs::SmallRng;
+  use rand::SeedableRng;
+  use std::sync::Arc;
+  use std::{sync::atomic::AtomicBool, unreachable};
+  use wasm_bindgen::prelude::*;
+  use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
+  use worker_message::{Request, Response};
+
   console_error_panic_hook::set_once();
   web_sys::console::log_1(&"Initializing OpPAI worker".into());
 
