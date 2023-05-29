@@ -14,8 +14,8 @@ use crate::worker_message::{Request, Response};
 use iced::theme::Palette;
 use iced::widget::{canvas, Canvas, Column, Container, Row, Text};
 use iced::{
-  executor, keyboard, mouse, subscription, Application, Color, Command, Element, Event, Length, Point, Rectangle,
-  Settings, Size, Subscription, Theme, Vector,
+  executor, keyboard, mouse, subscription, window, Application, Color, Command, Element, Event, Length, Point,
+  Rectangle, Settings, Size, Subscription, Theme, Vector,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::bot::Bot;
@@ -60,6 +60,10 @@ pub fn main() -> iced::Result {
   Game::run(Settings {
     antialiasing: true,
     flags: config,
+    window: window::Settings {
+      icon: Some(window::icon::from_file_data(include_bytes!("../../Logo.png"), None).unwrap()),
+      ..Default::default()
+    },
     ..Settings::default()
   })
 }
