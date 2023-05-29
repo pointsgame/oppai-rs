@@ -213,7 +213,13 @@ where
       #[cfg(feature = "zero")]
       Solver::Zero => self
         .zero
-        .best_move(&self.field, player, &mut self.rng, should_stop, uct_iterations)
+        .best_move(
+          &self.field,
+          player,
+          &mut self.rng,
+          &|| should_stop.load(Ordering::Relaxed),
+          uct_iterations,
+        )
         .unwrap()
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
@@ -310,7 +316,13 @@ where
         || {
           self
             .zero
-            .best_move(&self.field, player, &mut self.rng, should_stop, usize::max_value())
+            .best_move(
+              &self.field,
+              player,
+              &mut self.rng,
+              &|| should_stop.load(Ordering::Relaxed),
+              usize::max_value(),
+            )
             .unwrap()
             .or_else(|| heuristic::heuristic(&self.field, player))
         },

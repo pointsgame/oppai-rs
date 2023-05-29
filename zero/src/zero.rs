@@ -1,7 +1,6 @@
 use std::{
   fmt::{Debug, Display},
   iter::Sum,
-  sync::atomic::{AtomicBool, Ordering},
 };
 
 use num_traits::Float;
@@ -35,12 +34,12 @@ where
     self.node = MctsNode::default();
   }
 
-  pub fn best_move<R: Rng>(
+  pub fn best_move<R: Rng, SS: Fn() -> bool>(
     &mut self,
     field: &Field,
     player: Player,
     rng: &mut R,
-    should_stop: &AtomicBool,
+    should_stop: &SS,
     max_iterations_count: usize,
   ) -> Result<Option<NonZeroPos>, <M as Model<N>>::E> {
     // TODO: persistent tree
@@ -48,7 +47,7 @@ where
 
     // TODO: check if game is over
     let mut iterations = 0;
-    while !should_stop.load(Ordering::Relaxed) && iterations < max_iterations_count {
+    while !should_stop() && iterations < max_iterations_count {
       mcts(&mut field.clone(), player, &mut self.node, &self.model, rng)?;
       iterations += 1;
     }
