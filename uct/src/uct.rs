@@ -643,7 +643,7 @@ impl UctRoot {
       let mut iterations = 0;
       let mut local_field = field.clone();
       let mut possible_moves = self.wave_pruning.moves().clone();
-      while !should_stop.load(Ordering::Relaxed) && iterations < max_iterations_count {
+      while !should_stop() && iterations < max_iterations_count {
         self.play_simulation(&mut local_field, player, &mut possible_moves, rng, &ratched);
         for _ in 0..local_field.moves_count() - self.moves_count {
           local_field.undo();
