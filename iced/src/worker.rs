@@ -13,8 +13,8 @@ fn main() {
   use oppai_bot::patterns::Patterns;
   use rand::rngs::SmallRng;
   use rand::SeedableRng;
-  use std::sync::Arc;
   use std::sync::atomic::AtomicBool;
+  use std::sync::Arc;
   use wasm_bindgen::prelude::*;
   use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
   use worker_message::{Request, Response};

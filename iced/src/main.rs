@@ -14,8 +14,8 @@ use crate::worker_message::{Request, Response};
 use iced::theme::Palette;
 use iced::widget::{canvas, Canvas, Column, Container, Row, Text};
 use iced::{
-  executor, keyboard, mouse, Application, Color, Command, Element, Length, Point, Rectangle, Settings, Size, Theme,
-  Vector,
+  executor, keyboard, mouse, subscription, Application, Color, Command, Element, Event, Length, Point, Rectangle,
+  Settings, Size, Subscription, Theme, Vector,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::bot::Bot;
@@ -164,27 +164,27 @@ impl Game {
 enum CanvasMessage {
   PutPoint(Pos),
   PutPlayersPoint(Pos, Player),
+  ChangeCoordinates(u32, u32),
+  ClearCoordinates,
+}
+
+#[derive(Debug)]
+enum Message {
+  Canvas(CanvasMessage),
   Undo,
   New,
   Open,
   Save,
   ToggleEditMode,
   ToggleAI,
-  ChangeCoordinates(u32, u32),
-  ClearCoordinates,
   Interrupt,
-}
-
-#[derive(Debug)]
-enum Message {
-  Canvas(CanvasMessage),
   BotMove(Option<NonZeroPos>),
   #[cfg(not(target_arch = "wasm32"))]
   OpenFile(Option<FileHandle>),
-  #[cfg(not(target_arch = "wasm32"))]
-  SaveFile(Option<FileHandle>),
   #[cfg(target_arch = "wasm32")]
   OpenFile(Option<Vec<u8>>),
+  #[cfg(not(target_arch = "wasm32"))]
+  SaveFile(Option<FileHandle>),
   #[cfg(target_arch = "wasm32")]
   SetWorkerListener(iced::futures::channel::mpsc::UnboundedSender<Message>),
   #[cfg(target_arch = "wasm32")]
@@ -278,34 +278,236 @@ impl Application for Game {
     "OpPAI".into()
   }
 
-  #[cfg(target_arch = "wasm32")]
-  fn subscription(&self) -> iced::Subscription<Message> {
-    struct WorkerListener;
-    enum State {
-      Starting,
-      Ready(iced::futures::channel::mpsc::UnboundedReceiver<Message>),
-    }
-    iced::subscription::channel(std::any::TypeId::of::<WorkerListener>(), 16, |mut output| async move {
-      use iced::futures::{sink::SinkExt, StreamExt};
-      let mut state = State::Starting;
-      loop {
-        match &mut state {
-          State::Starting => {
-            let (tx, rx) = iced::futures::channel::mpsc::unbounded();
-            output.send(Message::SetWorkerListener(tx)).await.unwrap();
-            state = State::Ready(rx);
-          }
-          State::Ready(rx) => {
-            let message = rx.select_next_some().await;
-            output.send(message).await.unwrap();
+  fn subscription(&self) -> Subscription<Message> {
+    #[cfg(target_arch = "wasm32")]
+    let worker_subscription = {
+      struct WorkerListener;
+      enum State {
+        Starting,
+        Ready(iced::futures::channel::mpsc::UnboundedReceiver<Message>),
+      }
+      subscription::channel(std::any::TypeId::of::<WorkerListener>(), 16, |mut output| async move {
+        use iced::futures::{sink::SinkExt, StreamExt};
+        let mut state = State::Starting;
+        loop {
+          match &mut state {
+            State::Starting => {
+              let (tx, rx) = iced::futures::channel::mpsc::unbounded();
+              output.send(Message::SetWorkerListener(tx)).await.unwrap();
+              state = State::Ready(rx);
+            }
+            State::Ready(rx) => {
+              let message = rx.select_next_some().await;
+              output.send(message).await.unwrap();
+            }
           }
         }
-      }
-    })
+      })
+    };
+
+    let keys_subscription = subscription::events_with(|event, _| match event {
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::Backspace,
+        ..
+      }) => Some(Message::Undo),
+      #[cfg(not(target_arch = "wasm32"))]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::N,
+        modifiers,
+      }) if modifiers.control() => Some(Message::New),
+      #[cfg(not(target_arch = "wasm32"))]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::O,
+        modifiers,
+      }) if modifiers.control() => Some(Message::Open),
+      #[cfg(not(target_arch = "wasm32"))]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::S,
+        modifiers,
+      }) if modifiers.control() => Some(Message::Save),
+      #[cfg(target_arch = "wasm32")]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::N,
+        ..
+      }) => Some(Message::New),
+      #[cfg(target_arch = "wasm32")]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::S,
+        ..
+      }) => Some(Message::Save),
+      #[cfg(target_arch = "wasm32")]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::O,
+        ..
+      }) => Some(Message::Open),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::E,
+        ..
+      }) => Some(Message::ToggleEditMode),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::A,
+        ..
+      }) => Some(Message::ToggleAI),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::Escape,
+        ..
+      }) => Some(Message::Interrupt),
+      _ => None,
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    let subscription = Subscription::batch([keys_subscription, worker_subscription]);
+    #[cfg(not(target_arch = "wasm32"))]
+    let subscription = keys_subscription;
+
+    subscription
   }
 
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match message {
+      Message::Canvas(CanvasMessage::PutPoint(pos)) => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        if self.put_point(pos) && self.ai {
+          self.thinking = true;
+
+          let player = self.extended_field.player;
+
+          #[cfg(not(target_arch = "wasm32"))]
+          {
+            let bot = self.bot.clone();
+            let time = self.config.time;
+            let should_stop = self.should_stop.clone();
+            return Command::perform(
+              async move { bot.lock().unwrap().best_move_with_time(player, time, &should_stop) },
+              Message::BotMove,
+            );
+          }
+
+          #[cfg(target_arch = "wasm32")]
+          self.send_worker_message(Request::BestMove(player));
+        }
+      }
+      Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.put_players_point(pos, player);
+      }
+      Message::Canvas(CanvasMessage::ChangeCoordinates(x, y)) => {
+        self.coordinates = Some((x, y));
+      }
+      Message::Canvas(CanvasMessage::ClearCoordinates) => {
+        self.coordinates = None;
+      }
+      Message::Undo => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.undo();
+      }
+      Message::New => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+          self.bot = Arc::new(Mutex::new(Bot::new(
+            self.config.width,
+            self.config.height,
+            SmallRng::from_seed(self.rng.gen()),
+            Arc::new(Patterns::default()),
+            self.config.bot_config.clone(),
+          )));
+        }
+        #[cfg(target_arch = "wasm32")]
+        self.send_worker_message(Request::New(
+          self.extended_field.field.width(),
+          self.extended_field.field.height(),
+        ));
+        self.extended_field.place_initial_position(self.config.initial_position);
+        self.put_all_bot_points();
+        self.field_cache.clear();
+      }
+      Message::Open => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+          self.file_choosing = true;
+          return Command::perform(
+            AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
+            Message::OpenFile,
+          );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+          return Command::perform(
+            async {
+              let maybe_file = AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file().await;
+              if let Some(file) = maybe_file {
+                Some(file.read().await)
+              } else {
+                None
+              }
+            },
+            Message::OpenFile,
+          );
+        }
+      }
+      #[cfg(not(target_arch = "wasm32"))]
+      Message::Save => {
+        if self.file_choosing {
+          return Command::none();
+        }
+        self.file_choosing = true;
+        return Command::perform(
+          AsyncFileDialog::new().add_filter("SGF", &["sgf"]).save_file(),
+          Message::SaveFile,
+        );
+      }
+      #[cfg(target_arch = "wasm32")]
+      Message::Save => {
+        let game_tree = sgf::to_sgf(sgf::SgfGame::from(&self.extended_field.field));
+        let s: String = game_tree.into();
+
+        use wasm_bindgen::JsCast;
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let element = document.create_element("a").unwrap();
+        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
+        element
+          .set_attribute(
+            "href",
+            &(String::from("data:text/plain;charset=utf-8,") + &String::from(js_sys::encode_uri_component(&s))),
+          )
+          .unwrap();
+        element.set_attribute("download", "game.sgf").unwrap();
+        element.style().set_property("display", "none").unwrap();
+        let body = document.body().unwrap();
+        let element = element.dyn_into::<web_sys::Node>().unwrap();
+        body.append_child(&element).unwrap();
+        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
+        element.click();
+        let element = element.dyn_into::<web_sys::Node>().unwrap();
+        body.remove_child(&element).unwrap();
+      }
+      Message::ToggleEditMode => {
+        self.edit_mode = !self.edit_mode;
+      }
+      Message::ToggleAI => {
+        self.ai = !self.ai;
+      }
+      Message::Interrupt =>
+      {
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.thinking {
+          self.should_stop.store(true, Ordering::Relaxed);
+        }
+      }
       Message::BotMove(maybe_pos) => {
         if let Some(pos) = maybe_pos {
           self.put_point(pos.get());
@@ -384,150 +586,6 @@ impl Application for Game {
           fs::write(file.path(), s).ok();
         }
         self.file_choosing = false;
-      }
-
-      Message::Canvas(CanvasMessage::PutPoint(pos)) => {
-        if self.is_locked() {
-          return Command::none();
-        }
-        if self.put_point(pos) && self.ai {
-          self.thinking = true;
-
-          let player = self.extended_field.player;
-
-          #[cfg(not(target_arch = "wasm32"))]
-          {
-            let bot = self.bot.clone();
-            let time = self.config.time;
-            let should_stop = self.should_stop.clone();
-            return Command::perform(
-              async move { bot.lock().unwrap().best_move_with_time(player, time, &should_stop) },
-              Message::BotMove,
-            );
-          }
-
-          #[cfg(target_arch = "wasm32")]
-          self.send_worker_message(Request::BestMove(player));
-        }
-      }
-      Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
-        if self.is_locked() {
-          return Command::none();
-        }
-        self.put_players_point(pos, player);
-      }
-      Message::Canvas(CanvasMessage::Undo) => {
-        if self.is_locked() {
-          return Command::none();
-        }
-        self.undo();
-      }
-      Message::Canvas(CanvasMessage::New) => {
-        if self.is_locked() {
-          return Command::none();
-        }
-        self.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-          self.bot = Arc::new(Mutex::new(Bot::new(
-            self.config.width,
-            self.config.height,
-            SmallRng::from_seed(self.rng.gen()),
-            Arc::new(Patterns::default()),
-            self.config.bot_config.clone(),
-          )));
-        }
-        #[cfg(target_arch = "wasm32")]
-        self.send_worker_message(Request::New(
-          self.extended_field.field.width(),
-          self.extended_field.field.height(),
-        ));
-        self.extended_field.place_initial_position(self.config.initial_position);
-        self.put_all_bot_points();
-        self.field_cache.clear();
-      }
-      Message::Canvas(CanvasMessage::Open) => {
-        if self.is_locked() {
-          return Command::none();
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-          self.file_choosing = true;
-          return Command::perform(
-            AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
-            Message::OpenFile,
-          );
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-          return Command::perform(
-            async {
-              let maybe_file = AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file().await;
-              if let Some(file) = maybe_file {
-                Some(file.read().await)
-              } else {
-                None
-              }
-            },
-            Message::OpenFile,
-          );
-        }
-      }
-      #[cfg(not(target_arch = "wasm32"))]
-      Message::Canvas(CanvasMessage::Save) => {
-        if self.file_choosing {
-          return Command::none();
-        }
-        self.file_choosing = true;
-        return Command::perform(
-          AsyncFileDialog::new().add_filter("SGF", &["sgf"]).save_file(),
-          Message::SaveFile,
-        );
-      }
-      #[cfg(target_arch = "wasm32")]
-      Message::Canvas(CanvasMessage::Save) => {
-        let game_tree = sgf::to_sgf(sgf::SgfGame::from(&self.extended_field.field));
-        let s: String = game_tree.into();
-
-        use wasm_bindgen::JsCast;
-        let window = web_sys::window().unwrap();
-        let document = window.document().unwrap();
-        let element = document.create_element("a").unwrap();
-        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
-        element
-          .set_attribute(
-            "href",
-            &(String::from("data:text/plain;charset=utf-8,") + &String::from(js_sys::encode_uri_component(&s))),
-          )
-          .unwrap();
-        element.set_attribute("download", "game.sgf").unwrap();
-        element.style().set_property("display", "none").unwrap();
-        let body = document.body().unwrap();
-        let element = element.dyn_into::<web_sys::Node>().unwrap();
-        body.append_child(&element).unwrap();
-        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
-        element.click();
-        let element = element.dyn_into::<web_sys::Node>().unwrap();
-        body.remove_child(&element).unwrap();
-      }
-      Message::Canvas(CanvasMessage::ToggleEditMode) => {
-        self.edit_mode = !self.edit_mode;
-      }
-      Message::Canvas(CanvasMessage::ToggleAI) => {
-        self.ai = !self.ai;
-      }
-      Message::Canvas(CanvasMessage::ChangeCoordinates(x, y)) => {
-        self.coordinates = Some((x, y));
-      }
-      Message::Canvas(CanvasMessage::ClearCoordinates) => {
-        self.coordinates = None;
-      }
-      Message::Canvas(CanvasMessage::Interrupt) =>
-      {
-        #[cfg(not(target_arch = "wasm32"))]
-        if self.thinking {
-          self.should_stop.store(true, Ordering::Relaxed);
-        }
       }
       #[cfg(target_arch = "wasm32")]
       Message::SetWorkerListener(tx) => {
@@ -720,52 +778,6 @@ impl canvas::Program<CanvasMessage> for Game {
           )
         }
       }
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Backspace,
-        ..
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Undo)),
-      #[cfg(not(target_arch = "wasm32"))]
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::N,
-        modifiers,
-      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::New)),
-      #[cfg(not(target_arch = "wasm32"))]
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::O,
-        modifiers,
-      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
-      #[cfg(not(target_arch = "wasm32"))]
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::S,
-        modifiers,
-      }) if modifiers.control() => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
-      #[cfg(target_arch = "wasm32")]
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::N,
-        ..
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::New)),
-      #[cfg(target_arch = "wasm32")]
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::S,
-        ..
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Save)),
-      #[cfg(target_arch = "wasm32")]
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::O,
-        ..
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Open)),
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::E,
-        ..
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleEditMode)),
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::A,
-        ..
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::ToggleAI)),
-      canvas::Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Escape,
-        ..
-      }) => (canvas::event::Status::Captured, Some(CanvasMessage::Interrupt)),
       _ => (canvas::event::Status::Ignored, None),
     }
   }
