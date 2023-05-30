@@ -697,8 +697,8 @@ impl canvas::Program<CanvasMessage> for Game {
     match event {
       canvas::Event::Mouse(event) => {
         match event {
-          mouse::Event::ButtonPressed(mouse::Button::Left) => {}
-          mouse::Event::ButtonPressed(mouse::Button::Right) => {
+          mouse::Event::ButtonReleased(mouse::Button::Left) => {}
+          mouse::Event::ButtonReleased(mouse::Button::Right) => {
             if !self.edit_mode {
               return (canvas::event::Status::Ignored, None);
             }
@@ -743,7 +743,7 @@ impl canvas::Program<CanvasMessage> for Game {
           let y = (point.y / step_y).round() as u32;
 
           match event {
-            mouse::Event::ButtonPressed(button) => {
+            mouse::Event::ButtonReleased(button) => {
               let pos = self.extended_field.field.to_pos(x, y);
               match button {
                 mouse::Button::Left => (
