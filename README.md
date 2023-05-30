@@ -1,6 +1,6 @@
 # Oppai-rs
 
-![Logo](/Logo.svg)
+![Logo](/resources/Logo.svg)
 
 Oppai-rs (acronym for "OPen Points Artificial Intelligence") is an artificial
 intelligence for the game of points.

@@ -61,7 +61,7 @@ pub fn main() -> iced::Result {
     antialiasing: true,
     flags: config,
     window: window::Settings {
-      icon: Some(window::icon::from_file_data(include_bytes!("../../Logo.png"), None).unwrap()),
+      icon: Some(window::icon::from_file_data(include_bytes!("../../resources/Logo.png"), None).unwrap()),
       ..Default::default()
     },
     ..Settings::default()
