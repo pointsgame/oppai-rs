@@ -17,21 +17,6 @@ const LINEAR_INPUT: usize = INNER_CHANNELS * (WIDTH - 4) * (HEIGHT - 4);
 const LINEAR_FIRST: usize = 1024;
 const LINEAR_SECOND: usize = 512;
 
-#[derive(Default, Debug, Clone, Copy)]
-pub struct LogSoftmax;
-
-impl ZeroSizedModule for LogSoftmax {}
-impl NonMutableModule for LogSoftmax {}
-
-impl<S: Shape, E: Dtype, D: Device<E>, T: Tape<E, D>> Module<Tensor<S, E, D, T>> for LogSoftmax {
-  type Output = Tensor<S, E, D, T>;
-  type Error = D::Err;
-
-  fn try_forward(&self, input: Tensor<S, E, D, T>) -> Result<Self::Output, D::Err> {
-    input.try_log_softmax::<S::LastAxis>()
-  }
-}
-
 type DfdxModule = (
   (
     (
@@ -95,6 +80,7 @@ pub struct DfdxModel<N>
 where
   N: Float + Dtype,
   AutoDevice: Device<N>,
+  DfdxModule: BuildOnDevice<AutoDevice, N>,
 {
   device: AutoDevice,
   model: <DfdxModule as BuildOnDevice<AutoDevice, N>>::Built,
@@ -105,6 +91,7 @@ impl<N> Default for DfdxModel<N>
 where
   N: Float + Dtype,
   AutoDevice: Device<N>,
+  DfdxModule: BuildOnDevice<AutoDevice, N>,
 {
   fn default() -> Self {
     let device = AutoDevice::default();
@@ -118,6 +105,8 @@ impl<N> Clone for DfdxModel<N>
 where
   N: Float + Dtype,
   AutoDevice: Device<N>,
+  DfdxModule: BuildOnDevice<AutoDevice, N>,
+  <DfdxModule as BuildOnDevice<AutoDevice, N>>::Built: Clone,
 {
   fn clone(&self) -> Self {
     let device = self.device.clone();
@@ -167,7 +156,7 @@ pub enum TrainError {
   #[error("Predict error")]
   Predict(PredictError),
   #[error("Train error")]
-  Train(OptimizerUpdateError<AutoDevice>),
+  Train(OptimizerUpdateError<<AutoDevice as HasErr>::Err>),
   #[error("Save error")]
   Save(SafeTensorError),
 }
@@ -178,8 +167,8 @@ impl From<PredictError> for TrainError {
   }
 }
 
-impl From<OptimizerUpdateError<AutoDevice>> for TrainError {
-  fn from(value: OptimizerUpdateError<AutoDevice>) -> Self {
+impl From<OptimizerUpdateError<<AutoDevice as HasErr>::Err>> for TrainError {
+  fn from(value: OptimizerUpdateError<<AutoDevice as HasErr>::Err>) -> Self {
     TrainError::Train(value)
   }
 }
