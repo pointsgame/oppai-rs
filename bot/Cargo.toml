@@ -10,7 +10,7 @@ edition = "2021"
 log = "0.4"
 rand = "0.8"
 strum = { version = "0.25", features = [ "derive" ] }
-num_cpus = "1.15"
+num_cpus = "1.16"
 clap = "4.4"
 humantime = "2.1"
 oppai-field = { path = "../field" }
