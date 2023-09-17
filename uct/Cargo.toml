@@ -18,7 +18,7 @@ crossbeam = "0.8"
 num_cpus = "1.16"
 
 [dev-dependencies]
-criterion = "0.4"
+criterion = "0.5"
 rand_xoshiro = "0.6"
 env_logger = "0.10"
 oppai-test-images = { path = "../test-images" }
