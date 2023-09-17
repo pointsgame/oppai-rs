@@ -12,7 +12,7 @@ iced = { version = "0.9", features = ["canvas", "image"] }
 rand = { version = "0.8", features = ["small_rng"] }
 log = "0.4"
 strum = { version = "0.24", features = ["derive"] }
-clap = { version = "4.2", features = ["cargo"] }
+clap = { version = "4.4", features = ["cargo"] }
 humantime = "2.1"
 rfd = { version = "0.11", default-features = false, features = ["xdg-portal"] }
 sgf-parser = "2.6"

@@ -11,7 +11,7 @@ log = "0.4"
 rand = "0.8"
 strum = { version = "0.24", features = [ "derive" ] }
 num_cpus = "1.15"
-clap = "4.2"
+clap = "4.4"
 humantime = "2.1"
 oppai-field = { path = "../field" }
 oppai-minimax = { path = "../minimax" }
