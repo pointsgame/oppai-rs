@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 rand = "0.8"
 log = "0.4"
-strum = { version = "0.24", features = [ "derive" ] }
+strum = { version = "0.25", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 

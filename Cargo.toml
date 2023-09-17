@@ -12,7 +12,7 @@ time = "0.3"
 env_logger = "0.10"
 crossbeam = "0.8"
 clap = { version = "4.4", features = [ "cargo" ] }
-strum = "0.24"
+strum = "0.25"
 oppai-common = { path = "common" }
 oppai-ladders = { path = "ladders" }
 oppai-uct = { path = "uct" }
