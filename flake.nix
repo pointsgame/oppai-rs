@@ -58,8 +58,17 @@
             librsvg
             pango
             vulkan-loader
-            (python3.withPackages (pkgs: with pkgs; [ pytorch torchvision ]))
-            (pkgs.callPackage ./pytorch-dlprim.nix { })
+
+            xorg.libX11
+            xorg.libXrandr
+            xorg.libXcursor
+            xorg.libXi
+            libxkbcommon
+            libGL
+            fontconfig
+            wayland
+            # (python3.withPackages (pkgs: with pkgs; [ pytorch torchvision ]))
+            # (pkgs.callPackage ./pytorch-dlprim.nix { })
           ];
 
           LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib";
