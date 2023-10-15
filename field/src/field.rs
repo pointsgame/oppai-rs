@@ -910,6 +910,10 @@ impl Field {
     }
   }
 
+  pub fn undo_all(&mut self) {
+    while self.undo() {}
+  }
+
   pub fn get_last_chain(&self) -> Vec<Pos> {
     use std::cmp::Ordering;
     let pos = if let Some(&pos) = self.points_seq.last() {
