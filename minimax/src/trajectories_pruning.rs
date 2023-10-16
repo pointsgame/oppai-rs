@@ -170,7 +170,7 @@ impl TrajectoriesPruning {
             .all(|&pos| field.cell(pos).is_putting_allowed())
         })
         .cloned()
-        .chain(TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos).into_iter())
+        .chain(TrajectoriesPruning::last_pos_trajectory(field, player, depth, last_pos))
         .collect()
     };
     if should_stop() {
