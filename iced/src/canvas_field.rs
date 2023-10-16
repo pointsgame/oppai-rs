@@ -1,7 +1,7 @@
 use crate::canvas_config::{CanvasConfig, Rgb};
-use crate::extended_field::ExtendedField;
 use iced::widget::canvas;
 use iced::{mouse, Color, Point, Rectangle, Size, Theme, Vector};
+use oppai_bot::extended_field::ExtendedField;
 use oppai_bot::field::Pos;
 use oppai_bot::player::Player;
 
@@ -19,7 +19,6 @@ pub enum CanvasMessage {
   ClearCoordinates,
 }
 
-#[derive(Debug)]
 pub struct CanvasField {
   pub extended_field: ExtendedField,
   pub field_cache: canvas::Cache,

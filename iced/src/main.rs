@@ -4,13 +4,11 @@ extern crate log;
 mod canvas_config;
 mod canvas_field;
 mod config;
-mod extended_field;
 mod sgf;
 #[cfg(target_arch = "wasm32")]
 mod worker_message;
 
 use crate::config::{cli_parse, Config};
-use crate::extended_field::ExtendedField;
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
 use canvas_field::{CanvasField, CanvasMessage};
@@ -22,6 +20,7 @@ use iced::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::bot::Bot;
+use oppai_bot::extended_field::ExtendedField;
 use oppai_bot::field::{to_pos, NonZeroPos, Pos};
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::patterns::Patterns;
@@ -190,7 +189,7 @@ impl Application for Game {
 
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = SmallRng::from_entropy();
-    let mut extended_field = ExtendedField::new(flags.width, flags.height, &mut rng);
+    let mut extended_field = ExtendedField::new_from_rng(flags.width, flags.height, &mut rng);
     #[cfg(not(target_arch = "wasm32"))]
     let patterns = if flags.patterns.is_empty() {
       Patterns::default()
@@ -211,7 +210,11 @@ impl Application for Game {
       Arc::new(patterns),
       flags.bot_config.clone(),
     );
-    extended_field.place_initial_position(flags.initial_position);
+    extended_field.put_points(flags.initial_position.points(
+      extended_field.field.width(),
+      extended_field.field.height(),
+      extended_field.player,
+    ));
     let game = Game {
       config: flags.clone(),
       rng,
@@ -406,7 +409,8 @@ impl Application for Game {
         if self.is_locked() {
           return Command::none();
         }
-        self.canvas_field.extended_field = ExtendedField::new(self.config.width, self.config.height, &mut self.rng);
+        self.canvas_field.extended_field =
+          ExtendedField::new_from_rng(self.config.width, self.config.height, &mut self.rng);
         #[cfg(not(target_arch = "wasm32"))]
         {
           self.bot = Arc::new(Mutex::new(Bot::new(
@@ -425,7 +429,11 @@ impl Application for Game {
         self
           .canvas_field
           .extended_field
-          .place_initial_position(self.config.initial_position);
+          .put_points(self.config.initial_position.points(
+            self.canvas_field.extended_field.field.width(),
+            self.canvas_field.extended_field.field.height(),
+            self.canvas_field.extended_field.player,
+          ));
         self.put_all_bot_points();
         self.canvas_field.field_cache.clear();
       }
@@ -521,15 +529,17 @@ impl Application for Game {
             if let Ok(game_tree) = sgf_parser::parse(&text) {
               if let Some(extended_field) = sgf::from_sgf(game_tree).and_then(|game| {
                 let width = game.width;
-                ExtendedField::from_moves(
-                  game.width,
-                  game.height,
-                  &mut self.rng,
+                let mut extended_field = ExtendedField::new_from_rng(game.width, game.height, &mut self.rng);
+                if extended_field.put_points(
                   game
                     .moves
                     .into_iter()
                     .map(|(player, x, y)| (to_pos(width, x, y), player)),
-                )
+                ) {
+                  Some(extended_field)
+                } else {
+                  None
+                }
               }) {
                 self.canvas_field.extended_field = extended_field;
                 self.bot = Arc::new(Mutex::new(Bot::new(
@@ -554,15 +564,17 @@ impl Application for Game {
             if let Ok(game_tree) = sgf_parser::parse(&text) {
               if let Some(extended_field) = sgf::from_sgf(game_tree).and_then(|game| {
                 let width = game.width;
-                ExtendedField::from_moves(
-                  game.width,
-                  game.height,
-                  &mut self.rng,
+                let mut extended_field = ExtendedField::new_from_rng(game.width, game.height, &mut self.rng);
+                if extended_field.put_points(
                   game
                     .moves
                     .into_iter()
                     .map(|(player, x, y)| (to_pos(width, x, y), player)),
-                )
+                ) {
+                  Some(extended_field)
+                } else {
+                  None
+                }
               }) {
                 self.canvas_field.extended_field = extended_field;
                 self.send_worker_message(Request::New(

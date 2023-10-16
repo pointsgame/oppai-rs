@@ -1,21 +1,47 @@
-use oppai_bot::field::{self, Field, Pos};
-use oppai_bot::player::Player;
-use oppai_bot::zobrist::Zobrist;
-use oppai_initial::initial::InitialPosition;
 use rand::Rng;
+
+use crate::{
+  field::{Field, Pos},
+  player::Player,
+  zobrist::Zobrist,
+};
 use std::sync::Arc;
 
-#[derive(Debug)]
+/// Field that stores additional information useful for rendering purposes.
+#[derive(Clone, PartialEq)]
 pub struct ExtendedField {
+  /// The player for the next turn.
   pub player: Player,
+  /// The game field.
   pub field: Field,
+  /// A list of surrounding chains with the turn number when the capturing took place.
   pub captures: Vec<(Vec<Pos>, Player, usize)>,
+  /// Contains the turn number when a cell was captured.
   pub captured: Vec<usize>,
 }
 
+impl From<Field> for ExtendedField {
+  fn from(mut field: Field) -> Self {
+    let points = field
+      .points_seq()
+      .iter()
+      .map(|&pos| (pos, field.cell(pos).get_player()))
+      .collect::<Vec<_>>();
+    let captured = vec![0; field.length()];
+    field.undo_all();
+    let mut result = ExtendedField {
+      player: Player::Red,
+      field,
+      captures: Vec::new(),
+      captured,
+    };
+    result.put_points(points);
+    result
+  }
+}
+
 impl ExtendedField {
-  pub fn new<R: Rng>(width: u32, height: u32, rng: &mut R) -> Self {
-    let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, rng));
+  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Self {
     let field = Field::new(width, height, zobrist);
     let length = field.length();
     Self {
@@ -26,7 +52,18 @@ impl ExtendedField {
     }
   }
 
-  fn put_points<I>(&mut self, points: I) -> bool
+  pub fn new_from_rng<R: Rng>(width: u32, height: u32, rng: &mut R) -> Self {
+    let field = Field::new_from_rng(width, height, rng);
+    let length = field.length();
+    Self {
+      player: Player::Red,
+      field,
+      captures: Vec::new(),
+      captured: vec![0; length],
+    }
+  }
+
+  pub fn put_points<I>(&mut self, points: I) -> bool
   where
     I: IntoIterator<Item = (Pos, Player)>,
   {
@@ -36,26 +73,6 @@ impl ExtendedField {
       }
     }
     true
-  }
-
-  pub fn from_moves<R, I>(width: u32, height: u32, rng: &mut R, moves: I) -> Option<Self>
-  where
-    R: Rng,
-    I: IntoIterator<Item = (Pos, Player)>,
-  {
-    let mut result = Self::new(width, height, rng);
-    if result.put_points(moves) {
-      if let Some(&pos) = result.field.points_seq().last() {
-        result.player = result.field.cell(pos).get_player().next();
-      }
-      Some(result)
-    } else {
-      None
-    }
-  }
-
-  pub fn place_initial_position(&mut self, initial_position: InitialPosition) {
-    self.put_points(initial_position.points(self.field.width(), self.field.height(), self.player));
   }
 
   pub fn put_players_point(&mut self, pos: Pos, player: Player) -> bool {
@@ -98,6 +115,8 @@ impl ExtendedField {
       let _ = !check(n, w) && (check(n, nw) || check(w, nw));
       let _ = !check(w, s) && (check(w, sw) || check(s, sw));
 
+      self.player = player.next();
+
       true
     } else {
       false
@@ -105,12 +124,7 @@ impl ExtendedField {
   }
 
   pub fn put_point(&mut self, pos: Pos) -> bool {
-    if self.put_players_point(pos, self.player) {
-      self.player = self.player.next();
-      true
-    } else {
-      false
-    }
+    self.put_players_point(pos, self.player)
   }
 
   pub fn undo(&mut self) -> bool {

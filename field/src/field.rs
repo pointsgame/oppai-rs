@@ -1,3 +1,5 @@
+use rand::Rng;
+
 use crate::cell::Cell;
 use crate::player::Player;
 use crate::zobrist::Zobrist;
@@ -438,6 +440,12 @@ impl Field {
       field.points[(y + 1) * (width as Pos + 2) - 1].set_bad();
     }
     field
+  }
+
+  #[inline]
+  pub fn new_from_rng<R: Rng>(width: u32, height: u32, rng: &mut R) -> Field {
+    let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, rng));
+    Field::new(width, height, zobrist)
   }
 
   #[inline]
@@ -968,6 +976,11 @@ impl Field {
   #[inline]
   pub fn moves_count(&self) -> usize {
     self.points_seq.len()
+  }
+
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    self.points_seq.is_empty()
   }
 
   #[inline]
