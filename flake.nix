@@ -29,7 +29,7 @@
           overlays = [ inputs.fenix.overlays.default ];
         };
       in {
-        devShell = pkgs.mkShell {
+        devShell = pkgs.mkShell rec {
           nativeBuildInputs = with pkgs; [
             cmake
             pkg-config
@@ -62,7 +62,7 @@
             (pkgs.callPackage ./pytorch-dlprim.nix { })
           ];
 
-          LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib";
+          LD_LIBRARY_PATH = inputs.nixpkgs.lib.makeLibraryPath buildInputs;
           XDG_DATA_DIRS =
             "${pkgs.gtk3}/share/gsettings-schemas/gtk+3-${pkgs.gtk3.version}:"
             + "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/gsettings-desktop-schemas-${pkgs.gsettings-desktop-schemas.version}";
