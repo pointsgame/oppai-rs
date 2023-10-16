@@ -64,5 +64,6 @@ members = [
   "initial",
   "iced",
   "svg",
+  "sgf",
   # "versus"
 ]

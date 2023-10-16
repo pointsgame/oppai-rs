@@ -1,10 +1,6 @@
-#[macro_use]
-extern crate log;
-
 mod canvas_config;
 mod canvas_field;
 mod config;
-mod sgf;
 #[cfg(target_arch = "wasm32")]
 mod worker_message;
 
@@ -21,10 +17,11 @@ use iced::{
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::bot::Bot;
 use oppai_bot::extended_field::ExtendedField;
-use oppai_bot::field::{to_pos, NonZeroPos, Pos};
+use oppai_bot::field::{NonZeroPos, Pos};
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::patterns::Patterns;
 use oppai_bot::player::Player;
+use oppai_sgf::{from_sgf, to_sgf};
 use rand::rngs::SmallRng;
 #[cfg(not(target_arch = "wasm32"))]
 use rand::Rng;
@@ -477,29 +474,28 @@ impl Application for Game {
       }
       #[cfg(target_arch = "wasm32")]
       Message::Save => {
-        let game_tree = sgf::to_sgf(sgf::SgfGame::from(&self.canvas_field.extended_field.field));
-        let s: String = game_tree.into();
-
-        use wasm_bindgen::JsCast;
-        let window = web_sys::window().unwrap();
-        let document = window.document().unwrap();
-        let element = document.create_element("a").unwrap();
-        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
-        element
-          .set_attribute(
-            "href",
-            &(String::from("data:text/plain;charset=utf-8,") + &String::from(js_sys::encode_uri_component(&s))),
-          )
-          .unwrap();
-        element.set_attribute("download", "game.sgf").unwrap();
-        element.style().set_property("display", "none").unwrap();
-        let body = document.body().unwrap();
-        let element = element.dyn_into::<web_sys::Node>().unwrap();
-        body.append_child(&element).unwrap();
-        let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
-        element.click();
-        let element = element.dyn_into::<web_sys::Node>().unwrap();
-        body.remove_child(&element).unwrap();
+        if let Some(s) = to_sgf(&self.canvas_field.extended_field.field) {
+          use wasm_bindgen::JsCast;
+          let window = web_sys::window().unwrap();
+          let document = window.document().unwrap();
+          let element = document.create_element("a").unwrap();
+          let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
+          element
+            .set_attribute(
+              "href",
+              &(String::from("data:text/plain;charset=utf-8,") + &String::from(js_sys::encode_uri_component(&s))),
+            )
+            .unwrap();
+          element.set_attribute("download", "game.sgf").unwrap();
+          element.style().set_property("display", "none").unwrap();
+          let body = document.body().unwrap();
+          let element = element.dyn_into::<web_sys::Node>().unwrap();
+          body.append_child(&element).unwrap();
+          let element = element.dyn_into::<web_sys::HtmlElement>().unwrap();
+          element.click();
+          let element = element.dyn_into::<web_sys::Node>().unwrap();
+          body.remove_child(&element).unwrap();
+        }
       }
       Message::ToggleEditMode => {
         self.canvas_field.edit_mode = !self.canvas_field.edit_mode;
@@ -526,32 +522,17 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(text) = fs::read_to_string(file.path()) {
-            if let Ok(game_tree) = sgf_parser::parse(&text) {
-              if let Some(extended_field) = sgf::from_sgf(game_tree).and_then(|game| {
-                let width = game.width;
-                let mut extended_field = ExtendedField::new_from_rng(game.width, game.height, &mut self.rng);
-                if extended_field.put_points(
-                  game
-                    .moves
-                    .into_iter()
-                    .map(|(player, x, y)| (to_pos(width, x, y), player)),
-                ) {
-                  Some(extended_field)
-                } else {
-                  None
-                }
-              }) {
-                self.canvas_field.extended_field = extended_field;
-                self.bot = Arc::new(Mutex::new(Bot::new(
-                  self.config.width,
-                  self.config.height,
-                  SmallRng::from_seed(self.rng.gen()),
-                  Arc::new(Patterns::default()),
-                  self.config.bot_config.clone(),
-                )));
-                self.put_all_bot_points();
-                self.canvas_field.field_cache.clear();
-              }
+            if let Some(extended_field) = from_sgf(&text, &mut self.rng) {
+              self.canvas_field.extended_field = extended_field;
+              self.bot = Arc::new(Mutex::new(Bot::new(
+                self.config.width,
+                self.config.height,
+                SmallRng::from_seed(self.rng.gen()),
+                Arc::new(Patterns::default()),
+                self.config.bot_config.clone(),
+              )));
+              self.put_all_bot_points();
+              self.canvas_field.field_cache.clear();
             }
           }
         }
@@ -561,29 +542,14 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(text) = std::str::from_utf8(&file) {
-            if let Ok(game_tree) = sgf_parser::parse(&text) {
-              if let Some(extended_field) = sgf::from_sgf(game_tree).and_then(|game| {
-                let width = game.width;
-                let mut extended_field = ExtendedField::new_from_rng(game.width, game.height, &mut self.rng);
-                if extended_field.put_points(
-                  game
-                    .moves
-                    .into_iter()
-                    .map(|(player, x, y)| (to_pos(width, x, y), player)),
-                ) {
-                  Some(extended_field)
-                } else {
-                  None
-                }
-              }) {
-                self.canvas_field.extended_field = extended_field;
-                self.send_worker_message(Request::New(
-                  self.canvas_field.extended_field.field.width(),
-                  self.canvas_field.extended_field.field.height(),
-                ));
-                self.put_all_bot_points();
-                self.canvas_field.field_cache.clear();
-              }
+            if let Some(extended_field) = from_sgf(&text, &mut self.rng) {
+              self.canvas_field.extended_field = extended_field;
+              self.send_worker_message(Request::New(
+                self.canvas_field.extended_field.field.width(),
+                self.canvas_field.extended_field.field.height(),
+              ));
+              self.put_all_bot_points();
+              self.canvas_field.field_cache.clear();
             }
           }
         }
@@ -591,9 +557,9 @@ impl Application for Game {
       #[cfg(not(target_arch = "wasm32"))]
       Message::SaveFile(maybe_file) => {
         if let Some(file) = maybe_file {
-          let game_tree = sgf::to_sgf(sgf::SgfGame::from(&self.canvas_field.extended_field.field));
-          let s: String = game_tree.into();
-          fs::write(file.path(), s).ok();
+          if let Some(s) = to_sgf(&self.canvas_field.extended_field.field) {
+            fs::write(file.path(), s).ok();
+          }
         }
         self.file_choosing = false;
       }
