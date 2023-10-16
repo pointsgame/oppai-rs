@@ -1,7 +1,8 @@
 use crate::canvas_config::{CanvasConfig, Rgb};
 use crate::extended_field::ExtendedField;
+use iced::mouse::Cursor;
 use iced::widget::canvas;
-use iced::{mouse, Color, Point, Rectangle, Size, Theme, Vector};
+use iced::{mouse, Color, Point, Rectangle, Renderer, Size, Theme, Vector};
 use oppai_bot::field::Pos;
 use oppai_bot::player::Player;
 
@@ -35,7 +36,7 @@ impl canvas::Program<CanvasMessage> for CanvasField {
     state: &mut Option<(u32, u32)>,
     event: canvas::Event,
     bounds: Rectangle,
-    cursor: canvas::Cursor,
+    cursor: Cursor,
   ) -> (canvas::event::Status, Option<CanvasMessage>) {
     match event {
       canvas::Event::Mouse(event) => {
@@ -58,7 +59,7 @@ impl canvas::Program<CanvasMessage> for CanvasField {
           _ => return (canvas::event::Status::Ignored, None),
         }
 
-        let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
+        let cursor_position = if let Some(position) = cursor.position_in(bounds) {
           position
         } else {
           return (canvas::event::Status::Ignored, None);
@@ -135,9 +136,10 @@ impl canvas::Program<CanvasMessage> for CanvasField {
   fn draw(
     &self,
     _state: &Option<(u32, u32)>,
+    renderer: &Renderer<Theme>,
     _theme: &Theme,
     bounds: Rectangle,
-    cursor: canvas::Cursor,
+    cursor: Cursor,
   ) -> Vec<canvas::Geometry> {
     fn color(config: &CanvasConfig, player: Player) -> Color {
       (match player {
@@ -176,7 +178,7 @@ impl canvas::Program<CanvasMessage> for CanvasField {
 
     let point_radius = width / field_width as f32 * self.config.point_radius;
 
-    let field = self.field_cache.draw(bounds.size(), |frame| {
+    let field = self.field_cache.draw(renderer, bounds.size(), |frame| {
       // draw grid
 
       let grid = canvas::Path::new(|path| {
@@ -378,7 +380,7 @@ impl canvas::Program<CanvasMessage> for CanvasField {
       }
     });
 
-    let mut frame = canvas::Frame::new(bounds.size());
+    let mut frame = canvas::Frame::new(renderer, bounds.size());
 
     if let Some(point) = cursor.position().and_then(|cursor_position| {
       let point = cursor_position - shift;

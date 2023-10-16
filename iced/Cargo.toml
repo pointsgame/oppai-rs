@@ -8,7 +8,7 @@ edition = "2021"
 default-run = "main"
 
 [dependencies]
-iced = { version = "0.9", features = ["canvas", "image"] }
+iced = { version = "0.10", features = ["canvas", "image"] }
 rand = { version = "0.8", features = ["small_rng"] }
 log = "0.4"
 strum = { version = "0.25", features = ["derive"] }
@@ -18,6 +18,9 @@ rfd = { version = "0.12", default-features = false, features = ["xdg-portal"] }
 sgf-parser = "2.6"
 oppai-initial = { path = "../initial" }
 oppai-bot = { path = "../bot", default-features = false }
+
+# Fix for https://github.com/iced-rs/iced/issues/2005 and https://github.com/iced-rs/iced/issues/1900
+cosmic-text = { git = "https://github.com/pop-os/cosmic-text", branch = "main", features = ["wasm-web"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.10"

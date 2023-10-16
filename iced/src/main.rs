@@ -249,23 +249,6 @@ impl Application for Game {
     };
     game.put_all_bot_points();
 
-    #[cfg(target_arch = "wasm32")]
-    {
-      // hack to resize canvas
-      // https://github.com/iced-rs/iced/issues/1265
-      use iced_native::{command, window};
-      let window = web_sys::window().unwrap();
-      let (width, height) = (
-        (window.inner_width().unwrap().as_f64().unwrap()) as u32,
-        (window.inner_height().unwrap().as_f64().unwrap()) as u32,
-      );
-      (
-        game,
-        Command::single(command::Action::Window(window::Action::Resize { width, height })),
-      )
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
     (game, Command::none())
   }
 
