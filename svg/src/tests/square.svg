@@ -1,0 +1,56 @@
+<svg height="73.14286" viewBox="0 0 128 73.14286" width="128" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<circle id="dot" r="3.657143" shape-rendering="geometricPrecision"/>
+<rect fill-opacity="0.5" height="18.285715" id="verticalLine" width="3.657143"/>
+<rect fill-opacity="0.5" height="3.657143" id="horizontalLine" width="18.285715"/>
+<g fill-opacity="0" id="pointer" pointer-events="bounding-box">
+<circle cx="9.5" cy="9.5" fill="red" r="3.657143" shape-rendering="geometricPrecision"/>
+<rect fill-opacity="0" height="18.285715" shape-rendering="crispEdges" width="18.285715"/>
+<animate attributeName="fill-opacity" begin="mouseover" dur="100ms" fill="freeze" repeatCount="1" values="0;0.5"/>
+<animate attributeName="fill-opacity" begin="mouseout" dur="100ms" fill="freeze" repeatCount="1" values="0.5;0"/>
+</g>
+</defs>
+<rect fill="white" height="73.14286" width="128"/>
+<path d="M9.5,0 V73 M27.5,0 V73 M46.5,0 V73 M64.5,0 V73 M82.5,0 V73 M101.5,0 V73 M119.5,0 V73 M0,9.5 H128 M0,27.5 H128 M0,46.5 H128 M0,64.5 H128" fill="none" shape-rendering="crispEdges" stroke="black" stroke-width="1"/>
+<use fill="red" href="#dot" x="27.5" y="27.5"/>
+<use fill="red" href="#dot" x="46.5" y="27.5"/>
+<use fill="red" href="#dot" x="46.5" y="46.5"/>
+<use fill="red" href="#dot" x="27.5" y="46.5"/>
+<use fill="black" href="#dot" x="101.5" y="46.5"/>
+<use fill="black" href="#dot" x="82.5" y="46.5"/>
+<use fill="black" href="#dot" x="101.5" y="27.5"/>
+<use fill="black" href="#dot" x="82.5" y="27.5"/>
+<use fill="red" href="#verticalLine" x="23.842857" y="27.5"/>
+<use fill="red" href="#horizontalLine" x="27.5" y="23.842857"/>
+<use fill="red" href="#verticalLine" x="46.5" y="27.5"/>
+<use fill="red" href="#horizontalLine" x="27.5" y="46.5"/>
+<use fill="black" href="#horizontalLine" x="82.5" y="46.5"/>
+<use fill="black" href="#verticalLine" x="101.5" y="27.5"/>
+<use fill="black" href="#verticalLine" x="78.84286" y="27.5"/>
+<use fill="black" href="#horizontalLine" x="82.5" y="23.842857"/>
+<path d="M46.5,46.5 L46.5,27.5 L27.5,27.5" fill="red" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M27.5,46.5 L46.5,46.5 L27.5,27.5" fill="red" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M101.5,27.5 L101.5,46.5 L82.5,46.5" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M82.5,27.5 L82.5,46.5 L101.5,27.5" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<circle cx="82.5" cy="27.5" fill="none" r="5.485715" shape-rendering="geometricPrecision" stroke="black" stroke-width="2"/>
+<use href="#pointer" x="0" y="0"/>
+<use href="#pointer" x="18.285715" y="0"/>
+<use href="#pointer" x="36.57143" y="0"/>
+<use href="#pointer" x="54.857147" y="0"/>
+<use href="#pointer" x="73.14286" y="0"/>
+<use href="#pointer" x="91.42857" y="0"/>
+<use href="#pointer" x="109.714294" y="0"/>
+<use href="#pointer" x="0" y="18.285715"/>
+<use href="#pointer" x="54.857147" y="18.285715"/>
+<use href="#pointer" x="109.714294" y="18.285715"/>
+<use href="#pointer" x="0" y="36.57143"/>
+<use href="#pointer" x="54.857147" y="36.57143"/>
+<use href="#pointer" x="109.714294" y="36.57143"/>
+<use href="#pointer" x="0" y="54.857147"/>
+<use href="#pointer" x="18.285715" y="54.857147"/>
+<use href="#pointer" x="36.57143" y="54.857147"/>
+<use href="#pointer" x="54.857147" y="54.857147"/>
+<use href="#pointer" x="73.14286" y="54.857147"/>
+<use href="#pointer" x="91.42857" y="54.857147"/>
+<use href="#pointer" x="109.714294" y="54.857147"/>
+</svg>

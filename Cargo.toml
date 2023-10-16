@@ -63,5 +63,6 @@ members = [
   "bot",
   "initial",
   "iced",
+  "svg",
   # "versus"
 ]

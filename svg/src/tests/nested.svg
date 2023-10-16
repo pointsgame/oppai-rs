@@ -1,0 +1,95 @@
+<svg height="128" viewBox="0 0 128 128" width="128" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<circle id="dot" r="3.657143" shape-rendering="geometricPrecision"/>
+<rect fill-opacity="0.5" height="18.285715" id="verticalLine" width="3.657143"/>
+<rect fill-opacity="0.5" height="3.657143" id="horizontalLine" width="18.285715"/>
+<g fill-opacity="0" id="pointer" pointer-events="bounding-box">
+<circle cx="9.5" cy="9.5" fill="red" r="3.657143" shape-rendering="geometricPrecision"/>
+<rect fill-opacity="0" height="18.285715" shape-rendering="crispEdges" width="18.285715"/>
+<animate attributeName="fill-opacity" begin="mouseover" dur="100ms" fill="freeze" repeatCount="1" values="0;0.5"/>
+<animate attributeName="fill-opacity" begin="mouseout" dur="100ms" fill="freeze" repeatCount="1" values="0.5;0"/>
+</g>
+</defs>
+<rect fill="white" height="128" width="128"/>
+<path d="M9.5,0 V128 M27.5,0 V128 M46.5,0 V128 M64.5,0 V128 M82.5,0 V128 M101.5,0 V128 M119.5,0 V128 M0,9.5 H128 M0,27.5 H128 M0,46.5 H128 M0,64.5 H128 M0,82.5 H128 M0,101.5 H128 M0,119.5 H128" fill="none" shape-rendering="crispEdges" stroke="black" stroke-width="1"/>
+<use fill="black" href="#dot" x="64.5" y="64.5"/>
+<use fill="black" href="#dot" x="82.5" y="64.5"/>
+<use fill="black" href="#dot" x="46.5" y="64.5"/>
+<use fill="red" href="#dot" x="27.5" y="64.5"/>
+<use fill="red" href="#dot" x="46.5" y="82.5"/>
+<use fill="red" href="#dot" x="64.5" y="82.5"/>
+<use fill="red" href="#dot" x="82.5" y="82.5"/>
+<use fill="red" href="#dot" x="101.5" y="64.5"/>
+<use fill="red" href="#dot" x="82.5" y="46.5"/>
+<use fill="red" href="#dot" x="64.5" y="46.5"/>
+<use fill="red" href="#dot" x="46.5" y="46.5"/>
+<use fill="black" href="#dot" x="9.5" y="64.5"/>
+<use fill="black" href="#dot" x="27.5" y="82.5"/>
+<use fill="black" href="#dot" x="46.5" y="101.5"/>
+<use fill="black" href="#dot" x="64.5" y="101.5"/>
+<use fill="black" href="#dot" x="82.5" y="101.5"/>
+<use fill="black" href="#dot" x="101.5" y="82.5"/>
+<use fill="black" href="#dot" x="119.5" y="64.5"/>
+<use fill="black" href="#dot" x="101.5" y="46.5"/>
+<use fill="black" href="#dot" x="82.5" y="27.5"/>
+<use fill="black" href="#dot" x="64.5" y="27.5"/>
+<use fill="black" href="#dot" x="46.5" y="27.5"/>
+<use fill="black" href="#dot" x="27.5" y="46.5"/>
+<use fill="black" href="#dot" x="64.5" y="9.5"/>
+<use fill="black" href="#dot" x="64.5" y="119.5"/>
+<use fill="black" href="#horizontalLine" x="64.5" y="60.842857"/>
+<use fill="black" href="#horizontalLine" x="64.5" y="64.5"/>
+<use fill="black" href="#horizontalLine" x="46.5" y="60.842857"/>
+<use fill="black" href="#horizontalLine" x="46.5" y="64.5"/>
+<path d="M27.5,64.5 L24.91401,67.08599 L43.91401,85.08599 L46.5,82.5 z" fill="red" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M27.5,64.5 L24.91401,61.91401 L43.91401,43.91401 L46.5,46.5 z" fill="red" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<use fill="red" href="#horizontalLine" x="46.5" y="82.5"/>
+<use fill="red" href="#horizontalLine" x="64.5" y="82.5"/>
+<path d="M82.5,82.5 L85.08599,85.08599 L104.08599,67.08599 L101.5,64.5 z" fill="red" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M82.5,46.5 L85.08599,43.91401 L104.08599,61.91401 L101.5,64.5 z" fill="red" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<use fill="red" href="#horizontalLine" x="64.5" y="42.842857"/>
+<use fill="red" href="#horizontalLine" x="46.5" y="42.842857"/>
+<path d="M9.5,64.5 L6.914009,67.08599 L24.91401,85.08599 L27.5,82.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M9.5,64.5 L6.914009,61.91401 L24.91401,43.91401 L27.5,46.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M27.5,82.5 L24.91401,85.08599 L43.91401,104.08599 L46.5,101.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M46.5,101.5 L43.91401,104.08599 L61.91401,122.08599 L64.5,119.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M82.5,101.5 L85.08599,104.08599 L104.08599,85.08599 L101.5,82.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M101.5,82.5 L104.08599,85.08599 L122.08599,67.08599 L119.5,64.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M101.5,46.5 L104.08599,43.91401 L122.08599,61.91401 L119.5,64.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M82.5,27.5 L85.08599,24.91401 L104.08599,43.91401 L101.5,46.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M46.5,27.5 L43.91401,24.91401 L61.91401,6.914009 L64.5,9.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M27.5,46.5 L24.91401,43.91401 L43.91401,24.91401 L46.5,27.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M64.5,9.5 L67.08599,6.914009 L85.08599,24.91401 L82.5,27.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M64.5,119.5 L67.08599,122.08599 L85.08599,104.08599 L82.5,101.5 z" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M46.5,46.5 L27.5,64.5 L46.5,82.5 L64.5,82.5 L82.5,82.5 L101.5,64.5 L82.5,46.5 L64.5,46.5" fill="red" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M27.5,46.5 L9.5,64.5 L27.5,82.5 L46.5,101.5 L64.5,101.5 L82.5,101.5 L101.5,82.5 L119.5,64.5 L101.5,46.5 L82.5,27.5 L64.5,27.5 L46.5,27.5 L27.5,46.5 L46.5,64.5 L27.5,82.5 L46.5,101.5 L64.5,101.5 L82.5,101.5 L101.5,82.5 L119.5,64.5 L101.5,46.5 L82.5,27.5 L64.5,27.5 L46.5,27.5" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M64.5,9.5 L64.5,27.5 L82.5,27.5" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M64.5,9.5 L64.5,27.5 L46.5,27.5" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M64.5,119.5 L64.5,101.5 L82.5,101.5" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<path d="M64.5,119.5 L64.5,101.5 L46.5,101.5" fill="black" fill-opacity="0.5" shape-rendering="crispEdges"/>
+<circle cx="64.5" cy="119.5" fill="none" r="5.485715" shape-rendering="geometricPrecision" stroke="black" stroke-width="2"/>
+<use href="#pointer" x="0" y="0"/>
+<use href="#pointer" x="18.285715" y="0"/>
+<use href="#pointer" x="36.57143" y="0"/>
+<use href="#pointer" x="73.14286" y="0"/>
+<use href="#pointer" x="91.42857" y="0"/>
+<use href="#pointer" x="109.714294" y="0"/>
+<use href="#pointer" x="0" y="18.285715"/>
+<use href="#pointer" x="18.285715" y="18.285715"/>
+<use href="#pointer" x="91.42857" y="18.285715"/>
+<use href="#pointer" x="109.714294" y="18.285715"/>
+<use href="#pointer" x="0" y="36.57143"/>
+<use href="#pointer" x="109.714294" y="36.57143"/>
+<use href="#pointer" x="0" y="73.14286"/>
+<use href="#pointer" x="109.714294" y="73.14286"/>
+<use href="#pointer" x="0" y="91.42857"/>
+<use href="#pointer" x="18.285715" y="91.42857"/>
+<use href="#pointer" x="91.42857" y="91.42857"/>
+<use href="#pointer" x="109.714294" y="91.42857"/>
+<use href="#pointer" x="0" y="109.714294"/>
+<use href="#pointer" x="18.285715" y="109.714294"/>
+<use href="#pointer" x="36.57143" y="109.714294"/>
+<use href="#pointer" x="73.14286" y="109.714294"/>
+<use href="#pointer" x="91.42857" y="109.714294"/>
+<use href="#pointer" x="109.714294" y="109.714294"/>
+</svg>
