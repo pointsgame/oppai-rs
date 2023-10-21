@@ -7,6 +7,7 @@ const SEED: u64 = 7;
 
 #[test]
 fn cross() {
+  env_logger::try_init().ok();
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
     &mut rng,
@@ -26,6 +27,7 @@ fn cross() {
 #[test]
 fn zagram352562() {
   // http://eidokropki.reaktywni.pl/index.phtml#url:zagram352562
+  env_logger::try_init().ok();
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = from_sgf::<Field, _>(include_str!("tests/zagram352562.txt"), &mut rng).unwrap();
   assert_eq!(field.width(), 39);

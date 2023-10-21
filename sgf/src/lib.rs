@@ -6,10 +6,10 @@ use rand::Rng;
 use sgf_parse::{serialize, unknown_game::Prop, GameTree, SgfNode};
 use std::iter;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum Move {
   Pass,
-  Move(u8, u8),
+  Move(u8, u8, Vec<(u8, u8)>),
 }
 
 fn to_coordinate(c: u8) -> u8 {
@@ -36,7 +36,21 @@ fn parse_move(s: &str) -> Option<Move> {
   }
   let x = to_coordinate(s.as_bytes()[0]);
   let y = to_coordinate(s.as_bytes()[1]);
-  Some(Move::Move(x, y))
+  let mut chain = Vec::new();
+  if s.len() > 2 {
+    if s.as_bytes()[2] != b'.' || s.len() % 2 == 0 {
+      return None;
+    }
+
+    let mut i = 3;
+    while i < s.len() {
+      let x = to_coordinate(s.as_bytes()[i]);
+      let y = to_coordinate(s.as_bytes()[i + 1]);
+      chain.push((x, y));
+      i += 2;
+    }
+  }
+  Some(Move::Move(x, y, chain))
 }
 
 pub fn from_sgf<F: AnyField, R: Rng>(sgf: &str, rng: &mut R) -> Option<F> {
@@ -59,9 +73,16 @@ pub fn from_sgf<F: AnyField, R: Rng>(sgf: &str, rng: &mut R) -> Option<F> {
   let mut field = <F as AnyField>::new_from_rng(width as u32, height as u32, rng);
 
   let mut handle = |player: Player, s: &str| -> bool {
-    if let Some(Move::Move(x, y)) = parse_move(s) {
+    if let Some(Move::Move(x, y, chain)) = parse_move(s) {
       let pos = field.field().to_pos(x as u32, y as u32);
-      field.put_players_point(pos, player)
+      let result = field.put_players_point(pos, player);
+      if !chain.into_iter().all(|(x, y)| {
+        let pos = field.field().to_pos(x as u32, y as u32);
+        field.field().cell(pos).is_bound_player(player)
+      }) {
+        log::warn!("Surrounding chain doesn't match the game rules, the position might be inaccurate.");
+      }
+      result
     } else {
       false
     }
