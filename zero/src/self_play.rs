@@ -122,14 +122,15 @@ where
 
       let mut field_clone = field.clone();
       episode(&mut field_clone, player, &model, rng, &mut examples)?;
-    }
 
-    log::info!("Train the model");
-    model.train(examples.inputs(), examples.policies(), examples.values())?;
+      log::info!("Train the model");
+      model.train(examples.inputs(), examples.policies(), examples.values())?;
+    }
 
     log::info!("Pit the new model");
     if pit(field, player, &model, &copy, rng)? {
       model.save()?;
+      examples.clear();
     } else {
       log::warn!("Rejecting new model");
       model = copy;

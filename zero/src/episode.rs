@@ -194,6 +194,12 @@ impl<N: Clone> Examples<N> {
   pub fn values(&self) -> Array1<N> {
     Array::from(self.values.clone())
   }
+
+  pub fn clear(&mut self) {
+    self.inputs.clear();
+    self.policies.clear();
+    self.values.clear();
+  }
 }
 
 pub fn episode<N, M, R>(
