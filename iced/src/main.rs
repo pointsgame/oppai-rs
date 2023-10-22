@@ -474,7 +474,7 @@ impl Application for Game {
       }
       #[cfg(target_arch = "wasm32")]
       Message::Save => {
-        if let Some(s) = to_sgf(&self.canvas_field.extended_field.field) {
+        if let Some(s) = to_sgf(&self.canvas_field.extended_field) {
           use wasm_bindgen::JsCast;
           let window = web_sys::window().unwrap();
           let document = window.document().unwrap();
@@ -557,7 +557,7 @@ impl Application for Game {
       #[cfg(not(target_arch = "wasm32"))]
       Message::SaveFile(maybe_file) => {
         if let Some(file) = maybe_file {
-          if let Some(s) = to_sgf(&self.canvas_field.extended_field.field) {
+          if let Some(s) = to_sgf(&self.canvas_field.extended_field) {
             fs::write(file.path(), s).ok();
           }
         }
