@@ -126,9 +126,7 @@ fn episode_simple_surrounding() {
 
   let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
-  let mut inputs = Vec::new();
-  let mut policies = Vec::new();
-  let mut values = Vec::new();
+  let mut examples = Default::default();
   episode(
     &mut field,
     Player::Red,
@@ -138,9 +136,7 @@ fn episode_simple_surrounding() {
       result
     },
     &mut rng,
-    &mut inputs,
-    &mut policies,
-    &mut values,
+    &mut examples,
   )
   .unwrap();
 
@@ -149,13 +145,19 @@ fn episode_simple_surrounding() {
   field.undo();
   for rotation in 0..ROTATIONS {
     let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
-    assert_eq!(policies[rotation as usize][(y as usize, x as usize)], 1.0);
+    assert_eq!(examples.policies[rotation as usize][(y as usize, x as usize)], 1.0);
     for channel in 0..CHANNELS {
-      assert_eq!(inputs[rotation as usize][(channel, y as usize, x as usize)], 0.0);
+      assert_eq!(
+        examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
+        0.0
+      );
     }
   }
   for rotation in 0..ROTATIONS {
-    assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
+    assert_eq!(
+      examples.inputs[rotation as usize],
+      field_features(&field, Player::Red, rotation)
+    );
   }
 
   assert_eq!(model_inputs.borrow().len(), 1);
@@ -166,7 +168,7 @@ fn episode_simple_surrounding() {
       .unwrap()
   );
 
-  assert_eq!(values, vec![logistic(1.0); 8]);
+  assert_eq!(examples.values, vec![logistic(1.0); 8]);
 }
 
 #[test]
@@ -183,9 +185,7 @@ fn episode_trap() {
 
   let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
-  let mut inputs = Vec::new();
-  let mut policies = Vec::new();
-  let mut values = Vec::new();
+  let mut examples = Default::default();
   episode(
     &mut field,
     Player::Red,
@@ -195,9 +195,7 @@ fn episode_trap() {
       result
     },
     &mut rng,
-    &mut inputs,
-    &mut policies,
-    &mut values,
+    &mut examples,
   )
   .unwrap();
 
@@ -206,14 +204,20 @@ fn episode_trap() {
   field.undo();
   for rotation in 0..ROTATIONS {
     let (x, y) = rotate(field.width(), field.height(), 1, 1, rotation);
-    assert_eq!(policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)], 1.0);
+    assert_eq!(
+      examples.policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)],
+      1.0
+    );
     for channel in 0..CHANNELS {
-      assert_eq!(inputs[rotation as usize][(channel, y as usize, x as usize)], 0.0);
+      assert_eq!(
+        examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
+        0.0
+      );
     }
   }
   for rotation in 0..ROTATIONS {
     assert_eq!(
-      inputs[(ROTATIONS + rotation) as usize],
+      examples.inputs[(ROTATIONS + rotation) as usize],
       field_features(&field, Player::Black, rotation)
     );
   }
@@ -221,13 +225,21 @@ fn episode_trap() {
   field.undo();
   for rotation in 0..ROTATIONS {
     let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
-    assert!(policies[rotation as usize][(y as usize, x as usize)] > policies[rotation as usize][(1, 1)]);
+    assert!(
+      examples.policies[rotation as usize][(y as usize, x as usize)] > examples.policies[rotation as usize][(1, 1)]
+    );
     for channel in 0..CHANNELS {
-      assert_eq!(inputs[rotation as usize][(channel, y as usize, x as usize)], 0.0);
+      assert_eq!(
+        examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
+        0.0
+      );
     }
   }
   for rotation in 0..ROTATIONS {
-    assert_eq!(inputs[rotation as usize], field_features(&field, Player::Red, rotation));
+    assert_eq!(
+      examples.inputs[rotation as usize],
+      field_features(&field, Player::Red, rotation)
+    );
   }
 
   assert_eq!(model_inputs.borrow().len(), 2);
@@ -246,7 +258,7 @@ fn episode_trap() {
   assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
   assert_eq!(features2, model_inputs.borrow()[1].index_axis(Axis(0), 1));
 
-  assert_eq!(values, vec![0.0; 16]);
+  assert_eq!(examples.values, vec![0.0; 16]);
 }
 
 #[test]
@@ -271,9 +283,7 @@ fn episode_winning_game() {
   let center_x = (field.width() / 2) as usize;
   let center_y = (field.height() / 2) as usize;
 
-  let mut inputs = Vec::new();
-  let mut policies = Vec::new();
-  let mut values = Vec::new();
+  let mut examples = Default::default();
   episode(
     &mut field,
     Player::Red,
@@ -289,13 +299,11 @@ fn episode_winning_game() {
       (uniform_policies(&inputs), values)
     },
     &mut rng,
-    &mut inputs,
-    &mut policies,
-    &mut values,
+    &mut examples,
   )
   .unwrap();
 
-  for (value, input) in values.into_iter().zip(inputs.into_iter()) {
+  for (value, input) in examples.values.into_iter().zip(examples.inputs.into_iter()) {
     assert!(if input[(0, center_y, center_x)] > 0.0 {
       value > 0.0
     } else {

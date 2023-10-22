@@ -6,7 +6,6 @@ use std::mem;
 use crate::episode::{episode, mcts};
 use crate::mcts::MctsNode;
 use crate::model::{Model, TrainableModel};
-use ndarray::{Array, Axis};
 use num_traits::Float;
 use oppai_field::field::Field;
 use oppai_field::player::Player;
@@ -113,8 +112,7 @@ where
   N: Float + Sum + SampleUniform + Display + Debug,
   R: Rng,
 {
-  let mut inputs = Vec::new();
-  let mut policies = Vec::new();
+  let mut examples = Default::default();
   for i in 0..ITERATIONS_NUMBER {
     log::info!("Iteration {}", i);
 
@@ -122,29 +120,12 @@ where
     for j in 0..EPISODES {
       log::info!("Episode {}", j);
 
-      inputs.clear();
-      policies.clear();
-      let mut values = Vec::new();
-      episode(
-        &mut field.clone(),
-        player,
-        &model,
-        rng,
-        &mut inputs,
-        &mut policies,
-        &mut values,
-      )?;
-
-      log::info!("Train the model");
-      let inputs = ndarray::stack(Axis(0), inputs.iter().map(|i| i.view()).collect::<Vec<_>>().as_slice()).unwrap();
-      let policies = ndarray::stack(
-        Axis(0),
-        policies.iter().map(|p| p.view()).collect::<Vec<_>>().as_slice(),
-      )
-      .unwrap();
-      let values = Array::from(values);
-      model.train(inputs, policies, values)?;
+      let mut field_clone = field.clone();
+      episode(&mut field_clone, player, &model, rng, &mut examples)?;
     }
+
+    log::info!("Train the model");
+    model.train(examples.inputs(), examples.policies(), examples.values())?;
 
     log::info!("Pit the new model");
     if pit(field, player, &model, &copy, rng)? {

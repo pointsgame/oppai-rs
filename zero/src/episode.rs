@@ -1,7 +1,7 @@
 use crate::field_features::{field_features, field_features_len, field_features_to_vec, CHANNELS};
 use crate::mcts::MctsNode;
 use crate::model::Model;
-use ndarray::{s, Array, Array2, Array3, ArrayView2};
+use ndarray::{s, Array, Array1, Array2, Array3, Array4, ArrayView2, Axis};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y, Field, Pos};
 use oppai_field::player::Player;
@@ -157,14 +157,51 @@ where
   Ok(())
 }
 
+#[derive(Clone)]
+pub struct Examples<N> {
+  pub inputs: Vec<Array3<N>>,
+  pub policies: Vec<Array2<N>>,
+  pub values: Vec<N>,
+}
+
+impl<N> Default for Examples<N> {
+  fn default() -> Self {
+    Self {
+      inputs: Default::default(),
+      policies: Default::default(),
+      values: Default::default(),
+    }
+  }
+}
+
+impl<N: Clone> Examples<N> {
+  pub fn inputs(&self) -> Array4<N> {
+    ndarray::stack(
+      Axis(0),
+      self.inputs.iter().map(|i| i.view()).collect::<Vec<_>>().as_slice(),
+    )
+    .unwrap()
+  }
+
+  pub fn policies(&self) -> Array3<N> {
+    ndarray::stack(
+      Axis(0),
+      self.policies.iter().map(|p| p.view()).collect::<Vec<_>>().as_slice(),
+    )
+    .unwrap()
+  }
+
+  pub fn values(&self) -> Array1<N> {
+    Array::from(self.values.clone())
+  }
+}
+
 pub fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
   model: &M,
   rng: &mut R,
-  inputs: &mut Vec<Array3<N>>,
-  policies: &mut Vec<Array2<N>>,
-  values: &mut Vec<N>,
+  examples: &mut Examples<N>,
 ) -> Result<(), M::E>
 where
   M: Model<N>,
@@ -185,8 +222,10 @@ where
     }
 
     for rotation in 0..rotations {
-      inputs.push(field_features(field, player, rotation));
-      policies.push(node.policies(field.width(), field.height(), rotation));
+      examples.inputs.push(field_features(field, player, rotation));
+      examples
+        .policies
+        .push(node.policies(field.width(), field.height(), rotation));
     }
 
     node = if moves_count < EXPLORATION_THRESHOLD {
@@ -211,7 +250,7 @@ where
   let mut value = game_result(field, if moves_count % 2 == 0 { player } else { player.next() });
   for _ in 0..moves_count {
     for _ in 0..rotations {
-      values.push(value);
+      examples.values.push(value);
     }
     value = -value;
   }
