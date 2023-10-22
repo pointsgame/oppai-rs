@@ -125,12 +125,13 @@ where
 
       log::info!("Train the model");
       model.train(examples.inputs(), examples.policies(), examples.values())?;
+
+      examples.clear();
     }
 
     log::info!("Pit the new model");
     if pit(field, player, &model, &copy, rng)? {
       model.save()?;
-      examples.clear();
     } else {
       log::warn!("Rejecting new model");
       model = copy;
