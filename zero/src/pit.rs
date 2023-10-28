@@ -3,19 +3,16 @@ use std::fmt::{Debug, Display};
 use std::iter::Sum;
 use std::mem;
 
-use crate::episode::{episode, mcts};
+use crate::episode::mcts;
 use crate::mcts::MctsNode;
-use crate::model::{Model, TrainableModel};
+use crate::model::Model;
 use num_traits::Float;
 use oppai_field::field::Field;
 use oppai_field::player::Player;
-use rand::distributions::uniform::SampleUniform;
 use rand::Rng;
 
-const ITERATIONS_NUMBER: u32 = 10000;
 const PIT_GAMES: u64 = 100;
 const WIN_RATE_THRESHOLD: f64 = 0.55;
-const EPISODES: u32 = 20;
 const MCTS_SIMS: u32 = 32;
 
 fn play<'a, N, M, R>(
@@ -75,7 +72,7 @@ fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
   }
 }
 
-fn pit<N, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, M::E>
+pub fn pit<N, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, M::E>
 where
   M: Model<N>,
   N: Float + Sum + Display + Debug,
@@ -104,39 +101,4 @@ where
   log::info!("Win rate is {}", win_rate);
 
   Ok(win_rate > WIN_RATE_THRESHOLD)
-}
-
-pub fn self_play<N, M, R>(field: &Field, player: Player, mut model: M, rng: &mut R) -> Result<(), M::TE>
-where
-  M: TrainableModel<N> + Clone,
-  N: Float + Sum + SampleUniform + Display + Debug,
-  R: Rng,
-{
-  let mut examples = Default::default();
-  for i in 0..ITERATIONS_NUMBER {
-    log::info!("Iteration {}", i);
-
-    let copy = model.clone();
-    for j in 0..EPISODES {
-      log::info!("Episode {}", j);
-
-      let mut field_clone = field.clone();
-      episode(&mut field_clone, player, &model, rng, &mut examples)?;
-
-      log::info!("Train the model");
-      model.train(examples.inputs(), examples.policies(), examples.values())?;
-
-      examples.clear();
-    }
-
-    log::info!("Pit the new model");
-    if pit(field, player, &model, &copy, rng)? {
-      model.save()?;
-    } else {
-      log::warn!("Rejecting new model");
-      model = copy;
-    }
-  }
-
-  Ok(())
 }

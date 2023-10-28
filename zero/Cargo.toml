@@ -8,9 +8,10 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8"
-ndarray = "0.15"
+ndarray = { version = "0.15", features = ["serde"] }
 num-traits = "0.2"
 log = "0.4"
+serde = "1.0"
 oppai-field = { path = "../field" }
 oppai-rotate = { path = "../rotate" }
 

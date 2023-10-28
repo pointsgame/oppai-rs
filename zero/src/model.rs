@@ -11,6 +11,4 @@ pub trait TrainableModel<N: Float>: Model<N> {
   type TE: From<Self::E>;
 
   fn train(&mut self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::TE>;
-
-  fn save(&self) -> Result<(), Self::TE>;
 }

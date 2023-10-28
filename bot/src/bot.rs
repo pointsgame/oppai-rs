@@ -90,9 +90,9 @@ where
         if !exists {
           log::warn!("No model at {}", path.display());
         }
-        let model = PyModel::<f64>::new(path, width, height, 4).unwrap();
+        let model = PyModel::<f64>::new(width, height, 4).unwrap();
         if exists {
-          model.load().unwrap();
+          model.load(path).unwrap();
         }
         model
       }),

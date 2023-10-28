@@ -211,8 +211,4 @@ impl TrainableModel<f32> for DfdxModel<f32> {
 
     Ok(())
   }
-
-  fn save(&self) -> Result<(), Self::TE> {
-    self.model.save_safetensors("model.safetensors").map_err(From::from)
-  }
 }

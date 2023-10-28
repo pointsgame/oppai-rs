@@ -32,14 +32,13 @@ impl DType for f64 {
 
 pub struct PyModel<N> {
   phantom: PhantomData<N>,
-  path: Arc<PathBuf>,
   device: Arc<Cow<'static, str>>,
   model: PyObject,
   optimizer: PyObject,
 }
 
 impl<N: DType> PyModel<N> {
-  pub fn new(path: PathBuf, width: u32, height: u32, channels: u32) -> PyResult<Self> {
+  pub fn new(width: u32, height: u32, channels: u32) -> PyResult<Self> {
     Python::with_gil(|py| {
       let oppai_net = PyModule::from_code(py, OPPAI_NET, "oppai_net.py", "oppai_net")?;
       let locals = [("torch", py.import("torch")?), ("oppai_net", oppai_net)].into_py_dict(py);
@@ -66,7 +65,6 @@ impl<N: DType> PyModel<N> {
 
       Ok(Self {
         phantom: PhantomData,
-        path: Arc::new(path),
         device: Arc::new(Cow::Borrowed("cpu")),
         model,
         optimizer,
@@ -74,7 +72,7 @@ impl<N: DType> PyModel<N> {
     })
   }
 
-  pub fn load(&self) -> PyResult<()> {
+  pub fn load(&self, path: PathBuf) -> PyResult<()> {
     PyModel::<N>::transfer(&self.model, "cpu")?;
 
     Python::with_gil(|py| {
@@ -82,7 +80,7 @@ impl<N: DType> PyModel<N> {
       locals.set_item("torch", py.import("torch")?)?;
       locals.set_item("model", &self.model)?;
       locals.set_item("optimizer", &self.optimizer)?;
-      locals.set_item("path", self.path.as_ref())?;
+      locals.set_item("path", path)?;
 
       py.run(
         indoc! {"
@@ -90,6 +88,26 @@ impl<N: DType> PyModel<N> {
           model.load_state_dict(checkpoint['model_state_dict'])
           optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         "},
+        None,
+        Some(locals),
+      )
+    })?;
+
+    PyModel::<N>::transfer(&self.model, self.device.as_ref())
+  }
+
+  pub fn save(&self, path: PathBuf) -> PyResult<()> {
+    PyModel::<N>::transfer(&self.model, "cpu")?;
+
+    Python::with_gil(|py| {
+      let locals = PyDict::new(py);
+      locals.set_item("torch", py.import("torch")?)?;
+      locals.set_item("model", &self.model)?;
+      locals.set_item("optimizer", &self.optimizer)?;
+      locals.set_item("path", path)?;
+
+      py.run(
+        "torch.save({ 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict() }, path)",
         None,
         Some(locals),
       )
@@ -128,7 +146,6 @@ impl<N: DType> PyModel<N> {
 
       Ok(Self {
         phantom: self.phantom,
-        path: self.path.clone(),
         device: self.device.clone(),
         model,
         optimizer,
@@ -226,26 +243,6 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
 
       Ok(())
     })
-  }
-
-  fn save(&self) -> Result<(), Self::E> {
-    PyModel::<N>::transfer(&self.model, "cpu")?;
-
-    Python::with_gil(|py| {
-      let locals = PyDict::new(py);
-      locals.set_item("torch", py.import("torch")?)?;
-      locals.set_item("model", &self.model)?;
-      locals.set_item("optimizer", &self.optimizer)?;
-      locals.set_item("path", self.path.as_ref())?;
-
-      py.run(
-        "torch.save({ 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict() }, path)",
-        None,
-        Some(locals),
-      )
-    })?;
-
-    PyModel::<N>::transfer(&self.model, self.device.as_ref())
   }
 }
 
