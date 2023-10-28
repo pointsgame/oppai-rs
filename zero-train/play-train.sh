@@ -44,6 +44,8 @@ while true; do
   "
   done
 
+  parallel --wait
+
   echo "Training checkpoint $((CHECKPOINT + 1))"
   fd '\d+\.cbor' "$GAMES" |
     sort -rn |
