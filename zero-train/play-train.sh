@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -Eeuxo pipefail
+set -Euo pipefail
 
 export RUSTFLAGS="-C target-cpu=native"
 BIN=(cargo run --release --quiet --)
