@@ -1,15 +1,14 @@
-use std::cmp::Ordering;
-use std::fmt::{Debug, Display};
-use std::iter::Sum;
-use std::mem;
-
-use crate::episode::mcts;
-use crate::mcts::MctsNode;
+use crate::mcts::mcts;
+use crate::mcts_node::MctsNode;
 use crate::model::Model;
 use num_traits::Float;
 use oppai_field::field::Field;
 use oppai_field::player::Player;
 use rand::Rng;
+use std::cmp::Ordering;
+use std::fmt::{Debug, Display};
+use std::iter::Sum;
+use std::mem;
 
 const PIT_GAMES: u64 = 100;
 const WIN_RATE_THRESHOLD: f64 = 0.55;

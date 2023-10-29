@@ -1,16 +1,14 @@
-use std::{
-  fmt::{Debug, Display},
-  iter::Sum,
-};
-
+use crate::{mcts::mcts, mcts_node::MctsNode, model::Model};
 use num_traits::Float;
 use oppai_field::{
   field::{Field, NonZeroPos},
   player::Player,
 };
 use rand::Rng;
-
-use crate::{episode::mcts, mcts::MctsNode, model::Model};
+use std::{
+  fmt::{Debug, Display},
+  iter::Sum,
+};
 
 #[derive(Clone)]
 pub struct Zero<N: Float, M: Model<N>> {

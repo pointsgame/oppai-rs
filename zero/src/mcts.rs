@@ -1,149 +1,140 @@
-use ndarray::Array2;
-use num_traits::{Float, Zero};
-use oppai_field::field::{to_x, to_y, NonZeroPos, Pos};
-use oppai_rotate::rotate::{rotate, rotate_sizes};
+use crate::field_features::{field_features_len, field_features_to_vec, CHANNELS};
+use crate::mcts_node::MctsNode;
+use crate::model::Model;
+use ndarray::{s, Array, ArrayView2};
+use num_traits::Float;
+use oppai_field::field::{to_x, to_y, Field, Pos};
+use oppai_field::player::Player;
+use rand::seq::SliceRandom;
+use rand::Rng;
+use std::fmt::{Debug, Display};
+use std::iter::{self, Sum};
 
-#[derive(Clone)]
-pub struct MctsNode<N> {
-  /// Current move.
-  pub pos: Pos,
-  /// Visits count.
-  pub visits: u64,
-  /// Prior probability.
-  pub prior_probability: N,
-  /// Total action value.
-  pub wins: N,
-  /// Children moves.
-  pub children: Vec<MctsNode<N>>,
+#[inline]
+pub fn logistic<N: Float>(p: N) -> N {
+  let l = N::one() + N::one();
+  let k = N::one();
+  l / ((-p * k).exp() + N::one()) - N::one()
 }
 
-impl<N: Zero> Default for MctsNode<N> {
-  #[inline]
-  fn default() -> Self {
-    MctsNode::new(0, N::zero(), N::zero())
-  }
+#[inline]
+pub fn game_result<N: Float>(field: &Field, player: Player) -> N {
+  logistic(N::from(field.score(player)).unwrap())
 }
 
-const C_PUCT: f64 = 2f64;
-
-const TEMPERATURE: f64 = 1f64;
-
-impl<N: Zero> MctsNode<N> {
-  #[inline]
-  pub fn new(pos: Pos, prior_probability: N, wins: N) -> Self {
-    Self {
-      pos,
-      visits: 0,
-      prior_probability,
-      wins,
-      children: Vec::new(),
-    }
+#[inline]
+fn make_moves(initial: &Field, moves: &[Pos], mut player: Player) -> Field {
+  let mut field = initial.clone();
+  for &pos in moves {
+    field.put_point(pos, player);
+    player = player.next();
   }
+  field
 }
 
-impl<N: Float> MctsNode<N> {
-  /// Mean action value.
-  #[inline]
-  pub fn win_rate(&self) -> N {
-    self.wins / N::from(self.visits + 1).unwrap()
-  }
+const PARALLEL_READOUTS: usize = 8;
 
-  #[inline]
-  pub fn probability(&self) -> N {
-    N::from(self.visits)
-      .unwrap()
-      .powf(N::one() / N::from(TEMPERATURE).unwrap())
-  }
-
-  #[inline]
-  fn uct(&self, parent_visits_sqrt: N) -> N {
-    // There ara different variants of this formula:
-    // 1. C_PUCT * p * sqrt(parent_visits) / (1 + visits)
-    //    proposed by `Mastering the game of Go without human knowledge`
-    // 2. C_PUCT * p * sqrt(ln(parent_visits) / (1 + visits))
-    //    proposed by `Integrating Factorization Ranked Features in MCTS: an Experimental Study`
-    // 3. sqrt(3 * ln(parent_visits) / (2 * visits)) + 2 / p * sqrt(ln(parent_visits) / parent_visits)
-    //    proposed by `Multi-armed Bandits with Episode Context`
-    N::from(C_PUCT).unwrap() * self.prior_probability * parent_visits_sqrt / N::from(1 + self.visits).unwrap()
-  }
-
-  #[inline]
-  pub fn mcts_value(&self, parent_visits_sqrt: N) -> N {
-    self.win_rate() + self.uct(parent_visits_sqrt)
-  }
-
-  fn select_child(&mut self) -> Option<&mut MctsNode<N>> {
-    let n_sqrt = N::from(self.visits).unwrap().sqrt();
-    self.children.iter_mut().max_by(|child1, child2| {
-      child1
-        .mcts_value(n_sqrt)
-        .partial_cmp(&child2.mcts_value(n_sqrt))
-        .unwrap()
+fn create_children<N: Float + Sum, R: Rng>(
+  field: &mut Field,
+  policy: &ArrayView2<N>,
+  value: N,
+  rng: &mut R,
+) -> Vec<MctsNode<N>> {
+  let width = field.width();
+  let mut children = (field.min_pos()..=field.max_pos())
+    .filter(|&pos| field.is_putting_allowed(pos) && !field.is_corner(pos))
+    .map(|pos| {
+      let x = to_x(width, pos);
+      let y = to_y(width, pos);
+      let p = policy[(y as usize, x as usize)];
+      MctsNode::new(pos, p, value)
     })
+    .collect::<Vec<_>>();
+  children.shuffle(rng);
+  // renormalize
+  let sum: N = children.iter().map(|child| child.prior_probability).sum();
+  for child in children.iter_mut() {
+    child.prior_probability = child.prior_probability / sum;
+  }
+  children
+}
+
+pub fn mcts<N, M, R>(
+  field: &mut Field,
+  player: Player,
+  node: &mut MctsNode<N>,
+  model: &M,
+  rng: &mut R,
+) -> Result<(), M::E>
+where
+  M: Model<N>,
+  N: Float + Sum + Display + Debug,
+  R: Rng,
+{
+  let mut leafs = iter::repeat_with(|| node.select())
+    .take(PARALLEL_READOUTS)
+    .collect::<Vec<_>>();
+  for moves in &leafs {
+    node.revert_virtual_loss(moves);
   }
 
-  pub fn select(&mut self) -> Vec<Pos> {
-    // TODO: noise?
-    let mut moves = Vec::new();
-    let mut node = self;
+  leafs.sort_unstable();
+  leafs.dedup();
 
-    while let Some(child) = node.select_child() {
-      moves.push(child.pos);
-      // virtual loss
-      child.wins = child.wins - N::one();
-      node = child;
+  let mut fields = leafs
+    .iter()
+    .map(|leaf| make_moves(field, leaf, player))
+    .collect::<Vec<_>>();
+
+  fields.retain_mut(|cur_field| {
+    if cur_field.is_game_over() {
+      node.add_result(
+        &cur_field.points_seq()[field.moves_count()..],
+        game_result(cur_field, player),
+        Vec::new(),
+      );
+      false
+    } else {
+      true
     }
+  });
 
-    moves
+  if fields.is_empty() {
+    return Ok(());
   }
 
-  pub fn revert_virtual_loss(&mut self, moves: &[Pos]) {
-    let mut node = self;
-    for &pos in moves {
-      node = node.children.iter_mut().find(|child| child.pos == pos).unwrap();
-      node.wins = node.wins + N::one();
-    }
+  let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()) * fields.len());
+  for cur_field in &fields {
+    field_features_to_vec::<N>(
+      cur_field,
+      if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+        player
+      } else {
+        player.next()
+      },
+      0,
+      &mut features,
+    )
+  }
+  let features = Array::from_shape_vec(
+    (fields.len(), CHANNELS, field.height() as usize, field.width() as usize),
+    features,
+  )
+  .unwrap();
+
+  let (policies, values) = model.predict(features)?;
+
+  for (i, mut cur_field) in fields.into_iter().enumerate() {
+    let policy = policies.slice(s![i, .., ..]);
+    let value = values[i];
+    let children = create_children(&mut cur_field, &policy, value, rng);
+    let value = if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+      value
+    } else {
+      -value
+    };
+    node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
   }
 
-  pub fn add_result(&mut self, moves: &[Pos], mut result: N, children: Vec<MctsNode<N>>) {
-    self.visits += 1;
-    self.wins = self.wins - result;
-    let mut node = self;
-    for &pos in moves {
-      node = node.children.iter_mut().find(|child| child.pos == pos).unwrap();
-      node.visits += 1;
-      node.wins = node.wins + result;
-      result = -result;
-    }
-    node.children = children;
-  }
-
-  /// Improved stochastic policy values.
-  pub fn policies(&self, width: u32, height: u32, rotation: u8) -> Array2<N> {
-    let (width, height) = rotate_sizes(width, height, rotation);
-    let mut policies = Array2::zeros((height as usize, width as usize));
-
-    for child in &self.children {
-      let x = to_x(width, child.pos);
-      let y = to_y(width, child.pos);
-      let (x, y) = rotate(width, height, x, y, rotation);
-      policies[(y as usize, x as usize)] = N::from(child.visits).unwrap() / N::from(self.visits - 1).unwrap();
-    }
-
-    policies
-  }
-
-  pub fn best_child(self) -> Option<MctsNode<N>> {
-    // TODO: option to use winrate?
-    self.children.into_iter().max_by_key(|child| child.visits)
-  }
-
-  pub fn best_move(&self) -> Option<NonZeroPos> {
-    // TODO: option to use winrate?
-    self
-      .children
-      .iter()
-      .max_by_key(|child| child.visits)
-      .and_then(|child| NonZeroPos::new(child.pos))
-  }
+  Ok(())
 }
