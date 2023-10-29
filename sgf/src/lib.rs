@@ -158,7 +158,11 @@ pub fn to_sgf(field: &ExtendedField) -> Option<String> {
     while i > 0 && field.captures[i - 1].2 > n + 1 {
       i -= 1;
     }
-    if i > 0 && field.captures[i - 1].1 == player && field.captures[i - 1].2 == n + 1 {
+    if i > 0
+      && field.captures[i - 1].0.len() > 3
+      && field.captures[i - 1].1 == player
+      && field.captures[i - 1].2 == n + 1
+    {
       chains.push(
         field.captures[i - 1]
           .0
@@ -169,7 +173,11 @@ pub fn to_sgf(field: &ExtendedField) -> Option<String> {
     }
     if n > 0 && field.field().cell(field.field().points_seq()[n - 1]).get_player() == player.next() {
       for j in 0..2 {
-        if i > j && field.captures[i - j - 1].1 == player && field.captures[i - j - 1].2 == n {
+        if i > j
+          && field.captures[i - j - 1].0.len() > 3
+          && field.captures[i - j - 1].1 == player
+          && field.captures[i - j - 1].2 == n
+        {
           chains.push(
             field.captures[i - j - 1]
               .0
