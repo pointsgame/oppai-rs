@@ -88,7 +88,14 @@ fn train<N: Float + Sum + SampleUniform + DType + Element + Display + Debug + fo
     examples = examples + ciborium::from_reader(&mut file)?;
   }
 
-  model.train(examples.inputs(), examples.policies(), examples.values())?;
+  let mut rng = SmallRng::from_entropy();
+
+  for _ in 0..20 {
+    examples.shuffle(&mut rng);
+    for (inputs, policies, values) in examples.batches(1024) {
+      model.train(inputs, policies, values)?;
+    }
+  }
 
   model.save(model_new_path)?;
 

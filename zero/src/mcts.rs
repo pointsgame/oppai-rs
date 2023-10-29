@@ -24,7 +24,7 @@ impl<N: Zero> Default for MctsNode<N> {
   }
 }
 
-const C_PUCT: f64 = 1f64;
+const C_PUCT: f64 = 2f64;
 
 const TEMPERATURE: f64 = 1f64;
 
@@ -56,7 +56,6 @@ impl<N: Float> MctsNode<N> {
   #[inline]
   pub fn mcts_value(&self, parent_n_sqrt: N) -> N {
     // TODO: moinigo uses a more complex formula
-    // 2.0 * (log((1.0 + parent_n + c_puct_base) / c_puct_base) + c_puct_init) instead of C_PUCT
     self.q() + N::from(C_PUCT).unwrap() * self.p * parent_n_sqrt / N::from(1 + self.n).unwrap()
   }
 
