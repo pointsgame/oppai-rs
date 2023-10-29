@@ -71,9 +71,9 @@ fn create_children<N: Float + Sum, R: Rng>(
     .collect::<Vec<_>>();
   children.shuffle(rng);
   // renormalize
-  let sum: N = children.iter().map(|child| child.p).sum();
+  let sum: N = children.iter().map(|child| child.prior_probability).sum();
   for child in children.iter_mut() {
-    child.p = child.p / sum;
+    child.prior_probability = child.prior_probability / sum;
   }
   children
 }
@@ -202,9 +202,9 @@ where
     log::debug!(
       "Score: {}, n: {}, p: {}, w: {}\n{:?}",
       field.score(Player::Red),
-      node.n,
-      node.p,
-      node.w,
+      node.visits,
+      node.prior_probability,
+      node.wins,
       field
     );
   }

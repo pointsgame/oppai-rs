@@ -8,11 +8,11 @@ pub struct MctsNode<N> {
   /// Current move.
   pub pos: Pos,
   /// Visits count.
-  pub n: u64,
+  pub visits: u64,
   /// Prior probability.
-  pub p: N,
+  pub prior_probability: N,
   /// Total action value.
-  pub w: N,
+  pub wins: N,
   /// Children moves.
   pub children: Vec<MctsNode<N>>,
 }
@@ -30,12 +30,12 @@ const TEMPERATURE: f64 = 1f64;
 
 impl<N: Zero> MctsNode<N> {
   #[inline]
-  pub fn new(pos: Pos, p: N, w: N) -> Self {
+  pub fn new(pos: Pos, prior_probability: N, wins: N) -> Self {
     Self {
       pos,
-      n: 0,
-      p,
-      w,
+      visits: 0,
+      prior_probability,
+      wins,
       children: Vec::new(),
     }
   }
@@ -44,23 +44,36 @@ impl<N: Zero> MctsNode<N> {
 impl<N: Float> MctsNode<N> {
   /// Mean action value.
   #[inline]
-  pub fn q(&self) -> N {
-    self.w / N::from(self.n + 1).unwrap()
+  pub fn win_rate(&self) -> N {
+    self.wins / N::from(self.visits + 1).unwrap()
   }
 
   #[inline]
   pub fn probability(&self) -> N {
-    N::from(self.n).unwrap().powf(N::one() / N::from(TEMPERATURE).unwrap())
+    N::from(self.visits)
+      .unwrap()
+      .powf(N::one() / N::from(TEMPERATURE).unwrap())
   }
 
   #[inline]
-  pub fn mcts_value(&self, parent_n_sqrt: N) -> N {
-    // TODO: moinigo uses a more complex formula
-    self.q() + N::from(C_PUCT).unwrap() * self.p * parent_n_sqrt / N::from(1 + self.n).unwrap()
+  fn uct(&self, parent_visits_sqrt: N) -> N {
+    // There ara different variants of this formula:
+    // 1. C_PUCT * p * sqrt(parent_visits) / (1 + visits)
+    //    proposed by `Mastering the game of Go without human knowledge`
+    // 2. C_PUCT * p * sqrt(ln(parent_visits) / (1 + visits))
+    //    proposed by `Integrating Factorization Ranked Features in MCTS: an Experimental Study`
+    // 3. sqrt(3 * ln(parent_visits) / (2 * visits)) + 2 / p * sqrt(ln(parent_visits) / parent_visits)
+    //    proposed by `Multi-armed Bandits with Episode Context`
+    N::from(C_PUCT).unwrap() * self.prior_probability * parent_visits_sqrt / N::from(1 + self.visits).unwrap()
+  }
+
+  #[inline]
+  pub fn mcts_value(&self, parent_visits_sqrt: N) -> N {
+    self.win_rate() + self.uct(parent_visits_sqrt)
   }
 
   fn select_child(&mut self) -> Option<&mut MctsNode<N>> {
-    let n_sqrt = N::from(self.n).unwrap().sqrt();
+    let n_sqrt = N::from(self.visits).unwrap().sqrt();
     self.children.iter_mut().max_by(|child1, child2| {
       child1
         .mcts_value(n_sqrt)
@@ -77,7 +90,7 @@ impl<N: Float> MctsNode<N> {
     while let Some(child) = node.select_child() {
       moves.push(child.pos);
       // virtual loss
-      child.w = child.w - N::one();
+      child.wins = child.wins - N::one();
       node = child;
     }
 
@@ -88,18 +101,18 @@ impl<N: Float> MctsNode<N> {
     let mut node = self;
     for &pos in moves {
       node = node.children.iter_mut().find(|child| child.pos == pos).unwrap();
-      node.w = node.w + N::one();
+      node.wins = node.wins + N::one();
     }
   }
 
   pub fn add_result(&mut self, moves: &[Pos], mut result: N, children: Vec<MctsNode<N>>) {
-    self.n += 1;
-    self.w = self.w - result;
+    self.visits += 1;
+    self.wins = self.wins - result;
     let mut node = self;
     for &pos in moves {
       node = node.children.iter_mut().find(|child| child.pos == pos).unwrap();
-      node.n += 1;
-      node.w = node.w + result;
+      node.visits += 1;
+      node.wins = node.wins + result;
       result = -result;
     }
     node.children = children;
@@ -114,7 +127,7 @@ impl<N: Float> MctsNode<N> {
       let x = to_x(width, child.pos);
       let y = to_y(width, child.pos);
       let (x, y) = rotate(width, height, x, y, rotation);
-      policies[(y as usize, x as usize)] = N::from(child.n).unwrap() / N::from(self.n - 1).unwrap();
+      policies[(y as usize, x as usize)] = N::from(child.visits).unwrap() / N::from(self.visits - 1).unwrap();
     }
 
     policies
@@ -122,7 +135,7 @@ impl<N: Float> MctsNode<N> {
 
   pub fn best_child(self) -> Option<MctsNode<N>> {
     // TODO: option to use winrate?
-    self.children.into_iter().max_by_key(|child| child.n)
+    self.children.into_iter().max_by_key(|child| child.visits)
   }
 
   pub fn best_move(&self) -> Option<NonZeroPos> {
@@ -130,7 +143,7 @@ impl<N: Float> MctsNode<N> {
     self
       .children
       .iter()
-      .max_by_key(|child| child.n)
+      .max_by_key(|child| child.visits)
       .and_then(|child| NonZeroPos::new(child.pos))
   }
 }

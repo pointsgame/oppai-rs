@@ -58,11 +58,11 @@ fn mcts_first_iterations() {
     &mut rng,
   )
   .unwrap();
-  assert_eq!(node.n, 1);
-  assert_eq!(node.w, -1.0);
+  assert_eq!(node.visits, 1);
+  assert_eq!(node.wins, -1.0);
   // corner moves are not considered
   assert_eq!(node.children.len(), (field.width() * field.height()) as usize - 6);
-  assert!(node.children.iter().all(|child| child.w == 1.0));
+  assert!(node.children.iter().all(|child| child.wins == 1.0));
   assert!(node.children.iter().all(|child| child.children.is_empty()));
 
   mcts(
@@ -73,9 +73,9 @@ fn mcts_first_iterations() {
     &mut rng,
   )
   .unwrap();
-  assert_eq!(node.n, 9);
-  assert_eq!(node.w, -9.0);
-  assert_eq!(node.children.iter().map(|child| child.n).sum::<u64>(), 8);
+  assert_eq!(node.visits, 9);
+  assert_eq!(node.wins, -9.0);
+  assert_eq!(node.children.iter().map(|child| child.visits).sum::<u64>(), 8);
   assert_eq!(
     node
       .children
@@ -107,8 +107,8 @@ fn mcts_last_iterations() {
     &mut rng,
   )
   .unwrap();
-  assert_eq!(node.n, 1);
-  assert_eq!(node.w, logistic(-1.0));
+  assert_eq!(node.visits, 1);
+  assert_eq!(node.wins, logistic(-1.0));
   assert!(node.children.is_empty());
 }
 
