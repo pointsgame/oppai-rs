@@ -41,6 +41,7 @@ fn episode_simple_surrounding() {
   .unwrap();
 
   assert_eq!(field.moves_count(), 5);
+  assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
 
   field.undo();
   for rotation in 0..ROTATIONS {
@@ -100,6 +101,7 @@ fn episode_trap() {
   .unwrap();
 
   assert_eq!(field.moves_count(), 5);
+  assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
 
   field.undo();
   for rotation in 0..ROTATIONS {
@@ -202,6 +204,8 @@ fn episode_winning_game() {
     &mut examples,
   )
   .unwrap();
+
+  assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
 
   for (value, input) in examples.values.into_iter().zip(examples.inputs.into_iter()) {
     assert!(if input[(0, center_y, center_x)] > 0.0 {
