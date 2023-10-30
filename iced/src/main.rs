@@ -130,7 +130,7 @@ impl Game {
   #[cfg(not(target_arch = "wasm32"))]
   pub fn put_all_bot_points(&self) {
     let mut bot = self.bot.lock().unwrap();
-    for &pos in self.canvas_field.extended_field.field.points_seq() {
+    for &pos in self.canvas_field.extended_field.field.moves() {
       let player = self.canvas_field.extended_field.field.cell(pos).get_player();
       bot.field.put_point(pos, player);
     }
@@ -138,7 +138,7 @@ impl Game {
 
   #[cfg(target_arch = "wasm32")]
   pub fn put_all_bot_points(&self) {
-    for &pos in self.canvas_field.extended_field.field.points_seq() {
+    for &pos in self.canvas_field.extended_field.field.moves() {
       let player = self.canvas_field.extended_field.field.cell(pos).get_player();
       self.send_worker_message(Request::PutPoint(pos, player));
     }

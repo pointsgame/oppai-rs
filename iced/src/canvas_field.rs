@@ -207,7 +207,7 @@ impl canvas::Program<CanvasMessage> for CanvasField {
           for &pos in self
             .extended_field
             .field
-            .points_seq()
+            .moves()
             .iter()
             .filter(|&&pos| self.extended_field.field.cell(pos).is_players_point(player))
           {
@@ -221,7 +221,7 @@ impl canvas::Program<CanvasMessage> for CanvasField {
       // fill extended area to display connecting lines
 
       if self.config.extended_filling {
-        for &pos in self.extended_field.field.points_seq() {
+        for &pos in self.extended_field.field.moves() {
           let player = self.extended_field.field.cell(pos).get_player();
           let mut color = color(&self.config, player);
           color.a = self.config.filling_alpha;
@@ -360,7 +360,7 @@ impl canvas::Program<CanvasMessage> for CanvasField {
       // mark last point
 
       if self.config.last_point_mark {
-        if let Some(&pos) = self.extended_field.field.points_seq().last() {
+        if let Some(&pos) = self.extended_field.field.moves().last() {
           let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), point_radius * 1.5));
 
           let color = color(&self.config, self.extended_field.field.cell(pos).get_player());

@@ -150,7 +150,7 @@ pub fn to_sgf(field: &ExtendedField) -> Option<String> {
 
   let mut node = SgfNode::new(Vec::new(), Vec::new(), false);
   let mut i = field.captures.len();
-  for (n, &pos) in field.field().points_seq().iter().enumerate().rev() {
+  for (n, &pos) in field.field().moves().iter().enumerate().rev() {
     let x = field.field().to_x(pos) as u8;
     let y = field.field().to_y(pos) as u8;
     let player = field.field().cell(pos).get_player();
@@ -171,7 +171,7 @@ pub fn to_sgf(field: &ExtendedField) -> Option<String> {
           .collect(),
       )
     }
-    if n > 0 && field.field().cell(field.field().points_seq()[n - 1]).get_player() == player.next() {
+    if n > 0 && field.field().cell(field.field().moves()[n - 1]).get_player() == player.next() {
       for j in 0..2 {
         if i > j
           && field.captures[i - j - 1].0.len() > 3

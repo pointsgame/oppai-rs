@@ -107,7 +107,7 @@ where
       1 => {
         let width = self.field.width();
         let height = self.field.height();
-        let pos = self.field.points_seq()[0];
+        let pos = self.field.moves()[0];
         let x = self.field.to_x(pos);
         let y = self.field.to_y(pos);
         if x == 0 || x == width - 1 || y == 0 || y == height - 1 {

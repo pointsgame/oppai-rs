@@ -26,7 +26,7 @@ fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut [
 fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut moves = Vec::new();
   for &pos in field
-    .points_seq()
+    .moves()
     .iter()
     .filter(|&&pos| field.cell(pos).is_players_point(player))
   {

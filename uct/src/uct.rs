@@ -301,7 +301,7 @@ impl UctRoot {
       self.init(field, player);
     } else {
       debug!("Updation.");
-      let points_seq = field.points_seq();
+      let moves = field.moves();
       let moves_count = field.moves_count();
       let last_moves_count = self.moves_count;
       loop {
@@ -331,7 +331,7 @@ impl UctRoot {
           }
           break;
         }
-        let next_pos = points_seq[self.moves_count];
+        let next_pos = moves[self.moves_count];
         debug!(
           "Next move is ({}, {}), player {}.",
           field.to_x(next_pos),
@@ -602,7 +602,7 @@ impl UctRoot {
     debug!(
       "Moves history: {:?}.",
       field
-        .points_seq()
+        .moves()
         .iter()
         .map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player()))
         .collect::<Vec<(u32, u32, Player)>>()

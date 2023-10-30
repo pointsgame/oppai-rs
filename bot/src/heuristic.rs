@@ -10,7 +10,7 @@ fn heuristic_estimation(field: &Field, pos: Pos, player: Player) -> i32 {
   let c1 = CG_SUM[field.number_near_points_diag(pos, player) as usize];
   let c2 = CG_SUM[field.number_near_points_diag(pos, enemy) as usize];
   let mut result = (g1 * 3 + g2 * 2) * (5 - (g1 - g2).abs()) - c1 - c2;
-  if let Some(&last_pos) = field.points_seq().last() {
+  if let Some(&last_pos) = field.moves().last() {
     if field.is_near(last_pos, pos) {
       result += 5;
     }

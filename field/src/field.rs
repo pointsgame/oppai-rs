@@ -35,7 +35,7 @@ pub struct Field {
   length: Pos,
   score_red: i32,
   score_black: i32,
-  points_seq: Vec<Pos>,
+  moves: Vec<Pos>,
   points: Vec<Cell>,
   #[cfg(feature = "dsu")]
   dsu: Vec<Pos>,
@@ -409,7 +409,7 @@ impl Field {
       length,
       score_red: 0,
       score_black: 0,
-      points_seq: Vec::with_capacity(length),
+      moves: Vec::with_capacity(length),
       points: vec![Cell::new(false); length],
       dsu: (0..length).collect(),
       dsu_size: vec![1; length],
@@ -424,7 +424,7 @@ impl Field {
       length,
       score_red: 0,
       score_black: 0,
-      points_seq: Vec::with_capacity(length),
+      moves: Vec::with_capacity(length),
       points: vec![Cell::new(false); length],
       changes: Vec::with_capacity(length),
       zobrist,
@@ -887,7 +887,7 @@ impl Field {
           self.find_captures(pos, player);
         }
       }
-      self.points_seq.push(pos);
+      self.moves.push(pos);
       true
     } else {
       false
@@ -896,7 +896,7 @@ impl Field {
 
   pub fn undo(&mut self) -> bool {
     if let Some(change) = self.changes.pop() {
-      self.points_seq.pop();
+      self.moves.pop();
       self.score_red = change.score_red;
       self.score_black = change.score_black;
       self.hash = change.hash;
@@ -924,7 +924,7 @@ impl Field {
 
   pub fn get_last_chain(&self) -> Vec<Pos> {
     use std::cmp::Ordering;
-    let pos = if let Some(&pos) = self.points_seq.last() {
+    let pos = if let Some(&pos) = self.moves.last() {
       pos
     } else {
       return Vec::new();
@@ -975,17 +975,22 @@ impl Field {
 
   #[inline]
   pub fn moves_count(&self) -> usize {
-    self.points_seq.len()
+    self.moves.len()
   }
 
   #[inline]
   pub fn is_empty(&self) -> bool {
-    self.points_seq.is_empty()
+    self.moves.is_empty()
   }
 
   #[inline]
-  pub fn points_seq(&self) -> &Vec<Pos> {
-    &self.points_seq
+  pub fn moves(&self) -> &Vec<Pos> {
+    &self.moves
+  }
+
+  #[inline]
+  pub fn colored_moves(&self) -> impl ExactSizeIterator<Item = (Pos, Player)> + '_ {
+    self.moves.iter().map(|&pos| (pos, self.points[pos].get_player()))
   }
 
   #[inline]
@@ -1011,7 +1016,7 @@ impl Field {
 
   #[inline]
   pub fn last_player(&self) -> Option<Player> {
-    self.points_seq.last().map(|&pos| self.points[pos].get_player())
+    self.moves.last().map(|&pos| self.points[pos].get_player())
   }
 
   #[inline]
@@ -1059,6 +1064,11 @@ impl Field {
     &self.zobrist
   }
 
+  #[inline]
+  pub fn zobrist_arc(&self) -> Arc<Zobrist> {
+    self.zobrist.clone()
+  }
+
   pub fn last_changed_cells(&self) -> impl Iterator<Item = (Pos, Cell)> + '_ {
     self
       .changes
@@ -1074,7 +1084,7 @@ impl Field {
 
   fn non_grounded_points(&mut self) -> (u32, u32) {
     let mut result = (0, 0);
-    for &pos in &self.points_seq {
+    for &pos in &self.moves {
       let player = self.points[pos].get_owner().unwrap();
       let mut points = 0;
       let mut grounded = false;

@@ -1,4 +1,4 @@
-use crate::episode::episode;
+use crate::episode::{episode, examples};
 use crate::field_features::{field_features, CHANNELS};
 use crate::mcts::logistic;
 use crate::mcts_test::{const_value, uniform_policies};
@@ -26,8 +26,7 @@ fn episode_simple_surrounding() {
 
   let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
-  let mut examples = Default::default();
-  episode(
+  let visits = episode(
     &mut field,
     Player::Red,
     &|inputs: Array4<f64>| {
@@ -36,9 +35,15 @@ fn episode_simple_surrounding() {
       result
     },
     &mut rng,
-    &mut examples,
   )
   .unwrap();
+  let examples = examples::<f64>(
+    field.width(),
+    field.height(),
+    field.zobrist_arc(),
+    &visits,
+    &field.colored_moves().collect::<Vec<_>>(),
+  );
 
   assert_eq!(field.moves_count(), 5);
   assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
@@ -86,8 +91,7 @@ fn episode_trap() {
 
   let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
-  let mut examples = Default::default();
-  episode(
+  let visits = episode(
     &mut field,
     Player::Red,
     &|inputs: Array4<f64>| {
@@ -96,9 +100,15 @@ fn episode_trap() {
       result
     },
     &mut rng,
-    &mut examples,
   )
   .unwrap();
+  let examples = examples::<f64>(
+    field.width(),
+    field.height(),
+    field.zobrist_arc(),
+    &visits,
+    &field.colored_moves().collect::<Vec<_>>(),
+  );
 
   assert_eq!(field.moves_count(), 5);
   assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
@@ -185,8 +195,7 @@ fn episode_winning_game() {
   let center_x = (field.width() / 2) as usize;
   let center_y = (field.height() / 2) as usize;
 
-  let mut examples = Default::default();
-  episode(
+  let visits = episode(
     &mut field,
     Player::Red,
     &|inputs: Array4<f64>| {
@@ -201,9 +210,15 @@ fn episode_winning_game() {
       (uniform_policies(&inputs), values)
     },
     &mut rng,
-    &mut examples,
   )
   .unwrap();
+  let examples = examples::<f64>(
+    field.width(),
+    field.height(),
+    field.zobrist_arc(),
+    &visits,
+    &field.colored_moves().collect::<Vec<_>>(),
+  );
 
   assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
 

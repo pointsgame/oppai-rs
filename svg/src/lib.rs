@@ -205,7 +205,7 @@ pub fn field_to_svg(config: &Config, extended_field: &ExtendedField) -> Document
 
   // points
 
-  for &pos in extended_field.field.points_seq() {
+  for &pos in extended_field.field.moves() {
     let color = color(extended_field.field.cell(pos).get_player());
     let (x, y) = pos_to_point(pos);
     let circle = Use::new()
@@ -219,7 +219,7 @@ pub fn field_to_svg(config: &Config, extended_field: &ExtendedField) -> Document
   // fill extended area to display connecting lines
 
   if config.extended_filling {
-    for &pos in extended_field.field.points_seq() {
+    for &pos in extended_field.field.moves() {
       let player = extended_field.field.cell(pos).get_player();
       let color = color(player);
       let (x, y) = pos_to_point(pos);
@@ -388,7 +388,7 @@ pub fn field_to_svg(config: &Config, extended_field: &ExtendedField) -> Document
   // last point
 
   if config.last_point_mark {
-    if let Some(&pos) = extended_field.field.points_seq().last() {
+    if let Some(&pos) = extended_field.field.moves().last() {
       let (x, y) = pos_to_point(pos);
       let color = color(extended_field.field.cell(pos).get_player());
       let circle = Circle::new()

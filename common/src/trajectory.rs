@@ -113,7 +113,7 @@ fn build_trajectories_rec<SS: Fn() -> bool>(
           field,
           trajectories,
           field
-            .points_seq()
+            .moves()
             .index(field.moves_count() - cur_depth as usize..field.moves_count()),
           player,
         );
@@ -123,7 +123,7 @@ fn build_trajectories_rec<SS: Fn() -> bool>(
         field,
         trajectories,
         field
-          .points_seq()
+          .moves()
           .index(field.moves_count() - cur_depth as usize..field.moves_count()),
         player,
       );
@@ -167,7 +167,7 @@ pub fn build_trajectories<SS: Fn() -> bool>(
   }
 
   let mut marks = Vec::new();
-  for pos in field.points_seq().clone() {
+  for pos in field.moves().clone() {
     if field.cell(pos).get_player() != player {
       continue;
     }

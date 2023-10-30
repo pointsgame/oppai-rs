@@ -23,7 +23,7 @@ pub struct ExtendedField {
 impl From<Field> for ExtendedField {
   fn from(mut field: Field) -> Self {
     let points = field
-      .points_seq()
+      .moves()
       .iter()
       .map(|&pos| (pos, field.cell(pos).get_player()))
       .collect::<Vec<_>>();

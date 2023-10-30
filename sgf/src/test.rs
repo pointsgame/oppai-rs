@@ -22,7 +22,7 @@ fn cross() {
   let sgf = to_sgf(&field).unwrap();
   assert_eq!(sgf, "(;GM[40]SZ[4:4]RU[russian];W[bb];B[cb];W[cc];B[bc])");
   let field_from_sgf: Field = from_sgf(sgf.as_ref(), &mut rng).unwrap();
-  assert_eq!(field_from_sgf.points_seq(), field.field().points_seq());
+  assert_eq!(field_from_sgf.moves(), field.field().moves());
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn simple_surround() {
     "(;GM[40]SZ[3:3]RU[russian];W[ba];W[cb];W[bc];B[bb];W[ab.abbccbba])"
   );
   let field_from_sgf: Field = from_sgf(sgf.as_ref(), &mut rng).unwrap();
-  assert_eq!(field_from_sgf.points_seq(), field.field().points_seq());
+  assert_eq!(field_from_sgf.moves(), field.field().moves());
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn apply_control_surrounding_in_same_turn() {
     "(;GM[40]SZ[5:3]RU[russian];W[ba];W[ab];W[cb];W[bc];B[bb];W[eb.abbccbba])"
   );
   let field_from_sgf: Field = from_sgf(sgf.as_ref(), &mut rng).unwrap();
-  assert_eq!(field_from_sgf.points_seq(), field.field().points_seq());
+  assert_eq!(field_from_sgf.moves(), field.field().moves());
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn apply_control_surrounding_in_same_turn_followed_by_simple_surrounding() {
     "(;GM[40]SZ[7:3]RU[russian];B[fb];W[ba];W[fa];W[ab];W[cb];W[gb];W[bc];W[fc];B[bb];W[eb.ebfcgbfa.abbccbba])"
   );
   let field_from_sgf: Field = from_sgf(sgf.as_ref(), &mut rng).unwrap();
-  assert_eq!(field_from_sgf.points_seq(), field.field().points_seq());
+  assert_eq!(field_from_sgf.moves(), field.field().moves());
 }
 
 #[test]

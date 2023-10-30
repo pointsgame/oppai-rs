@@ -11,7 +11,13 @@ use oppai_field::{
 };
 use oppai_initial::initial::InitialPosition;
 use oppai_sgf::to_sgf;
-use oppai_zero::{episode::episode, examples::Examples, field_features::CHANNELS, model::TrainableModel, pit};
+use oppai_zero::{
+  episode::{episode, examples},
+  examples::Examples,
+  field_features::CHANNELS,
+  model::TrainableModel,
+  pit,
+};
 use oppai_zero_torch::model::{DType, PyModel};
 use pyo3::{types::IntoPyDict, Python};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
@@ -57,8 +63,14 @@ fn play<N: Float + Sum + SampleUniform + DType + Element + Display + Debug + Ser
     field.put_point(pos, player);
   }
 
-  let mut examples = Default::default();
-  episode(&mut field, player, &model, &mut rng, &mut examples)?;
+  let visits = episode(&mut field, player, &model, &mut rng)?;
+  let examples = examples::<N>(
+    field.width(),
+    field.height(),
+    field.zobrist_arc(),
+    &visits,
+    &field.colored_moves().collect::<Vec<_>>(),
+  );
 
   if let Some(sgf_path) = sgf_path {
     if let Some(sgf) = to_sgf(&field.into()) {

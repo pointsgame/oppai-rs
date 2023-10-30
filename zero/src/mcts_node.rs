@@ -1,7 +1,5 @@
-use ndarray::Array2;
 use num_traits::{Float, Zero};
-use oppai_field::field::{to_x, to_y, NonZeroPos, Pos};
-use oppai_rotate::rotate::{rotate, rotate_sizes};
+use oppai_field::field::{NonZeroPos, Pos};
 
 #[derive(Clone)]
 pub struct MctsNode<N> {
@@ -116,21 +114,6 @@ impl<N: Float> MctsNode<N> {
       result = -result;
     }
     node.children = children;
-  }
-
-  /// Improved stochastic policy values.
-  pub fn policies(&self, width: u32, height: u32, rotation: u8) -> Array2<N> {
-    let (width, height) = rotate_sizes(width, height, rotation);
-    let mut policies = Array2::zeros((height as usize, width as usize));
-
-    for child in &self.children {
-      let x = to_x(width, child.pos);
-      let y = to_y(width, child.pos);
-      let (x, y) = rotate(width, height, x, y, rotation);
-      policies[(y as usize, x as usize)] = N::from(child.visits).unwrap() / N::from(self.visits - 1).unwrap();
-    }
-
-    policies
   }
 
   pub fn best_child(self) -> Option<MctsNode<N>> {

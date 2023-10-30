@@ -89,7 +89,7 @@ where
   fields.retain_mut(|cur_field| {
     if cur_field.is_game_over() {
       node.add_result(
-        &cur_field.points_seq()[field.moves_count()..],
+        &cur_field.moves()[field.moves_count()..],
         game_result(cur_field, player),
         Vec::new(),
       );
@@ -133,7 +133,7 @@ where
     } else {
       -value
     };
-    node.add_result(&cur_field.points_seq()[field.moves_count()..], value, children);
+    node.add_result(&cur_field.moves()[field.moves_count()..], value, children);
   }
 
   Ok(())

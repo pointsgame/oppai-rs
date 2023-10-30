@@ -28,7 +28,7 @@ impl WavePruning {
 
   pub fn init(&mut self, field: &Field, radius: u32) {
     let width = field.width();
-    for &start_pos in field.points_seq() {
+    for &start_pos in field.moves() {
       field::wave(width, start_pos, |pos| {
         if pos == start_pos && self.moves_field[pos] == 0 {
           self.moves_field[pos] = 1;
@@ -63,7 +63,7 @@ impl WavePruning {
     });
     let width = field.width();
     let mut added_moves = Vec::new();
-    for &next_pos in field.points_seq().iter().skip(last_moves_count) {
+    for &next_pos in field.moves().iter().skip(last_moves_count) {
       field::wave(width, next_pos, |pos| {
         if pos == next_pos && moves_field[pos] == 0 {
           moves_field[pos] = 1;
