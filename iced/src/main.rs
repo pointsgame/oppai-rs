@@ -21,7 +21,7 @@ use oppai_bot::field::{NonZeroPos, Pos};
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::patterns::Patterns;
 use oppai_bot::player::Player;
-use oppai_sgf::{from_sgf, to_sgf};
+use oppai_sgf::{from_sgf_str, to_sgf_str};
 use rand::rngs::SmallRng;
 #[cfg(not(target_arch = "wasm32"))]
 use rand::Rng;
@@ -474,7 +474,7 @@ impl Application for Game {
       }
       #[cfg(target_arch = "wasm32")]
       Message::Save => {
-        if let Some(s) = to_sgf(&self.canvas_field.extended_field) {
+        if let Some(s) = to_sgf_str(&self.canvas_field.extended_field) {
           use wasm_bindgen::JsCast;
           let window = web_sys::window().unwrap();
           let document = window.document().unwrap();
@@ -522,7 +522,7 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(text) = fs::read_to_string(file.path()) {
-            if let Some(extended_field) = from_sgf(&text, &mut self.rng) {
+            if let Some(extended_field) = from_sgf_str(&text, &mut self.rng) {
               self.canvas_field.extended_field = extended_field;
               self.bot = Arc::new(Mutex::new(Bot::new(
                 self.config.width,
@@ -542,7 +542,7 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(text) = std::str::from_utf8(&file) {
-            if let Some(extended_field) = from_sgf(&text, &mut self.rng) {
+            if let Some(extended_field) = from_sgf_str(&text, &mut self.rng) {
               self.canvas_field.extended_field = extended_field;
               self.send_worker_message(Request::New(
                 self.canvas_field.extended_field.field.width(),
@@ -557,7 +557,7 @@ impl Application for Game {
       #[cfg(not(target_arch = "wasm32"))]
       Message::SaveFile(maybe_file) => {
         if let Some(file) = maybe_file {
-          if let Some(s) = to_sgf(&self.canvas_field.extended_field) {
+          if let Some(s) = to_sgf_str(&self.canvas_field.extended_field) {
             fs::write(file.path(), s).ok();
           }
         }

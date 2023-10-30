@@ -73,13 +73,7 @@ fn parse_move(s: &str) -> Option<Move> {
   Some(Move::Move(x, y, chains))
 }
 
-pub fn from_sgf<F: AnyField, R: Rng>(sgf: &str, rng: &mut R) -> Option<F> {
-  let trees = sgf_parse::parse(sgf).ok()?;
-  let node = trees.iter().find_map(|tree| match tree {
-    GameTree::Unknown(node) => Some(node),
-    GameTree::GoGame(_) => None,
-  })?;
-
+pub fn from_sgf<F: AnyField, R: Rng>(node: &SgfNode<Prop>, rng: &mut R) -> Option<F> {
   if node.get_property("GM")? != &Prop::GM(40) {
     return None;
   };
@@ -143,7 +137,17 @@ pub fn from_sgf<F: AnyField, R: Rng>(sgf: &str, rng: &mut R) -> Option<F> {
   Some(field)
 }
 
-pub fn to_sgf(field: &ExtendedField) -> Option<String> {
+pub fn from_sgf_str<F: AnyField, R: Rng>(sgf: &str, rng: &mut R) -> Option<F> {
+  let trees = sgf_parse::parse(sgf).ok()?;
+  let node = trees.iter().find_map(|tree| match tree {
+    GameTree::Unknown(node) => Some(node),
+    GameTree::GoGame(_) => None,
+  })?;
+
+  from_sgf(node, rng)
+}
+
+pub fn to_sgf(field: &ExtendedField) -> Option<SgfNode<Prop>> {
   if field.field().width() > 52 || field.field().height() > 52 {
     return None;
   }
@@ -202,7 +206,10 @@ pub fn to_sgf(field: &ExtendedField) -> Option<String> {
     .push(Prop::SZ((field.field().width() as u8, field.field().height() as u8)));
   node.properties.push(Prop::RU("russian".into()));
   node.is_root = true;
-  let tree = GameTree::Unknown(node);
 
-  Some(serialize(iter::once(&tree)))
+  Some(node)
+}
+
+pub fn to_sgf_str(field: &ExtendedField) -> Option<String> {
+  to_sgf(field).map(|node| serialize(iter::once(&GameTree::Unknown(node))))
 }

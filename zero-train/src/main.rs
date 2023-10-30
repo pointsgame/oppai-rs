@@ -10,7 +10,7 @@ use oppai_field::{
   zobrist::Zobrist,
 };
 use oppai_initial::initial::InitialPosition;
-use oppai_sgf::to_sgf;
+use oppai_sgf::to_sgf_str;
 use oppai_zero::{
   episode::{episode, examples},
   examples::Examples,
@@ -73,7 +73,7 @@ fn play<N: Float + Sum + SampleUniform + DType + Element + Display + Debug + Ser
   );
 
   if let Some(sgf_path) = sgf_path {
-    if let Some(sgf) = to_sgf(&field.into()) {
+    if let Some(sgf) = to_sgf_str(&field.into()) {
       fs::write(sgf_path, sgf)?;
     }
   }
