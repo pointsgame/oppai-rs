@@ -2999,6 +2999,7 @@ dependencies = [
  "pyo3",
  "rand",
  "serde",
+ "sgf-parse",
 ]
 
 [[package]]

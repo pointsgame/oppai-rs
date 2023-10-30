@@ -30,7 +30,7 @@ impl Display for Move {
   }
 }
 
-fn to_coordinate(c: u8) -> u8 {
+pub fn to_coordinate(c: u8) -> u8 {
   if c > 96 {
     c - 97
   } else {
@@ -38,7 +38,7 @@ fn to_coordinate(c: u8) -> u8 {
   }
 }
 
-fn from_coordinate(c: u8) -> u8 {
+pub fn from_coordinate(c: u8) -> u8 {
   if c > 26 {
     c + 39
   } else {

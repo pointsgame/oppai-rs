@@ -5,14 +5,15 @@ use config::{cli_parse, Action, Config};
 use num_traits::Float;
 use numpy::Element;
 use oppai_field::{
-  field::{length, Field},
+  any_field::AnyField,
+  field::{length, to_x, to_y, Field},
   player::Player,
   zobrist::Zobrist,
 };
 use oppai_initial::initial::InitialPosition;
-use oppai_sgf::to_sgf_str;
+use oppai_sgf::{from_coordinate, to_sgf};
 use oppai_zero::{
-  episode::{episode, examples},
+  episode::{episode, examples, Visits},
   examples::Examples,
   field_features::CHANNELS,
   model::TrainableModel,
@@ -22,15 +23,41 @@ use oppai_zero_torch::model::{DType, PyModel};
 use pyo3::{types::IntoPyDict, Python};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
 use serde::{Deserialize, Serialize};
+use sgf_parse::{serialize, unknown_game::Prop, GameTree, SgfNode};
 use std::{
   borrow::Cow,
   fmt::{Debug, Display},
   fs::{self, File},
-  iter::Sum,
+  iter::{self, Sum},
   path::PathBuf,
   process::ExitCode,
   sync::Arc,
 };
+
+fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], width: u32, moves_count: usize) {
+  for _ in 0..moves_count - visits.len() {
+    node = &mut node.children[0];
+  }
+
+  for Visits(visits) in visits {
+    node = &mut node.children[0];
+
+    node.properties.push(Prop::Unknown(
+      "ZR".into(),
+      visits
+        .iter()
+        .map(|&(pos, visits)| {
+          format!(
+            "{}{}{}",
+            from_coordinate(to_x(width, pos) as u8) as char,
+            from_coordinate(to_y(width, pos) as u8) as char,
+            visits,
+          )
+        })
+        .collect(),
+    ));
+  }
+}
 
 fn init<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
   config: Config,
@@ -72,8 +99,11 @@ fn play<N: Float + Sum + SampleUniform + DType + Element + Display + Debug + Ser
     &field.colored_moves().collect::<Vec<_>>(),
   );
 
+  let field = field.into();
   if let Some(sgf_path) = sgf_path {
-    if let Some(sgf) = to_sgf_str(&field.into()) {
+    if let Some(mut node) = to_sgf(&field) {
+      visits_to_sgf(&mut node, &visits, field.field().width(), field.field().moves_count());
+      let sgf = serialize(iter::once(&GameTree::Unknown(node)));
       fs::write(sgf_path, sgf)?;
     }
   }

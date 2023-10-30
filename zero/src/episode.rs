@@ -21,7 +21,7 @@ const MCTS_SIMS: u32 = 256;
 
 const EXPLORATION_THRESHOLD: u32 = 30;
 
-pub struct Visits(Vec<(Pos, u64)>);
+pub struct Visits(pub Vec<(Pos, u64)>);
 
 impl Visits {
   pub fn total(&self) -> u64 {
@@ -73,7 +73,12 @@ where
     }
 
     visits.push(Visits(
-      node.children.iter().map(|child| (child.pos, child.visits)).collect(),
+      node
+        .children
+        .iter()
+        .filter(|child| child.visits > 0)
+        .map(|child| (child.pos, child.visits))
+        .collect(),
     ));
 
     node = if moves_count < EXPLORATION_THRESHOLD {
