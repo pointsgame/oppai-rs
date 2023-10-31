@@ -2494,7 +2494,6 @@ dependencies = [
  "num-integer",
  "num-traits",
  "rawpointer",
- "serde",
 ]
 
 [[package]]
@@ -2952,7 +2951,6 @@ dependencies = [
  "oppai-rotate",
  "rand",
  "rand_xoshiro",
- "serde",
 ]
 
 [[package]]
@@ -2984,7 +2982,6 @@ name = "oppai-zero-train"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ciborium",
  "clap",
  "env_logger",
  "log",
@@ -2998,7 +2995,7 @@ dependencies = [
  "oppai-zero-torch",
  "pyo3",
  "rand",
- "serde",
+ "rand_xoshiro",
  "sgf-parse",
 ]
 

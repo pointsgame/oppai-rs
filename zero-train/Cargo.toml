@@ -16,14 +16,15 @@ log = "0.4"
 env_logger = "0.10"
 clap = { version = "4.4", features = [ "cargo" ] }
 anyhow = "1.0"
-serde = "1.0"
-ciborium = "0.2"
 sgf-parse = "4.2"
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
 oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
 oppai-zero-torch = { path = "../zero-torch" }
+
+[dev-dependencies]
+rand_xoshiro = "0.6"
 
 [features]
 default = ["dsu"]

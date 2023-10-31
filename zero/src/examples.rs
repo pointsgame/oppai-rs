@@ -1,10 +1,9 @@
 use either::Either;
 use ndarray::{Array, Array1, Array2, Array3, Array4, Axis};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use std::{iter, ops::Add};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Examples<N> {
   pub inputs: Vec<Array3<N>>,
   pub policies: Vec<Array2<N>>,

@@ -21,6 +21,7 @@ const MCTS_SIMS: u32 = 256;
 
 const EXPLORATION_THRESHOLD: u32 = 30;
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Visits(pub Vec<(Pos, u64)>);
 
 impl Visits {

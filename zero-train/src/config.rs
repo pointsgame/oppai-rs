@@ -8,7 +8,6 @@ pub enum Action {
   Play {
     model: PathBuf,
     game: PathBuf,
-    sgf: Option<PathBuf>,
   },
   Train {
     model: PathBuf,
@@ -70,14 +69,6 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .required(true),
-    )
-    .arg(
-      Arg::new("sgf")
-        .long("sgf")
-        .short('s')
-        .help("Path where to save the played game in SGF format")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf)),
     );
   let train = Command::new("train")
     .about("Train the neural network")
@@ -197,8 +188,7 @@ pub fn cli_parse() -> (Config, Action) {
     Some(("play", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
       let game = matches.get_one("game").cloned().unwrap();
-      let sgf = matches.get_one("sgf").cloned();
-      Action::Play { model, game, sgf }
+      Action::Play { model, game }
     }
     Some(("train", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
