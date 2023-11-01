@@ -8,9 +8,8 @@ edition = "2021"
 
 [dependencies]
 ndarray = "0.15"
-pyo3 = "0.18"
-numpy = "0.18"
 num-traits = "0.2"
+burn = { version = "0.10", features = ["train", "ndarray", "wgpu"] }
 rand = { version = "0.8", features = [ "small_rng" ] }
 log = "0.4"
 env_logger = "0.10"
@@ -21,7 +20,7 @@ oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
 oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
-oppai-zero-torch = { path = "../zero-torch" }
+oppai-zero-burn = { path = "../zero-burn" }
 
 [dev-dependencies]
 rand_xoshiro = "0.6"

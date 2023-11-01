@@ -1,9 +1,10 @@
-use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
+use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, Command};
 use std::path::PathBuf;
 
 pub enum Action {
   Init {
     model: PathBuf,
+    optimizer: PathBuf,
   },
   Play {
     model: PathBuf,
@@ -11,7 +12,9 @@ pub enum Action {
   },
   Train {
     model: PathBuf,
+    optimizer: PathBuf,
     model_new: PathBuf,
+    optimizer_new: PathBuf,
     games: Vec<PathBuf>,
   },
   Pit {
@@ -23,33 +26,35 @@ pub enum Action {
 pub struct Config {
   pub width: u32,
   pub height: u32,
-  pub device: String,
-  pub library: Option<String>,
-  pub double: bool,
 }
 
 impl Default for Config {
   fn default() -> Self {
-    Self {
-      width: 20,
-      height: 20,
-      device: "cpu".to_string(),
-      library: None,
-      double: false,
-    }
+    Self { width: 20, height: 20 }
   }
 }
 
 pub fn cli_parse() -> (Config, Action) {
-  let init = Command::new("init").about("Initialize the neural network").arg(
-    Arg::new("model")
-      .long("model")
-      .short('m')
-      .help("Model path")
-      .num_args(1)
-      .value_parser(value_parser!(PathBuf))
-      .required(true),
-  );
+  let init = Command::new("init")
+    .about("Initialize the neural network")
+    .arg(
+      Arg::new("model")
+        .long("model")
+        .short('m')
+        .help("Model path")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf))
+        .required(true),
+    )
+    .arg(
+      Arg::new("optimizer")
+        .long("optimizer")
+        .short('o')
+        .help("Optimizer state path")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf))
+        .required(true),
+    );
   let play = Command::new("play")
     .about("Self-play a single game")
     .arg(
@@ -82,10 +87,28 @@ pub fn cli_parse() -> (Config, Action) {
         .required(true),
     )
     .arg(
+      Arg::new("optimizer")
+        .long("optimizer")
+        .short('o')
+        .help("Optimizer state path")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf))
+        .required(true),
+    )
+    .arg(
       Arg::new("model-new")
         .long("model-new")
         .short('n')
         .help("Trained model path")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf))
+        .required(true),
+    )
+    .arg(
+      Arg::new("optimizer-new")
+        .long("optimizer-new")
+        .short('m')
+        .help("New optimizer state path")
         .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .required(true),
@@ -145,45 +168,18 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(u32))
         .default_value("16"),
     )
-    .arg(
-      Arg::new("device")
-        .long("device")
-        .help("Device to run pytorch network")
-        .num_args(1)
-        .default_value("cpu"),
-    )
-    .arg(
-      Arg::new("library")
-        .long("library")
-        .help("Load pytorch dynamic library")
-        .num_args(1),
-    )
-    .arg(
-      Arg::new("double")
-        .long("double")
-        .help("Use double precision type (float64) for calculations")
-        .action(ArgAction::SetTrue),
-    )
     .get_matches();
 
   let width = matches.get_one("width").copied().unwrap();
   let height = matches.get_one("height").copied().unwrap();
-  let device = matches.get_one("device").cloned().unwrap();
-  let library = matches.get_one("library").cloned();
-  let double = matches.get_flag("double");
 
-  let config = Config {
-    width,
-    height,
-    device,
-    library,
-    double,
-  };
+  let config = Config { width, height };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
-      Action::Init { model }
+      let optimizer = matches.get_one("optimizer").cloned().unwrap();
+      Action::Init { model, optimizer }
     }
     Some(("play", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
@@ -192,11 +188,15 @@ pub fn cli_parse() -> (Config, Action) {
     }
     Some(("train", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
+      let optimizer = matches.get_one("optimizer").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
+      let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
       let games = matches.get_many("games").unwrap().cloned().collect();
       Action::Train {
         model,
+        optimizer,
         model_new,
+        optimizer_new,
         games,
       }
     }

@@ -2,9 +2,16 @@ mod config;
 mod visits_sgf;
 
 use anyhow::Result;
+use burn::{
+  autodiff::ADBackendDecorator,
+  backend::WgpuBackend,
+  module::Module,
+  optim::{AdamWConfig, Optimizer},
+  record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
+  tensor::backend::{ADBackend, Backend},
+};
 use config::{cli_parse, Action, Config};
 use num_traits::Float;
-use numpy::Element;
 use oppai_field::{
   any_field::AnyField,
   field::{length, Field},
@@ -16,16 +23,13 @@ use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   episode::{self, episode},
   examples::Examples,
-  field_features::CHANNELS,
   model::TrainableModel,
   pit,
 };
-use oppai_zero_torch::model::{DType, PyModel};
-use pyo3::{types::IntoPyDict, Python};
+use oppai_zero_burn::model::{Learner, Model as BurnModel};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
 use sgf_parse::{serialize, GameTree};
 use std::{
-  borrow::Cow,
   fmt::{Debug, Display},
   fs,
   iter::{self, Sum},
@@ -35,24 +39,28 @@ use std::{
 };
 use visits_sgf::{sgf_to_visits, visits_to_sgf};
 
-fn init<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
-  config: Config,
-  model_path: PathBuf,
-) -> Result<ExitCode> {
-  let model = PyModel::<N>::new(config.width, config.height, CHANNELS as u32)?;
-  model.save(model_path)?;
+fn init<B>(config: Config, model_path: PathBuf, optimizer_path: PathBuf) -> Result<ExitCode>
+where
+  B: ADBackend,
+{
+  let model = BurnModel::<B>::new(config.width, config.height);
+  model.save_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+
+  let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
+  let record = optimizer.to_record();
+  let item = record.into_item::<FullPrecisionSettings>();
+  DefaultFileRecorder::<FullPrecisionSettings>::new().save_item(item, optimizer_path)?;
 
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
-  config: Config,
-  model_path: PathBuf,
-  game_path: PathBuf,
-) -> Result<ExitCode> {
-  let mut model = PyModel::<N>::new(config.width, config.height, CHANNELS as u32)?;
-  model.load(model_path)?;
-  model.to_device(Cow::Owned(config.device))?;
+fn play<B>(config: Config, model_path: PathBuf, game_path: PathBuf) -> Result<ExitCode>
+where
+  B: Backend,
+  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+{
+  let model = BurnModel::<B>::new(config.width, config.height);
+  let model = model.load_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let player = Player::Red;
 
@@ -77,18 +85,28 @@ fn play<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
   Ok(ExitCode::SUCCESS)
 }
 
-fn train<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
+fn train<B>(
   config: Config,
   model_path: PathBuf,
+  optimizer_path: PathBuf,
   model_new_path: PathBuf,
+  optimizer_new_path: PathBuf,
   games_paths: Vec<PathBuf>,
-) -> Result<ExitCode> {
-  let mut model = PyModel::<N>::new(config.width, config.height, CHANNELS as u32)?;
-  model.load(model_path)?;
-  model.to_device(Cow::Owned(config.device))?;
+) -> Result<ExitCode>
+where
+  B: ADBackend,
+  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+{
+  let model = BurnModel::<B>::new(config.width, config.height);
+  let model = model.load_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
+  let item = DefaultFileRecorder::<FullPrecisionSettings>::new().load_item(optimizer_path)?;
+  let record = Record::from_item::<FullPrecisionSettings>(item);
+  let optimizer = optimizer.load_record(record);
+  let mut learner = Learner { model, optimizer };
 
   let mut rng = SmallRng::from_entropy();
-  let mut examples: Examples<N> = Default::default();
+  let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
   for path in games_paths {
     let sgf = fs::read_to_string(path)?;
     let trees = sgf_parse::parse(&sgf)?;
@@ -103,7 +121,7 @@ fn train<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
     let visits = sgf_to_visits(node, field.width());
 
     examples = examples
-      + episode::examples::<N>(
+      + episode::examples(
         field.width(),
         field.height(),
         field.zobrist_arc(),
@@ -117,27 +135,31 @@ fn train<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
   for _ in 0..20 {
     examples.shuffle(&mut rng);
     for (inputs, policies, values) in examples.batches(1024) {
-      model = model.train(inputs, policies, values)?;
+      learner = learner.train(inputs, policies, values)?;
     }
   }
 
-  model.save(model_new_path)?;
+  learner
+    .model
+    .save_file(model_new_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+
+  let record = learner.optimizer.to_record();
+  let item = record.into_item::<FullPrecisionSettings>();
+  DefaultFileRecorder::<FullPrecisionSettings>::new().save_item(item, optimizer_new_path)?;
 
   Ok(ExitCode::SUCCESS)
 }
 
-fn pit<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
-  config: Config,
-  model_path: PathBuf,
-  model_new_path: PathBuf,
-) -> Result<ExitCode> {
-  let mut model = PyModel::<N>::new(config.width, config.height, CHANNELS as u32)?;
-  model.load(model_path)?;
-  model.to_device(Cow::Owned(config.device.clone()))?;
+fn pit<B>(config: Config, model_path: PathBuf, model_new_path: PathBuf) -> Result<ExitCode>
+where
+  B: Backend,
+  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+{
+  let model = BurnModel::<B>::new(config.width, config.height);
+  let model = model.load_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
-  let mut model_new = PyModel::<N>::new(config.width, config.height, CHANNELS as u32)?;
-  model_new.load(model_new_path)?;
-  model_new.to_device(Cow::Owned(config.device))?;
+  let model_new = BurnModel::<B>::new(config.width, config.height);
+  let model_new = model_new.load_file(model_new_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let player = Player::Red;
 
@@ -154,28 +176,18 @@ fn pit<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
   Ok(result)
 }
 
-fn run<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
-  config: Config,
-  action: Action,
-) -> Result<ExitCode> {
-  if let Some(ref library) = config.library {
-    Python::with_gil(|py| {
-      let locals = [("torch", py.import("torch")?)].into_py_dict(py);
-      locals.set_item("library", library)?;
-
-      py.run("torch.ops.load_library(library)", None, Some(locals))
-    })?;
-  }
-
+fn run(config: Config, action: Action) -> Result<ExitCode> {
   match action {
-    Action::Init { model } => init::<N>(config, model),
-    Action::Play { model, game } => play::<N>(config, model, game),
+    Action::Init { model, optimizer } => init::<ADBackendDecorator<WgpuBackend>>(config, model, optimizer),
+    Action::Play { model, game } => play::<WgpuBackend>(config, model, game),
     Action::Train {
       model,
+      optimizer,
       model_new,
+      optimizer_new,
       games,
-    } => train::<N>(config, model, model_new, games),
-    Action::Pit { model, model_new } => pit::<N>(config, model, model_new),
+    } => train::<ADBackendDecorator<WgpuBackend>>(config, model, optimizer, model_new, optimizer_new, games),
+    Action::Pit { model, model_new } => pit::<WgpuBackend>(config, model, model_new),
   }
 }
 
@@ -185,9 +197,5 @@ fn main() -> Result<ExitCode> {
 
   let (config, action) = cli_parse();
 
-  if config.double {
-    run::<f64>(config, action)
-  } else {
-    run::<f32>(config, action)
-  }
+  run(config, action)
 }

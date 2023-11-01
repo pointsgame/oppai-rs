@@ -19,8 +19,8 @@ use oppai_zero::{
 };
 
 const INPUT_CHANNELS: usize = CHANNELS;
-const INNER_CHANNELS: usize = 256;
-const RESIDUAL_BLOCKS: usize = 19;
+const INNER_CHANNELS: usize = 32; // AlphaGo uses 256
+const RESIDUAL_BLOCKS: usize = 5; // AlphaGo uses 19 or 39
 const POLICY_CHANNELS: usize = 2;
 const VALUE_CHANNELS: usize = 1;
 const VALUE_HIDDEN_SIZE: usize = 256;
@@ -132,12 +132,9 @@ impl<B: Backend> Model<B> {
   }
 }
 
-struct Learner<B, O>
-where
-  B: ADBackend,
-{
-  model: Model<B>,
-  optimizer: O,
+pub struct Learner<B: ADBackend, O> {
+  pub model: Model<B>,
+  pub optimizer: O,
 }
 
 impl<B> OppaiModel<<B as Backend>::FloatElem> for Model<B>
