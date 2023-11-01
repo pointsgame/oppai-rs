@@ -7,8 +7,8 @@ pub trait Model<N: Float> {
   fn predict(&self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E>;
 }
 
-pub trait TrainableModel<N: Float>: Model<N> {
+pub trait TrainableModel<N: Float>: Model<N> + Sized {
   type TE: From<Self::E>;
 
-  fn train(&mut self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::TE>;
+  fn train(self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<Self, Self::TE>;
 }

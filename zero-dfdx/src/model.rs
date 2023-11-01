@@ -182,7 +182,7 @@ impl From<SafeTensorError> for TrainError {
 impl TrainableModel<f32> for DfdxModel<f32> {
   type TE = TrainError;
 
-  fn train(&mut self, inputs: Array4<f32>, policies: Array3<f32>, values: Array1<f32>) -> Result<(), Self::TE> {
+  fn train(mut self, inputs: Array4<f32>, policies: Array3<f32>, values: Array1<f32>) -> Result<Self, Self::TE> {
     let batch_size = inputs.len_of(Axis(0));
     let inputs: Tensor<InputShape, f32, _> = self
       .device
@@ -209,6 +209,6 @@ impl TrainableModel<f32> for DfdxModel<f32> {
     self.adam.update(&mut self.model, &grads)?;
     self.model.zero_grads(&mut grads);
 
-    Ok(())
+    Ok(self)
   }
 }

@@ -117,7 +117,7 @@ fn train<N: Float + Sum + SampleUniform + DType + Element + Display + Debug>(
   for _ in 0..20 {
     examples.shuffle(&mut rng);
     for (inputs, policies, values) in examples.batches(1024) {
-      model.train(inputs, policies, values)?;
+      model = model.train(inputs, policies, values)?;
     }
   }
 

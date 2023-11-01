@@ -207,7 +207,7 @@ impl<N: Float + Element + DType> Model<N> for PyModel<N> {
 impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
   type TE = Self::E;
 
-  fn train(&mut self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<(), Self::E> {
+  fn train(mut self, inputs: Array4<N>, policies: Array3<N>, values: Array1<N>) -> Result<Self, Self::E> {
     Python::with_gil(|py| {
       let locals = PyDict::new(py);
       locals.set_item("torch", py.import("torch")?)?;
@@ -241,7 +241,7 @@ impl<N: Float + Element + DType> TrainableModel<N> for PyModel<N> {
         Some(locals),
       )?;
 
-      Ok(())
+      Ok(self)
     })
   }
 }

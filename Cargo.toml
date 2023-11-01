@@ -58,6 +58,7 @@ members = [
   "patterns",
   "zero",
   "zero-dfdx",
+  "zero-burn",
   "zero-torch",
   "zero-train",
   "bot",
