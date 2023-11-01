@@ -67,7 +67,8 @@ while true; do
     ((CHECKPOINT++))
   elif [ "$ret" -eq 2 ]; then
     echo "Rejecting the new model"
-    rm "$MODELS/model_$((CHECKPOINT + 1))"
+    rm "$MODELS/model_$((CHECKPOINT + 1))$EXTENSION"
+    rm "$MODELS/optimizer_$((CHECKPOINT + 1))$EXTENSION"
   else
     exit "$ret"
   fi
