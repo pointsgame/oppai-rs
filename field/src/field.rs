@@ -938,7 +938,7 @@ impl Field {
         let input_points_count = input_points.len();
         let mut chains_count = 0;
         for (chain_pos, captured_pos) in input_points {
-          if !self.points[captured_pos].is_captured() {
+          if !(self.points[captured_pos].is_captured() && self.points[chain_pos].is_bound()) {
             continue;
           }
           if let Some(mut chain) = self.find_chain(pos, player, chain_pos) {
