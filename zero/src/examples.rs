@@ -3,7 +3,7 @@ use ndarray::{Array, Array1, Array2, Array3, Array4, Axis};
 use rand::Rng;
 use std::{iter, ops::Add};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Examples<N> {
   pub inputs: Vec<Array3<N>>,
   pub policies: Vec<Array2<N>>,

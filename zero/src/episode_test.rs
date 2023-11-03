@@ -1,8 +1,8 @@
-use crate::episode::{episode, examples};
+use crate::episode::{episode, examples, Visits};
 use crate::field_features::{field_features, CHANNELS};
 use crate::mcts::logistic;
 use crate::mcts_test::{const_value, uniform_policies};
-use ndarray::{Array, Array4, Axis};
+use ndarray::{array, Array, Array4, Axis};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use oppai_rotate::rotate::{rotate, ROTATIONS};
@@ -229,4 +229,88 @@ fn episode_winning_game() {
       value < 0.0
     });
   }
+}
+
+#[test]
+fn visits_to_examples() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    iBc
+    HaD
+    gFe
+    ",
+  );
+  let visits = vec![
+    Visits(vec![(field.to_pos(0, 0), 2), (field.to_pos(0, 1), 6)]),
+    Visits(vec![(field.to_pos(0, 0), 8)]),
+  ];
+  let examples = examples::<f32>(
+    field.width(),
+    field.height(),
+    field.zobrist_arc(),
+    &visits,
+    &field.colored_moves().collect::<Vec<_>>(),
+  );
+
+  #[rustfmt::skip]
+  let inputs_0 = array![
+    [[0.0, 1.0, 0.0],
+     [0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0]],
+
+    [[0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0],
+     [1.0, 0.0, 1.0]],
+
+    [[0.0, 1.0, 0.0],
+     [0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0]],
+
+    [[0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0],
+     [1.0, 0.0, 1.0]],
+  ];
+  assert_eq!(examples.inputs[0], inputs_0);
+
+  #[rustfmt::skip]
+  let policies_0 = array![
+    [0.25, 0.0, 0.0],
+    [0.75, 0.0, 0.0],
+    [0.00, 0.0, 0.0],
+  ];
+  assert_eq!(examples.policies[0], policies_0);
+
+  assert!(examples.values[0] > 0.0);
+
+  #[rustfmt::skip]
+  let inputs_1 = array![
+    [[0.0, 0.0, 1.0],
+     [0.0, 0.0, 0.0],
+     [1.0, 0.0, 1.0]],
+
+    [[0.0, 1.0, 0.0],
+     [1.0, 1.0, 1.0],
+     [0.0, 1.0, 0.0]],
+
+    [[0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0],
+     [1.0, 0.0, 1.0]],
+
+    [[0.0, 1.0, 0.0],
+     [1.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0]],
+  ];
+  assert_eq!(examples.inputs[8], inputs_1);
+
+  #[rustfmt::skip]
+  let policies_1 = array![
+    [1.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+  ];
+  assert_eq!(examples.policies[8], policies_1);
+
+  assert!(examples.values[8] < 0.0);
 }

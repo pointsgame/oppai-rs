@@ -14,7 +14,7 @@ use oppai_rotate::rotate::{rotate, rotate_sizes, MIRRORS, ROTATIONS};
 use rand::distributions::uniform::SampleUniform;
 use rand::Rng;
 use std::fmt::{Debug, Display};
-use std::iter::Sum;
+use std::iter::{self, Sum};
 use std::sync::Arc;
 
 const MCTS_SIMS: u32 = 256;
@@ -136,9 +136,7 @@ pub fn examples<N: Float + Zero + One>(
       Player::Red => value,
       Player::Black => -value,
     };
-    for _ in 0..rotations {
-      examples.values.push(value);
-    }
+    examples.values.extend(iter::repeat(value).take(rotations as usize));
   }
 
   examples
