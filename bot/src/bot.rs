@@ -1,5 +1,11 @@
 use crate::config::{Config, Solver};
 use crate::heuristic;
+#[cfg(feature = "zero")]
+use burn::{
+  backend::WgpuBackend,
+  module::Module,
+  record::{DefaultFileRecorder, FullPrecisionSettings},
+};
 use oppai_field::field::{self, Field, NonZeroPos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
@@ -10,7 +16,7 @@ use oppai_uct::uct::UctRoot;
 #[cfg(feature = "zero")]
 use oppai_zero::zero::Zero;
 #[cfg(feature = "zero")]
-use oppai_zero_torch::model::PyModel;
+use oppai_zero_burn::model::Model as BurnModel;
 use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
@@ -63,7 +69,7 @@ pub struct Bot<R> {
   pub uct: UctRoot,
   pub minimax: Minimax,
   #[cfg(feature = "zero")]
-  pub zero: Zero<f64, PyModel<f64>>,
+  pub zero: Zero<f32, BurnModel<WgpuBackend>>,
   pub config: Config,
 }
 
@@ -90,9 +96,9 @@ where
         if !exists {
           log::warn!("No model at {}", path.display());
         }
-        let model = PyModel::<f64>::new(width, height, 4).unwrap();
+        let mut model = BurnModel::<WgpuBackend>::new(width, height);
         if exists {
-          model.load(path).unwrap();
+          model = model.load_file(path, &DefaultFileRecorder::<FullPrecisionSettings>::new()).unwrap();
         }
         model
       }),

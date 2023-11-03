@@ -3383,6 +3383,7 @@ dependencies = [
 name = "oppai-bot"
 version = "0.1.0"
 dependencies = [
+ "burn",
  "clap",
  "crossbeam",
  "humantime",
@@ -3394,7 +3395,7 @@ dependencies = [
  "oppai-patterns",
  "oppai-uct",
  "oppai-zero",
- "oppai-zero-torch",
+ "oppai-zero-burn",
  "rand",
  "strum",
 ]

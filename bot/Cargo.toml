@@ -13,13 +13,14 @@ strum = { version = "0.25", features = [ "derive" ] }
 num_cpus = "1.16"
 clap = "4.4"
 humantime = "2.1"
+burn = { version = "0.10", features = [ "wgpu" ], optional = true }
 oppai-field = { path = "../field" }
 oppai-minimax = { path = "../minimax" }
 oppai-uct = { path = "../uct" }
 oppai-patterns = { path = "../patterns" }
 oppai-ladders = { path = "../ladders" }
 oppai-zero = { path = "../zero", optional = true }
-oppai-zero-torch = { path = "../zero-torch", optional = true }
+oppai-zero-burn = { path = "../zero-burn", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 crossbeam = "0.8"
@@ -27,4 +28,4 @@ crossbeam = "0.8"
 [features]
 default = ["dsu", "zero"]
 dsu = ["oppai-field/dsu"]
-zero = [ "oppai-zero", "oppai-zero-torch" ]
+zero = [ "oppai-zero", "oppai-zero-burn", "burn" ]
