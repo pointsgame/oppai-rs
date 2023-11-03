@@ -147,7 +147,8 @@ where
 
   let mut rng = SmallRng::from_entropy();
 
-  for _ in 0..epochs {
+  for epoch in 0..epochs {
+    log::info!("Training {} epoch", epoch);
     examples.shuffle(&mut rng);
     for (inputs, policies, values) in examples.batches(batch_size) {
       learner = learner.train(inputs, policies, values)?;

@@ -218,6 +218,8 @@ where
     let policies_loss = -(out_policies * policies).sum() / batch;
     let loss = values_loss + policies_loss;
 
+    log::info!("Loss: {}", loss.clone().into_scalar());
+
     let grads = GradientsParams::from_grads(loss.backward(), &self.model);
     self.model = self.optimizer.step(0.01, self.model, grads);
 

@@ -3531,6 +3531,7 @@ name = "oppai-zero-burn"
 version = "0.1.0"
 dependencies = [
  "burn",
+ "log",
  "ndarray",
  "num-traits",
  "oppai-zero",

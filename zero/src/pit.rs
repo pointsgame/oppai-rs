@@ -44,7 +44,7 @@ where
     field.put_point(node1.pos, player);
 
     log::debug!(
-      "Score: {}, visits: {}, p: {}, w: {}\n{:?}",
+      "Score: {}, visits: {}, prior probability: {}, wins: {}\n{:?}",
       field.score(Player::Red),
       node1.visits,
       node1.prior_probability,
