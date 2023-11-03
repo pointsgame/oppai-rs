@@ -92,6 +92,7 @@ fn train<B>(
   model_new_path: PathBuf,
   optimizer_new_path: PathBuf,
   games_paths: Vec<PathBuf>,
+  epochs: usize,
 ) -> Result<ExitCode>
 where
   B: ADBackend,
@@ -132,7 +133,7 @@ where
 
   let mut rng = SmallRng::from_entropy();
 
-  for _ in 0..20 {
+  for _ in 0..epochs {
     examples.shuffle(&mut rng);
     for (inputs, policies, values) in examples.batches(1024) {
       learner = learner.train(inputs, policies, values)?;
@@ -186,7 +187,8 @@ fn run(config: Config, action: Action) -> Result<ExitCode> {
       model_new,
       optimizer_new,
       games,
-    } => train::<ADBackendDecorator<WgpuBackend>>(config, model, optimizer, model_new, optimizer_new, games),
+      epochs,
+    } => train::<ADBackendDecorator<WgpuBackend>>(config, model, optimizer, model_new, optimizer_new, games, epochs),
     Action::Pit { model, model_new } => pit::<WgpuBackend>(config, model, model_new),
   }
 }

@@ -16,6 +16,7 @@ pub enum Action {
     model_new: PathBuf,
     optimizer_new: PathBuf,
     games: Vec<PathBuf>,
+    epochs: usize,
   },
   Pit {
     model: PathBuf,
@@ -121,6 +122,15 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1..)
         .value_parser(value_parser!(PathBuf))
         .required(true),
+    )
+    .arg(
+      Arg::new("epochs")
+        .long("epochs")
+        .short('e')
+        .help("Number of epochs to train")
+        .num_args(1)
+        .value_parser(value_parser!(usize))
+        .default_value("10"),
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
@@ -192,12 +202,14 @@ pub fn cli_parse() -> (Config, Action) {
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
       let games = matches.get_many("games").unwrap().cloned().collect();
+      let epochs = matches.get_one("epochs").cloned().unwrap();
       Action::Train {
         model,
         optimizer,
         model_new,
         optimizer_new,
         games,
+        epochs,
       }
     }
     Some(("pit", matches)) => {
