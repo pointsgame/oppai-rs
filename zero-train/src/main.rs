@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 mod config;
 mod visits_sgf;
 
@@ -92,6 +94,7 @@ fn train<B>(
   model_new_path: PathBuf,
   optimizer_new_path: PathBuf,
   games_paths: Vec<PathBuf>,
+  batch_size: usize,
   epochs: usize,
 ) -> Result<ExitCode>
 where
@@ -135,7 +138,7 @@ where
 
   for _ in 0..epochs {
     examples.shuffle(&mut rng);
-    for (inputs, policies, values) in examples.batches(1024) {
+    for (inputs, policies, values) in examples.batches(batch_size) {
       learner = learner.train(inputs, policies, values)?;
     }
   }
@@ -187,8 +190,18 @@ fn run(config: Config, action: Action) -> Result<ExitCode> {
       model_new,
       optimizer_new,
       games,
+      batch_size,
       epochs,
-    } => train::<ADBackendDecorator<WgpuBackend>>(config, model, optimizer, model_new, optimizer_new, games, epochs),
+    } => train::<ADBackendDecorator<WgpuBackend>>(
+      config,
+      model,
+      optimizer,
+      model_new,
+      optimizer_new,
+      games,
+      batch_size,
+      epochs,
+    ),
     Action::Pit { model, model_new } => pit::<WgpuBackend>(config, model, model_new),
   }
 }

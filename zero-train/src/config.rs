@@ -16,6 +16,7 @@ pub enum Action {
     model_new: PathBuf,
     optimizer_new: PathBuf,
     games: Vec<PathBuf>,
+    batch_size: usize,
     epochs: usize,
   },
   Pit {
@@ -124,6 +125,15 @@ pub fn cli_parse() -> (Config, Action) {
         .required(true),
     )
     .arg(
+      Arg::new("batch-size")
+        .long("batch-size")
+        .short('b')
+        .help("Batch size")
+        .num_args(1)
+        .value_parser(value_parser!(usize))
+        .default_value("512"),
+    )
+    .arg(
       Arg::new("epochs")
         .long("epochs")
         .short('e')
@@ -202,6 +212,7 @@ pub fn cli_parse() -> (Config, Action) {
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
       let games = matches.get_many("games").unwrap().cloned().collect();
+      let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let epochs = matches.get_one("epochs").cloned().unwrap();
       Action::Train {
         model,
@@ -209,6 +220,7 @@ pub fn cli_parse() -> (Config, Action) {
         model_new,
         optimizer_new,
         games,
+        batch_size,
         epochs,
       }
     }
