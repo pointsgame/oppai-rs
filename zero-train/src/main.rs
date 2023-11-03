@@ -30,8 +30,9 @@ use oppai_zero::{
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
-use sgf_parse::{serialize, GameTree};
+use sgf_parse::{serialize, unknown_game::Prop, GameTree, SimpleText};
 use std::{
+  cmp::Ordering,
   fmt::{Debug, Display},
   fs,
   iter::{self, Sum},
@@ -80,6 +81,16 @@ where
   let field = field.into();
   if let Some(mut node) = to_sgf(&field) {
     visits_to_sgf(&mut node, &visits, field.field().width(), field.field().moves_count());
+    let score = field.field().score(Player::Red);
+    node.properties.push(Prop::RE(match score.cmp(&0) {
+      Ordering::Equal => "0".into(),
+      Ordering::Greater => SimpleText {
+        text: format!("W+{}", score),
+      },
+      Ordering::Less => SimpleText {
+        text: format!("B+{}", score.abs()),
+      },
+    }));
     let sgf = serialize(iter::once(&GameTree::Unknown(node)));
     fs::write(game_path, sgf)?;
   }
