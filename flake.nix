@@ -58,8 +58,6 @@
             librsvg
             pango
             vulkan-loader
-            (python3.withPackages (pkgs: with pkgs; [ pytorch torchvision ]))
-            (pkgs.callPackage ./pytorch-dlprim.nix { })
           ];
 
           LD_LIBRARY_PATH = inputs.nixpkgs.lib.makeLibraryPath buildInputs;

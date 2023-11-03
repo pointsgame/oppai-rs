@@ -59,7 +59,6 @@ members = [
   "zero",
   "zero-dfdx",
   "zero-burn",
-  "zero-torch",
   "zero-train",
   "bot",
   "initial",
