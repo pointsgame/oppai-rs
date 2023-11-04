@@ -3570,6 +3570,7 @@ dependencies = [
  "rand",
  "rand_xoshiro",
  "sgf-parse",
+ "strum",
 ]
 
 [[package]]

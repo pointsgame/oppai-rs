@@ -1,5 +1,6 @@
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, Command};
 use std::path::PathBuf;
+use strum::{EnumString, EnumVariantNames};
 
 pub enum Action {
   Init {
@@ -25,14 +26,25 @@ pub enum Action {
   },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
+pub enum Backend {
+  Wgpu,
+  Ndarray,
+}
+
 pub struct Config {
   pub width: u32,
   pub height: u32,
+  pub backend: Backend,
 }
 
 impl Default for Config {
   fn default() -> Self {
-    Self { width: 20, height: 20 }
+    Self {
+      width: 20,
+      height: 20,
+      backend: Backend::Wgpu,
+    }
   }
 }
 
@@ -188,12 +200,21 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(u32))
         .default_value("16"),
     )
+    .arg(
+      Arg::new("backend")
+        .long("backend")
+        .help("Backend to use")
+        .num_args(1)
+        .value_parser(value_parser!(Backend))
+        .default_value("Wgpu"),
+    )
     .get_matches();
 
   let width = matches.get_one("width").copied().unwrap();
   let height = matches.get_one("height").copied().unwrap();
+  let backend = matches.get_one("backend").copied().unwrap();
 
-  let config = Config { width, height };
+  let config = Config { width, height, backend };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {

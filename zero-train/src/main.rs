@@ -6,13 +6,13 @@ mod visits_sgf;
 use anyhow::Result;
 use burn::{
   autodiff::ADBackendDecorator,
-  backend::WgpuBackend,
+  backend::{NdArrayBackend, WgpuBackend},
   module::Module,
   optim::{AdamWConfig, Optimizer},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
   tensor::backend::{ADBackend, Backend},
 };
-use config::{cli_parse, Action, Config};
+use config::{cli_parse, Action, Backend as ConfigBackend, Config};
 use num_traits::Float;
 use oppai_field::{
   any_field::AnyField,
@@ -192,10 +192,14 @@ where
   Ok(result)
 }
 
-fn run(config: Config, action: Action) -> Result<ExitCode> {
+fn run<B>(config: Config, action: Action) -> Result<ExitCode>
+where
+  B: Backend,
+  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+{
   match action {
-    Action::Init { model, optimizer } => init::<ADBackendDecorator<WgpuBackend>>(config, model, optimizer),
-    Action::Play { model, game } => play::<WgpuBackend>(config, model, game),
+    Action::Init { model, optimizer } => init::<ADBackendDecorator<B>>(config, model, optimizer),
+    Action::Play { model, game } => play::<B>(config, model, game),
     Action::Train {
       model,
       optimizer,
@@ -204,7 +208,7 @@ fn run(config: Config, action: Action) -> Result<ExitCode> {
       games,
       batch_size,
       epochs,
-    } => train::<ADBackendDecorator<WgpuBackend>>(
+    } => train::<ADBackendDecorator<B>>(
       config,
       model,
       optimizer,
@@ -214,7 +218,7 @@ fn run(config: Config, action: Action) -> Result<ExitCode> {
       batch_size,
       epochs,
     ),
-    Action::Pit { model, model_new } => pit::<WgpuBackend>(config, model, model_new),
+    Action::Pit { model, model_new } => pit::<B>(config, model, model_new),
   }
 }
 
@@ -224,5 +228,8 @@ fn main() -> Result<ExitCode> {
 
   let (config, action) = cli_parse();
 
-  run(config, action)
+  match config.backend {
+    ConfigBackend::Ndarray => run::<NdArrayBackend>(config, action),
+    ConfigBackend::Wgpu => run::<WgpuBackend>(config, action),
+  }
 }
