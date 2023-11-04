@@ -11,7 +11,7 @@ pub struct MctsNode<N> {
   /// Visits count.
   pub visits: u64,
   /// Prior probability.
-  pub prior_probability: N,
+  pub policy: N,
   /// Total action value.
   pub wins: N,
   /// Children moves.
@@ -31,11 +31,11 @@ const TEMPERATURE: f64 = 1f64;
 
 impl<N: Zero> MctsNode<N> {
   #[inline]
-  pub fn new(pos: Pos, prior_probability: N, wins: N) -> Self {
+  pub fn new(pos: Pos, policy: N, wins: N) -> Self {
     Self {
       pos,
       visits: 0,
-      prior_probability,
+      policy,
       wins,
       children: Vec::new(),
     }
@@ -65,7 +65,7 @@ impl<N: Float> MctsNode<N> {
     //    proposed by `Integrating Factorization Ranked Features in MCTS: an Experimental Study`
     // 3. sqrt(3 * ln(parent_visits) / (2 * visits)) + 2 / p * sqrt(ln(parent_visits) / parent_visits)
     //    proposed by `Multi-armed Bandits with Episode Context`
-    N::from(C_PUCT).unwrap() * self.prior_probability * parent_visits_sqrt / N::from(1 + self.visits).unwrap()
+    N::from(C_PUCT).unwrap() * self.policy * parent_visits_sqrt / N::from(1 + self.visits).unwrap()
   }
 
   #[inline]
@@ -146,7 +146,7 @@ where
       *eta = *eta / sum;
     }
     for (child, eta) in self.children.iter_mut().zip(dirichlet.into_iter()) {
-      child.prior_probability = child.prior_probability * (N::one() - epsilon) + epsilon * eta;
+      child.policy = child.policy * (N::one() - epsilon) + epsilon * eta;
     }
   }
 }

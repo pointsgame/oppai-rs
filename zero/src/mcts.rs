@@ -45,9 +45,9 @@ fn create_children<N: Float + Sum, R: Rng>(
     .collect::<Vec<_>>();
   children.shuffle(rng);
   // renormalize
-  let sum: N = children.iter().map(|child| child.prior_probability).sum();
+  let sum: N = children.iter().map(|child| child.policy).sum();
   for child in children.iter_mut() {
-    child.prior_probability = child.prior_probability / sum;
+    child.policy = child.policy / sum;
   }
   children
 }

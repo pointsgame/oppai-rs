@@ -97,10 +97,10 @@ where
     moves_count += 1;
 
     log::debug!(
-      "Score: {}, visits: {}, prior probability: {}, wins: {}\n{:?}",
+      "Score: {}, visits: {}, policy: {}, wins: {}\n{:?}",
       field.score(Player::Red),
       node.visits,
-      node.prior_probability,
+      node.policy,
       node.wins,
       field
     );
