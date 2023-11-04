@@ -1219,12 +1219,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b365fabc795046672053e29c954733ec3b05e4be654ab130fe8f1f94d7051f35"
 
 [[package]]
-name = "cudarc"
-version = "0.9.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1871a911a2b9a3f66a285896a719159985683bf9903aa2cf89e0c9f53e14552"
-
-[[package]]
 name = "d3d12"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1361,24 +1355,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dfdx"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6dbcb8a7363d8b434ca20bd3808ab9f6ee77e6916ca1d511f8e3c725d0b340e"
-dependencies = [
- "cudarc",
- "gemm",
- "half 2.3.1",
- "libm",
- "memmap2",
- "num-traits",
- "rand",
- "rand_distr",
- "rayon",
- "safetensors",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1442,16 +1418,6 @@ dependencies = [
  "serde_derive",
  "winapi",
  "wio",
-]
-
-[[package]]
-name = "dyn-stack"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fe7f8d7bcc523381d3c437b82cf74805de3931de0da69309ae0fe1bdf7a256e"
-dependencies = [
- "bytemuck",
- "reborrow",
 ]
 
 [[package]]
@@ -1895,131 +1861,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gemm"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd87b21645c861f7391cb96420a5950bf0ba234ae6f3dc085899490583ef90fc"
-dependencies = [
- "dyn-stack",
- "gemm-c32",
- "gemm-c64",
- "gemm-common",
- "gemm-f16",
- "gemm-f32",
- "gemm-f64",
- "lazy_static",
- "num-complex",
- "num-traits",
- "paste",
- "raw-cpuid",
- "rayon",
- "seq-macro",
-]
-
-[[package]]
-name = "gemm-c32"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "377ad017f5816524f4fc63ada7b8b3e5d32b8205ac444dd339f625dea14a55a4"
-dependencies = [
- "dyn-stack",
- "gemm-common",
- "lazy_static",
- "num-complex",
- "num-traits",
- "paste",
- "raw-cpuid",
- "rayon",
- "seq-macro",
-]
-
-[[package]]
-name = "gemm-c64"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d07b1c61ccc819aa167a0381b802f77a8f8bc86555e795b8b5e20b495888ca3"
-dependencies = [
- "dyn-stack",
- "gemm-common",
- "lazy_static",
- "num-complex",
- "num-traits",
- "paste",
- "raw-cpuid",
- "rayon",
- "seq-macro",
-]
-
-[[package]]
-name = "gemm-common"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20c036178bc038889e2e4b58cf815650b7cdd667760c54e310dc52044637c012"
-dependencies = [
- "dyn-stack",
- "lazy_static",
- "num-complex",
- "num-traits",
- "paste",
- "raw-cpuid",
- "rayon",
- "seq-macro",
-]
-
-[[package]]
-name = "gemm-f16"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f02999b7999760be2455e4821900dc2679b305eb0b88ff7f6af90a270b93780"
-dependencies = [
- "dyn-stack",
- "gemm-common",
- "gemm-f32",
- "half 2.3.1",
- "lazy_static",
- "num-complex",
- "num-traits",
- "paste",
- "raw-cpuid",
- "rayon",
- "seq-macro",
-]
-
-[[package]]
-name = "gemm-f32"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40276ef01c143e664305eb888e306008a7e4e173cfabbc961e875de04dcd4abb"
-dependencies = [
- "dyn-stack",
- "gemm-common",
- "lazy_static",
- "num-complex",
- "num-traits",
- "paste",
- "raw-cpuid",
- "rayon",
- "seq-macro",
-]
-
-[[package]]
-name = "gemm-f64"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22a587ec9b4666664371e46cdff9aa7f8058ec8e293b1a30e814d6491e9e90a0"
-dependencies = [
- "dyn-stack",
- "gemm-common",
- "lazy_static",
- "num-complex",
- "num-traits",
- "paste",
- "raw-cpuid",
- "rayon",
- "seq-macro",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2308,8 +2149,6 @@ dependencies = [
  "cfg-if",
  "crunchy",
  "num-traits",
- "rand",
- "rand_distr",
  "serde",
 ]
 
@@ -3562,18 +3401,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oppai-zero-dfdx"
-version = "0.1.0"
-dependencies = [
- "dfdx",
- "ndarray",
- "num-traits",
- "oppai-zero",
- "safetensors",
- "thiserror",
-]
-
-[[package]]
 name = "oppai-zero-train"
 version = "0.1.0"
 dependencies = [
@@ -4045,15 +3872,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "raw-cpuid"
-version = "10.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c297679cb867470fa8c9f67dbba74a78d78e3e98d7cf2b08d6d71540f797332"
-dependencies = [
- "bitflags 1.3.2",
-]
-
-[[package]]
 name = "raw-window-handle"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4103,12 +3921,6 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
 ]
-
-[[package]]
-name = "reborrow"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 
 [[package]]
 name = "redox_syscall"
@@ -4302,16 +4114,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "safetensors"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d93279b86b3de76f820a8854dd06cbc33cfa57a417b19c47f6a25280112fb1df"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4362,12 +4164,6 @@ dependencies = [
  "smithay-client-toolkit",
  "tiny-skia",
 ]
-
-[[package]]
-name = "seq-macro"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3f0bf26fd526d2a95683cd0f87bf103b8539e2ca1ef48ce002d67aad59aa0b4"
 
 [[package]]
 name = "serde"

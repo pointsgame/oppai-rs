@@ -57,7 +57,6 @@ members = [
   "minimax",
   "patterns",
   "zero",
-  "zero-dfdx",
   "zero-burn",
   "zero-train",
   "bot",

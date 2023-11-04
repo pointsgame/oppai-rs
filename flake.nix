@@ -34,14 +34,14 @@
             cmake
             pkg-config
             (fenix.combine [
-              (fenix.latest.withComponents [
+              (fenix.stable.withComponents [
                 "cargo"
                 "clippy"
                 "rust-src"
                 "rustc"
                 "rustfmt"
               ])
-              fenix.targets.wasm32-unknown-unknown.latest.rust-std
+              fenix.targets.wasm32-unknown-unknown.stable.rust-std
             ])
             rust-analyzer
             wasm-bindgen-cli
