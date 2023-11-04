@@ -26,7 +26,7 @@ const VALUE_CHANNELS: usize = 1;
 const VALUE_HIDDEN_SIZE: usize = 256;
 
 #[derive(Module, Debug)]
-struct ResidualBlock<B: Backend> {
+pub struct ResidualBlock<B: Backend> {
   conv1: Conv2d<B>,
   bn1: BatchNorm<B, 2>,
   conv2: Conv2d<B>,
