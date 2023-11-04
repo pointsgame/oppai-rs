@@ -73,6 +73,12 @@ where
   let mut visits = Vec::new();
 
   while !field.is_game_over() {
+    if node.children.is_empty() {
+      mcts(field, player, &mut node, model, rng)?;
+    }
+
+    node.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
+
     for _ in 0..MCTS_SIMS {
       mcts(field, player, &mut node, model, rng)?;
     }
@@ -91,7 +97,6 @@ where
     } else {
       node.best_child().unwrap()
     };
-    node.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
     field.put_point(node.pos, player);
     player = player.next();
     moves_count += 1;

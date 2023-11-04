@@ -142,6 +142,9 @@ where
     let gamma = Gamma::<N>::new(N::from(shape).unwrap(), N::one()).unwrap();
     let mut dirichlet = gamma.sample_iter(rng).take(self.children.len()).collect::<Vec<_>>();
     let sum = dirichlet.iter().cloned().sum::<N>();
+    if sum == N::zero() {
+      return;
+    }
     for eta in dirichlet.iter_mut() {
       *eta = *eta / sum;
     }
