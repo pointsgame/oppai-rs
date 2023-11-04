@@ -48,10 +48,10 @@ impl Visits {
 }
 
 fn select<N: Float + Sum + SampleUniform, R: Rng>(mut nodes: Vec<MctsNode<N>>, rng: &mut R) -> MctsNode<N> {
-  let r = rng.gen_range(N::zero()..nodes.iter().map(|child| child.probability()).sum::<N>());
-  let mut sum = N::zero();
+  let r = rng.gen_range(0..nodes.iter().map(|child| child.visits).sum::<u64>());
+  let mut sum = 0;
   while let Some(node) = nodes.pop() {
-    sum = sum + node.probability();
+    sum += node.visits;
     if sum > r {
       return node;
     }

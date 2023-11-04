@@ -27,8 +27,6 @@ impl<N: Zero> Default for MctsNode<N> {
 
 const C_PUCT: f64 = 2f64;
 
-const TEMPERATURE: f64 = 1f64;
-
 impl<N: Zero> MctsNode<N> {
   #[inline]
   pub fn new(pos: Pos, policy: N, wins: N) -> Self {
@@ -47,13 +45,6 @@ impl<N: Float> MctsNode<N> {
   #[inline]
   pub fn win_rate(&self) -> N {
     self.wins / N::from(self.visits + 1).unwrap()
-  }
-
-  #[inline]
-  pub fn probability(&self) -> N {
-    N::from(self.visits)
-      .unwrap()
-      .powf(N::one() / N::from(TEMPERATURE).unwrap())
   }
 
   #[inline]
