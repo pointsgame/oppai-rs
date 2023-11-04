@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 log = "0.4"
-rayon = "1.5"
+rayon = "1.8"
 oppai-field = { path = "../field" }
 oppai-rotate = { path = "../rotate" }
 
