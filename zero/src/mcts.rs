@@ -11,15 +11,8 @@ use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
 
 #[inline]
-pub fn logistic<N: Float>(p: N) -> N {
-  let l = N::one() + N::one();
-  let k = N::one();
-  l / ((-p * k).exp() + N::one()) - N::one()
-}
-
-#[inline]
 pub fn game_result<N: Float>(field: &Field, player: Player) -> N {
-  logistic(N::from(field.score(player)).unwrap())
+  N::from(field.score(player).signum()).unwrap()
 }
 
 #[inline]

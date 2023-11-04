@@ -1,4 +1,4 @@
-use crate::mcts::{logistic, mcts};
+use crate::mcts::mcts;
 use crate::mcts_node::MctsNode;
 use crate::model::Model;
 use ndarray::{Array, Array1, Array3, Array4, Axis};
@@ -104,6 +104,6 @@ fn mcts_last_iterations() {
   )
   .unwrap();
   assert_eq!(node.visits, 1);
-  assert_eq!(node.wins, logistic(-1.0));
+  assert_eq!(node.wins, -1.0);
   assert!(node.children.is_empty());
 }

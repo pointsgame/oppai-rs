@@ -1,6 +1,5 @@
 use crate::episode::{episode, examples, Visits};
 use crate::field_features::{field_features, CHANNELS};
-use crate::mcts::logistic;
 use crate::mcts_test::{const_value, uniform_policies};
 use ndarray::{array, Array, Array4, Axis};
 use oppai_field::construct_field::construct_field;
@@ -74,7 +73,7 @@ fn episode_simple_surrounding() {
       .unwrap()
   );
 
-  assert_eq!(examples.values, vec![logistic(1.0); 8]);
+  assert_eq!(examples.values, vec![1.0; 8]);
 }
 
 #[test]
