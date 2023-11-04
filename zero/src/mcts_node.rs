@@ -1,5 +1,8 @@
 use num_traits::{Float, Zero};
 use oppai_field::field::{NonZeroPos, Pos};
+use rand::Rng;
+use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
+use std::iter::Sum;
 
 #[derive(Clone)]
 pub struct MctsNode<N> {
@@ -81,7 +84,6 @@ impl<N: Float> MctsNode<N> {
   }
 
   pub fn select(&mut self) -> Vec<Pos> {
-    // TODO: noise?
     let mut moves = Vec::new();
     let mut node = self;
 
@@ -117,16 +119,34 @@ impl<N: Float> MctsNode<N> {
   }
 
   pub fn best_child(self) -> Option<MctsNode<N>> {
-    // TODO: option to use winrate?
     self.children.into_iter().max_by_key(|child| child.visits)
   }
 
   pub fn best_move(&self) -> Option<NonZeroPos> {
-    // TODO: option to use winrate?
     self
       .children
       .iter()
       .max_by_key(|child| child.visits)
       .and_then(|child| NonZeroPos::new(child.pos))
+  }
+}
+
+impl<N> MctsNode<N>
+where
+  N: Float + Sum,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
+  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N) {
+    let gamma = Gamma::<N>::new(N::from(shape).unwrap(), N::one()).unwrap();
+    let mut dirichlet = gamma.sample_iter(rng).take(self.children.len()).collect::<Vec<_>>();
+    let sum = dirichlet.iter().cloned().sum::<N>();
+    for eta in dirichlet.iter_mut() {
+      *eta = *eta / sum;
+    }
+    for (child, eta) in self.children.iter_mut().zip(dirichlet.into_iter()) {
+      child.prior_probability = child.prior_probability * (N::one() - epsilon) + epsilon * eta;
+    }
   }
 }

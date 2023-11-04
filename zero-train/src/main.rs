@@ -30,6 +30,7 @@ use oppai_zero::{
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
+use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use sgf_parse::{serialize, unknown_game::Prop, GameTree, SimpleText};
 use std::{
   cmp::Ordering,
@@ -61,6 +62,9 @@ fn play<B>(config: Config, model_path: PathBuf, game_path: PathBuf) -> Result<Ex
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+  StandardNormal: Distribution<<B as Backend>::FloatElem>,
+  Exp1: Distribution<<B as Backend>::FloatElem>,
+  Open01: Distribution<<B as Backend>::FloatElem>,
 {
   let model = BurnModel::<B>::new(config.width, config.height);
   let model = model.load_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
@@ -196,6 +200,9 @@ fn run<B>(config: Config, action: Action) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+  StandardNormal: Distribution<<B as Backend>::FloatElem>,
+  Exp1: Distribution<<B as Backend>::FloatElem>,
+  Open01: Distribution<<B as Backend>::FloatElem>,
 {
   match action {
     Action::Init { model, optimizer } => init::<ADBackendDecorator<B>>(config, model, optimizer),

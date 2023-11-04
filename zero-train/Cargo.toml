@@ -11,6 +11,7 @@ ndarray = "0.15"
 num-traits = "0.2"
 burn = { version = "0.10", features = ["train", "ndarray", "wgpu"] }
 rand = { version = "0.8", features = [ "small_rng" ] }
+rand_distr = "0.4"
 log = "0.4"
 env_logger = "0.10"
 clap = { version = "4.4", features = [ "cargo" ] }

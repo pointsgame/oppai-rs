@@ -13,6 +13,7 @@ use oppai_field::{
 use oppai_rotate::rotate::{rotate, rotate_sizes, MIRRORS, ROTATIONS};
 use rand::distributions::uniform::SampleUniform;
 use rand::Rng;
+use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
 use std::sync::Arc;
@@ -63,6 +64,9 @@ where
   M: Model<N>,
   N: Float + Sum + SampleUniform + Display + Debug,
   R: Rng,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
 {
   let mut node = MctsNode::default();
   let mut moves_count = 0;
@@ -87,6 +91,7 @@ where
     } else {
       node.best_child().unwrap()
     };
+    node.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
     field.put_point(node.pos, player);
     player = player.next();
     moves_count += 1;

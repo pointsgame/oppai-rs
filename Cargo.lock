@@ -3544,6 +3544,7 @@ dependencies = [
  "oppai-field",
  "oppai-rotate",
  "rand",
+ "rand_distr",
  "rand_xoshiro",
 ]
 
@@ -3589,6 +3590,7 @@ dependencies = [
  "oppai-zero",
  "oppai-zero-burn",
  "rand",
+ "rand_distr",
  "rand_xoshiro",
  "sgf-parse",
  "strum",
