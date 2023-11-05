@@ -20,8 +20,6 @@ use std::sync::Arc;
 
 const MCTS_SIMS: u32 = 256;
 
-const EXPLORATION_THRESHOLD: u32 = 30;
-
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Visits(pub Vec<(Pos, u64)>);
 
@@ -59,7 +57,13 @@ fn select<N: Float + Sum + SampleUniform, R: Rng>(mut nodes: Vec<MctsNode<N>>, r
   unreachable!()
 }
 
-pub fn episode<N, M, R>(field: &mut Field, mut player: Player, model: &M, rng: &mut R) -> Result<Vec<Visits>, M::E>
+pub fn episode<N, M, R>(
+  field: &mut Field,
+  mut player: Player,
+  model: &M,
+  rng: &mut R,
+  exploration_threshold: usize,
+) -> Result<Vec<Visits>, M::E>
 where
   M: Model<N>,
   N: Float + Sum + SampleUniform + Display + Debug,
@@ -92,7 +96,7 @@ where
         .collect(),
     ));
 
-    node = if moves_count < EXPLORATION_THRESHOLD {
+    node = if moves_count < exploration_threshold {
       select(node.children, rng)
     } else {
       node.best_child().unwrap()
