@@ -98,7 +98,9 @@ where
         }
         let mut model = BurnModel::<WgpuBackend>::new(width, height);
         if exists {
-          model = model.load_file(path, &DefaultFileRecorder::<FullPrecisionSettings>::new()).unwrap();
+          model = model
+            .load_file(path, &DefaultFileRecorder::<FullPrecisionSettings>::new())
+            .unwrap();
         }
         model
       }),

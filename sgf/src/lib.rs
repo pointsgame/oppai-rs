@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod test;
+#[cfg(feature = "zero")]
+pub mod visits;
 
 use oppai_field::{any_field::AnyField, extended_field::ExtendedField, player::Player};
 use rand::Rng;

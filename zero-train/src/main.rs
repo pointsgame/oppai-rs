@@ -1,7 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
 mod config;
-mod visits_sgf;
 
 use anyhow::Result;
 use burn::{
@@ -21,7 +20,10 @@ use oppai_field::{
   zobrist::Zobrist,
 };
 use oppai_initial::initial::InitialPosition;
-use oppai_sgf::{from_sgf, to_sgf};
+use oppai_sgf::{
+  from_sgf, to_sgf,
+  visits::{sgf_to_visits, visits_to_sgf},
+};
 use oppai_zero::{
   episode::{self, episode},
   examples::Examples,
@@ -41,7 +43,6 @@ use std::{
   process::ExitCode,
   sync::Arc,
 };
-use visits_sgf::{sgf_to_visits, visits_to_sgf};
 
 fn init<B>(config: Config, model_path: PathBuf, optimizer_path: PathBuf) -> Result<ExitCode>
 where

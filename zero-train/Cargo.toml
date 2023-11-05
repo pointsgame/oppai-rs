@@ -20,7 +20,7 @@ sgf-parse = "4.2"
 strum = { version = "0.25", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
-oppai-sgf = { path = "../sgf" }
+oppai-sgf = { path = "../sgf", features = [ "zero" ] }
 oppai-zero = { path = "../zero" }
 oppai-zero-burn = { path = "../zero-burn" }
 

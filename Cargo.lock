@@ -3335,6 +3335,7 @@ dependencies = [
  "env_logger",
  "log",
  "oppai-field",
+ "oppai-zero",
  "rand",
  "rand_xoshiro",
  "sgf-parse",

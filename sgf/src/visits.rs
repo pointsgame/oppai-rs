@@ -1,5 +1,5 @@
+use crate::{from_coordinate, to_coordinate};
 use oppai_field::field::{to_pos, to_x, to_y};
-use oppai_sgf::{from_coordinate, to_coordinate};
 use oppai_zero::episode::Visits;
 use sgf_parse::{unknown_game::Prop, SgfNode};
 
@@ -51,8 +51,8 @@ pub fn sgf_to_visits(node: &SgfNode<Prop>, width: u32) -> Vec<Visits> {
 
 #[cfg(test)]
 mod tests {
+  use crate::to_sgf;
   use oppai_field::{any_field::AnyField, construct_field::construct_field, extended_field::ExtendedField};
-  use oppai_sgf::to_sgf;
   use oppai_zero::episode::Visits;
   use rand::SeedableRng;
   use rand_xoshiro::Xoshiro256PlusPlus;
