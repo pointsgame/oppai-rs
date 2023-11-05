@@ -221,6 +221,7 @@ impl Application for Game {
         edit_mode: false,
         // TODO: split configs
         config: flags.canvas_config,
+        extra: (),
       },
       #[cfg(not(target_arch = "wasm32"))]
       bot: Arc::new(Mutex::new(bot)),

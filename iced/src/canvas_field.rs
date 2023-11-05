@@ -1,5 +1,5 @@
 use crate::canvas_config::{CanvasConfig, Rgb};
-use iced::widget::canvas;
+use iced::widget::canvas::{self, Frame};
 use iced::{mouse, Color, Point, Rectangle, Size, Theme, Vector};
 use oppai_bot::extended_field::ExtendedField;
 use oppai_bot::field::Pos;
@@ -19,11 +19,44 @@ pub enum CanvasMessage {
   ClearCoordinates,
 }
 
-pub struct CanvasField {
+pub trait Extra {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F);
+}
+
+impl Extra for () {
+  fn render<F: Fn(Pos) -> Point>(&self, _: &mut Frame, _: &F) {}
+}
+
+impl<E: Extra, const N: usize> Extra for [E; N] {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F) {
+    for e in self {
+      e.render(frame, pos_to_point);
+    }
+  }
+}
+
+impl<E: Extra> Extra for Vec<E> {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F) {
+    for e in self {
+      e.render(frame, pos_to_point);
+    }
+  }
+}
+
+impl<E: Extra> Extra for Option<E> {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F) {
+    if let Some(e) = self {
+      e.render(frame, pos_to_point);
+    }
+  }
+}
+
+pub struct CanvasField<E: Extra = ()> {
   pub extended_field: ExtendedField,
   pub field_cache: canvas::Cache,
   pub edit_mode: bool,
   pub config: CanvasConfig,
+  pub extra: E,
 }
 
 impl canvas::Program<CanvasMessage> for CanvasField {
@@ -375,6 +408,11 @@ impl canvas::Program<CanvasMessage> for CanvasField {
           );
         }
       }
+
+      // extra
+
+      #[allow(clippy::unit_arg)]
+      self.extra.render(frame, &pos_to_point);
     });
 
     let mut frame = canvas::Frame::new(bounds.size());
