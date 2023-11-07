@@ -71,8 +71,6 @@ struct Game {
   worker: web_sys::Worker,
   ai: bool,
   thinking: bool,
-  #[cfg(not(target_arch = "wasm32"))]
-  file_choosing: bool,
   coordinates: Option<(u32, u32)>,
   #[cfg(not(target_arch = "wasm32"))]
   should_stop: Arc<AtomicBool>,
@@ -144,12 +142,6 @@ impl Game {
     }
   }
 
-  #[cfg(not(target_arch = "wasm32"))]
-  pub fn is_locked(&self) -> bool {
-    self.thinking || self.file_choosing
-  }
-
-  #[cfg(target_arch = "wasm32")]
   pub fn is_locked(&self) -> bool {
     self.thinking
   }
@@ -242,8 +234,6 @@ impl Application for Game {
       },
       ai: true,
       thinking: false,
-      #[cfg(not(target_arch = "wasm32"))]
-      file_choosing: false,
       coordinates: None,
       #[cfg(not(target_arch = "wasm32"))]
       should_stop: Arc::new(AtomicBool::new(false)),
@@ -441,7 +431,6 @@ impl Application for Game {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-          self.file_choosing = true;
           return Command::perform(
             AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
             Message::OpenFile,
@@ -464,10 +453,6 @@ impl Application for Game {
       }
       #[cfg(not(target_arch = "wasm32"))]
       Message::Save => {
-        if self.file_choosing {
-          return Command::none();
-        }
-        self.file_choosing = true;
         return Command::perform(
           AsyncFileDialog::new().add_filter("SGF", &["sgf"]).save_file(),
           Message::SaveFile,
@@ -537,7 +522,6 @@ impl Application for Game {
             }
           }
         }
-        self.file_choosing = false;
       }
       #[cfg(target_arch = "wasm32")]
       Message::OpenFile(maybe_file) => {
@@ -562,7 +546,6 @@ impl Application for Game {
             fs::write(file.path(), s).ok();
           }
         }
-        self.file_choosing = false;
       }
       #[cfg(target_arch = "wasm32")]
       Message::SetWorkerListener(tx) => {
