@@ -32,6 +32,35 @@ impl Display for Move {
   }
 }
 
+impl Move {
+  fn parse(s: &str) -> Option<Move> {
+    if s.is_empty() {
+      return Some(Move::Pass);
+    } else if s.len() == 1 {
+      return None;
+    }
+    let x = to_coordinate(s.as_bytes()[0]);
+    let y = to_coordinate(s.as_bytes()[1]);
+    let mut chains = Vec::new();
+    if s.len() > 2 {
+      for c in s.split('.').skip(1) {
+        let mut chain = Vec::new();
+        if c.len() % 2 == 1 {
+          return None;
+        }
+
+        for i in 0..c.len() / 2 {
+          let x = to_coordinate(c.as_bytes()[i * 2]);
+          let y = to_coordinate(c.as_bytes()[i * 2 + 1]);
+          chain.push((x, y));
+        }
+        chains.push(chain);
+      }
+    }
+    Some(Move::Move(x, y, chains))
+  }
+}
+
 pub fn to_coordinate(c: u8) -> u8 {
   if c > 96 {
     c - 97
@@ -48,33 +77,6 @@ pub fn from_coordinate(c: u8) -> u8 {
   }
 }
 
-fn parse_move(s: &str) -> Option<Move> {
-  if s.is_empty() {
-    return Some(Move::Pass);
-  } else if s.len() == 1 {
-    return None;
-  }
-  let x = to_coordinate(s.as_bytes()[0]);
-  let y = to_coordinate(s.as_bytes()[1]);
-  let mut chains = Vec::new();
-  if s.len() > 2 {
-    for c in s.split('.').skip(1) {
-      let mut chain = Vec::new();
-      if c.len() % 2 == 1 {
-        return None;
-      }
-
-      for i in 0..c.len() / 2 {
-        let x = to_coordinate(c.as_bytes()[i * 2]);
-        let y = to_coordinate(c.as_bytes()[i * 2 + 1]);
-        chain.push((x, y));
-      }
-      chains.push(chain);
-    }
-  }
-  Some(Move::Move(x, y, chains))
-}
-
 pub fn from_sgf<F: AnyField, R: Rng>(node: &SgfNode<Prop>, rng: &mut R) -> Option<F> {
   if node.get_property("GM")? != &Prop::GM(40) {
     return None;
@@ -89,7 +91,7 @@ pub fn from_sgf<F: AnyField, R: Rng>(node: &SgfNode<Prop>, rng: &mut R) -> Optio
   let mut field = <F as AnyField>::new_from_rng(width as u32, height as u32, rng);
 
   let mut handle = |player: Player, s: &str| -> bool {
-    if let Some(Move::Move(x, y, chains)) = parse_move(s) {
+    if let Some(Move::Move(x, y, chains)) = Move::parse(s) {
       let pos = field.field().to_pos(x as u32, y as u32);
       let result = field.put_players_point(pos, player);
       if !chains.into_iter().flat_map(|chain| chain.into_iter()).all(|(x, y)| {
