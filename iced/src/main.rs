@@ -87,16 +87,7 @@ impl Game {
 
   pub fn put_point(&mut self, pos: Pos) -> bool {
     let player = self.canvas_field.extended_field.player;
-    if self.canvas_field.extended_field.put_point(pos) {
-      #[cfg(not(target_arch = "wasm32"))]
-      self.bot.lock().unwrap().field.put_point(pos, player);
-      #[cfg(target_arch = "wasm32")]
-      self.send_worker_message(Request::PutPoint(pos, player));
-      self.canvas_field.field_cache.clear();
-      true
-    } else {
-      false
-    }
+    self.put_players_point(pos, player)
   }
 
   pub fn put_players_point(&mut self, pos: Pos, player: Player) -> bool {
