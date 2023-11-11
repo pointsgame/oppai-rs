@@ -7,7 +7,7 @@ mod worker_message;
 use crate::config::{cli_parse, Config};
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
-use canvas_field::{CanvasField, CanvasMessage};
+use canvas_field::{CanvasField, CanvasMessage, Label};
 use iced::theme::Palette;
 use iced::widget::{Canvas, Column, Container, Row, Text};
 use iced::{
@@ -21,7 +21,9 @@ use oppai_bot::field::{NonZeroPos, Pos};
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_bot::patterns::Patterns;
 use oppai_bot::player::Player;
-use oppai_sgf::{from_sgf_str, to_sgf_str};
+use oppai_sgf::visits::sgf_to_visits;
+use oppai_sgf::{from_sgf, to_sgf_str};
+use oppai_zero::episode::Visits;
 use rand::rngs::SmallRng;
 #[cfg(not(target_arch = "wasm32"))]
 use rand::Rng;
@@ -29,6 +31,8 @@ use rand::SeedableRng;
 use rfd::AsyncFileDialog;
 #[cfg(not(target_arch = "wasm32"))]
 use rfd::FileHandle;
+use sgf_parse::GameTree;
+use std::iter;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
   atomic::{AtomicBool, Ordering},
@@ -64,8 +68,8 @@ pub fn main() -> iced::Result {
 struct Game {
   config: Config,
   rng: SmallRng,
-  moves: Vec<(Pos, Player)>,
-  canvas_field: CanvasField,
+  moves: Vec<(Pos, Player, Visits)>,
+  canvas_field: CanvasField<Vec<Label>>,
   #[cfg(not(target_arch = "wasm32"))]
   bot: Arc<Mutex<Bot<SmallRng>>>,
   #[cfg(target_arch = "wasm32")]
@@ -91,18 +95,47 @@ impl Game {
     self.put_players_point(pos, player)
   }
 
+  fn refresh(&mut self) {
+    self.canvas_field.extra.clear();
+    let moves_count = self.canvas_field.extended_field.field.moves_count();
+    if moves_count > 0 {
+      let visits = &self.moves[moves_count - 1].2;
+      let max = visits.max() as f32;
+      self
+        .canvas_field
+        .extra
+        .extend(visits.0.iter().map(|&(pos, visits)| Label {
+          pos,
+          text: visits.to_string(),
+          color: Color {
+            r: 0.0,
+            g: visits as f32 / max,
+            b: 0.0,
+            a: 1.0,
+          },
+          scale: 0.5,
+        }));
+    }
+    self.canvas_field.field_cache.clear();
+  }
+
   pub fn put_players_point(&mut self, pos: Pos, player: Player) -> bool {
     if self.canvas_field.extended_field.put_players_point(pos, player) {
       let moves_count = self.canvas_field.extended_field.field.moves_count();
-      if self.moves.get(moves_count - 1) != Some(&(pos, player)) {
+      if self
+        .moves
+        .get(moves_count - 1)
+        .into_iter()
+        .any(|&(cur_pos, cur_player, _)| (cur_pos, cur_player) != (pos, player))
+      {
         self.moves.truncate(moves_count - 1);
-        self.moves.push((pos, player));
+        self.moves.push((pos, player, Default::default()));
       }
       #[cfg(not(target_arch = "wasm32"))]
       self.bot.lock().unwrap().field.put_point(pos, player);
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::PutPoint(pos, player));
-      self.canvas_field.field_cache.clear();
+      self.refresh();
       true
     } else {
       false
@@ -115,7 +148,7 @@ impl Game {
       self.bot.lock().unwrap().field.undo();
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::Undo);
-      self.canvas_field.field_cache.clear();
+      self.refresh();
       true
     } else {
       false
@@ -125,7 +158,7 @@ impl Game {
   pub fn redo(&mut self) -> bool {
     let moves_count = self.canvas_field.extended_field.field.moves_count();
     if self.moves.len() > moves_count {
-      let (pos, player) = self.moves[moves_count];
+      let (pos, player, _) = self.moves[moves_count];
       self.put_players_point(pos, player);
       true
     } else {
@@ -136,11 +169,11 @@ impl Game {
   pub fn redo_all(&mut self) -> bool {
     let moves_count = self.canvas_field.extended_field.field.moves_count();
     if self.moves.len() > moves_count {
-      for &(pos, player) in &self.moves[moves_count..] {
-        self.canvas_field.extended_field.field.put_point(pos, player);
+      for &(pos, player, _) in &self.moves[moves_count..] {
+        self.canvas_field.extended_field.put_players_point(pos, player);
       }
       self.put_all_bot_points();
-      self.canvas_field.field_cache.clear();
+      self.refresh();
       true
     } else {
       false
@@ -154,7 +187,7 @@ impl Game {
       self.bot.lock().unwrap().field.undo_all();
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::UndoAll);
-      self.canvas_field.field_cache.clear();
+      self.refresh();
       true
     } else {
       false
@@ -247,14 +280,14 @@ impl Application for Game {
     let game = Game {
       config: flags.clone(),
       rng,
-      moves: moves.collect(),
+      moves: moves.map(|(pos, player)| (pos, player, Default::default())).collect(),
       canvas_field: CanvasField {
         extended_field,
         field_cache: Default::default(),
         edit_mode: false,
         // TODO: split configs
         config: flags.canvas_config,
-        extra: (),
+        extra: Vec::new(),
       },
       #[cfg(not(target_arch = "wasm32"))]
       bot: Arc::new(Mutex::new(bot)),
@@ -494,7 +527,7 @@ impl Application for Game {
             self.canvas_field.extended_field.player,
           ));
         self.put_all_bot_points();
-        self.canvas_field.field_cache.clear();
+        self.refresh();
       }
       Message::Open => {
         if self.is_locked() {
@@ -578,19 +611,37 @@ impl Application for Game {
       #[cfg(not(target_arch = "wasm32"))]
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
-          if let Ok(text) = fs::read_to_string(file.path()) {
-            if let Some(extended_field) = from_sgf_str::<ExtendedField, _>(&text, &mut self.rng) {
-              self.moves = extended_field.field.colored_moves().collect();
-              self.canvas_field.extended_field = extended_field;
-              self.bot = Arc::new(Mutex::new(Bot::new(
-                self.config.width,
-                self.config.height,
-                SmallRng::from_seed(self.rng.gen()),
-                Arc::new(Patterns::default()),
-                self.config.bot_config.clone(),
-              )));
-              self.put_all_bot_points();
-              self.canvas_field.field_cache.clear();
+          if let Ok(sgf) = fs::read_to_string(file.path()) {
+            if let Ok(trees) = sgf_parse::parse(sgf.as_str()) {
+              if let Some(node) = trees.iter().find_map(|tree| match tree {
+                GameTree::Unknown(node) => Some(node),
+                GameTree::GoGame(_) => None,
+              }) {
+                if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
+                  let visits = sgf_to_visits(node, extended_field.field.width());
+                  self.moves = extended_field
+                    .field
+                    .colored_moves()
+                    .zip(
+                      iter::repeat(Default::default())
+                        .take(extended_field.field.moves_count() - visits.len() - 1)
+                        .chain(visits)
+                        .chain(iter::repeat(Default::default())),
+                    )
+                    .map(|((pos, player), visits)| (pos, player, visits))
+                    .collect();
+                  self.canvas_field.extended_field = extended_field;
+                  self.bot = Arc::new(Mutex::new(Bot::new(
+                    self.config.width,
+                    self.config.height,
+                    SmallRng::from_seed(self.rng.gen()),
+                    Arc::new(Patterns::default()),
+                    self.config.bot_config.clone(),
+                  )));
+                  self.put_all_bot_points();
+                  self.refresh();
+                }
+              }
             }
           }
         }
@@ -598,16 +649,33 @@ impl Application for Game {
       #[cfg(target_arch = "wasm32")]
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
-          if let Ok(text) = std::str::from_utf8(&file) {
-            if let Some(extended_field) = from_sgf_str::<ExtendedField, _>(&text, &mut self.rng) {
-              self.moves = extended_field.field.colored_moves().collect();
-              self.canvas_field.extended_field = extended_field;
-              self.send_worker_message(Request::New(
-                self.canvas_field.extended_field.field.width(),
-                self.canvas_field.extended_field.field.height(),
-              ));
-              self.put_all_bot_points();
-              self.canvas_field.field_cache.clear();
+          if let Ok(sgf) = std::str::from_utf8(&file) {
+            if let Ok(trees) = sgf_parse::parse(sgf.as_str()) {}
+            if let Some(node) = trees.iter().find_map(|tree| match tree {
+              GameTree::Unknown(node) => Some(node),
+              GameTree::GoGame(_) => None,
+            }) {
+              if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
+                let visits = sgf_to_visits(node, extended_field.field.width());
+                self.moves = extended_field
+                  .field
+                  .colored_moves()
+                  .zip(
+                    iter::repeat(Default::default())
+                      .take(extended_field.field.moves_count() - visits.len() - 1)
+                      .chain(visits)
+                      .chain(iter::repeat(Default::default())),
+                  )
+                  .map(|((pos, player), visits)| (pos, player, visits))
+                  .collect();
+                self.canvas_field.extended_field = extended_field;
+                self.send_worker_message(Request::New(
+                  self.canvas_field.extended_field.field.width(),
+                  self.canvas_field.extended_field.field.height(),
+                ));
+                self.put_all_bot_points();
+                self.refresh();
+              }
             }
           }
         }

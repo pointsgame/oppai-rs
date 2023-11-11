@@ -20,12 +20,16 @@ use std::sync::Arc;
 
 const MCTS_SIMS: u32 = 256;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Default, Debug)]
 pub struct Visits(pub Vec<(Pos, u64)>);
 
 impl Visits {
   pub fn total(&self) -> u64 {
     self.0.iter().map(|&(_, v)| v).sum()
+  }
+
+  pub fn max(&self) -> u64 {
+    self.0.iter().map(|&(_, v)| v).max().unwrap_or_default()
   }
 
   /// Improved stochastic policy values.

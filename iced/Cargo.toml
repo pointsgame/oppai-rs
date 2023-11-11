@@ -15,9 +15,11 @@ strum = { version = "0.25", features = ["derive"] }
 clap = { version = "4.4", features = ["cargo"] }
 humantime = "2.1"
 rfd = { version = "0.12", default-features = false, features = ["xdg-portal"] }
+sgf-parse = "4.2"
 oppai-initial = { path = "../initial" }
 oppai-bot = { path = "../bot", default-features = false }
-oppai-sgf = { path = "../sgf" }
+oppai-sgf = { path = "../sgf", features = ["zero"] }
+oppai-zero = { path = "../zero" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.10"

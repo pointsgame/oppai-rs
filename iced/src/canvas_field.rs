@@ -57,6 +57,7 @@ pub struct Label {
   pub pos: Pos,
   pub text: String,
   pub color: Color,
+  pub scale: f32,
 }
 
 impl Extra for Label {
@@ -64,7 +65,7 @@ impl Extra for Label {
     let mut text: Text = self.text.as_str().into();
     text.horizontal_alignment = Horizontal::Center;
     text.vertical_alignment = Vertical::Center;
-    text.size = bounds.width / field.field.width() as f32;
+    text.size = self.scale * bounds.width / field.field.width() as f32;
     text.color = self.color;
     text.position = pos_to_point(self.pos);
     frame.fill_text(text);
