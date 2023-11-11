@@ -64,6 +64,7 @@ pub fn main() -> iced::Result {
 struct Game {
   config: Config,
   rng: SmallRng,
+  moves: Vec<(Pos, Player)>,
   canvas_field: CanvasField,
   #[cfg(not(target_arch = "wasm32"))]
   bot: Arc<Mutex<Bot<SmallRng>>>,
@@ -92,6 +93,11 @@ impl Game {
 
   pub fn put_players_point(&mut self, pos: Pos, player: Player) -> bool {
     if self.canvas_field.extended_field.put_players_point(pos, player) {
+      let moves_count = self.canvas_field.extended_field.field.moves_count();
+      if self.moves.get(moves_count - 1) != Some(&(pos, player)) {
+        self.moves.truncate(moves_count - 1);
+        self.moves.push((pos, player));
+      }
       #[cfg(not(target_arch = "wasm32"))]
       self.bot.lock().unwrap().field.put_point(pos, player);
       #[cfg(target_arch = "wasm32")]
@@ -109,6 +115,45 @@ impl Game {
       self.bot.lock().unwrap().field.undo();
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::Undo);
+      self.canvas_field.field_cache.clear();
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn redo(&mut self) -> bool {
+    let moves_count = self.canvas_field.extended_field.field.moves_count();
+    if self.moves.len() > moves_count {
+      let (pos, player) = self.moves[moves_count];
+      self.put_players_point(pos, player);
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn redo_all(&mut self) -> bool {
+    let moves_count = self.canvas_field.extended_field.field.moves_count();
+    if self.moves.len() > moves_count {
+      for &(pos, player) in &self.moves[moves_count..] {
+        self.canvas_field.extended_field.field.put_point(pos, player);
+      }
+      self.put_all_bot_points();
+      self.canvas_field.field_cache.clear();
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn undo_all(&mut self) -> bool {
+    if self.canvas_field.extended_field.undo() {
+      self.canvas_field.extended_field.undo_all();
+      #[cfg(not(target_arch = "wasm32"))]
+      self.bot.lock().unwrap().field.undo_all();
+      #[cfg(target_arch = "wasm32")]
+      self.send_worker_message(Request::UndoAll);
       self.canvas_field.field_cache.clear();
       true
     } else {
@@ -142,6 +187,9 @@ impl Game {
 enum Message {
   Canvas(CanvasMessage),
   Undo,
+  UndoAll,
+  Redo,
+  RedoAll,
   New,
   Open,
   Save,
@@ -190,14 +238,16 @@ impl Application for Game {
       Arc::new(patterns),
       flags.bot_config.clone(),
     );
-    extended_field.put_points(flags.initial_position.points(
+    let moves = flags.initial_position.points(
       extended_field.field.width(),
       extended_field.field.height(),
       extended_field.player,
-    ));
+    );
+    extended_field.put_points(moves.clone());
     let game = Game {
       config: flags.clone(),
       rng,
+      moves: moves.collect(),
       canvas_field: CanvasField {
         extended_field,
         field_cache: Default::default(),
@@ -284,9 +334,21 @@ impl Application for Game {
 
     let keys_subscription = subscription::events_with(|event, _| match event {
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Backspace,
+        key_code: keyboard::KeyCode::Left,
         ..
       }) => Some(Message::Undo),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::Down,
+        ..
+      }) => Some(Message::UndoAll),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::Right,
+        ..
+      }) => Some(Message::Redo),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key_code: keyboard::KeyCode::Up,
+        ..
+      }) => Some(Message::RedoAll),
       #[cfg(not(target_arch = "wasm32"))]
       Event::Keyboard(keyboard::Event::KeyPressed {
         key_code: keyboard::KeyCode::N,
@@ -383,6 +445,24 @@ impl Application for Game {
           return Command::none();
         }
         self.undo();
+      }
+      Message::UndoAll => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.undo_all();
+      }
+      Message::Redo => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.redo();
+      }
+      Message::RedoAll => {
+        if self.is_locked() {
+          return Command::none();
+        }
+        self.redo_all();
       }
       Message::New => {
         if self.is_locked() {
@@ -499,7 +579,8 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(text) = fs::read_to_string(file.path()) {
-            if let Some(extended_field) = from_sgf_str(&text, &mut self.rng) {
+            if let Some(extended_field) = from_sgf_str::<ExtendedField, _>(&text, &mut self.rng) {
+              self.moves = extended_field.field.colored_moves().collect();
               self.canvas_field.extended_field = extended_field;
               self.bot = Arc::new(Mutex::new(Bot::new(
                 self.config.width,
@@ -518,7 +599,8 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(text) = std::str::from_utf8(&file) {
-            if let Some(extended_field) = from_sgf_str(&text, &mut self.rng) {
+            if let Some(extended_field) = from_sgf_str::<ExtendedField, _>(&text, &mut self.rng) {
+              self.moves = extended_field.field.colored_moves().collect();
               self.canvas_field.extended_field = extended_field;
               self.send_worker_message(Request::New(
                 self.canvas_field.extended_field.field.width(),

@@ -56,6 +56,9 @@ fn main() {
       Request::Undo => {
         bot.field.undo();
       }
+      Request::UndoAll => {
+        bot.field.undo_all();
+      }
       Request::BestMove(player) => {
         let pos = bot
           .best_move(player, 100000, 6, &AtomicBool::new(false))

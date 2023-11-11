@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum Request {
   PutPoint(Pos, Player),
   Undo,
+  UndoAll,
   BestMove(Player),
   New(u32, u32),
 }

@@ -52,7 +52,7 @@ pub enum InitialPosition {
 }
 
 impl InitialPosition {
-  pub fn points(self, width: u32, height: u32, player: Player) -> impl Iterator<Item = (Pos, Player)> {
+  pub fn points(self, width: u32, height: u32, player: Player) -> impl Iterator<Item = (Pos, Player)> + Clone {
     let cross = if self == InitialPosition::Cross {
       Some(cross(width, height, player))
     } else {
