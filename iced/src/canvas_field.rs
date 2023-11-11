@@ -1,5 +1,6 @@
 use crate::canvas_config::{CanvasConfig, Rgb};
-use iced::widget::canvas::{self, Frame};
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::canvas::{self, Frame, Text};
 use iced::{mouse, Color, Point, Rectangle, Size, Theme, Vector};
 use oppai_bot::extended_field::ExtendedField;
 use oppai_bot::field::Pos;
@@ -20,34 +21,53 @@ pub enum CanvasMessage {
 }
 
 pub trait Extra {
-  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F);
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, bounds: Rectangle, field: &ExtendedField, pos_to_point: &F);
 }
 
 impl Extra for () {
-  fn render<F: Fn(Pos) -> Point>(&self, _: &mut Frame, _: &F) {}
+  fn render<F: Fn(Pos) -> Point>(&self, _: &mut Frame, _: Rectangle, _: &ExtendedField, _: &F) {}
 }
 
 impl<E: Extra, const N: usize> Extra for [E; N] {
-  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F) {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, bounds: Rectangle, field: &ExtendedField, pos_to_point: &F) {
     for e in self {
-      e.render(frame, pos_to_point);
+      e.render(frame, bounds, field, pos_to_point);
     }
   }
 }
 
 impl<E: Extra> Extra for Vec<E> {
-  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F) {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, bounds: Rectangle, field: &ExtendedField, pos_to_point: &F) {
     for e in self {
-      e.render(frame, pos_to_point);
+      e.render(frame, bounds, field, pos_to_point);
     }
   }
 }
 
 impl<E: Extra> Extra for Option<E> {
-  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, pos_to_point: &F) {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, bounds: Rectangle, field: &ExtendedField, pos_to_point: &F) {
     if let Some(e) = self {
-      e.render(frame, pos_to_point);
+      e.render(frame, bounds, field, pos_to_point);
     }
+  }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Label {
+  pub pos: Pos,
+  pub text: String,
+  pub color: Color,
+}
+
+impl Extra for Label {
+  fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, bounds: Rectangle, field: &ExtendedField, pos_to_point: &F) {
+    let mut text: Text = self.text.as_str().into();
+    text.horizontal_alignment = Horizontal::Center;
+    text.vertical_alignment = Vertical::Center;
+    text.size = bounds.width / field.field.width() as f32;
+    text.color = self.color;
+    text.position = pos_to_point(self.pos);
+    frame.fill_text(text);
   }
 }
 
@@ -59,7 +79,7 @@ pub struct CanvasField<E: Extra = ()> {
   pub extra: E,
 }
 
-impl canvas::Program<CanvasMessage> for CanvasField {
+impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
   type State = Option<(u32, u32)>;
 
   fn update(
@@ -411,8 +431,17 @@ impl canvas::Program<CanvasMessage> for CanvasField {
 
       // extra
 
-      #[allow(clippy::unit_arg)]
-      self.extra.render(frame, &pos_to_point);
+      self.extra.render(
+        frame,
+        Rectangle {
+          x: shift.x,
+          y: shift.y,
+          width,
+          height,
+        },
+        &self.extended_field,
+        &pos_to_point,
+      );
     });
 
     let mut frame = canvas::Frame::new(bounds.size());
