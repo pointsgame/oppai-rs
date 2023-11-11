@@ -39,7 +39,7 @@ pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotat
   push_features(
     field,
     |cell| {
-      if cell.is_players_point(player) {
+      if cell.is_players_point(player) && cell.is_captured() {
         N::one()
       } else {
         N::zero()
@@ -51,7 +51,7 @@ pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotat
   push_features(
     field,
     |cell| {
-      if cell.is_players_point(enemy) {
+      if cell.is_players_point(enemy) && cell.is_captured() {
         N::one()
       } else {
         N::zero()

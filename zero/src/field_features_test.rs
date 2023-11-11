@@ -30,18 +30,24 @@ fn field_features_square() {
     [1., 0., 0.],
     [0., 0., 1.]
   ];
+  #[rustfmt::skip]
+  let captured = array![
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.]
+  ];
 
   let features = field_features::<f64>(&field, Player::Red, 0);
   assert_eq!(features.slice(s![0, .., ..]), red);
   assert_eq!(features.slice(s![1, .., ..]), black);
-  assert_eq!(features.slice(s![2, .., ..]), red);
-  assert_eq!(features.slice(s![3, .., ..]), black);
+  assert_eq!(features.slice(s![2, .., ..]), captured);
+  assert_eq!(features.slice(s![3, .., ..]), captured);
 
   let features = field_features::<f64>(&field, Player::Black, 0);
   assert_eq!(features.slice(s![0, .., ..]), black);
   assert_eq!(features.slice(s![1, .., ..]), red);
-  assert_eq!(features.slice(s![2, .., ..]), black);
-  assert_eq!(features.slice(s![3, .., ..]), red);
+  assert_eq!(features.slice(s![2, .., ..]), captured);
+  assert_eq!(features.slice(s![3, .., ..]), captured);
 }
 
 #[test]
@@ -67,18 +73,24 @@ fn field_features_rectangle() {
     [1., 0.],
     [0., 1.]
   ];
+  #[rustfmt::skip]
+  let captured = array![
+    [0., 0.],
+    [0., 0.],
+    [0., 0.]
+  ];
 
   let features = field_features::<f64>(&field, Player::Red, 0);
   assert_eq!(features.slice(s![0, .., ..]), red);
   assert_eq!(features.slice(s![1, .., ..]), black);
-  assert_eq!(features.slice(s![2, .., ..]), red);
-  assert_eq!(features.slice(s![3, .., ..]), black);
+  assert_eq!(features.slice(s![2, .., ..]), captured);
+  assert_eq!(features.slice(s![3, .., ..]), captured);
 
   let features = field_features::<f64>(&field, Player::Black, 0);
   assert_eq!(features.slice(s![0, .., ..]), black);
   assert_eq!(features.slice(s![1, .., ..]), red);
-  assert_eq!(features.slice(s![2, .., ..]), black);
-  assert_eq!(features.slice(s![3, .., ..]), red);
+  assert_eq!(features.slice(s![2, .., ..]), captured);
+  assert_eq!(features.slice(s![3, .., ..]), captured);
 }
 
 #[test]
@@ -106,9 +118,9 @@ fn field_features_capture() {
   ];
   #[rustfmt::skip]
   let red = array![
-    [0., 1., 0.],
-    [1., 0., 1.],
-    [0., 1., 0.]
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.]
   ];
   #[rustfmt::skip]
   let black = array![
