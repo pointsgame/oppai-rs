@@ -64,5 +64,6 @@ members = [
   "iced",
   "svg",
   "sgf",
+  "ai",
   # "versus"
 ]
