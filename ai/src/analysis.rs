@@ -1,6 +1,7 @@
 use either::Either;
 use oppai_field::field::{NonZeroPos, Pos};
-use std::{any::TypeId, iter, option, slice};
+use rand::Rng;
+use std::{any::TypeId, cmp::Ordering, iter, option, slice};
 
 pub trait Analysis {
   /// Weight for the move. It could be the value of the minimax estimation
@@ -27,10 +28,22 @@ pub trait Analysis {
   /// The origin of this analysis.
   fn origin(&self) -> TypeId;
   /// The optimal move.
-  fn best_move(&self) -> Option<NonZeroPos> {
+  fn best_move<R: Rng>(&self, rng: &mut R) -> Option<NonZeroPos> {
     self
       .moves()
-      .reduce(|a, b| if a >= b { a } else { b })
+      .reduce(
+        |(pos1, value1), (pos2, value2)| match value1.partial_cmp(&value2).unwrap_or(Ordering::Equal) {
+          Ordering::Greater => (pos1, value1),
+          Ordering::Less => (pos2, value2),
+          Ordering::Equal => {
+            if rng.gen() {
+              (pos1, value1)
+            } else {
+              (pos2, value2)
+            }
+          }
+        },
+      )
       .and_then(|(pos, _)| NonZeroPos::new(pos))
   }
   /// Whether this analysis doesn't have suggested moves.
@@ -54,10 +67,10 @@ impl Analysis for () {
   fn confidence(&self) -> Self::Confidence {}
 
   fn origin(&self) -> TypeId {
-    TypeId::of::<()>()
+    TypeId::of::<Self>()
   }
 
-  fn best_move(&self) -> Option<NonZeroPos> {
+  fn best_move<R: Rng>(&self, _: &mut R) -> Option<NonZeroPos> {
     None
   }
 
@@ -93,8 +106,11 @@ impl<A: Analysis, B: Analysis> Analysis for Either<A, B> {
     self.as_ref().either(Analysis::origin, Analysis::origin)
   }
 
-  fn best_move(&self) -> Option<NonZeroPos> {
-    self.as_ref().either(Analysis::best_move, Analysis::best_move)
+  fn best_move<R: Rng>(&self, rng: &mut R) -> Option<NonZeroPos> {
+    match self {
+      Either::Left(analysis) => analysis.best_move(rng),
+      Either::Right(analysis) => analysis.best_move(rng),
+    }
   }
 
   fn is_empty(&self) -> bool {
@@ -184,7 +200,7 @@ where
     self.origin
   }
 
-  fn best_move(&self) -> Option<NonZeroPos> {
+  fn best_move<R: Rng>(&self, _: &mut R) -> Option<NonZeroPos> {
     self.moves.first().and_then(|&pos| NonZeroPos::new(pos))
   }
 
@@ -230,7 +246,7 @@ where
     self.origin
   }
 
-  fn best_move(&self) -> Option<NonZeroPos> {
+  fn best_move<R: Rng>(&self, _: &mut R) -> Option<NonZeroPos> {
     self.best_move
   }
 

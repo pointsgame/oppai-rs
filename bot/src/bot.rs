@@ -204,24 +204,41 @@ where
     let result = match self.config.solver {
       Solver::Uct => self
         .uct
-        .best_move(
+        .best_moves(
           &self.field,
           player,
           &mut self.rng,
           &|| should_stop.load(Ordering::Relaxed),
           uct_iterations,
         )
+        .0
+        .into_iter()
+        .reduce(|(pos1, value1), (pos2, value2)| {
+          match value1.partial_cmp(&value2).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Greater => (pos1, value1),
+            std::cmp::Ordering::Less => (pos2, value2),
+            std::cmp::Ordering::Equal => {
+              if self.rng.gen::<bool>() {
+                (pos1, value1)
+              } else {
+                (pos2, value2)
+              }
+            }
+          }
+        })
+        .and_then(|(pos, _)| NonZeroPos::new(pos))
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Minimax => self
         .minimax
         .minimax(&mut self.field, player, minimax_depth, &|| {
           should_stop.load(Ordering::Relaxed)
         })
+        .0
         .or_else(|| heuristic::heuristic(&self.field, player)),
       #[cfg(feature = "zero")]
       Solver::Zero => self
         .zero
-        .best_move(
+        .best_moves(
           &self.field,
           player,
           &mut self.rng,
@@ -229,6 +246,10 @@ where
           uct_iterations,
         )
         .unwrap()
+        .0
+        .into_iter()
+        .max_by_key(|&(_, visits)| visits)
+        .and_then(|(pos, _)| NonZeroPos::new(pos))
         .or_else(|| heuristic::heuristic(&self.field, player)),
       Solver::Heuristic => heuristic::heuristic(&self.field, player),
     };
@@ -297,13 +318,29 @@ where
         || {
           self
             .uct
-            .best_move(
+            .best_moves(
               &self.field,
               player,
               &mut self.rng,
               &|| should_stop.load(Ordering::Relaxed),
               usize::max_value(),
             )
+            .0
+            .into_iter()
+            .reduce(|(pos1, value1), (pos2, value2)| {
+              match value1.partial_cmp(&value2).unwrap_or(std::cmp::Ordering::Equal) {
+                std::cmp::Ordering::Greater => (pos1, value1),
+                std::cmp::Ordering::Less => (pos2, value2),
+                std::cmp::Ordering::Equal => {
+                  if self.rng.gen::<bool>() {
+                    (pos1, value1)
+                  } else {
+                    (pos2, value2)
+                  }
+                }
+              }
+            })
+            .and_then(|(pos, _)| NonZeroPos::new(pos))
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
         should_stop,
@@ -314,6 +351,7 @@ where
           self
             .minimax
             .minimax_with_time(&mut self.field, player, &|| should_stop.load(Ordering::Relaxed))
+            .0
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
         should_stop,
@@ -324,7 +362,7 @@ where
         || {
           self
             .zero
-            .best_move(
+            .best_moves(
               &self.field,
               player,
               &mut self.rng,
@@ -332,6 +370,10 @@ where
               usize::max_value(),
             )
             .unwrap()
+            .0
+            .into_iter()
+            .max_by_key(|&(_, visits)| visits)
+            .and_then(|(pos, _)| NonZeroPos::new(pos))
             .or_else(|| heuristic::heuristic(&self.field, player))
         },
         should_stop,

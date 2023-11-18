@@ -1,6 +1,6 @@
 use crate::wave_pruning::WavePruning;
 use oppai_common::common;
-use oppai_field::field::{Field, NonZeroPos, Pos};
+use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
 use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
@@ -585,14 +585,14 @@ impl UctRoot {
     }
   }
 
-  pub fn best_move<S, R, SS>(
+  pub fn best_moves<S, R, SS>(
     &mut self,
     field: &Field,
     player: Player,
     rng: &mut R,
     should_stop: &SS,
     max_iterations_count: usize,
-  ) -> Option<NonZeroPos>
+  ) -> (Vec<(Pos, f64)>, usize, f64)
   where
     R: Rng + SeedableRng<Seed = S> + Send,
     Standard: Distribution<S>,
@@ -616,7 +616,7 @@ impl UctRoot {
     );
     let ratched = AtomicIsize::new(isize::max_value());
     #[cfg(not(target_arch = "wasm32"))]
-    {
+    let iterations = {
       let iterations = AtomicUsize::new(0);
       crossbeam::scope(|scope| {
         for _ in 0..self.config.threads_count {
@@ -637,9 +637,10 @@ impl UctRoot {
       })
       .expect("UCT best_move_generic panic");
       info!("Iterations count: {}.", iterations.load(Ordering::Relaxed));
-    }
+      iterations.load(Ordering::Relaxed)
+    };
     #[cfg(target_arch = "wasm32")]
-    {
+    let iterations = {
       let mut iterations = 0;
       let mut local_field = field.clone();
       let mut possible_moves = self.wave_pruning.moves().clone();
@@ -651,10 +652,10 @@ impl UctRoot {
         iterations += 1;
       }
       info!("Iterations count: {}.", iterations);
-    }
-    let mut best_uct = 0f64;
-    let mut result = None;
-    if let Some(ref root) = self.node {
+      iterations
+    };
+    let mut moves = Vec::new();
+    let winrate = if let Some(ref root) = self.node {
       let mut next = root.get_child_ref();
       let root_visits_ln = (root.get_visits() as f64).ln();
       while let Some(next_node) = next {
@@ -673,22 +674,13 @@ impl UctRoot {
           next_node.get_draws(),
           next_node.get_visits()
         );
-        #[allow(clippy::float_cmp)]
-        if uct_value > best_uct || uct_value == best_uct && rng.gen::<bool>() {
-          best_uct = uct_value;
-          result = NonZeroPos::new(pos);
-        }
+        moves.push((pos, uct_value));
         next = next_node.get_sibling_ref();
       }
-    }
-    if let Some(pos) = result {
-      info!(
-        "Best move is ({}, {}), uct is {}.",
-        field.to_x(pos.get()),
-        field.to_y(pos.get()),
-        best_uct
-      );
-    }
-    result
+      (root.get_wins() as f64 + root.get_draws() as f64 / 2.0) / root.get_visits() as f64
+    } else {
+      0.0
+    };
+    (moves, iterations, winrate)
   }
 }

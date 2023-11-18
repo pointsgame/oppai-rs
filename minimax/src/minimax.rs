@@ -557,10 +557,10 @@ impl Minimax {
     player: Player,
     depth: u32,
     should_stop: &SS,
-  ) -> Option<NonZeroPos> {
+  ) -> (Option<NonZeroPos>, i32) {
     info!("Starting minimax with depth {} and player {}.", depth, player);
     if depth == 0 {
-      return None;
+      return (None, field.score(player));
     }
     let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
     let mut trajectories_pruning = TrajectoriesPruning::new(
@@ -612,13 +612,13 @@ impl Minimax {
         best_move.map(|pos| (field.to_x(pos.get()), field.to_y(pos.get()))),
         estimation
       );
-      best_move
+      (best_move, estimation)
     } else {
       info!(
         "Estimation is less than or equal enemy estimation. So all moves have the same estimation {}.",
         estimation
       );
-      None
+      (None, estimation)
     }
   }
 
@@ -627,7 +627,7 @@ impl Minimax {
     field: &mut Field,
     player: Player,
     should_stop: &SS,
-  ) -> Option<NonZeroPos> {
+  ) -> (Option<NonZeroPos>, i32, u32) {
     let enemy = player.next();
     let mut depth = 1;
     let mut best_move = None;
@@ -646,8 +646,9 @@ impl Minimax {
       MinimaxType::NegaScout => Minimax::nega_scout,
       MinimaxType::Mtdf => Minimax::mtdf,
     };
+    let mut estimation = field.score(player);
     while !should_stop() {
-      let estimation = minimax_function(
+      estimation = minimax_function(
         self,
         field,
         player,
@@ -698,7 +699,7 @@ impl Minimax {
       depth += 1;
       trajectories_pruning = trajectories_pruning.inc(field, player, depth, &mut empty_board, should_stop);
     }
-    best_move
+    (best_move, estimation, depth - 1)
   }
 
   pub fn clear(&mut self) {

@@ -1,0 +1,22 @@
+[package]
+name = "oppai-ais"
+version = "0.1.0"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
+edition = "2021"
+
+[dependencies]
+either = "1.9"
+rand = "0.8"
+num-traits = "0.2"
+strum = { version = "0.25", features = [ "derive" ] }
+burn = { version = "0.10", features = ["ndarray", "wgpu"] }
+oppai-field = { path = "../field" }
+oppai-ai = { path = "../ai" }
+oppai-minimax = { path = "../minimax" }
+oppai-uct = { path = "../uct" }
+oppai-zero = { path = "../zero" }
+oppai-zero-burn = { path = "../zero-burn" }
+oppai-ladders = { path = "../ladders" }
+oppai-patterns = { path = "../patterns" }

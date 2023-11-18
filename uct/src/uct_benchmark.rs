@@ -44,7 +44,7 @@ fn find_best_move(bencher: &mut Bencher) {
   let length = field::length(field.width(), field.height());
   bencher.iter(|| {
     let mut uct = UctRoot::new(UCT_CONFIG, length);
-    uct.best_move(&field, Player::Red, &mut rng.clone(), &|| false, 100_000)
+    uct.best_moves(&field, Player::Red, &mut rng.clone(), &|| false, 100_000)
   });
 }
 

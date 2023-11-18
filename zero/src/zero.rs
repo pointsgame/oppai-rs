@@ -1,7 +1,7 @@
 use crate::{mcts::mcts, mcts_node::MctsNode, model::Model};
 use num_traits::Float;
 use oppai_field::{
-  field::{Field, NonZeroPos},
+  field::{Field, Pos},
   player::Player,
 };
 use rand::Rng;
@@ -9,6 +9,8 @@ use std::{
   fmt::{Debug, Display},
   iter::Sum,
 };
+
+type Analysis<N> = (Vec<(Pos, u64)>, usize, N);
 
 #[derive(Clone)]
 pub struct Zero<N: Float, M: Model<N>> {
@@ -32,14 +34,14 @@ where
     self.node = MctsNode::default();
   }
 
-  pub fn best_move<R: Rng, SS: Fn() -> bool>(
+  pub fn best_moves<R: Rng, SS: Fn() -> bool>(
     &mut self,
     field: &Field,
     player: Player,
     rng: &mut R,
     should_stop: &SS,
     max_iterations_count: usize,
-  ) -> Result<Option<NonZeroPos>, <M as Model<N>>::E> {
+  ) -> Result<Analysis<N>, <M as Model<N>>::E> {
     // TODO: persistent tree
     self.clear();
 
@@ -50,6 +52,15 @@ where
       iterations += 1;
     }
 
-    Ok(self.node.best_move())
+    Ok((
+      self
+        .node
+        .children
+        .iter()
+        .map(|child| (child.pos, child.visits))
+        .collect(),
+      iterations,
+      self.node.wins / N::from(self.node.visits).unwrap(),
+    ))
   }
 }

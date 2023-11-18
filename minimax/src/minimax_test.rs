@@ -31,7 +31,7 @@ macro_rules! minimax_test {
       let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
       let mut field = construct_field(&mut rng, $image.image);
       let minimax = Minimax::new($config);
-      let pos = minimax.minimax(&mut field, Player::Red, $depth, &|| false);
+      let (pos, _) = minimax.minimax(&mut field, Player::Red, $depth, &|| false);
       assert_eq!(pos, NonZeroPos::new(field.to_pos($image.solution.0, $image.solution.1)));
     }
   }
