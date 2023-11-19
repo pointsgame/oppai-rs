@@ -1,3 +1,4 @@
+pub mod heuristic;
 pub mod ladders;
 pub mod minimax;
 pub mod oppai;
