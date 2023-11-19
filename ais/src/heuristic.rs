@@ -1,9 +1,8 @@
-use std::any::TypeId;
-
 use oppai_ai::ai::AI;
 use oppai_ai::analysis::SimpleAnalysis;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
+use std::any::TypeId;
 
 static CG_SUM: [i32; 9] = [-5, -1, 0, 0, 1, 2, 5, 20, 30];
 
@@ -23,15 +22,11 @@ fn heuristic_estimation(field: &Field, pos: Pos, player: Player) -> i32 {
 }
 
 fn heuristic(field: &Field, player: Player) -> Vec<(Pos, i32)> {
-  let mut result = Vec::new();
-  for pos in field.min_pos()..=field.max_pos() {
-    if field.cell(pos).is_putting_allowed() {
-      // TODO: rewrite with iterators
-      // TODO: check for stupid move.
-      result.push((pos, heuristic_estimation(field, pos, player)));
-    }
-  }
-  result
+  // TODO: check for stupid move.
+  (field.min_pos()..=field.max_pos())
+    .filter(|&pos| field.cell(pos).is_putting_allowed())
+    .map(|pos| (pos, heuristic_estimation(field, pos, player)))
+    .collect()
 }
 
 pub struct Heuristic;
