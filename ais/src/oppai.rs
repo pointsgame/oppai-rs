@@ -1,4 +1,4 @@
-use crate::{ladders::Ladders, minimax::Minimax, patterns::Patterns, uct::Uct, zero::Zero};
+use crate::{heuristic::Heuristic, ladders::Ladders, minimax::Minimax, patterns::Patterns, uct::Uct, zero::Zero};
 use burn::backend::WgpuBackend;
 use either::Either;
 use oppai_ai::{
@@ -16,10 +16,10 @@ use strum::{EnumString, EnumVariantNames};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
 pub enum Solver {
-  Uct,
+  Heuristic,
   Minimax,
+  Uct,
   Zero,
-  // Heuristic,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -44,6 +44,7 @@ pub struct Oppai {
   config: Config,
   patterns: Patterns,
   ladders: Ladders,
+  heuristic: Heuristic,
   minimax: Minimax,
   uct: Uct,
   zero: Zero<f32, Model<WgpuBackend>>,
@@ -55,9 +56,15 @@ impl AI for Oppai {
     Either<
       Either<
         SingleAnalysis<i32, ()>,
-        Either<SingleAnalysis<i32, u32>, Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, f32, usize>>>,
+        Either<
+          Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
+          Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, f32, usize>>,
+        >,
       >,
-      Either<SingleAnalysis<i32, u32>, Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, f32, usize>>>,
+      Either<
+        Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
+        Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, f32, usize>>,
+      >,
     >,
   >;
   type Confidence = InConfidence;
@@ -76,7 +83,8 @@ impl AI for Oppai {
     SS: Fn() -> bool + Sync,
   {
     let ai = match self.config.solver {
-      Solver::Minimax => Either::Left(&mut self.minimax),
+      Solver::Heuristic => Either::Left(Either::Left(&mut self.heuristic)),
+      Solver::Minimax => Either::Left(Either::Right((&mut self.minimax, &mut self.heuristic))),
       Solver::Uct => Either::Right(Either::Left(&mut self.uct)),
       Solver::Zero => Either::Right(Either::Right(&mut self.zero)),
     };
@@ -94,12 +102,12 @@ impl AI for Oppai {
           (
             (),
             (
-              confidence.minimax_depth,
+              ((), (confidence.minimax_depth, ())),
               (confidence.uct_iterations, confidence.zero_iterations),
             ),
           ),
           (
-            confidence.minimax_depth,
+            ((), (confidence.minimax_depth, ())),
             (confidence.uct_iterations, confidence.zero_iterations),
           ),
         ),
