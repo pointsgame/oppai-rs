@@ -2,7 +2,7 @@ use crate::config::{Config, Solver};
 use crate::heuristic;
 #[cfg(feature = "zero")]
 use burn::{
-  backend::WgpuBackend,
+  backend::Wgpu,
   module::Module,
   record::{DefaultFileRecorder, FullPrecisionSettings},
 };
@@ -69,7 +69,7 @@ pub struct Bot<R> {
   pub uct: UctRoot,
   pub minimax: Minimax,
   #[cfg(feature = "zero")]
-  pub zero: Zero<f32, BurnModel<WgpuBackend>>,
+  pub zero: Zero<f32, BurnModel<Wgpu>>,
   pub config: Config,
 }
 
@@ -96,7 +96,7 @@ where
         if !exists {
           log::warn!("No model at {}", path.display());
         }
-        let mut model = BurnModel::<WgpuBackend>::new(width, height);
+        let mut model = BurnModel::<Wgpu>::new(width, height);
         if exists {
           model = model
             .load_file(path, &DefaultFileRecorder::<FullPrecisionSettings>::new())

@@ -7,7 +7,7 @@ use burn::{
   optim::{GradientsParams, Optimizer},
   tensor::{
     activation::log_softmax,
-    backend::{ADBackend, Backend},
+    backend::{AutodiffBackend, Backend},
     Data, Tensor,
   },
 };
@@ -132,7 +132,7 @@ impl<B: Backend> Model<B> {
   }
 }
 
-pub struct Learner<B: ADBackend, O> {
+pub struct Learner<B: AutodiffBackend, O> {
   pub model: Model<B>,
   pub optimizer: O,
 }
@@ -166,7 +166,7 @@ where
 
 impl<B, O> OppaiModel<<B as Backend>::FloatElem> for Learner<B, O>
 where
-  B: Backend + ADBackend,
+  B: Backend + AutodiffBackend,
   <B as Backend>::FloatElem: Float,
 {
   type E = ShapeError;
@@ -181,7 +181,7 @@ where
 
 impl<B, O> OppaiTrainableModel<<B as Backend>::FloatElem> for Learner<B, O>
 where
-  B: Backend + ADBackend,
+  B: Backend + AutodiffBackend,
   <B as Backend>::FloatElem: Float,
   O: Optimizer<Model<B>, B>,
 {
@@ -231,8 +231,7 @@ where
 mod tests {
   use super::{Learner, Model};
   use burn::{
-    autodiff::ADBackendDecorator,
-    backend::{NdArrayBackend, WgpuBackend},
+    backend::{Autodiff, NdArray, Wgpu},
     optim::SgdConfig,
     tensor::Tensor,
   };
@@ -244,7 +243,7 @@ mod tests {
 
   #[test]
   fn forward() {
-    let model = Model::<NdArrayBackend>::new(4, 8);
+    let model = Model::<NdArray>::new(4, 8);
     let (policies, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8]));
     let policies = policies.exp().into_primitive().array;
     let values = values.into_primitive().array;
@@ -265,15 +264,15 @@ mod tests {
     };
   }
 
-  predict_test!(predict_ndarray, NdArrayBackend);
-  predict_test!(predict_wgpu, WgpuBackend);
+  predict_test!(predict_ndarray, NdArray);
+  predict_test!(predict_wgpu, Wgpu);
 
   macro_rules! train_test {
     ($name:ident, $backend:ty) => {
       #[test]
       fn $name() {
-        let model = Model::<ADBackendDecorator<$backend>>::new(8, 4);
-        let optimizer = SgdConfig::new().init::<ADBackendDecorator<$backend>, Model<_>>();
+        let model = Model::<Autodiff<$backend>>::new(8, 4);
+        let optimizer = SgdConfig::new().init::<Autodiff<$backend>, Model<_>>();
         let learner = Learner { model, optimizer };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
@@ -290,6 +289,6 @@ mod tests {
     };
   }
 
-  train_test!(train_ndarray, NdArrayBackend);
-  train_test!(train_wgpu, WgpuBackend);
+  train_test!(train_ndarray, NdArray);
+  train_test!(train_wgpu, Wgpu);
 }

@@ -1,5 +1,5 @@
 use crate::{heuristic::Heuristic, ladders::Ladders, minimax::Minimax, patterns::Patterns, uct::Uct, zero::Zero};
-use burn::backend::WgpuBackend;
+use burn::backend::Wgpu;
 use either::Either;
 use oppai_ai::{
   ai::AI,
@@ -47,7 +47,7 @@ pub struct Oppai {
   heuristic: Heuristic,
   minimax: Minimax,
   uct: Uct,
-  zero: Zero<f32, Model<WgpuBackend>>,
+  zero: Zero<f32, Model<Wgpu>>,
 }
 
 impl AI for Oppai {

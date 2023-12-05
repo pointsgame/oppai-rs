@@ -4,12 +4,11 @@ mod config;
 
 use anyhow::Result;
 use burn::{
-  autodiff::ADBackendDecorator,
-  backend::{NdArrayBackend, WgpuBackend},
+  backend::{Autodiff, NdArray, Wgpu},
   module::Module,
   optim::{AdamWConfig, Optimizer},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
-  tensor::backend::{ADBackend, Backend},
+  tensor::backend::{AutodiffBackend, Backend},
 };
 use config::{cli_parse, Action, Backend as ConfigBackend, Config};
 use num_traits::Float;
@@ -46,7 +45,7 @@ use std::{
 
 fn init<B>(config: Config, model_path: PathBuf, optimizer_path: PathBuf) -> Result<ExitCode>
 where
-  B: ADBackend,
+  B: AutodiffBackend,
 {
   let model = BurnModel::<B>::new(config.width, config.height);
   model.save_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
@@ -114,7 +113,7 @@ fn train<B>(
   epochs: usize,
 ) -> Result<ExitCode>
 where
-  B: ADBackend,
+  B: AutodiffBackend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
   let model = BurnModel::<B>::new(config.width, config.height);
@@ -206,7 +205,7 @@ where
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
   match action {
-    Action::Init { model, optimizer } => init::<ADBackendDecorator<B>>(config, model, optimizer),
+    Action::Init { model, optimizer } => init::<Autodiff<B>>(config, model, optimizer),
     Action::Play { model, game } => play::<B>(config, model, game),
     Action::Train {
       model,
@@ -216,7 +215,7 @@ where
       games,
       batch_size,
       epochs,
-    } => train::<ADBackendDecorator<B>>(
+    } => train::<Autodiff<B>>(
       config,
       model,
       optimizer,
@@ -237,7 +236,7 @@ fn main() -> Result<ExitCode> {
   let (config, action) = cli_parse();
 
   match config.backend {
-    ConfigBackend::Ndarray => run::<NdArrayBackend>(config, action),
-    ConfigBackend::Wgpu => run::<WgpuBackend>(config, action),
+    ConfigBackend::Ndarray => run::<NdArray>(config, action),
+    ConfigBackend::Wgpu => run::<Wgpu>(config, action),
   }
 }

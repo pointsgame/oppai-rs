@@ -13,7 +13,7 @@ strum = { version = "0.25", features = [ "derive" ] }
 num_cpus = "1.16"
 clap = "4.4"
 humantime = "2.1"
-burn = { version = "0.10", features = [ "wgpu" ], optional = true }
+burn = { version = "0.11", features = [ "wgpu" ], optional = true }
 oppai-field = { path = "../field" }
 oppai-minimax = { path = "../minimax" }
 oppai-uct = { path = "../uct" }
