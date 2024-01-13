@@ -11,7 +11,7 @@ use oppai_minimax::minimax::MinimaxConfig;
 use oppai_uct::uct::UctConfig;
 use oppai_zero_burn::model::Model;
 use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
-use std::time::Duration;
+use std::{convert::identity, time::Duration};
 use strum::{EnumString, EnumVariantNames};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
@@ -54,13 +54,7 @@ impl AI for Oppai {
   type Analysis = Either<
     FlatAnalysis<(), ()>,
     Either<
-      Either<
-        SingleAnalysis<i32, ()>,
-        Either<
-          Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
-          Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, f32, usize>>,
-        >,
-      >,
+      SingleAnalysis<i32, ()>,
       Either<
         Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
         Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, f32, usize>>,
@@ -92,24 +86,16 @@ impl AI for Oppai {
       Either::Left((TimeLimitedAI(self.config.ladders_time_limit, &mut self.ladders), ai))
     } else {
       Either::Right(ai)
-    };
+    }
+    .map(|a| a.either(identity, Either::Right), |c| (((), c), c));
     let mut ai = (&mut self.patterns, ai);
 
     let confidence = confidence.map(|confidence| {
       (
         (),
         (
-          (
-            (),
-            (
-              ((), (confidence.minimax_depth, ())),
-              (confidence.uct_iterations, confidence.zero_iterations),
-            ),
-          ),
-          (
-            ((), (confidence.minimax_depth, ())),
-            (confidence.uct_iterations, confidence.zero_iterations),
-          ),
+          ((), (confidence.minimax_depth, ())),
+          (confidence.uct_iterations, confidence.zero_iterations),
         ),
       )
     });

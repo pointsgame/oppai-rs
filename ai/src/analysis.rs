@@ -45,6 +45,25 @@ pub trait Analysis {
   fn is_empty(&self) -> bool {
     self.moves().next().is_none()
   }
+  // Map the analysis result.
+  fn map<
+    W: PartialOrd + Clone + 'static,
+    E: PartialOrd + Clone + 'static,
+    C: PartialOrd + Clone + 'static,
+    WF: Fn(Self::Weight) -> W,
+    EF: Fn(Self::Estimation) -> E,
+    CF: Fn(Self::Confidence) -> C,
+  >(
+    self,
+    wf: WF,
+    ef: EF,
+    cf: CF,
+  ) -> impl Analysis<Weight = W, Estimation = E, Confidence = C>
+  where
+    Self: Sized,
+  {
+    MapAnalysis { a: self, wf, ef, cf }
+  }
 }
 
 impl Analysis for () {
@@ -238,5 +257,57 @@ where
 
   fn is_empty(&self) -> bool {
     self.best_move.is_none()
+  }
+}
+
+pub struct MapAnalysis<
+  W1: PartialOrd + Clone + 'static,
+  W2: PartialOrd + Clone + 'static,
+  E1: PartialOrd + Clone + 'static,
+  E2: PartialOrd + Clone + 'static,
+  C1: PartialOrd + Clone + 'static,
+  C2: PartialOrd + Clone + 'static,
+  WF: Fn(W1) -> W2,
+  EF: Fn(E1) -> E2,
+  CF: Fn(C1) -> C2,
+  A: Analysis<Weight = W1, Estimation = E1, Confidence = C1>,
+> {
+  a: A,
+  wf: WF,
+  ef: EF,
+  cf: CF,
+}
+
+impl<
+    W1: PartialOrd + Clone + 'static,
+    W2: PartialOrd + Clone + 'static,
+    E1: PartialOrd + Clone + 'static,
+    E2: PartialOrd + Clone + 'static,
+    C1: PartialOrd + Clone + 'static,
+    C2: PartialOrd + Clone + 'static,
+    WF: Fn(W1) -> W2,
+    EF: Fn(E1) -> E2,
+    CF: Fn(C1) -> C2,
+    A: Analysis<Weight = W1, Estimation = E1, Confidence = C1>,
+  > Analysis for MapAnalysis<W1, W2, E1, E2, C1, C2, WF, EF, CF, A>
+{
+  type Weight = W2;
+  type Estimation = E2;
+  type Confidence = C2;
+
+  fn moves(&self) -> impl Iterator<Item = (Pos, Self::Weight)> {
+    self.a.moves().map(|(pos, w)| (pos, (self.wf)(w)))
+  }
+
+  fn estimation(&self) -> Self::Estimation {
+    (self.ef)(self.a.estimation())
+  }
+
+  fn confidence(&self) -> Self::Confidence {
+    (self.cf)(self.a.confidence())
+  }
+
+  fn origin(&self) -> TypeId {
+    self.a.origin()
   }
 }
