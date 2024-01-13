@@ -3,15 +3,20 @@ use burn::backend::Wgpu;
 use either::Either;
 use oppai_ai::{
   ai::AI,
-  analysis::{FlatAnalysis, SimpleAnalysis, SingleAnalysis},
+  analysis::{Analysis, FlatAnalysis, SimpleAnalysis, SingleAnalysis},
   time_limited_ai::TimeLimitedAI,
 };
-use oppai_field::{field::Field, player::Player};
-use oppai_minimax::minimax::MinimaxConfig;
-use oppai_uct::uct::UctConfig;
+use oppai_field::{
+  field::{Field, Pos},
+  player::Player,
+};
+use oppai_minimax::minimax::{Minimax as InnerMinimax, MinimaxConfig};
+use oppai_patterns::patterns::Patterns as InnerPatterns;
+use oppai_uct::uct::{UctConfig, UctRoot};
+use oppai_zero::zero::Zero as InnerZero;
 use oppai_zero_burn::model::Model;
 use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
-use std::{convert::identity, time::Duration};
+use std::{any::TypeId, convert::identity, sync::Arc, time::Duration};
 use strum::{EnumString, EnumVariantNames};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
@@ -31,6 +36,20 @@ pub struct Config {
   pub ladders_score_limit: u32,
   pub ladders_depth_limit: u32,
   pub ladders_time_limit: Duration,
+}
+
+impl Default for Config {
+  fn default() -> Self {
+    Self {
+      uct: Default::default(),
+      minimax: Default::default(),
+      solver: Solver::Uct,
+      ladders: true,
+      ladders_score_limit: 0,
+      ladders_depth_limit: 0,
+      ladders_time_limit: Duration::from_secs(1),
+    }
+  }
 }
 
 #[derive(Clone, Debug)]
@@ -101,5 +120,21 @@ impl AI for Oppai {
     });
 
     ai.analyze(rng, field, player, confidence, should_stop)
+  }
+}
+
+impl Oppai {
+  pub fn new(config: Config, length: Pos, patterns: Arc<InnerPatterns>, model: Model<Wgpu>) -> Self {
+    let minimax_config = config.minimax.clone();
+    let uct_config = config.uct.clone();
+    Oppai {
+      config,
+      patterns: Patterns(patterns),
+      ladders: Ladders,
+      heuristic: Heuristic,
+      minimax: Minimax(InnerMinimax::new(minimax_config)),
+      uct: Uct(UctRoot::new(uct_config, length)),
+      zero: Zero(InnerZero::new(model)),
+    }
   }
 }

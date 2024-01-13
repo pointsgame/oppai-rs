@@ -9,7 +9,7 @@ use std::{
   iter::Sum,
 };
 
-pub struct Zero<N: Float + Sum + Display + Debug, M: Model<N>>(InnerZero<N, M>);
+pub struct Zero<N: Float + Sum + Display + Debug, M: Model<N>>(pub InnerZero<N, M>);
 
 impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'static> AI for Zero<N, M> {
   type Analysis = SimpleAnalysis<u64, N, usize>;

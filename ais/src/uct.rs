@@ -5,7 +5,7 @@ use oppai_field::{field::Field, player::Player};
 use oppai_uct::uct::UctRoot;
 use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
 
-pub struct Uct(UctRoot);
+pub struct Uct(pub UctRoot);
 
 impl AI for Uct {
   type Analysis = SimpleAnalysis<f64, f64, usize>;

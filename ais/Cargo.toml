@@ -20,3 +20,7 @@ oppai-zero = { path = "../zero" }
 oppai-zero-burn = { path = "../zero-burn" }
 oppai-ladders = { path = "../ladders" }
 oppai-patterns = { path = "../patterns" }
+
+[features]
+default = ["dsu"]
+dsu = ["oppai-field/dsu"]

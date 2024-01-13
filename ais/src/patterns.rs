@@ -1,9 +1,9 @@
 use oppai_ai::{ai::AI, analysis::FlatAnalysis};
 use oppai_field::{field::Field, player::Player};
 use oppai_patterns::patterns::Patterns as InnerPatterns;
-use std::any::TypeId;
+use std::{any::TypeId, sync::Arc};
 
-pub struct Patterns(InnerPatterns);
+pub struct Patterns(pub Arc<InnerPatterns>);
 
 impl AI for Patterns {
   type Analysis = FlatAnalysis<(), ()>;

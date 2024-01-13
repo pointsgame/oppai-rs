@@ -3,7 +3,7 @@ use oppai_field::{field::Field, player::Player};
 use oppai_minimax::minimax::Minimax as InnerMinimax;
 use std::any::TypeId;
 
-pub struct Minimax(InnerMinimax);
+pub struct Minimax(pub InnerMinimax);
 
 impl AI for Minimax {
   type Analysis = SingleAnalysis<i32, u32>;
