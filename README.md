@@ -92,4 +92,4 @@ cargo bench --features bench
 This project is licensed under AGPL version 3 or (at your option) any later
 version. See LICENSE.txt for details.
 
-Copyright (C) 2015-2021 Kurnevsky Evgeny, Vasya Novikov
+Copyright (C) 2015-2024 Kurnevsky Evgeny, Vasya Novikov
