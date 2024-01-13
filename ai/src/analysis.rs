@@ -1,7 +1,7 @@
 use either::Either;
 use oppai_field::field::{NonZeroPos, Pos};
 use rand::Rng;
-use std::{any::TypeId, cmp::Ordering, iter, option, slice};
+use std::{any::TypeId, cmp::Ordering, iter};
 
 pub trait Analysis {
   /// Weight for the move. It could be the value of the minimax estimation
@@ -13,14 +13,9 @@ pub trait Analysis {
   /// This metric could be the analysis depth for minimax-based algorithms
   /// or the number of iterations performed for MCTS-based algorithms.
   type Confidence: PartialOrd + Clone + 'static;
-  /// Iterator over moves with their priorities.
-  /// At some point it will become an existential type.
-  type MovesIterator<'a>: Iterator<Item = (Pos, Self::Weight)>
-  where
-    Self: 'a;
 
   /// Collection of moves with their priorities.
-  fn moves(&self) -> Self::MovesIterator<'_>;
+  fn moves(&self) -> impl Iterator<Item = (Pos, Self::Weight)>;
   /// Estimation of the current game state.
   fn estimation(&self) -> Self::Estimation;
   /// Confidence level of the current analysis.
@@ -56,9 +51,8 @@ impl Analysis for () {
   type Weight = ();
   type Estimation = ();
   type Confidence = ();
-  type MovesIterator<'a> = iter::Empty<(Pos, Self::Weight)>;
 
-  fn moves(&self) -> Self::MovesIterator<'_> {
+  fn moves(&self) -> impl Iterator<Item = (Pos, Self::Weight)> {
     iter::empty()
   }
 
@@ -83,11 +77,8 @@ impl<A: Analysis, B: Analysis> Analysis for Either<A, B> {
   type Weight = Either<A::Weight, B::Weight>;
   type Estimation = Either<A::Estimation, B::Estimation>;
   type Confidence = Either<A::Confidence, B::Confidence>;
-  type MovesIterator<'a> = Box<dyn Iterator<Item = (Pos, Self::Weight)> + 'a>
-  where
-    Self: 'a;
 
-  fn moves(&self) -> Self::MovesIterator<'_> {
+  fn moves(&self) -> impl Iterator<Item = (Pos, Self::Weight)> {
     Box::new(self.as_ref().map_either(
       |a| a.moves().map(|(pos, weight)| (pos, Either::Left(weight))),
       |a| a.moves().map(|(pos, weight)| (pos, Either::Right(weight))),
@@ -138,9 +129,8 @@ where
   type Weight = W;
   type Estimation = E;
   type Confidence = C;
-  type MovesIterator<'a> = iter::Cloned<slice::Iter<'a, (Pos, W)>>;
 
-  fn moves(&self) -> Self::MovesIterator<'_> {
+  fn moves(&self) -> impl Iterator<Item = (Pos, Self::Weight)> {
     self.moves.iter().cloned()
   }
 
@@ -180,11 +170,8 @@ where
   type Weight = ();
   type Estimation = E;
   type Confidence = C;
-  type MovesIterator<'a> = Box<dyn Iterator<Item = (Pos, Self::Weight)> + 'a>
-  where
-    Self: 'a;
 
-  fn moves(&self) -> Self::MovesIterator<'_> {
+  fn moves(&self) -> impl Iterator<Item = (Pos, Self::Weight)> {
     Box::new(self.moves.iter().map(|&pos| (pos, ())))
   }
 
@@ -228,9 +215,8 @@ where
   type Weight = ();
   type Estimation = E;
   type Confidence = C;
-  type MovesIterator<'a> = option::IntoIter<(Pos, ())>;
 
-  fn moves(&self) -> Self::MovesIterator<'_> {
+  fn moves(&self) -> impl Iterator<Item = (Pos, Self::Weight)> {
     self.best_move.map(|pos| (pos.get(), ())).into_iter()
   }
 
