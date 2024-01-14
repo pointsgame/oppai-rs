@@ -649,31 +649,32 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(sgf) = std::str::from_utf8(&file) {
-            if let Ok(trees) = sgf_parse::parse(sgf.as_str()) {}
-            if let Some(node) = trees.iter().find_map(|tree| match tree {
-              GameTree::Unknown(node) => Some(node),
-              GameTree::GoGame(_) => None,
-            }) {
-              if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
-                let visits = sgf_to_visits(node, extended_field.field.width());
-                self.moves = extended_field
-                  .field
-                  .colored_moves()
-                  .zip(
-                    iter::repeat(Default::default())
-                      .take(extended_field.field.moves_count() - visits.len() - 1)
-                      .chain(visits)
-                      .chain(iter::repeat(Default::default())),
-                  )
-                  .map(|((pos, player), visits)| (pos, player, visits))
-                  .collect();
-                self.canvas_field.extended_field = extended_field;
-                self.send_worker_message(Request::New(
-                  self.canvas_field.extended_field.field.width(),
-                  self.canvas_field.extended_field.field.height(),
-                ));
-                self.put_all_bot_points();
-                self.refresh();
+            if let Ok(trees) = sgf_parse::parse(sgf.as_str()) {
+              if let Some(node) = trees.iter().find_map(|tree| match tree {
+                GameTree::Unknown(node) => Some(node),
+                GameTree::GoGame(_) => None,
+              }) {
+                if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
+                  let visits = sgf_to_visits(node, extended_field.field.width());
+                  self.moves = extended_field
+                    .field
+                    .colored_moves()
+                    .zip(
+                      iter::repeat(Default::default())
+                        .take(extended_field.field.moves_count() - visits.len() - 1)
+                        .chain(visits)
+                        .chain(iter::repeat(Default::default())),
+                    )
+                    .map(|((pos, player), visits)| (pos, player, visits))
+                    .collect();
+                  self.canvas_field.extended_field = extended_field;
+                  self.send_worker_message(Request::New(
+                    self.canvas_field.extended_field.field.width(),
+                    self.canvas_field.extended_field.field.height(),
+                  ));
+                  self.put_all_bot_points();
+                  self.refresh();
+                }
               }
             }
           }
