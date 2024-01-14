@@ -125,8 +125,7 @@ impl Game {
       if self
         .moves
         .get(moves_count - 1)
-        .into_iter()
-        .any(|&(cur_pos, cur_player, _)| (cur_pos, cur_player) != (pos, player))
+        .map_or(true, |&(cur_pos, cur_player, _)| (cur_pos, cur_player) != (pos, player))
       {
         self.moves.truncate(moves_count - 1);
         self.moves.push((pos, player, Default::default()));
