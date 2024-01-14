@@ -31,7 +31,7 @@ fn episode_simple_surrounding() {
     &|inputs: Array4<f64>| {
       let result = (uniform_policies(&inputs), const_value(&inputs, 0.0));
       model_inputs.borrow_mut().push(inputs);
-      result
+      Ok(result)
     },
     &mut rng,
     0,
@@ -97,7 +97,7 @@ fn episode_trap() {
     &|inputs: Array4<f64>| {
       let result = (uniform_policies(&inputs), const_value(&inputs, 0.0));
       model_inputs.borrow_mut().push(inputs);
-      result
+      Ok(result)
     },
     &mut rng,
     0,
@@ -208,7 +208,7 @@ fn episode_winning_game() {
           0.0
         }
       }));
-      (uniform_policies(&inputs), values)
+      Ok((uniform_policies(&inputs), values))
     },
     &mut rng,
     0,

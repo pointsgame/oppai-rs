@@ -22,17 +22,6 @@ pub fn const_value(inputs: &Array4<f64>, value: f64) -> Array1<f64> {
   Array::from_elem(batch_size, value)
 }
 
-impl<T> Model<f64> for T
-where
-  T: Fn(Array4<f64>) -> (Array3<f64>, Array1<f64>),
-{
-  type E = ();
-
-  fn predict(&self, inputs: Array4<f64>) -> Result<(Array3<f64>, Array1<f64>), Self::E> {
-    Ok(self(inputs))
-  }
-}
-
 #[test]
 fn mcts_first_iterations() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
@@ -50,7 +39,7 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| (uniform_policies(&inputs), const_value(&inputs, 1.0)),
+    &|inputs: Array4<f64>| Ok((uniform_policies(&inputs), const_value(&inputs, 1.0))),
     &mut rng,
   )
   .unwrap();
@@ -65,7 +54,7 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| (uniform_policies(&inputs), const_value(&inputs, -1.0)),
+    &|inputs: Array4<f64>| Ok((uniform_policies(&inputs), const_value(&inputs, -1.0))),
     &mut rng,
   )
   .unwrap();
@@ -99,7 +88,7 @@ fn mcts_last_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| (uniform_policies(&inputs), const_value(&inputs, 0.0)),
+    &|inputs: Array4<f64>| Ok((uniform_policies(&inputs), const_value(&inputs, 0.0))),
     &mut rng,
   )
   .unwrap();
