@@ -64,6 +64,15 @@ pub trait Analysis {
   {
     MapAnalysis { a: self, wf, ef, cf }
   }
+  // Convert to a simple struct.
+  fn to_simple(&self) -> SimpleAnalysis<Self::Weight, Self::Estimation, Self::Confidence> {
+    SimpleAnalysis {
+      moves: self.moves().collect(),
+      estimation: self.estimation(),
+      confidence: self.confidence(),
+      origin: self.origin(),
+    }
+  }
 }
 
 impl Analysis for () {

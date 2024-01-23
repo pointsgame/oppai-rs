@@ -11,15 +11,20 @@ either = "1.9"
 rand = "0.8"
 num-traits = "0.2"
 strum = { version = "0.25", features = [ "derive" ] }
-burn = { version = "0.11", features = ["ndarray", "wgpu"] }
+num_cpus = "1.16"
+clap = "4.4"
+humantime = "2.1"
+web-time = "0.2"
 oppai-field = { path = "../field" }
 oppai-ai = { path = "../ai" }
 oppai-minimax = { path = "../minimax" }
 oppai-uct = { path = "../uct" }
 oppai-zero = { path = "../zero" }
-oppai-zero-burn = { path = "../zero-burn" }
 oppai-ladders = { path = "../ladders" }
 oppai-patterns = { path = "../patterns" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+crossbeam = "0.8"
 
 [features]
 default = ["dsu"]

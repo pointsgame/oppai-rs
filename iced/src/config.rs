@@ -1,6 +1,6 @@
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
-use oppai_bot::cli::*;
-use oppai_bot::config::Config as BotConfig;
+use oppai_ais::cli::*;
+use oppai_ais::oppai::Config as AIConfig;
 use oppai_initial::initial::InitialPosition;
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ pub struct Config {
   pub canvas_config: CanvasConfig,
   pub initial_position: InitialPosition,
   pub patterns: Vec<String>,
-  pub bot_config: BotConfig,
+  pub ai_config: AIConfig,
   pub time: Duration,
 }
 
@@ -25,7 +25,7 @@ impl Default for Config {
       canvas_config: CanvasConfig::default(),
       initial_position: InitialPosition::Cross,
       patterns: Vec::new(),
-      bot_config: BotConfig::default(),
+      ai_config: AIConfig::default(),
       time: Duration::from_secs(5),
     }
   }
@@ -194,7 +194,7 @@ pub fn cli_parse() -> Config {
   let patterns = matches
     .get_many("patterns-file")
     .map_or_else(Vec::new, |patterns| patterns.cloned().collect());
-  let bot_config = parse_config(&matches);
+  let ai_config = parse_config(&matches);
   let time = matches.get_one::<humantime::Duration>("time").copied().unwrap().into();
 
   Config {
@@ -214,7 +214,7 @@ pub fn cli_parse() -> Config {
     },
     initial_position,
     patterns,
-    bot_config,
+    ai_config,
     time,
   }
 }

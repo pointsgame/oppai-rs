@@ -29,9 +29,9 @@ fn episode_simple_surrounding() {
     &mut field,
     Player::Red,
     &|inputs: Array4<f64>| {
-      let result = (uniform_policies(&inputs), const_value(&inputs, 0.0));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
       model_inputs.borrow_mut().push(inputs);
-      Ok(result)
+      result
     },
     &mut rng,
     0,
@@ -95,9 +95,9 @@ fn episode_trap() {
     &mut field,
     Player::Red,
     &|inputs: Array4<f64>| {
-      let result = (uniform_policies(&inputs), const_value(&inputs, 0.0));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
       model_inputs.borrow_mut().push(inputs);
-      Ok(result)
+      result
     },
     &mut rng,
     0,
@@ -208,7 +208,8 @@ fn episode_winning_game() {
           0.0
         }
       }));
-      Ok((uniform_policies(&inputs), values))
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), values));
+      result
     },
     &mut rng,
     0,

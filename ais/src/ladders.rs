@@ -3,6 +3,7 @@ use oppai_field::{field::Field, player::Player};
 use oppai_ladders::ladders::ladders;
 use std::any::TypeId;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Ladders;
 
 impl AI for Ladders {

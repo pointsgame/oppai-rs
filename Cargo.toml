@@ -12,16 +12,20 @@ time = "0.3"
 env_logger = "0.10"
 crossbeam = "0.8"
 clap = { version = "4.4", features = [ "cargo" ] }
+humantime = "2.1"
 strum = "0.25"
 oppai-common = { path = "common" }
+oppai-field = { path = "field" }
 oppai-ladders = { path = "ladders" }
+oppai-patterns = { path = "patterns" }
 oppai-uct = { path = "uct" }
 oppai-minimax = { path = "minimax" }
-oppai-bot = { path = "bot" }
+oppai-ai = { path = "ai" }
+oppai-ais = { path = "ais" }
 
 [features]
 default = ["dsu"]
-dsu = ["oppai-bot/dsu"]
+dsu = ["oppai-ais/dsu"]
 
 [profile.dev]
 opt-level = 0
@@ -59,12 +63,10 @@ members = [
   "zero",
   "zero-burn",
   "zero-train",
-  "bot",
   "initial",
   "iced",
   "svg",
   "sgf",
   "ai",
   "ais",
-  # "versus"
 ]

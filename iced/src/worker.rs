@@ -8,16 +8,29 @@ fn main() {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-  use oppai_bot::bot::Bot;
-  use oppai_bot::config::Config as BotConfig;
-  use oppai_bot::patterns::Patterns;
+  use oppai_ai::{ai::AI, analysis::Analysis};
+  use oppai_ais::{
+    oppai::{Config as AIConfig, Oppai},
+    time_limited_ai::TimeLimitedAI,
+  };
+  use oppai_field::{
+    field::{length, Field},
+    zobrist::Zobrist,
+  };
+  use oppai_patterns::patterns::Patterns;
   use rand::rngs::SmallRng;
   use rand::SeedableRng;
-  use std::sync::atomic::AtomicBool;
   use std::sync::Arc;
+  use std::time::Duration;
   use wasm_bindgen::prelude::*;
   use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
   use worker_message::{Request, Response};
+
+  struct State {
+    field: Field,
+    rng: SmallRng,
+    oppai: Oppai<f32, ()>,
+  }
 
   console_error_panic_hook::set_once();
   web_sys::console::log_1(&"Initializing OpPAI worker".into());
@@ -25,23 +38,23 @@ fn main() {
   let scope = DedicatedWorkerGlobalScope::from(JsValue::from(js_sys::global()));
   let scope_clone = scope.clone();
 
-  let mut bot: Option<Bot<SmallRng>> = None;
+  let mut state: Option<State> = None;
 
   let callback = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
     let request: Request = serde_wasm_bindgen::from_value(event.data()).unwrap();
 
     if let Request::New(width, height) = request {
-      bot = Some(Bot::new(
-        width,
-        height,
-        SmallRng::from_seed([1; 16]),
-        Arc::new(Patterns::default()),
-        BotConfig::default(),
-      ))
+      let mut rng = SmallRng::from_seed([1; 16]);
+      let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, &mut rng));
+      state = Some(State {
+        field: Field::new(width, height, zobrist),
+        rng,
+        oppai: Oppai::new(width, height, AIConfig::default(), Arc::new(Patterns::default()), ()),
+      })
     }
 
-    let bot = if let Some(bot) = bot.as_mut() {
-      bot
+    let state = if let Some(state) = state.as_mut() {
+      state
     } else {
       scope_clone
         .post_message(&serde_wasm_bindgen::to_value(&Response::Init).unwrap())
@@ -51,17 +64,19 @@ fn main() {
 
     match request {
       Request::PutPoint(pos, player) => {
-        bot.field.put_point(pos, player);
+        state.field.put_point(pos, player);
       }
       Request::Undo => {
-        bot.field.undo();
+        state.field.undo();
       }
       Request::UndoAll => {
-        bot.field.undo_all();
+        state.field.undo_all();
       }
       Request::BestMove(player) => {
-        let pos = bot
-          .best_move(player, 100000, 6, &AtomicBool::new(false))
+        let mut oppai = TimeLimitedAI(Duration::from_secs(5), &mut state.oppai);
+        let pos = oppai
+          .analyze(&mut state.rng, &mut state.field, player, None, &|| false)
+          .best_move(&mut state.rng)
           .map_or(0, |pos| pos.get());
         scope_clone
           .post_message(&serde_wasm_bindgen::to_value(&Response::BestMove(pos)).unwrap())

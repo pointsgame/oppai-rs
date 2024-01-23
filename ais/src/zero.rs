@@ -24,7 +24,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
     should_stop: &SS,
   ) -> Self::Analysis
   where
-    R: Rng + SeedableRng<Seed = S> + Send,
+    R: Rng + SeedableRng<Seed = S>,
     Standard: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {

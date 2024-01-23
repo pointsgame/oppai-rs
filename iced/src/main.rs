@@ -15,12 +15,16 @@ use iced::{
   Subscription, Theme,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use oppai_bot::bot::Bot;
-use oppai_bot::extended_field::ExtendedField;
-use oppai_bot::field::{NonZeroPos, Pos};
+use oppai_ai::ai::AI;
 #[cfg(not(target_arch = "wasm32"))]
-use oppai_bot::patterns::Patterns;
-use oppai_bot::player::Player;
+use oppai_ai::analysis::Analysis;
+#[cfg(not(target_arch = "wasm32"))]
+use oppai_ais::{oppai::Oppai, time_limited_ai::TimeLimitedAI};
+use oppai_field::extended_field::ExtendedField;
+use oppai_field::field::{NonZeroPos, Pos};
+use oppai_field::player::Player;
+#[cfg(not(target_arch = "wasm32"))]
+use oppai_patterns::patterns::Patterns;
 use oppai_sgf::visits::sgf_to_visits;
 use oppai_sgf::{from_sgf, to_sgf_str};
 use oppai_zero::episode::Visits;
@@ -33,6 +37,8 @@ use rfd::AsyncFileDialog;
 use rfd::FileHandle;
 use sgf_parse::GameTree;
 use std::iter;
+#[cfg(not(target_arch = "wasm32"))]
+use std::ops::DerefMut;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
   atomic::{AtomicBool, Ordering},
@@ -71,7 +77,7 @@ struct Game {
   moves: Vec<(Pos, Player, Visits)>,
   canvas_field: CanvasField<Vec<Label>>,
   #[cfg(not(target_arch = "wasm32"))]
-  bot: Arc<Mutex<Bot<SmallRng>>>,
+  oppai: Arc<Mutex<Oppai<f32, ()>>>,
   #[cfg(target_arch = "wasm32")]
   worker: web_sys::Worker,
   ai: bool,
@@ -130,8 +136,6 @@ impl Game {
         self.moves.truncate(moves_count - 1);
         self.moves.push((pos, player, Default::default()));
       }
-      #[cfg(not(target_arch = "wasm32"))]
-      self.bot.lock().unwrap().field.put_point(pos, player);
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::PutPoint(pos, player));
       self.refresh();
@@ -143,8 +147,6 @@ impl Game {
 
   pub fn undo(&mut self) -> bool {
     if self.canvas_field.extended_field.undo() {
-      #[cfg(not(target_arch = "wasm32"))]
-      self.bot.lock().unwrap().field.undo();
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::Undo);
       self.refresh();
@@ -182,8 +184,6 @@ impl Game {
   pub fn undo_all(&mut self) -> bool {
     if self.canvas_field.extended_field.undo() {
       self.canvas_field.extended_field.undo_all();
-      #[cfg(not(target_arch = "wasm32"))]
-      self.bot.lock().unwrap().field.undo_all();
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::UndoAll);
       self.refresh();
@@ -194,13 +194,7 @@ impl Game {
   }
 
   #[cfg(not(target_arch = "wasm32"))]
-  pub fn put_all_bot_points(&self) {
-    let mut bot = self.bot.lock().unwrap();
-    for &pos in self.canvas_field.extended_field.field.moves() {
-      let player = self.canvas_field.extended_field.field.cell(pos).get_player();
-      bot.field.put_point(pos, player);
-    }
-  }
+  pub fn put_all_bot_points(&self) {}
 
   #[cfg(target_arch = "wasm32")]
   pub fn put_all_bot_points(&self) {
@@ -250,6 +244,7 @@ impl Application for Game {
   fn new(flags: Config) -> (Self, Command<Self::Message>) {
     let mut rng = SmallRng::from_entropy();
     let mut extended_field = ExtendedField::new_from_rng(flags.width, flags.height, &mut rng);
+    // TODO: store patterns to use them when new Oppai is created
     #[cfg(not(target_arch = "wasm32"))]
     let patterns = if flags.patterns.is_empty() {
       Patterns::default()
@@ -263,12 +258,12 @@ impl Application for Game {
       .expect("Failed to read patterns file.")
     };
     #[cfg(not(target_arch = "wasm32"))]
-    let bot = Bot::new(
+    let oppai = Oppai::new(
       flags.width,
       flags.height,
-      SmallRng::from_seed(rng.gen()),
+      flags.ai_config.clone(),
       Arc::new(patterns),
-      flags.bot_config.clone(),
+      (),
     );
     let moves = flags.initial_position.points(
       extended_field.field.width(),
@@ -289,7 +284,7 @@ impl Application for Game {
         extra: Vec::new(),
       },
       #[cfg(not(target_arch = "wasm32"))]
-      bot: Arc::new(Mutex::new(bot)),
+      oppai: Arc::new(Mutex::new(oppai)),
       #[cfg(target_arch = "wasm32")]
       worker: {
         const NAME: &'static str = "worker";
@@ -447,11 +442,21 @@ impl Application for Game {
 
           #[cfg(not(target_arch = "wasm32"))]
           {
-            let bot = self.bot.clone();
+            let oppai = self.oppai.clone();
+            let mut rng = SmallRng::from_seed(self.rng.gen());
+            let mut field = self.canvas_field.extended_field.field.clone();
             let time = self.config.time;
             let should_stop = self.should_stop.clone();
             return Command::perform(
-              async move { bot.lock().unwrap().best_move_with_time(player, time, &should_stop) },
+              async move {
+                let mut oppai = oppai.lock().unwrap();
+                let mut oppai = TimeLimitedAI(time, oppai.deref_mut());
+                oppai
+                  .analyze(&mut rng, &mut field, player, None, &|| {
+                    should_stop.load(Ordering::Relaxed)
+                  })
+                  .best_move(&mut rng)
+              },
               Message::BotMove,
             );
           }
@@ -504,12 +509,12 @@ impl Application for Game {
           ExtendedField::new_from_rng(self.config.width, self.config.height, &mut self.rng);
         #[cfg(not(target_arch = "wasm32"))]
         {
-          self.bot = Arc::new(Mutex::new(Bot::new(
+          self.oppai = Arc::new(Mutex::new(Oppai::new(
             self.config.width,
             self.config.height,
-            SmallRng::from_seed(self.rng.gen()),
+            self.config.ai_config.clone(),
             Arc::new(Patterns::default()),
-            self.config.bot_config.clone(),
+            (),
           )));
         }
         #[cfg(target_arch = "wasm32")]
@@ -630,12 +635,12 @@ impl Application for Game {
                     .map(|((pos, player), visits)| (pos, player, visits))
                     .collect();
                   self.canvas_field.extended_field = extended_field;
-                  self.bot = Arc::new(Mutex::new(Bot::new(
+                  self.oppai = Arc::new(Mutex::new(Oppai::new(
                     self.config.width,
                     self.config.height,
-                    SmallRng::from_seed(self.rng.gen()),
+                    self.config.ai_config.clone(),
                     Arc::new(Patterns::default()),
-                    self.config.bot_config.clone(),
+                    (),
                   )));
                   self.put_all_bot_points();
                   self.refresh();
@@ -649,7 +654,7 @@ impl Application for Game {
       Message::OpenFile(maybe_file) => {
         if let Some(file) = maybe_file {
           if let Ok(sgf) = std::str::from_utf8(&file) {
-            if let Ok(trees) = sgf_parse::parse(sgf.as_str()) {
+            if let Ok(trees) = sgf_parse::parse(sgf) {
               if let Some(node) = trees.iter().find_map(|tree| match tree {
                 GameTree::Unknown(node) => Some(node),
                 GameTree::GoGame(_) => None,

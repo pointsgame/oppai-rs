@@ -2,9 +2,9 @@ use crate::canvas_config::{CanvasConfig, Rgb};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::canvas::{self, Frame, Text};
 use iced::{mouse, Color, Point, Rectangle, Size, Theme, Vector};
-use oppai_bot::extended_field::ExtendedField;
-use oppai_bot::field::Pos;
-use oppai_bot::player::Player;
+use oppai_field::extended_field::ExtendedField;
+use oppai_field::field::Pos;
+use oppai_field::player::Player;
 
 impl From<Rgb> for Color {
   fn from(rgb: Rgb) -> Self {

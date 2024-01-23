@@ -8,6 +8,5 @@ edition = "2021"
 
 [dependencies]
 either = "1.9"
-web-time = "0.2"
 rand = "0.8"
 oppai-field = { path = "../field" }

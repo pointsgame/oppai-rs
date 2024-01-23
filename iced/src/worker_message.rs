@@ -1,5 +1,5 @@
-use oppai_bot::field::Pos;
-use oppai_bot::player::Player;
+use oppai_field::field::Pos;
+use oppai_field::player::Player;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]

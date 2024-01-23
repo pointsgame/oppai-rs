@@ -1,4 +1,4 @@
-use crate::config::{Config, Solver};
+use crate::oppai::{Config, Solver};
 use clap::{value_parser, Arg, ArgAction, ArgGroup, ArgMatches};
 use oppai_minimax::minimax::{MinimaxConfig, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
@@ -26,7 +26,7 @@ pub fn groups() -> [ArgGroup; 2] {
   ]
 }
 
-pub fn args() -> [Arg; 21] {
+pub fn args() -> [Arg; 20] {
   [
     Arg::new("solver")
       .short('s')
@@ -36,13 +36,6 @@ pub fn args() -> [Arg; 21] {
       .value_parser(value_parser!(Solver))
       .ignore_case(true)
       .default_value("Uct"),
-    Arg::new("time-gap")
-      .short('g')
-      .long("time-gap")
-      .help("Time that is given to IO plus internal delay")
-      .num_args(1)
-      .value_parser(value_parser!(humantime::Duration))
-      .default_value("100ms"),
     Arg::new("threads-count")
       .short('t')
       .long("threads-count")
@@ -209,11 +202,6 @@ pub fn parse_config(matches: &ArgMatches) -> Config {
   Config {
     uct: uct_config,
     minimax: minimax_config,
-    time_gap: matches
-      .get_one::<humantime::Duration>("time-gap")
-      .copied()
-      .unwrap()
-      .into(),
     solver: matches.get_one("solver").copied().unwrap(),
     ladders: matches.get_flag("no-ladders-solver"),
     ladders_score_limit: matches.get_one("ladders-score-limit").copied().unwrap(),

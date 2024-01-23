@@ -1,22 +1,29 @@
-use crate::{heuristic::Heuristic, ladders::Ladders, minimax::Minimax, patterns::Patterns, uct::Uct, zero::Zero};
-use burn::backend::Wgpu;
+use crate::{
+  heuristic::Heuristic, initial::Initial, ladders::Ladders, minimax::Minimax, patterns::Patterns,
+  time_limited_ai::TimeLimitedAI, uct::Uct, zero::Zero,
+};
 use either::Either;
+use num_traits::Float;
 use oppai_ai::{
   ai::AI,
-  analysis::{Analysis, FlatAnalysis, SimpleAnalysis, SingleAnalysis},
-  time_limited_ai::TimeLimitedAI,
+  analysis::{FlatAnalysis, SimpleAnalysis, SingleAnalysis},
 };
 use oppai_field::{
-  field::{Field, Pos},
+  field::{length, Field},
   player::Player,
 };
 use oppai_minimax::minimax::{Minimax as InnerMinimax, MinimaxConfig};
 use oppai_patterns::patterns::Patterns as InnerPatterns;
 use oppai_uct::uct::{UctConfig, UctRoot};
-use oppai_zero::zero::Zero as InnerZero;
-use oppai_zero_burn::model::Model;
+use oppai_zero::{model::Model, zero::Zero as InnerZero};
 use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
-use std::{any::TypeId, convert::identity, sync::Arc, time::Duration};
+use std::{
+  convert::identity,
+  fmt::{Debug, Display},
+  iter::Sum,
+  sync::Arc,
+  time::Duration,
+};
 use strum::{EnumString, EnumVariantNames};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
@@ -59,24 +66,28 @@ pub struct InConfidence {
   pub zero_iterations: usize,
 }
 
-pub struct Oppai {
+pub struct Oppai<N: Float + Sum + Display + Debug, M: Model<N>> {
   config: Config,
+  initial: Initial,
   patterns: Patterns,
   ladders: Ladders,
   heuristic: Heuristic,
   minimax: Minimax,
   uct: Uct,
-  zero: Zero<f32, Model<Wgpu>>,
+  zero: Zero<N, M>,
 }
 
-impl AI for Oppai {
+impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for Oppai<N, M> {
   type Analysis = Either<
-    FlatAnalysis<(), ()>,
+    SingleAnalysis<(), ()>,
     Either<
-      SingleAnalysis<i32, ()>,
+      FlatAnalysis<(), ()>,
       Either<
-        Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
-        Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, f32, usize>>,
+        SingleAnalysis<i32, ()>,
+        Either<
+          Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
+          Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, N, usize>>,
+        >,
       >,
     >,
   >;
@@ -102,19 +113,23 @@ impl AI for Oppai {
       Solver::Zero => Either::Right(Either::Right(&mut self.zero)),
     };
     let ai = if self.config.ladders {
-      Either::Left((TimeLimitedAI(self.config.ladders_time_limit, &mut self.ladders), ai))
+      Either::Left((TimeLimitedAI(self.config.ladders_time_limit, self.ladders), ai))
     } else {
       Either::Right(ai)
     }
     .map(|a| a.either(identity, Either::Right), |c| (((), c), c));
-    let mut ai = (&mut self.patterns, ai);
+    let ai = (&mut self.patterns, ai);
+    let mut ai = (self.initial, ai);
 
     let confidence = confidence.map(|confidence| {
       (
         (),
         (
-          ((), (confidence.minimax_depth, ())),
-          (confidence.uct_iterations, confidence.zero_iterations),
+          (),
+          (
+            ((), (confidence.minimax_depth, ())),
+            (confidence.uct_iterations, confidence.zero_iterations),
+          ),
         ),
       )
     });
@@ -123,18 +138,35 @@ impl AI for Oppai {
   }
 }
 
-impl Oppai {
-  pub fn new(config: Config, length: Pos, patterns: Arc<InnerPatterns>, model: Model<Wgpu>) -> Self {
+impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> Oppai<N, M> {
+  pub fn new(width: u32, height: u32, config: Config, patterns: Arc<InnerPatterns>, model: M) -> Self {
     let minimax_config = config.minimax.clone();
     let uct_config = config.uct.clone();
     Oppai {
       config,
+      initial: Initial,
       patterns: Patterns(patterns),
       ladders: Ladders,
       heuristic: Heuristic,
       minimax: Minimax(InnerMinimax::new(minimax_config)),
-      uct: Uct(UctRoot::new(uct_config, length)),
+      uct: Uct(UctRoot::new(uct_config, length(width, height))),
       zero: Zero(InnerZero::new(model)),
     }
   }
+
+  // pub fn weight_descr(weight: <<Self as AI>::Analysis as Analysis>::Weight) -> (String, f32) {
+  //   todo!()
+  // }
+
+  // pub fn estimation_descr(weight: <<Self as AI>::Analysis as Analysis>::Estimation) -> String {
+  //   todo!()
+  // }
+
+  // pub fn confidence_descr(weight: <<Self as AI>::Analysis as Analysis>::Confidence) -> String {
+  //   todo!()
+  // }
+
+  // pub fn origin_descr(origin: TypeId) -> String {
+  //   todo!()
+  // }
 }

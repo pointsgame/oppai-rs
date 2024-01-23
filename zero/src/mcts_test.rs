@@ -1,6 +1,5 @@
 use crate::mcts::mcts;
 use crate::mcts_node::MctsNode;
-use crate::model::Model;
 use ndarray::{Array, Array1, Array3, Array4, Axis};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
@@ -39,7 +38,10 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| Ok((uniform_policies(&inputs), const_value(&inputs, 1.0))),
+    &|inputs: Array4<f64>| {
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 1.0)));
+      result
+    },
     &mut rng,
   )
   .unwrap();
@@ -54,7 +56,10 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| Ok((uniform_policies(&inputs), const_value(&inputs, -1.0))),
+    &|inputs: Array4<f64>| {
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, -1.0)));
+      result
+    },
     &mut rng,
   )
   .unwrap();
@@ -88,7 +93,10 @@ fn mcts_last_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| Ok((uniform_policies(&inputs), const_value(&inputs, 0.0))),
+    &|inputs: Array4<f64>| {
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
+      result
+    },
     &mut rng,
   )
   .unwrap();

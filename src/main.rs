@@ -149,9 +149,17 @@ computer to generate a move and placed the generated point on the field.
 mod config;
 
 use crate::config::cli_parse;
-use oppai_bot::bot::Bot;
-use oppai_bot::patterns::Patterns;
-use oppai_bot::player::Player;
+use oppai_ai::{ai::AI, analysis::Analysis};
+use oppai_ais::{
+  oppai::{InConfidence, Oppai},
+  time_limited_ai::TimeLimitedAI,
+};
+use oppai_field::{
+  field::{length, Field},
+  player::Player,
+  zobrist::Zobrist,
+};
+use oppai_patterns::patterns::Patterns;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 use std::{
@@ -159,7 +167,7 @@ use std::{
   fs::File,
   io::{self, BufRead, BufReader, Write},
   str::FromStr,
-  sync::{atomic::AtomicBool, Arc},
+  sync::Arc,
   time::Duration,
 };
 
@@ -299,6 +307,12 @@ fn write_error<T: Write>(output: &mut T, id: u32) {
   writeln!(output, "? {0} input_error", id).ok();
 }
 
+struct State {
+  field: Field,
+  rng: SmallRng,
+  oppai: Oppai<f32, ()>,
+}
+
 fn main() {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
@@ -317,7 +331,7 @@ fn main() {
   let patterns_arc = Arc::new(patterns);
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();
-  let mut bot_option = None;
+  let mut state_option = None;
   let mut s = String::new();
   loop {
     s.clear();
@@ -340,8 +354,13 @@ fn main() {
           if split.next().is_some() {
             write_init_error(&mut output, id);
           } else if let (Some(x), Some(y), Some(seed)) = (x_option, y_option, seed_option) {
-            let rng = SmallRng::seed_from_u64(seed);
-            bot_option = Some(Bot::new(x, y, rng, Arc::clone(&patterns_arc), config.bot.clone()));
+            let mut rng = SmallRng::seed_from_u64(seed);
+            let zobrist = Arc::new(Zobrist::new(length(x, y) * 2, &mut rng));
+            state_option = Some(State {
+              field: Field::new(x, y, zobrist),
+              rng,
+              oppai: Oppai::new(x, y, config.ai.clone(), patterns_arc.clone(), ()),
+            });
             write_init(&mut output, id);
           } else {
             write_init_error(&mut output, id);
@@ -359,11 +378,14 @@ fn main() {
             });
           if split.next().is_some() {
             write_gen_move_error(&mut output, id);
-          } else if let (Some(player), Some(bot)) = (player_option, bot_option.as_mut()) {
-            let should_stop = AtomicBool::new(false);
-            if let Some(pos) = bot.best_move(player, config.uct_iterations, config.minimax_depth, &should_stop) {
-              let x = bot.field.to_x(pos.get());
-              let y = bot.field.to_y(pos.get());
+          } else if let (Some(player), Some(state)) = (player_option, state_option.as_mut()) {
+            let mut oppai = TimeLimitedAI(Duration::from_secs(5), &mut state.oppai);
+            if let Some(pos) = oppai
+              .analyze(&mut state.rng, &mut state.field, player, None, &|| false)
+              .best_move(&mut state.rng)
+            {
+              let x = state.field.to_x(pos.get());
+              let y = state.field.to_y(pos.get());
               write_gen_move(&mut output, id, x, y, player);
             } else {
               write_gen_move_error(&mut output, id);
@@ -387,17 +409,30 @@ fn main() {
             .and_then(|complexity_str| u32::from_str(complexity_str).ok());
           if split.next().is_some() {
             write_gen_move_with_complexity_error(&mut output, id);
-          } else if let (Some(player), Some(complexity), Some(bot)) =
-            (player_option, complexity_option, bot_option.as_mut())
+          } else if let (Some(player), Some(complexity), Some(state)) =
+            (player_option, complexity_option, state_option.as_mut())
           {
             let uct_iterations = (complexity - MIN_COMPLEXITY) as usize * config.uct_iterations
               / (MAX_COMPLEXITY - MIN_COMPLEXITY) as usize;
             let minimax_depth =
               (complexity - MIN_COMPLEXITY) * config.minimax_depth / (MAX_COMPLEXITY - MIN_COMPLEXITY);
-            let should_stop = AtomicBool::new(false);
-            if let Some(pos) = bot.best_move(player, uct_iterations, minimax_depth, &should_stop) {
-              let x = bot.field.to_x(pos.get());
-              let y = bot.field.to_y(pos.get());
+            if let Some(pos) = state
+              .oppai
+              .analyze(
+                &mut state.rng,
+                &mut state.field,
+                player,
+                Some(InConfidence {
+                  minimax_depth,
+                  uct_iterations,
+                  zero_iterations: 0,
+                }),
+                &|| false,
+              )
+              .best_move(&mut state.rng)
+            {
+              let x = state.field.to_x(pos.get());
+              let y = state.field.to_y(pos.get());
               write_gen_move_with_complexity(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_complexity_error(&mut output, id);
@@ -419,11 +454,14 @@ fn main() {
           let time_option = split.next().and_then(|time_str| u64::from_str(time_str).ok());
           if split.next().is_some() {
             write_gen_move_with_time_error(&mut output, id);
-          } else if let (Some(player), Some(time), Some(bot)) = (player_option, time_option, bot_option.as_mut()) {
-            let should_stop = AtomicBool::new(false);
-            if let Some(pos) = bot.best_move_with_time(player, Duration::from_millis(time), &should_stop) {
-              let x = bot.field.to_x(pos.get());
-              let y = bot.field.to_y(pos.get());
+          } else if let (Some(player), Some(time), Some(state)) = (player_option, time_option, state_option.as_mut()) {
+            let mut oppai = TimeLimitedAI(Duration::from_millis(time), &mut state.oppai);
+            if let Some(pos) = oppai
+              .analyze(&mut state.rng, &mut state.field, player, None, &|| false)
+              .best_move(&mut state.rng)
+            {
+              let x = state.field.to_x(pos.get());
+              let y = state.field.to_y(pos.get());
               write_gen_move_with_time(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_time_error(&mut output, id);
@@ -446,20 +484,22 @@ fn main() {
           let time_per_move_option = split.next().and_then(|time_str| u64::from_str(time_str).ok());
           if split.next().is_some() {
             write_gen_move_with_full_time_error(&mut output, id);
-          } else if let (Some(player), Some(remaining_time), Some(time_per_move), Some(bot)) = (
+          } else if let (Some(player), Some(remaining_time), Some(time_per_move), Some(state)) = (
             player_option,
             remaining_time_option,
             time_per_move_option,
-            bot_option.as_mut(),
+            state_option.as_mut(),
           ) {
-            let should_stop = AtomicBool::new(false);
-            if let Some(pos) = bot.best_move_with_time(
-              player,
+            let mut oppai = TimeLimitedAI(
               Duration::from_millis(time_per_move + remaining_time / 25),
-              &should_stop,
-            ) {
-              let x = bot.field.to_x(pos.get());
-              let y = bot.field.to_y(pos.get());
+              &mut state.oppai,
+            );
+            if let Some(pos) = oppai
+              .analyze(&mut state.rng, &mut state.field, player, None, &|| false)
+              .best_move(&mut state.rng)
+            {
+              let x = state.field.to_x(pos.get());
+              let y = state.field.to_y(pos.get());
               write_gen_move_with_full_time(&mut output, id, x, y, player);
             } else {
               write_gen_move_with_full_time_error(&mut output, id);
@@ -503,11 +543,11 @@ fn main() {
             });
           if split.next().is_some() {
             write_play_error(&mut output, id);
-          } else if let (Some(x), Some(y), Some(player), Some(bot)) =
-            (x_option, y_option, player_option, bot_option.as_mut())
+          } else if let (Some(x), Some(y), Some(player), Some(state)) =
+            (x_option, y_option, player_option, state_option.as_mut())
           {
-            let pos = bot.field.to_pos(x, y);
-            if bot.field.put_point(pos, player) {
+            let pos = state.field.to_pos(x, y);
+            if state.field.put_point(pos, player) {
               write_play(&mut output, id, x, y, player);
             } else {
               write_play_error(&mut output, id);
@@ -528,8 +568,8 @@ fn main() {
         Some("undo") => {
           if split.next().is_some() {
             write_undo_error(&mut output, id);
-          } else if let Some(bot) = bot_option.as_mut() {
-            if bot.field.undo() {
+          } else if let Some(state) = state_option.as_mut() {
+            if state.field.undo() {
               write_undo(&mut output, id);
             } else {
               write_undo_error(&mut output, id);
