@@ -11,10 +11,10 @@ default-run = "main"
 iced = { version = "0.9", features = ["canvas", "image"] }
 rand = { version = "0.8", features = ["small_rng"] }
 log = "0.4"
-strum = { version = "0.25", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }
 clap = { version = "4.4", features = ["cargo"] }
 humantime = "2.1"
-rfd = { version = "0.12", default-features = false, features = ["xdg-portal"] }
+rfd = { version = "0.13", default-features = false, features = ["async-std", "xdg-portal"] }
 sgf-parse = "4.2"
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
@@ -25,7 +25,7 @@ oppai-sgf = { path = "../sgf", features = ["zero"] }
 oppai-zero = { path = "../zero" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-env_logger = "0.10"
+env_logger = "0.11"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = [
@@ -42,7 +42,7 @@ wasm-bindgen = "0.2"
 wasm-logger = "0.2"
 console_error_panic_hook = "0.1"
 serde = { version = "1.0", features = ["derive"] }
-serde-wasm-bindgen = "0.5"
+serde-wasm-bindgen = "0.6"
 oppai-field = { path = "../field", features = ["serde"] }
 # for js feature
 getrandom = { version = "0.2", features = ["js"] }

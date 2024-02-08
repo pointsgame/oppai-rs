@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 log = "0.4"
-strum = { version = "0.25", features = [ "derive" ] }
+strum = { version = "0.26", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 
@@ -20,7 +20,7 @@ num_cpus = "1.16"
 criterion = "0.5"
 rand = "0.8"
 rand_xoshiro = "0.6"
-env_logger = "0.10"
+env_logger = "0.11"
 oppai-test-images = { path = "../test-images" }
 
 [[bench]]

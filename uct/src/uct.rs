@@ -9,16 +9,16 @@ use std::{
   ptr,
   sync::atomic::{AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
 };
-use strum::{EnumString, EnumVariantNames};
+use strum::{EnumString, VariantNames};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum UcbType {
   Winrate,
   Ucb1,
   Ucb1Tuned,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum UctKomiType {
   None,
   Static,

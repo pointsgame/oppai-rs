@@ -10,7 +10,7 @@ edition = "2021"
 either = "1.9"
 rand = "0.8"
 num-traits = "0.2"
-strum = { version = "0.25", features = [ "derive" ] }
+strum = { version = "0.26", features = [ "derive" ] }
 num_cpus = "1.16"
 clap = "4.4"
 humantime = "2.1"

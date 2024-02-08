@@ -43,19 +43,17 @@ impl<B: Backend> ResidualBlock<B> {
     let x = self.bn2.forward(x);
     self.activation.forward(inputs + x)
   }
-}
 
-impl<B: Backend> Default for ResidualBlock<B> {
-  fn default() -> Self {
+  pub fn new(device: &B::Device) -> Self {
     Self {
       conv1: Conv2dConfig::new([INNER_CHANNELS, INNER_CHANNELS], [3, 3])
         .with_padding(PaddingConfig2d::Same)
-        .init(),
-      bn1: BatchNormConfig::new(INNER_CHANNELS).init(),
+        .init(device),
+      bn1: BatchNormConfig::new(INNER_CHANNELS).init(device),
       conv2: Conv2dConfig::new([INNER_CHANNELS, INNER_CHANNELS], [3, 3])
         .with_padding(PaddingConfig2d::Same)
-        .init(),
-      bn2: BatchNormConfig::new(INNER_CHANNELS).init(),
+        .init(device),
+      bn2: BatchNormConfig::new(INNER_CHANNELS).init(device),
       activation: Default::default(),
     }
   }
@@ -77,25 +75,25 @@ pub struct Model<B: Backend> {
 }
 
 impl<B: Backend> Model<B> {
-  pub fn new(width: u32, height: u32) -> Self {
+  pub fn new(width: u32, height: u32, device: &B::Device) -> Self {
     let length = (width * height) as usize;
     Self {
       initial_conv: Conv2dConfig::new([INPUT_CHANNELS, INNER_CHANNELS], [3, 3])
         .with_padding(PaddingConfig2d::Same)
-        .init(),
-      initial_bn: BatchNormConfig::new(INNER_CHANNELS).init(),
-      residuals: vec![Default::default(); RESIDUAL_BLOCKS],
+        .init(device),
+      initial_bn: BatchNormConfig::new(INNER_CHANNELS).init(device),
+      residuals: vec![ResidualBlock::new(device); RESIDUAL_BLOCKS],
       policy_conv: Conv2dConfig::new([INNER_CHANNELS, POLICY_CHANNELS], [1, 1])
         .with_padding(PaddingConfig2d::Same)
-        .init(),
-      policy_bn: BatchNormConfig::new(POLICY_CHANNELS).init(),
-      policy_fc: LinearConfig::new(POLICY_CHANNELS * length, length).init(),
+        .init(device),
+      policy_bn: BatchNormConfig::new(POLICY_CHANNELS).init(device),
+      policy_fc: LinearConfig::new(POLICY_CHANNELS * length, length).init(device),
       value_conv: Conv2dConfig::new([INNER_CHANNELS, VALUE_CHANNELS], [1, 1])
         .with_padding(PaddingConfig2d::Same)
-        .init(),
-      value_bn: BatchNormConfig::new(VALUE_CHANNELS).init(),
-      value_fc1: LinearConfig::new(VALUE_CHANNELS * length, VALUE_HIDDEN_SIZE).init(),
-      value_fc2: LinearConfig::new(VALUE_HIDDEN_SIZE, 1).init(),
+        .init(device),
+      value_bn: BatchNormConfig::new(VALUE_CHANNELS).init(device),
+      value_fc1: LinearConfig::new(VALUE_CHANNELS * length, VALUE_HIDDEN_SIZE).init(device),
+      value_fc2: LinearConfig::new(VALUE_HIDDEN_SIZE, 1).init(device),
       activation: Default::default(),
     }
   }
@@ -132,12 +130,17 @@ impl<B: Backend> Model<B> {
   }
 }
 
-pub struct Learner<B: AutodiffBackend, O> {
+pub struct Predictor<B: Backend> {
   pub model: Model<B>,
+  pub device: B::Device,
+}
+
+pub struct Learner<B: AutodiffBackend, O> {
+  pub predictor: Predictor<B>,
   pub optimizer: O,
 }
 
-impl<B> OppaiModel<<B as Backend>::FloatElem> for Model<B>
+impl<B> OppaiModel<<B as Backend>::FloatElem> for Predictor<B>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float,
@@ -149,15 +152,18 @@ where
     inputs: Array4<<B as Backend>::FloatElem>,
   ) -> Result<(Array3<<B as Backend>::FloatElem>, Array1<<B as Backend>::FloatElem>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
-    let inputs = Tensor::from_data(Data::new(
-      if inputs.is_standard_layout() {
-        inputs.into_raw_vec()
-      } else {
-        inputs.as_standard_layout().to_owned().into_raw_vec()
-      },
-      [batch, channels, height, width].into(),
-    ));
-    let (policies, values) = self.forward(inputs);
+    let inputs = Tensor::from_data(
+      Data::new(
+        if inputs.is_standard_layout() {
+          inputs.into_raw_vec()
+        } else {
+          inputs.as_standard_layout().to_owned().into_raw_vec()
+        },
+        [batch, channels, height, width].into(),
+      ),
+      &self.device,
+    );
+    let (policies, values) = self.model.forward(inputs);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().value)?;
     let values = Array1::from_vec(values.into_data().value);
     Ok((policies, values))
@@ -175,7 +181,7 @@ where
     &self,
     inputs: Array4<<B as Backend>::FloatElem>,
   ) -> Result<(Array3<<B as Backend>::FloatElem>, Array1<<B as Backend>::FloatElem>), Self::E> {
-    self.model.predict(inputs)
+    self.predictor.predict(inputs)
   }
 }
 
@@ -194,34 +200,46 @@ where
     values: Array1<<B as Backend>::FloatElem>,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
-    let inputs = Tensor::from_data(Data::new(
-      if inputs.is_standard_layout() {
-        inputs.into_raw_vec()
-      } else {
-        inputs.as_standard_layout().to_owned().into_raw_vec()
-      },
-      [batch, channels, height, width].into(),
-    ));
-    let policies = Tensor::from_data(Data::new(
-      if policies.is_standard_layout() {
-        policies.into_raw_vec()
-      } else {
-        policies.as_standard_layout().to_owned().into_raw_vec()
-      },
-      [batch, height, width].into(),
-    ));
-    let values = Tensor::from_data(Data::new(values.into_raw_vec(), [batch].into()));
-    let (out_policies, out_values) = self.model.forward(inputs);
+    let inputs = Tensor::from_data(
+      Data::new(
+        if inputs.is_standard_layout() {
+          inputs.into_raw_vec()
+        } else {
+          inputs.as_standard_layout().to_owned().into_raw_vec()
+        },
+        [batch, channels, height, width].into(),
+      ),
+      &self.predictor.device,
+    );
+    let policies = Tensor::from_data(
+      Data::new(
+        if policies.is_standard_layout() {
+          policies.into_raw_vec()
+        } else {
+          policies.as_standard_layout().to_owned().into_raw_vec()
+        },
+        [batch, height, width].into(),
+      ),
+      &self.predictor.device,
+    );
+    let values = Tensor::from_data(Data::new(values.into_raw_vec(), [batch].into()), &self.predictor.device);
+    let (out_policies, out_values) = self.predictor.model.forward(inputs);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
-    let values_loss = (out_values - values).powf(2.0).sum() / batch;
+    let values_loss = (out_values - values)
+      .powf(Tensor::from_data(
+        [<<B as Backend>::FloatElem as NumCast>::from(2.0).unwrap()],
+        &self.predictor.device,
+      ))
+      .sum()
+      / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
     let loss = values_loss + policies_loss;
 
     log::info!("Loss: {}", loss.clone().into_scalar());
 
-    let grads = GradientsParams::from_grads(loss.backward(), &self.model);
-    self.model = self.optimizer.step(0.01, self.model, grads);
+    let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
+    self.predictor.model = self.optimizer.step(0.01, self.predictor.model, grads);
 
     Ok(self)
   }
@@ -229,9 +247,9 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::{Learner, Model};
+  use super::{Learner, Model, Predictor};
   use burn::{
-    backend::{Autodiff, NdArray, Wgpu},
+    backend::{ndarray::NdArrayDevice, wgpu::WgpuDevice, Autodiff, NdArray, Wgpu},
     optim::SgdConfig,
     tensor::Tensor,
   };
@@ -243,8 +261,8 @@ mod tests {
 
   #[test]
   fn forward() {
-    let model = Model::<NdArray>::new(4, 8);
-    let (policies, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8]));
+    let model = Model::<NdArray>::new(4, 8, &NdArrayDevice::Cpu);
+    let (policies, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
     let policies = policies.exp().into_primitive().array;
     let values = values.into_primitive().array;
     assert!(policies.iter().all(|p| (0.0..=1.0).contains(p)));
@@ -253,27 +271,35 @@ mod tests {
   }
 
   macro_rules! predict_test {
-    ($name:ident, $backend:ty) => {
+    ($name:ident, $backend:ty, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<$backend>::new(8, 4);
-        model
+        let model = Model::<$backend>::new(8, 4, &$device);
+        let predictor = Predictor {
+          model,
+          device: $device,
+        };
+        predictor
           .predict(Array4::from_elem((1, CHANNELS, 4, 8), 1.0))
           .unwrap();
       }
     };
   }
 
-  predict_test!(predict_ndarray, NdArray);
-  predict_test!(predict_wgpu, Wgpu);
+  predict_test!(predict_ndarray, NdArray, NdArrayDevice::Cpu);
+  predict_test!(predict_wgpu, Wgpu, WgpuDevice::BestAvailable);
 
   macro_rules! train_test {
-    ($name:ident, $backend:ty) => {
+    ($name:ident, $backend:ty, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<Autodiff<$backend>>::new(8, 4);
+        let model = Model::<Autodiff<$backend>>::new(8, 4, &$device);
+        let predictor = Predictor {
+          model,
+          device: $device,
+        };
         let optimizer = SgdConfig::new().init::<Autodiff<$backend>, Model<_>>();
-        let learner = Learner { model, optimizer };
+        let learner = Learner { predictor, optimizer };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
@@ -289,6 +315,6 @@ mod tests {
     };
   }
 
-  train_test!(train_ndarray, NdArray);
-  train_test!(train_wgpu, Wgpu);
+  train_test!(train_ndarray, NdArray, NdArrayDevice::Cpu);
+  train_test!(train_wgpu, Wgpu, WgpuDevice::BestAvailable);
 }

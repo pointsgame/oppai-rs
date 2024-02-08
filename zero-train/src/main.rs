@@ -4,7 +4,7 @@ mod config;
 
 use anyhow::Result;
 use burn::{
-  backend::{Autodiff, NdArray, Wgpu},
+  backend::{ndarray::NdArrayDevice, wgpu::WgpuDevice, Autodiff, NdArray, Wgpu},
   module::Module,
   optim::{AdamWConfig, Optimizer},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
@@ -29,7 +29,7 @@ use oppai_zero::{
   model::TrainableModel,
   pit,
 };
-use oppai_zero_burn::model::{Learner, Model as BurnModel};
+use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
 use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use sgf_parse::{serialize, unknown_game::Prop, GameTree, SimpleText};
@@ -43,22 +43,26 @@ use std::{
   sync::Arc,
 };
 
-fn init<B>(config: Config, model_path: PathBuf, optimizer_path: PathBuf) -> Result<ExitCode>
+fn init<B>(config: Config, model_path: PathBuf, optimizer_path: PathBuf, device: B::Device) -> Result<ExitCode>
 where
   B: AutodiffBackend,
 {
-  let model = BurnModel::<B>::new(config.width, config.height);
+  let model = BurnModel::<B>::new(config.width, config.height, &device);
   model.save_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
   let record = optimizer.to_record();
   let item = record.into_item::<FullPrecisionSettings>();
-  DefaultFileRecorder::<FullPrecisionSettings>::new().save_item(item, optimizer_path)?;
+  Recorder::<B>::save_item(
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    item,
+    optimizer_path,
+  )?;
 
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<B>(config: Config, model_path: PathBuf, game_path: PathBuf) -> Result<ExitCode>
+fn play<B>(config: Config, model_path: PathBuf, game_path: PathBuf, device: B::Device) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -66,8 +70,13 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
-  let model = BurnModel::<B>::new(config.width, config.height);
-  let model = model.load_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  let model = BurnModel::<B>::new(config.width, config.height, &device);
+  let model = model.load_file(
+    model_path,
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    &device,
+  )?;
+  let predictor = Predictor { model, device };
 
   let player = Player::Red;
 
@@ -80,7 +89,7 @@ where
     field.put_point(pos, player);
   }
 
-  let visits = episode(&mut field, player, &model, &mut rng, 30)?;
+  let visits = episode(&mut field, player, &predictor, &mut rng, 30)?;
 
   let field = field.into();
   if let Some(mut node) = to_sgf(&field) {
@@ -111,18 +120,24 @@ fn train<B>(
   games_paths: Vec<PathBuf>,
   batch_size: usize,
   epochs: usize,
+  device: B::Device,
 ) -> Result<ExitCode>
 where
   B: AutodiffBackend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model = BurnModel::<B>::new(config.width, config.height);
-  let model = model.load_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  let model = BurnModel::<B>::new(config.width, config.height, &device);
+  let model = model.load_file(
+    model_path,
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    &device,
+  )?;
   let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
-  let item = DefaultFileRecorder::<FullPrecisionSettings>::new().load_item(optimizer_path)?;
-  let record = Record::from_item::<FullPrecisionSettings>(item);
+  let item = Recorder::<B>::load_item(&DefaultFileRecorder::<FullPrecisionSettings>::new(), optimizer_path)?;
+  let record = Record::from_item::<FullPrecisionSettings>(item, &device);
   let optimizer = optimizer.load_record(record);
-  let mut learner = Learner { model, optimizer };
+  let predictor = Predictor { model, device };
+  let mut learner = Learner { predictor, optimizer };
 
   let mut rng = SmallRng::from_entropy();
   let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
@@ -160,26 +175,47 @@ where
   }
 
   learner
+    .predictor
     .model
     .save_file(model_new_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let record = learner.optimizer.to_record();
   let item = record.into_item::<FullPrecisionSettings>();
-  DefaultFileRecorder::<FullPrecisionSettings>::new().save_item(item, optimizer_new_path)?;
+  Recorder::<B>::save_item(
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    item,
+    optimizer_new_path,
+  )?;
 
   Ok(ExitCode::SUCCESS)
 }
 
-fn pit<B>(config: Config, model_path: PathBuf, model_new_path: PathBuf) -> Result<ExitCode>
+fn pit<B>(config: Config, model_path: PathBuf, model_new_path: PathBuf, device: B::Device) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model = BurnModel::<B>::new(config.width, config.height);
-  let model = model.load_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  let model = BurnModel::<B>::new(config.width, config.height, &device);
+  let model = model.load_file(
+    model_path,
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    &device,
+  )?;
+  let predictor = Predictor {
+    model,
+    device: device.clone(),
+  };
 
-  let model_new = BurnModel::<B>::new(config.width, config.height);
-  let model_new = model_new.load_file(model_new_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  let model_new = BurnModel::<B>::new(config.width, config.height, &device);
+  let model_new = model_new.load_file(
+    model_new_path,
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    &device,
+  )?;
+  let predictor_new = Predictor {
+    model: model_new,
+    device,
+  };
 
   let player = Player::Red;
 
@@ -187,7 +223,7 @@ where
   let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
   let field = Field::new(config.width, config.height, zobrist);
 
-  let result = if pit::pit(&field, player, &model_new, &model, &mut rng)? {
+  let result = if pit::pit(&field, player, &predictor_new, &predictor, &mut rng)? {
     ExitCode::SUCCESS
   } else {
     2.into()
@@ -196,7 +232,7 @@ where
   Ok(result)
 }
 
-fn run<B>(config: Config, action: Action) -> Result<ExitCode>
+fn run<B>(config: Config, action: Action, device: B::Device) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -205,8 +241,8 @@ where
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
   match action {
-    Action::Init { model, optimizer } => init::<Autodiff<B>>(config, model, optimizer),
-    Action::Play { model, game } => play::<B>(config, model, game),
+    Action::Init { model, optimizer } => init::<Autodiff<B>>(config, model, optimizer, device),
+    Action::Play { model, game } => play::<B>(config, model, game, device),
     Action::Train {
       model,
       optimizer,
@@ -224,8 +260,9 @@ where
       games,
       batch_size,
       epochs,
+      device,
     ),
-    Action::Pit { model, model_new } => pit::<B>(config, model, model_new),
+    Action::Pit { model, model_new } => pit::<B>(config, model, model_new, device),
   }
 }
 
@@ -236,7 +273,7 @@ fn main() -> Result<ExitCode> {
   let (config, action) = cli_parse();
 
   match config.backend {
-    ConfigBackend::Ndarray => run::<NdArray>(config, action),
-    ConfigBackend::Wgpu => run::<Wgpu>(config, action),
+    ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu),
+    ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::BestAvailable),
   }
 }

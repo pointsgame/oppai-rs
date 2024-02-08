@@ -10,10 +10,10 @@ edition = "2021"
 ndarray = "0.15"
 thiserror = "1.0"
 num-traits = "0.2"
-burn = { version = "0.11", features = ["train"] }
+burn = { version = "0.12", features = ["train"] }
 serde = "1.0"
 log = "0.4"
 oppai-zero = { path = "../zero" }
 
 [dev-dependencies]
-burn = { version = "0.11", features = ["train", "ndarray", "wgpu"] }
+burn = { version = "0.12", features = ["train", "ndarray", "wgpu"] }

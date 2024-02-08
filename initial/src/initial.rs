@@ -1,6 +1,6 @@
 use oppai_field::field::{to_pos, Pos};
 use oppai_field::player::Player;
-use strum::{EnumString, EnumVariantNames};
+use strum::{EnumString, VariantNames};
 
 fn cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 4] {
   let w2 = width / 2;
@@ -43,7 +43,7 @@ fn triple_cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 8] {
   ]
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum InitialPosition {
   Empty,
   Cross,

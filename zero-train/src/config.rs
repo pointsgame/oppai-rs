@@ -1,6 +1,6 @@
 use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, Command};
 use std::path::PathBuf;
-use strum::{EnumString, EnumVariantNames};
+use strum::{EnumString, VariantNames};
 
 pub enum Action {
   Init {
@@ -26,7 +26,7 @@ pub enum Action {
   },
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum Backend {
   Wgpu,
   Ndarray,

@@ -9,15 +9,15 @@ edition = "2021"
 [dependencies]
 ndarray = "0.15"
 num-traits = "0.2"
-burn = { version = "0.11", features = ["train", "ndarray", "wgpu"] }
+burn = { version = "0.12", features = ["train", "ndarray", "wgpu"] }
 rand = { version = "0.8", features = [ "small_rng" ] }
 rand_distr = "0.4"
 log = "0.4"
-env_logger = "0.10"
+env_logger = "0.11"
 clap = { version = "4.4", features = [ "cargo" ] }
 anyhow = "1.0"
 sgf-parse = "4.2"
-strum = { version = "0.25", features = [ "derive" ] }
+strum = { version = "0.26", features = [ "derive" ] }
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
 oppai-sgf = { path = "../sgf", features = [ "zero" ] }

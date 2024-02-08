@@ -24,9 +24,9 @@ use std::{
   sync::Arc,
   time::Duration,
 };
-use strum::{EnumString, EnumVariantNames};
+use strum::{EnumString, VariantNames};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum Solver {
   Heuristic,
   Minimax,

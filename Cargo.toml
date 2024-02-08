@@ -9,11 +9,11 @@ edition = "2021"
 [dependencies]
 rand = { version = "0.8", features = [ "small_rng" ] }
 time = "0.3"
-env_logger = "0.10"
+env_logger = "0.11"
 crossbeam = "0.8"
 clap = { version = "4.4", features = [ "cargo" ] }
 humantime = "2.1"
-strum = "0.25"
+strum = "0.26"
 oppai-common = { path = "common" }
 oppai-field = { path = "field" }
 oppai-ladders = { path = "ladders" }

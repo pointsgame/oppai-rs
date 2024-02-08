@@ -10,9 +10,9 @@ use std::iter;
 use std::sync::atomic::AtomicIsize;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicBool, Ordering};
-use strum::{EnumString, EnumVariantNames};
+use strum::{EnumString, VariantNames};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, EnumVariantNames)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum MinimaxType {
   NegaScout,
   Mtdf,
