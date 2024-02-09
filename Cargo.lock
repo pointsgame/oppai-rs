@@ -3628,27 +3628,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ab1bc2a289d34bd04a330323ac98a1b4bc82c9d9fcb1e66b63caa84da26b575"
 
 [[package]]
-name = "oppai"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crossbeam",
- "env_logger",
- "humantime",
- "oppai-ai",
- "oppai-ais",
- "oppai-common",
- "oppai-field",
- "oppai-ladders",
- "oppai-minimax",
- "oppai-patterns",
- "oppai-uct",
- "rand",
- "strum 0.26.1",
- "time",
-]
-
-[[package]]
 name = "oppai-ai"
 version = "0.1.0"
 dependencies = [
@@ -3677,6 +3656,27 @@ dependencies = [
  "rand",
  "strum 0.26.1",
  "web-time 0.2.4",
+]
+
+[[package]]
+name = "oppai-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossbeam",
+ "env_logger",
+ "humantime",
+ "oppai-ai",
+ "oppai-ais",
+ "oppai-common",
+ "oppai-field",
+ "oppai-ladders",
+ "oppai-minimax",
+ "oppai-patterns",
+ "oppai-uct",
+ "rand",
+ "strum 0.26.1",
+ "time",
 ]
 
 [[package]]

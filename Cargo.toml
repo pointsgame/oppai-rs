@@ -1,31 +1,25 @@
-[package]
-name = "oppai"
-version = "0.1.0"
-authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
-license = "AGPL-3.0+"
-description = "Open Points Artificial Intelligence"
-edition = "2021"
-
-[dependencies]
-rand = { version = "0.8", features = [ "small_rng" ] }
-time = "0.3"
-env_logger = "0.11"
-crossbeam = "0.8"
-clap = { version = "4.4", features = [ "cargo" ] }
-humantime = "2.1"
-strum = "0.26"
-oppai-common = { path = "common" }
-oppai-field = { path = "field" }
-oppai-ladders = { path = "ladders" }
-oppai-patterns = { path = "patterns" }
-oppai-uct = { path = "uct" }
-oppai-minimax = { path = "minimax" }
-oppai-ai = { path = "ai" }
-oppai-ais = { path = "ais" }
-
-[features]
-default = ["dsu"]
-dsu = ["oppai-ais/dsu"]
+[workspace]
+resolver = "2"
+members = [
+  "field",
+  "common",
+  "rotate",
+  "ladders",
+  "test-images",
+  "uct",
+  "minimax",
+  "patterns",
+  "zero",
+  "zero-burn",
+  "zero-train",
+  "initial",
+  "iced",
+  "svg",
+  "sgf",
+  "ai",
+  "ais",
+  "cli"
+]
 
 [profile.dev]
 opt-level = 0
@@ -49,24 +43,3 @@ lto = true
 debug = false
 panic = "abort"
 codegen-units = 1
-
-[workspace]
-members = [
-  "field",
-  "common",
-  "rotate",
-  "ladders",
-  "test-images",
-  "uct",
-  "minimax",
-  "patterns",
-  "zero",
-  "zero-burn",
-  "zero-train",
-  "initial",
-  "iced",
-  "svg",
-  "sgf",
-  "ai",
-  "ais",
-]
