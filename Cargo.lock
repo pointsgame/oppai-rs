@@ -553,7 +553,7 @@ dependencies = [
  "serde",
  "spin",
  "uuid",
- "web-time 1.0.0",
+ "web-time",
 ]
 
 [[package]]
@@ -571,7 +571,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spin",
- "web-time 1.0.0",
+ "web-time",
 ]
 
 [[package]]
@@ -3695,7 +3695,7 @@ dependencies = [
  "oppai-zero",
  "rand",
  "strum 0.26.1",
- "web-time 0.2.4",
+ "web-time",
 ]
 
 [[package]]
@@ -5959,16 +5959,6 @@ name = "web-sys"
 version = "0.3.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b85cbef8c220a6abc02aefd892dfc0fc23afb1c6a426316ec33253a3877249b"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "web-time"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa30049b1c872b72c89866d458eae9f20380ab280ffd1b1e18df2d3e2d98cfe0"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

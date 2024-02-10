@@ -33,6 +33,7 @@ crossbeam = "0.8"
 rayon = "1.8"
 num_cpus = "1.16"
 strum = { version = "0.26", features = [ "derive" ] }
+web-time = "1.0"
 sgf-parse = "4.2"
 log = "0.4"
 env_logger = "0.11"

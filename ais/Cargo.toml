@@ -14,7 +14,7 @@ strum.workspace = true
 num_cpus.workspace = true
 clap.workspace = true
 humantime.workspace = true
-web-time = "0.2"
+web-time.workspace = true
 oppai-field = { path = "../field" }
 oppai-ai = { path = "../ai" }
 oppai-minimax = { path = "../minimax" }
