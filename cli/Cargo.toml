@@ -10,7 +10,7 @@ edition = "2021"
 rand = { workspace = true, features = [ "small_rng" ] }
 env_logger.workspace = true
 crossbeam.workspace = true
-clap = { version = "4.4", features = [ "cargo" ] }
+clap = { workspace = true, features = [ "cargo" ] }
 humantime.workspace = true
 oppai-common = { path = "../common" }
 oppai-field = { path = "../field" }

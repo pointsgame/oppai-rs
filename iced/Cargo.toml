@@ -12,7 +12,7 @@ iced = { version = "0.9", features = ["canvas", "image"] }
 rand = { workspace = true, features = ["small_rng"] }
 log.workspace = true
 strum.workspace = true
-clap = { version = "4.4", features = ["cargo"] }
+clap = { workspace = true, features = ["cargo"] }
 humantime.workspace = true
 rfd = { version = "0.13", default-features = false, features = ["async-std", "xdg-portal"] }
 sgf-parse.workspace = true

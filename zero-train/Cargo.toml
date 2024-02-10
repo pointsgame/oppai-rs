@@ -14,7 +14,7 @@ rand = { workspace = true, features = [ "small_rng" ] }
 rand_distr.workspace = true
 log.workspace = true
 env_logger.workspace = true
-clap = { version = "4.4", features = [ "cargo" ] }
+clap = { workspace = true, features = [ "cargo" ] }
 anyhow.workspace = true
 sgf-parse.workspace = true
 strum.workspace = true
