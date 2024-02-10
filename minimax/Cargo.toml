@@ -7,20 +7,20 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-log = "0.4"
-strum = { version = "0.26", features = [ "derive" ] }
+log.workspace = true
+strum.workspace = true
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-crossbeam = "0.8"
-num_cpus = "1.16"
+crossbeam.workspace = true
+num_cpus.workspace = true
 
 [dev-dependencies]
-criterion = "0.5"
-rand = "0.8"
-rand_xoshiro = "0.6"
-env_logger = "0.11"
+criterion.workspace = true
+rand.workspace = true
+rand_xoshiro.workspace = true
+env_logger.workspace = true
 oppai-test-images = { path = "../test-images" }
 
 [[bench]]

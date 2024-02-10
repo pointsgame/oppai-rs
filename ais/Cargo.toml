@@ -7,13 +7,13 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-either = "1.9"
-rand = "0.8"
-num-traits = "0.2"
-strum = { version = "0.26", features = [ "derive" ] }
-num_cpus = "1.16"
+either.workspace = true
+rand.workspace = true
+num-traits.workspace = true
+strum.workspace = true
+num_cpus.workspace = true
 clap = "4.4"
-humantime = "2.1"
+humantime.workspace = true
 web-time = "0.2"
 oppai-field = { path = "../field" }
 oppai-ai = { path = "../ai" }
@@ -24,7 +24,7 @@ oppai-ladders = { path = "../ladders" }
 oppai-patterns = { path = "../patterns" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-crossbeam = "0.8"
+crossbeam.workspace = true
 
 [features]
 default = ["dsu"]

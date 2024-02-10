@@ -7,5 +7,5 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-strum = { version = "0.26", features = [ "derive" ] }
+strum.workspace = true
 oppai-field = { path = "../field" }

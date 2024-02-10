@@ -7,12 +7,12 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-ndarray = "0.15"
+ndarray.workspace = true
 thiserror = "1.0"
-num-traits = "0.2"
+num-traits.workspace = true
 burn = { version = "0.12", features = ["train"] }
 serde = "1.0"
-log = "0.4"
+log.workspace = true
 oppai-zero = { path = "../zero" }
 
 [dev-dependencies]

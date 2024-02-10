@@ -21,6 +21,25 @@ members = [
   "cli"
 ]
 
+[workspace.dependencies]
+rand = "0.8"
+rand_xoshiro = "0.6"
+rand_distr = "0.4"
+either = "1.9"
+itertools = "0.11"
+num-traits = "0.2"
+ndarray = "0.15"
+crossbeam = "0.8"
+rayon = "1.8"
+num_cpus = "1.16"
+strum = { version = "0.26", features = [ "derive" ] }
+sgf-parse = "4.2"
+log = "0.4"
+env_logger = "0.11"
+anyhow = "1.0"
+criterion = "0.5"
+humantime = "2.1"
+
 [profile.dev]
 opt-level = 0
 lto = false

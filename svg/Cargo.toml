@@ -11,5 +11,5 @@ svg = "0.14"
 oppai-field = { path = "../field" }
 
 [dev-dependencies]
-rand = "0.8"
-rand_xoshiro = "0.6"
+rand.workspace = true
+rand_xoshiro.workspace = true

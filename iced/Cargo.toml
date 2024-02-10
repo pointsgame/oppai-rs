@@ -9,13 +9,13 @@ default-run = "main"
 
 [dependencies]
 iced = { version = "0.9", features = ["canvas", "image"] }
-rand = { version = "0.8", features = ["small_rng"] }
-log = "0.4"
-strum = { version = "0.26", features = ["derive"] }
+rand = { workspace = true, features = ["small_rng"] }
+log.workspace = true
+strum.workspace = true
 clap = { version = "4.4", features = ["cargo"] }
-humantime = "2.1"
+humantime.workspace = true
 rfd = { version = "0.13", default-features = false, features = ["async-std", "xdg-portal"] }
-sgf-parse = "4.2"
+sgf-parse.workspace = true
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
 oppai-patterns = { path = "../patterns" }
@@ -25,7 +25,7 @@ oppai-sgf = { path = "../sgf", features = ["zero"] }
 oppai-zero = { path = "../zero" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-env_logger = "0.11"
+env_logger.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = [

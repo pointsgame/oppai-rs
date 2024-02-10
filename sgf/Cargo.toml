@@ -7,15 +7,15 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-sgf-parse = "4.2"
-rand = "0.8"
-log = "0.4"
+sgf-parse.workspace = true
+rand.workspace = true
+log.workspace = true
 oppai-field = { path = "../field" }
 oppai-zero = { path = "../zero", optional = true }
 
 [dev-dependencies]
-rand_xoshiro = "0.6"
-env_logger = "0.11"
+rand_xoshiro.workspace = true
+env_logger.workspace = true
 
 [features]
 zero = [ "oppai-zero" ]

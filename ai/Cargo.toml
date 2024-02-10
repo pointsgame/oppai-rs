@@ -7,6 +7,6 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-either = "1.9"
-rand = "0.8"
+either.workspace = true
+rand.workspace = true
 oppai-field = { path = "../field" }

@@ -3675,8 +3675,6 @@ dependencies = [
  "oppai-patterns",
  "oppai-uct",
  "rand",
- "strum 0.26.1",
- "time",
 ]
 
 [[package]]

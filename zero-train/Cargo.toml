@@ -7,17 +7,17 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-ndarray = "0.15"
-num-traits = "0.2"
+ndarray.workspace = true
+num-traits.workspace = true
 burn = { version = "0.12", features = ["train", "ndarray", "wgpu"] }
-rand = { version = "0.8", features = [ "small_rng" ] }
-rand_distr = "0.4"
-log = "0.4"
-env_logger = "0.11"
+rand = { workspace = true, features = [ "small_rng" ] }
+rand_distr.workspace = true
+log.workspace = true
+env_logger.workspace = true
 clap = { version = "4.4", features = [ "cargo" ] }
-anyhow = "1.0"
-sgf-parse = "4.2"
-strum = { version = "0.26", features = [ "derive" ] }
+anyhow.workspace = true
+sgf-parse.workspace = true
+strum.workspace = true
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
 oppai-sgf = { path = "../sgf", features = [ "zero" ] }
@@ -25,7 +25,7 @@ oppai-zero = { path = "../zero" }
 oppai-zero-burn = { path = "../zero-burn" }
 
 [dev-dependencies]
-rand_xoshiro = "0.6"
+rand_xoshiro.workspace = true
 
 [features]
 default = ["dsu"]
