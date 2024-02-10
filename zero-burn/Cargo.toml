@@ -8,12 +8,12 @@ edition = "2021"
 
 [dependencies]
 ndarray.workspace = true
-thiserror = "1.0"
+thiserror.workspace = true
 num-traits.workspace = true
-burn = { version = "0.12", features = ["train"] }
-serde = "1.0"
+burn = { workspace = true, features = ["train"] }
+serde.workspace = true
 log.workspace = true
 oppai-zero = { path = "../zero" }
 
 [dev-dependencies]
-burn = { version = "0.12", features = ["train", "ndarray", "wgpu"] }
+burn = { workspace = true, features = ["train", "ndarray", "wgpu"] }
