@@ -7,7 +7,7 @@ description = "Open Points Artificial Intelligence"
 edition = "2021"
 
 [dependencies]
-svg = "0.14"
+svg.workspace = true
 oppai-field = { path = "../field" }
 
 [dev-dependencies]

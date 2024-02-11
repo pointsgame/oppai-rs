@@ -35,6 +35,7 @@ num_cpus = "1.16"
 burn = "0.12"
 strum = { version = "0.26", features = [ "derive" ] }
 serde = "1.0"
+svg = "0.15"
 web-time = "1.0"
 sgf-parse = "4.2"
 log = "0.4"
