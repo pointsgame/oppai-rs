@@ -8,11 +8,12 @@ use crate::config::{cli_parse, Config};
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
 use canvas_field::{CanvasField, CanvasMessage, Label};
+#[cfg(target_arch = "wasm32")]
+use iced::subscription;
 use iced::theme::Palette;
 use iced::widget::{Canvas, Column, Container, Row, Text};
 use iced::{
-  executor, keyboard, subscription, window, Application, Color, Command, Element, Event, Length, Settings,
-  Subscription, Theme,
+  event, executor, keyboard, window, Application, Color, Command, Element, Event, Length, Settings, Subscription, Theme,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_ai::ai::AI;
@@ -308,23 +309,6 @@ impl Application for Game {
     };
     game.put_all_bot_points();
 
-    #[cfg(target_arch = "wasm32")]
-    {
-      // hack to resize canvas
-      // https://github.com/iced-rs/iced/issues/1265
-      use iced_native::{command, window};
-      let window = web_sys::window().unwrap();
-      let (width, height) = (
-        (window.inner_width().unwrap().as_f64().unwrap()) as u32,
-        (window.inner_height().unwrap().as_f64().unwrap()) as u32,
-      );
-      (
-        game,
-        Command::single(command::Action::Window(window::Action::Resize { width, height })),
-      )
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
     (game, Command::none())
   }
 
@@ -359,63 +343,66 @@ impl Application for Game {
       })
     };
 
-    let keys_subscription = subscription::events_with(|event, _| match event {
+    let keys_subscription = event::listen_with(|event, _| match event {
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Left,
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowLeft),
         ..
       }) => Some(Message::Undo),
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Down,
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowDown),
         ..
       }) => Some(Message::UndoAll),
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Right,
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowRight),
         ..
       }) => Some(Message::Redo),
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Up,
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowUp),
         ..
       }) => Some(Message::RedoAll),
       #[cfg(not(target_arch = "wasm32"))]
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::N,
+        key: keyboard::Key::Character(c),
         modifiers,
-      }) if modifiers.control() => Some(Message::New),
+        ..
+      }) if modifiers.control() && c.as_str() == "n" => Some(Message::New),
       #[cfg(not(target_arch = "wasm32"))]
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::O,
+        key: keyboard::Key::Character(c),
         modifiers,
-      }) if modifiers.control() => Some(Message::Open),
+        ..
+      }) if modifiers.control() && c.as_str() == "o" => Some(Message::Open),
       #[cfg(not(target_arch = "wasm32"))]
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::S,
+        key: keyboard::Key::Character(c),
         modifiers,
-      }) if modifiers.control() => Some(Message::Save),
+        ..
+      }) if modifiers.control() && c.as_str() == "s" => Some(Message::Save),
       #[cfg(target_arch = "wasm32")]
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::N,
+        key: keyboard::Key::Character(c),
         ..
-      }) => Some(Message::New),
+      }) if c.as_str() == "n" => Some(Message::New),
       #[cfg(target_arch = "wasm32")]
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::S,
+        key: keyboard::Key::Character(c),
         ..
-      }) => Some(Message::Save),
+      }) if c.as_str() == "s" => Some(Message::Save),
       #[cfg(target_arch = "wasm32")]
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::O,
+        key: keyboard::Key::Character(c),
         ..
-      }) => Some(Message::Open),
+      }) if c.as_str() == "o" => Some(Message::Open),
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::E,
+        key: keyboard::Key::Character(c),
         ..
-      }) => Some(Message::ToggleEditMode),
+      }) if c.as_str() == "e" => Some(Message::ToggleEditMode),
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::A,
+        key: keyboard::Key::Character(c),
         ..
-      }) => Some(Message::ToggleAI),
+      }) if c.as_str() == "a" => Some(Message::ToggleAI),
       Event::Keyboard(keyboard::Event::KeyPressed {
-        key_code: keyboard::KeyCode::Escape,
+        key: keyboard::Key::Named(keyboard::key::Named::Escape),
         ..
       }) => Some(Message::Interrupt),
       _ => None,
@@ -795,10 +782,13 @@ impl Application for Game {
   }
 
   fn theme(&self) -> Theme {
-    Theme::custom(Palette {
-      background: self.config.canvas_config.background_color.into(),
-      text: self.config.canvas_config.grid_color.into(),
-      ..Palette::LIGHT
-    })
+    Theme::custom(
+      "oppai".to_string(),
+      Palette {
+        background: self.config.canvas_config.background_color.into(),
+        text: self.config.canvas_config.grid_color.into(),
+        ..Palette::LIGHT
+      },
+    )
   }
 }

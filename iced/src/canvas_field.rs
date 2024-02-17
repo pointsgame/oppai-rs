@@ -1,7 +1,8 @@
 use crate::canvas_config::{CanvasConfig, Rgb};
 use iced::alignment::{Horizontal, Vertical};
+use iced::mouse::Cursor;
 use iced::widget::canvas::{self, Frame, Text};
-use iced::{mouse, Color, Point, Rectangle, Size, Theme, Vector};
+use iced::{mouse, Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector};
 use oppai_field::extended_field::ExtendedField;
 use oppai_field::field::Pos;
 use oppai_field::player::Player;
@@ -65,7 +66,7 @@ impl Extra for Label {
     let mut text: Text = self.text.as_str().into();
     text.horizontal_alignment = Horizontal::Center;
     text.vertical_alignment = Vertical::Center;
-    text.size = self.scale * bounds.width / field.field.width() as f32;
+    text.size = Pixels(self.scale * bounds.width / field.field.width() as f32);
     text.color = self.color;
     text.position = pos_to_point(self.pos);
     frame.fill_text(text);
@@ -88,7 +89,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
     state: &mut Option<(u32, u32)>,
     event: canvas::Event,
     bounds: Rectangle,
-    cursor: canvas::Cursor,
+    cursor: Cursor,
   ) -> (canvas::event::Status, Option<CanvasMessage>) {
     match event {
       canvas::Event::Mouse(event) => {
@@ -111,7 +112,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
           _ => return (canvas::event::Status::Ignored, None),
         }
 
-        let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
+        let cursor_position = if let Some(position) = cursor.position_in(bounds) {
           position
         } else {
           return (canvas::event::Status::Ignored, None);
@@ -188,9 +189,10 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
   fn draw(
     &self,
     _state: &Option<(u32, u32)>,
+    renderer: &Renderer,
     _theme: &Theme,
     bounds: Rectangle,
-    cursor: canvas::Cursor,
+    cursor: Cursor,
   ) -> Vec<canvas::Geometry> {
     fn color(config: &CanvasConfig, player: Player) -> Color {
       (match player {
@@ -229,7 +231,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
 
     let point_radius = width / field_width as f32 * self.config.point_radius;
 
-    let field = self.field_cache.draw(bounds.size(), |frame| {
+    let field = self.field_cache.draw(renderer, bounds.size(), |frame| {
       // draw grid
 
       let grid = canvas::Path::new(|path| {
@@ -445,7 +447,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
       );
     });
 
-    let mut frame = canvas::Frame::new(bounds.size());
+    let mut frame = canvas::Frame::new(renderer, bounds.size());
 
     if let Some(point) = cursor.position().and_then(|cursor_position| {
       let point = cursor_position - shift;
