@@ -2,7 +2,7 @@ use burn::{
   module::Module,
   nn::{
     conv::{Conv2d, Conv2dConfig},
-    BatchNorm, BatchNormConfig, Linear, LinearConfig, PaddingConfig2d, ReLU,
+    BatchNorm, BatchNormConfig, Linear, LinearConfig, PaddingConfig2d, Relu,
   },
   optim::{GradientsParams, Optimizer},
   tensor::{
@@ -31,7 +31,7 @@ pub struct ResidualBlock<B: Backend> {
   bn1: BatchNorm<B, 2>,
   conv2: Conv2d<B>,
   bn2: BatchNorm<B, 2>,
-  activation: ReLU,
+  activation: Relu,
 }
 
 impl<B: Backend> ResidualBlock<B> {
@@ -71,7 +71,7 @@ pub struct Model<B: Backend> {
   value_bn: BatchNorm<B, 2>,
   value_fc1: Linear<B>,
   value_fc2: Linear<B>,
-  activation: ReLU,
+  activation: Relu,
 }
 
 impl<B: Backend> Model<B> {
