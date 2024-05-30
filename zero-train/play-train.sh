@@ -3,7 +3,7 @@
 set -Euo pipefail
 
 export RUSTFLAGS="-C target-cpu=native"
-export RUST_LOG="info,wgpu_core=warn,wgpu_hal=warn,burn_wgpu=warn"
+export RUST_LOG="oppai_zero=info,oppai_zero_burn=info,oppai_zero_train=info"
 export BURN_WGPU_MAX_TASKS=4
 BIN=(cargo run --release --quiet --)
 
