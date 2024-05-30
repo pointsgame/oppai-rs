@@ -14,7 +14,7 @@ log.workspace = true
 strum.workspace = true
 clap = { workspace = true, features = ["cargo"] }
 humantime.workspace = true
-rfd = { version = "0.13", default-features = false, features = ["async-std", "xdg-portal"] }
+rfd = { version = "0.14", default-features = false, features = ["async-std", "xdg-portal"] }
 sgf-parse.workspace = true
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
