@@ -3527,6 +3527,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "oppai-client"
+version = "0.1.0"
+dependencies = [
+ "async-process",
+ "futures",
+ "oppai-field",
+ "oppai-protocol",
+ "serde_json",
+]
+
+[[package]]
 name = "oppai-common"
 version = "0.1.0"
 dependencies = [

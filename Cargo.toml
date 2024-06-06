@@ -19,7 +19,8 @@ members = [
   "ai",
   "ais",
   "protocol",
-  "cli"
+  "cli",
+  "client"
 ]
 
 [workspace.dependencies]
@@ -48,6 +49,8 @@ anyhow = "1.0"
 criterion = "0.5"
 clap = "4.5"
 humantime = "2.1"
+futures = "0.3"
+async-process = "2.2"
 
 [profile.dev]
 opt-level = 0

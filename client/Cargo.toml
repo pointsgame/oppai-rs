@@ -1,0 +1,14 @@
+[package]
+name = "oppai-client"
+version = "0.1.0"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
+edition = "2021"
+
+[dependencies]
+oppai-field = { path = "../field" }
+oppai-protocol = { path = "../protocol" }
+futures.workspace = true
+async-process.workspace = true
+serde_json.workspace = true
