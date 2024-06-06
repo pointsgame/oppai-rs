@@ -93,10 +93,28 @@ type InnerAnalysis<N> = Either<
 
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct OppaiWeight<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Weight);
+
+impl<N: Float + Sum + Display + Debug + 'static> OppaiWeight<N> {
+  pub fn to_f64(&self) -> Option<f64> {
+    match self.0 {
+      Either::Left(()) => None,
+      Either::Right(Either::Left(())) => None,
+      Either::Right(Either::Right(Either::Left(()))) => None,
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Left(w))))) => Some(w as f64),
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(())))))) => None,
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(w)))))) => Some(w as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w))))) => Some(w),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(w))))) => Some(w as f64),
+    }
+  }
+}
+
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct OppaiEstimation<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Estimation);
+
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct OppaiConfidence<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Confidence);
+
 pub struct OppaiAnalysis<N: Float + Sum + Display + Debug + 'static>(InnerAnalysis<N>);
 
 impl<N: Float + Sum + Display + Debug + 'static> Analysis for OppaiAnalysis<N> {

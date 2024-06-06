@@ -3508,6 +3508,7 @@ dependencies = [
 name = "oppai-cli"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
  "crossbeam",
  "env_logger",
@@ -3519,8 +3520,10 @@ dependencies = [
  "oppai-ladders",
  "oppai-minimax",
  "oppai-patterns",
+ "oppai-protocol",
  "oppai-uct",
  "rand",
+ "serde_json",
 ]
 
 [[package]]

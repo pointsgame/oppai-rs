@@ -12,6 +12,8 @@ env_logger.workspace = true
 crossbeam.workspace = true
 clap = { workspace = true, features = [ "cargo" ] }
 humantime.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
 oppai-common = { path = "../common" }
 oppai-field = { path = "../field" }
 oppai-ladders = { path = "../ladders" }
@@ -20,6 +22,7 @@ oppai-uct = { path = "../uct" }
 oppai-minimax = { path = "../minimax" }
 oppai-ai = { path = "../ai" }
 oppai-ais = { path = "../ais" }
+oppai-protocol = { path = "../protocol" }
 
 [features]
 default = ["dsu"]
