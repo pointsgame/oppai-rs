@@ -6,7 +6,7 @@ use either::Either;
 use num_traits::Float;
 use oppai_ai::{
   ai::AI,
-  analysis::{FlatAnalysis, SimpleAnalysis, SingleAnalysis},
+  analysis::{Analysis, FlatAnalysis, SimpleAnalysis, SingleAnalysis},
 };
 use oppai_field::{
   field::{length, Field},
@@ -77,20 +77,52 @@ pub struct Oppai<N: Float + Sum + Display + Debug, M: Model<N>> {
   zero: Zero<N, M>,
 }
 
-impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for Oppai<N, M> {
-  type Analysis = Either<
-    SingleAnalysis<(), ()>,
+type InnerAnalysis<N> = Either<
+  SingleAnalysis<(), ()>,
+  Either<
+    FlatAnalysis<(), ()>,
     Either<
-      FlatAnalysis<(), ()>,
+      SingleAnalysis<i32, ()>,
       Either<
-        SingleAnalysis<i32, ()>,
-        Either<
-          Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
-          Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, N, usize>>,
-        >,
+        Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
+        Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, N, usize>>,
       >,
     >,
-  >;
+  >,
+>;
+
+#[derive(Clone, PartialEq, PartialOrd)]
+pub struct OppaiWeight<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Weight);
+#[derive(Clone, PartialEq, PartialOrd)]
+pub struct OppaiEstimation<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Estimation);
+#[derive(Clone, PartialEq, PartialOrd)]
+pub struct OppaiConfidence<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Confidence);
+pub struct OppaiAnalysis<N: Float + Sum + Display + Debug + 'static>(InnerAnalysis<N>);
+
+impl<N: Float + Sum + Display + Debug + 'static> Analysis for OppaiAnalysis<N> {
+  type Weight = OppaiWeight<N>;
+  type Estimation = OppaiEstimation<N>;
+  type Confidence = OppaiConfidence<N>;
+
+  fn moves(&self) -> impl Iterator<Item = (oppai_field::field::Pos, Self::Weight)> {
+    self.0.moves().map(|(pos, weight)| (pos, OppaiWeight(weight)))
+  }
+
+  fn estimation(&self) -> Self::Estimation {
+    OppaiEstimation(self.0.estimation())
+  }
+
+  fn confidence(&self) -> Self::Confidence {
+    OppaiConfidence(self.0.confidence())
+  }
+
+  fn origin(&self) -> std::any::TypeId {
+    self.0.origin()
+  }
+}
+
+impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for Oppai<N, M> {
+  type Analysis = OppaiAnalysis<N>;
   type Confidence = InConfidence;
 
   fn analyze<S, R, SS>(
@@ -134,7 +166,7 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
       )
     });
 
-    ai.analyze(rng, field, player, confidence, should_stop)
+    OppaiAnalysis(ai.analyze(rng, field, player, confidence, should_stop))
   }
 }
 
