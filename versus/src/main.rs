@@ -2,17 +2,24 @@ mod config;
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::io::Result;
+use std::io::{stdout, Result};
+use std::io::{Error, Write};
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
 
 use config::cli_parse;
+use crossterm::{
+  cursor::MoveTo,
+  terminal::{Clear, ClearType},
+  QueueableCommand,
+};
 use oppai_client::Client;
 use oppai_field::field::{length, Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
 use oppai_initial::initial::InitialPosition;
+use oppai_term_render::render;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
@@ -129,16 +136,40 @@ impl Game {
     }
   }
 
+  fn clear_screen() {
+    let mut out = stdout();
+    out.queue(Clear(ClearType::All)).unwrap();
+    out.queue(Clear(ClearType::Purge)).unwrap();
+    out.queue(MoveTo(0, 0)).unwrap();
+    out.flush().unwrap();
+  }
+
+  fn draw(&self, stats: &Stats) -> Result<()> {
+    Game::clear_screen();
+    #[cfg(not(feature = "term-render"))]
+    print!("{}", self.field);
+    #[cfg(feature = "term-render")]
+    {
+      let config = oppai_svg::Config {
+        width: 256,
+        height: 256,
+        ..oppai_svg::Config::default()
+      };
+      let extended_field = self.field.clone().into();
+      render(&extended_field, &config).map_err(Error::other)?;
+    }
+    println!("{}", stats);
+    Ok(())
+  }
+
   async fn play(&mut self, mut player: Player, swap: bool, stats: &mut Stats) -> Result<()> {
     let mut cur_swap = swap;
-    print!("\x1B[2J\x1B[1;1H");
-    print!("{}\n{}", stats, self.field);
+    self.draw(stats)?;
     while let Some(pos) = self.best_move(player, cur_swap).await? {
       if !self.put_point(pos.get(), player).await? {
         break;
       }
-      print!("\x1B[2J\x1B[1;1H");
-      print!("{}\n{}", stats, self.field);
+      self.draw(stats)?;
       if self.is_game_over() {
         break;
       }
@@ -150,6 +181,7 @@ impl Game {
   }
 
   async fn init(&mut self) -> Result<()> {
+    self.field.clear();
     self.client1.init(self.field.width(), self.field.height()).await?;
     self.client2.init(self.field.width(), self.field.height()).await?;
     Ok(())

@@ -12,6 +12,13 @@ log.workspace = true
 env_logger.workspace = true
 clap = { workspace = true, features = [ "cargo" ] }
 futures = { workspace = true, features = [ "executor" ] }
+crossterm = "0.27"
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
 oppai-client = { path = "../client" }
+oppai-svg = { path = "../svg", optional = true }
+oppai-term-render = { path = "../term-render", optional = true }
+
+[features]
+default = [ "term-render" ]
+term-render = [ "dep:oppai-svg", "dep:oppai-term-render" ]

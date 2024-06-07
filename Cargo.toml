@@ -21,6 +21,7 @@ members = [
   "protocol",
   "cli",
   "client",
+  "term-render",
   "versus"
 ]
 
