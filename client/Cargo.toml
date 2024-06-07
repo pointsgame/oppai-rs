@@ -9,6 +9,7 @@ edition = "2021"
 [dependencies]
 oppai-field = { path = "../field" }
 oppai-protocol = { path = "../protocol" }
+log.workspace = true
 futures.workspace = true
 async-process.workspace = true
 serde_json.workspace = true

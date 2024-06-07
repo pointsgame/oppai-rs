@@ -20,7 +20,8 @@ members = [
   "ais",
   "protocol",
   "cli",
-  "client"
+  "client",
+  "versus"
 ]
 
 [workspace.dependencies]

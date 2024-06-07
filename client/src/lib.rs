@@ -8,6 +8,7 @@ use futures::{
   io::{AsyncWriteExt, BufReader},
   AsyncBufReadExt,
 };
+use log::debug;
 use oppai_field::player::Player;
 use oppai_protocol::{Coords, Move, Request, Response};
 
@@ -36,13 +37,17 @@ impl Client {
   }
 
   async fn request(&mut self, request: Request) -> Result<()> {
-    self.stdin.write_all(serde_json::to_vec(&request)?.as_slice()).await
+    debug!("Request: {:?}", request);
+    let mut bytes = serde_json::to_vec(&request)?;
+    bytes.push(b"\n"[0]);
+    self.stdin.write_all(bytes.as_slice()).await
   }
 
   async fn response(&mut self) -> Result<Response> {
     let mut s = String::new();
     self.stdout.read_line(&mut s).await?;
     let response = serde_json::from_str::<Response>(&s)?;
+    debug!("Response: {:?}", response);
     Ok(response)
   }
 

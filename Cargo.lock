@@ -3532,6 +3532,7 @@ version = "0.1.0"
 dependencies = [
  "async-process",
  "futures",
+ "log",
  "oppai-field",
  "oppai-protocol",
  "serde_json",
@@ -3690,6 +3691,20 @@ dependencies = [
  "rand",
  "rand_xoshiro",
  "strum 0.26.2",
+]
+
+[[package]]
+name = "oppai-versus"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "env_logger",
+ "futures",
+ "log",
+ "oppai-client",
+ "oppai-field",
+ "oppai-initial",
+ "rand",
 ]
 
 [[package]]
