@@ -112,8 +112,38 @@ impl<N: Float + Sum + Display + Debug + 'static> OppaiWeight<N> {
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct OppaiEstimation<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Estimation);
 
+impl<N: Float + Sum + Display + Debug + 'static> OppaiEstimation<N> {
+  pub fn to_f64(&self) -> Option<f64> {
+    match self.0 {
+      Either::Left(()) => None,
+      Either::Right(Either::Left(())) => None,
+      Either::Right(Either::Right(Either::Left(e))) => Some(e as f64),
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Left(()))))) => None,
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(e)))))) => Some(e as f64),
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(())))))) => None,
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(e))))) => Some(e),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(e))))) => e.to_f64(),
+    }
+  }
+}
+
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct OppaiConfidence<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Confidence);
+
+impl<N: Float + Sum + Display + Debug + 'static> OppaiConfidence<N> {
+  pub fn to_f64(&self) -> Option<f64> {
+    match self.0 {
+      Either::Left(()) => None,
+      Either::Right(Either::Left(())) => None,
+      Either::Right(Either::Right(Either::Left(()))) => None,
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Left(()))))) => None,
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(c)))))) => Some(c as f64),
+      Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(())))))) => None,
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(c))))) => Some(c as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(c))))) => Some(c as f64),
+    }
+  }
+}
 
 pub struct OppaiAnalysis<N: Float + Sum + Display + Debug + 'static>(InnerAnalysis<N>);
 
