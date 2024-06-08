@@ -153,7 +153,7 @@ impl ExtendedField {
     }
   }
 
-  pub fn undo_all(&mut self) {
+  pub fn clear(&mut self) {
     while self.undo() {}
   }
 }

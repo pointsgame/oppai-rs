@@ -9,6 +9,7 @@ pub trait AnyField {
   fn new_from_rng<R: Rng>(width: u32, height: u32, rng: &mut R) -> Self;
   fn put_players_point(&mut self, pos: Pos, player: Player) -> bool;
   fn undo(&mut self) -> bool;
+  fn clear(&mut self);
   fn field(&self) -> &Field;
 }
 
@@ -21,6 +22,9 @@ impl AnyField for Field {
   }
   fn undo(&mut self) -> bool {
     self.undo()
+  }
+  fn clear(&mut self) {
+    self.clear()
   }
   fn field(&self) -> &Field {
     self
@@ -36,6 +40,9 @@ impl AnyField for ExtendedField {
   }
   fn undo(&mut self) -> bool {
     self.undo()
+  }
+  fn clear(&mut self) {
+    self.clear()
   }
   fn field(&self) -> &Field {
     &self.field

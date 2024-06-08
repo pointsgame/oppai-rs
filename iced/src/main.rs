@@ -184,7 +184,7 @@ impl Game {
 
   pub fn undo_all(&mut self) -> bool {
     if self.canvas_field.extended_field.undo() {
-      self.canvas_field.extended_field.undo_all();
+      self.canvas_field.extended_field.clear();
       #[cfg(target_arch = "wasm32")]
       self.send_worker_message(Request::UndoAll);
       self.refresh();

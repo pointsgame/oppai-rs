@@ -5,7 +5,6 @@ use std::fmt;
 use std::io::{stdout, Result};
 use std::io::{Error, Write};
 use std::ops::Add;
-use std::sync::Arc;
 use std::time::Duration;
 
 use config::cli_parse;
@@ -15,9 +14,9 @@ use crossterm::{
   QueueableCommand,
 };
 use oppai_client::Client;
-use oppai_field::field::{length, Field, NonZeroPos, Pos};
+use oppai_field::extended_field::ExtendedField;
+use oppai_field::field::{NonZeroPos, Pos};
 use oppai_field::player::Player;
-use oppai_field::zobrist::Zobrist;
 use oppai_initial::initial::InitialPosition;
 use oppai_term_render::render;
 use rand::rngs::SmallRng;
@@ -74,7 +73,7 @@ impl Stats {
 }
 
 struct Game {
-  field: Field,
+  field: ExtendedField,
   client1: Client,
   client2: Client,
 }
@@ -90,15 +89,15 @@ impl Game {
       moves
         .into_iter()
         .max_by(|m1, m2| m1.weight.partial_cmp(&m2.weight).unwrap())
-        .map(|m| self.field.to_pos(m.coords.x, m.coords.y))
+        .map(|m| self.field.field.to_pos(m.coords.x, m.coords.y))
         .and_then(NonZeroPos::new),
     )
   }
 
   async fn put_point(&mut self, pos: Pos, player: Player) -> Result<bool> {
-    if self.field.put_point(pos, player) {
-      let x = self.field.to_x(pos);
-      let y = self.field.to_y(pos);
+    if self.field.put_players_point(pos, player) {
+      let x = self.field.field.to_x(pos);
+      let y = self.field.field.to_y(pos);
       Ok(self.client1.put_point(x, y, player).await? && self.client2.put_point(x, y, player).await?)
     } else {
       Ok(false)
@@ -106,18 +105,18 @@ impl Game {
   }
 
   async fn place_initial_position(&mut self, player: Player, initial_position: InitialPosition) -> Result<()> {
-    for (pos, player) in initial_position.points(self.field.width(), self.field.height(), player) {
+    for (pos, player) in initial_position.points(self.field.field.width(), self.field.field.height(), player) {
       self.put_point(pos, player).await?;
     }
     Ok(())
   }
 
   fn is_game_over(&mut self) -> bool {
-    self.field.is_game_over()
+    self.field.field.is_game_over()
   }
 
   fn stats(&self, swap: bool) -> Stats {
-    match self.field.score(Player::Red).cmp(&0) {
+    match self.field.field.score(Player::Red).cmp(&0) {
       Ordering::Less => {
         if swap {
           Stats::WIN
@@ -155,8 +154,7 @@ impl Game {
         height: 256,
         ..oppai_svg::Config::default()
       };
-      let extended_field = self.field.clone().into();
-      render(&extended_field, &config).map_err(Error::other)?;
+      render(&self.field, &config).map_err(Error::other)?;
     }
     println!("{}", stats);
     Ok(())
@@ -182,8 +180,14 @@ impl Game {
 
   async fn init(&mut self) -> Result<()> {
     self.field.clear();
-    self.client1.init(self.field.width(), self.field.height()).await?;
-    self.client2.init(self.field.width(), self.field.height()).await?;
+    self
+      .client1
+      .init(self.field.field.width(), self.field.field.height())
+      .await?;
+    self
+      .client2
+      .init(self.field.field.width(), self.field.field.height())
+      .await?;
     Ok(())
   }
 }
@@ -195,9 +199,8 @@ fn main() -> Result<()> {
   let config = cli_parse();
 
   let mut rng = SmallRng::from_entropy();
-  let zobrist = Arc::new(Zobrist::new(length(WIDTH, HEIGHT) * 2, &mut rng));
   let mut game = Game {
-    field: Field::new(WIDTH, HEIGHT, zobrist),
+    field: ExtendedField::new_from_rng(WIDTH, HEIGHT, &mut rng),
     client1: Client::spawn(config.ai1, vec![])?,
     client2: Client::spawn(config.ai2, vec![])?,
   };
