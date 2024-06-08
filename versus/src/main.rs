@@ -212,8 +212,8 @@ fn main() -> Result<()> {
   let mut rng = SmallRng::from_entropy();
   let mut game = Game {
     field: ExtendedField::new_from_rng(WIDTH, HEIGHT, &mut rng),
-    client1: Client::spawn(config.ai1, vec![])?,
-    client2: Client::spawn(config.ai2, vec![])?,
+    client1: Client::spawn(config.ai1, config.ai1_args)?,
+    client2: Client::spawn(config.ai2, config.ai2_args)?,
   };
 
   let player = Player::default();
