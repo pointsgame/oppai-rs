@@ -2,8 +2,10 @@ mod config;
 
 use std::cmp::Ordering;
 use std::fmt;
+#[cfg(feature = "term-render")]
+use std::io::Error;
+use std::io::Write;
 use std::io::{stdout, Result};
-use std::io::{Error, Write};
 use std::ops::Add;
 use std::time::Duration;
 
@@ -18,6 +20,7 @@ use oppai_field::extended_field::ExtendedField;
 use oppai_field::field::{NonZeroPos, Pos};
 use oppai_field::player::Player;
 use oppai_initial::initial::InitialPosition;
+#[cfg(feature = "term-render")]
 use oppai_term_render::render;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
@@ -143,12 +146,20 @@ impl Game {
     out.flush().unwrap();
   }
 
-  fn draw(&self, stats: &Stats) -> Result<()> {
+  #[cfg(not(feature = "term-render"))]
+  fn draw(&self, stats: &Stats, _ascii: bool) -> Result<()> {
     Game::clear_screen();
-    #[cfg(not(feature = "term-render"))]
-    print!("{}", self.field);
-    #[cfg(feature = "term-render")]
-    {
+    print!("{}", self.field.field);
+    println!("{}", stats);
+    Ok(())
+  }
+
+  #[cfg(feature = "term-render")]
+  fn draw(&self, stats: &Stats, ascii: bool) -> Result<()> {
+    Game::clear_screen();
+    if ascii {
+      print!("{}", self.field.field);
+    } else {
       let config = oppai_svg::Config {
         width: 256,
         height: 256,
@@ -160,14 +171,14 @@ impl Game {
     Ok(())
   }
 
-  async fn play(&mut self, mut player: Player, swap: bool, stats: &mut Stats) -> Result<()> {
+  async fn play(&mut self, mut player: Player, swap: bool, stats: &mut Stats, ascii: bool) -> Result<()> {
     let mut cur_swap = swap;
-    self.draw(stats)?;
+    self.draw(stats, ascii)?;
     while let Some(pos) = self.best_move(player, cur_swap).await? {
       if !self.put_point(pos.get(), player).await? {
         break;
       }
-      self.draw(stats)?;
+      self.draw(stats, ascii)?;
       if self.is_game_over() {
         break;
       }
@@ -209,11 +220,15 @@ fn main() -> Result<()> {
   let mut stats = Stats::default();
   let mut swap = false;
 
+  #[cfg(feature = "term-render")]
+  let ascii = config.ascii;
+  #[cfg(not(feature = "term-render"))]
+  let ascii = true;
   let future = async {
     loop {
       game.init().await?;
       game.place_initial_position(player, INITIAL_POSITION).await?;
-      game.play(player, swap, &mut stats).await?;
+      game.play(player, swap, &mut stats, ascii).await?;
       swap = !swap;
     }
   };
