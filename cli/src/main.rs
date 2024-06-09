@@ -18,7 +18,8 @@ use rand::SeedableRng;
 use std::{
   default::Default,
   fs::File,
-  io::{self, BufRead, BufReader, Write},
+  io::{self, BufRead, BufReader, Read, Write},
+  path::Path,
   sync::Arc,
 };
 
@@ -32,17 +33,37 @@ fn main() -> Result<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
   let config = cli_parse();
-  let patterns = if config.patterns.is_empty() {
-    Patterns::default()
-  } else {
-    Patterns::from_files(
-      config
-        .patterns
-        .iter()
-        .map(|path| File::open(path).expect("Failed to open patterns file.")),
-    )
-    .expect("Failed to read patterns file.")
-  };
+  let patterns = config
+    .patterns_cache
+    .as_ref()
+    .filter(|patterns_cache| Path::new(patterns_cache).exists())
+    .map(|patterns_cache| {
+      let mut file = File::open(patterns_cache).expect("Failed to open patterns cache file.");
+      let mut buffer = Vec::new();
+      file
+        .read_to_end(&mut buffer)
+        .expect("Failed to read patterns cache file.");
+      postcard::from_bytes(&buffer).expect("Failed to deserialize patterns cache file.")
+    })
+    .unwrap_or_else(|| {
+      if config.patterns.is_empty() {
+        Patterns::default()
+      } else {
+        Patterns::from_files(
+          config
+            .patterns
+            .iter()
+            .map(|path| File::open(path).expect("Failed to open patterns file.")),
+        )
+        .expect("Failed to read patterns file.")
+      }
+    });
+  if let Some(patterns_cache) = config.patterns_cache.as_ref() {
+    if !Path::new(patterns_cache).exists() {
+      let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
+      std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
+    }
+  }
   let patterns_arc = Arc::new(patterns);
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();

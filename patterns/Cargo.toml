@@ -9,6 +9,7 @@ edition = "2021"
 [dependencies]
 log.workspace = true
 rayon.workspace = true
+serde.workspace = true
 oppai-field = { path = "../field" }
 oppai-rotate = { path = "../rotate" }
 

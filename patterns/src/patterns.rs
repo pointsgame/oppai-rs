@@ -4,6 +4,7 @@ use oppai_field::cell::Cell;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::*;
+use serde::{Deserialize, Serialize};
 use std::{
   cmp,
   fs::File,
@@ -11,12 +12,13 @@ use std::{
   str::FromStr,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Move {
   x: i32,
   y: i32,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Patterns {
   min_size: u32,
   dfa: Dfa<Move>,

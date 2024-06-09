@@ -37,9 +37,11 @@ use rfd::AsyncFileDialog;
 #[cfg(not(target_arch = "wasm32"))]
 use rfd::FileHandle;
 use sgf_parse::GameTree;
+use std::io::Read;
 use std::iter;
 #[cfg(not(target_arch = "wasm32"))]
 use std::ops::DerefMut;
+use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
   atomic::{AtomicBool, Ordering},
@@ -247,17 +249,38 @@ impl Application for Game {
     let mut extended_field = ExtendedField::new_from_rng(flags.width, flags.height, &mut rng);
     // TODO: store patterns to use them when new Oppai is created
     #[cfg(not(target_arch = "wasm32"))]
-    let patterns = if flags.patterns.is_empty() {
-      Patterns::default()
-    } else {
-      Patterns::from_files(
-        flags
-          .patterns
-          .iter()
-          .map(|path| File::open(path).expect("Failed to open patterns file.")),
-      )
-      .expect("Failed to read patterns file.")
-    };
+    let patterns = flags
+      .patterns_cache
+      .as_ref()
+      .filter(|patterns_cache| Path::new(patterns_cache).exists())
+      .map(|patterns_cache| {
+        let mut file = File::open(patterns_cache).expect("Failed to open patterns cache file.");
+        let mut buffer = Vec::new();
+        file
+          .read_to_end(&mut buffer)
+          .expect("Failed to read patterns cache file.");
+        postcard::from_bytes(&buffer).expect("Failed to deserialize patterns cache file.")
+      })
+      .unwrap_or_else(|| {
+        if flags.patterns.is_empty() {
+          Patterns::default()
+        } else {
+          Patterns::from_files(
+            flags
+              .patterns
+              .iter()
+              .map(|path| File::open(path).expect("Failed to open patterns file.")),
+          )
+          .expect("Failed to read patterns file.")
+        }
+      });
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(patterns_cache) = flags.patterns_cache.as_ref() {
+      if !Path::new(patterns_cache).exists() {
+        let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
+        std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
+      }
+    }
     #[cfg(not(target_arch = "wasm32"))]
     let oppai = Oppai::new(
       flags.width,

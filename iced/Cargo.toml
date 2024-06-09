@@ -16,6 +16,7 @@ clap = { workspace = true, features = ["cargo"] }
 humantime.workspace = true
 rfd = { version = "0.14", default-features = false, features = ["async-std", "xdg-portal"] }
 sgf-parse.workspace = true
+postcard = { workspace = true, features = [ "use-std" ] }
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
 oppai-patterns = { path = "../patterns" }

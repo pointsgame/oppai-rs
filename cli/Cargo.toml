@@ -14,6 +14,7 @@ clap = { workspace = true, features = [ "cargo" ] }
 humantime.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+postcard = { workspace = true, features = [ "use-std" ] }
 oppai-common = { path = "../common" }
 oppai-field = { path = "../field" }
 oppai-ladders = { path = "../ladders" }

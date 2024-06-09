@@ -13,6 +13,7 @@ pub struct Config {
   pub canvas_config: CanvasConfig,
   pub initial_position: InitialPosition,
   pub patterns: Vec<String>,
+  pub patterns_cache: Option<String>,
   pub ai_config: AIConfig,
   pub time: Duration,
 }
@@ -25,6 +26,7 @@ impl Default for Config {
       canvas_config: CanvasConfig::default(),
       initial_position: InitialPosition::Cross,
       patterns: Vec::new(),
+      patterns_cache: None,
       ai_config: AIConfig::default(),
       time: Duration::from_secs(5),
     }
@@ -146,6 +148,13 @@ pub fn cli_parse() -> Config {
         .num_args(1..),
     )
     .arg(
+      Arg::new("patterns-cache-file")
+        .short('c')
+        .long("patterns-cache-file")
+        .help("Patterns cache file to use")
+        .num_args(1),
+    )
+    .arg(
       Arg::new("time")
         .long("time")
         .help("Time to think that AI will use for one move")
@@ -194,6 +203,7 @@ pub fn cli_parse() -> Config {
   let patterns = matches
     .get_many("patterns-file")
     .map_or_else(Vec::new, |patterns| patterns.cloned().collect());
+  let patterns_cache = matches.get_one("patterns-cache-file").cloned();
   let ai_config = parse_config(&matches);
   let time = matches.get_one::<humantime::Duration>("time").copied().unwrap().into();
 
@@ -214,6 +224,7 @@ pub fn cli_parse() -> Config {
     },
     initial_position,
     patterns,
+    patterns_cache,
     ai_config,
     time,
   }

@@ -74,7 +74,6 @@ cargo bench --features bench
 ## Ideas
 
 * Best Node Search algorithm (see [link](https://dspace.lu.lv/dspace/bitstream/handle/7/4903/38550-Dmitrijs_Rutko_2013.pdf)).
-* Cache built DFA for fast patterns loading.
 * Fill debuts database.
 * Fill heuristics database.
 * Use patterns for UCT random games (see [link](http://pasky.or.cz/go/pachi-tr.pdf)).

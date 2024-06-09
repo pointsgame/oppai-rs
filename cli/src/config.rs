@@ -7,6 +7,7 @@ use std::time::Duration;
 pub struct Config {
   pub ai: AIConfig,
   pub patterns: Vec<String>,
+  pub patterns_cache: Option<String>,
   pub uct_iterations: usize,
   pub minimax_depth: u32,
   pub time_gap: Duration,
@@ -25,6 +26,13 @@ pub fn cli_parse() -> Config {
         .long("patterns-file")
         .help("Patterns file to use")
         .num_args(1..),
+    )
+    .arg(
+      Arg::new("patterns-cache-file")
+        .short('c')
+        .long("patterns-cache-file")
+        .help("Patterns cache file to use")
+        .num_args(1),
     )
     .arg(
       Arg::new("minimax-depth")
@@ -63,6 +71,7 @@ pub fn cli_parse() -> Config {
     patterns: matches
       .get_many("patterns-file")
       .map_or_else(Vec::new, |patterns| patterns.cloned().collect()),
+    patterns_cache: matches.get_one("patterns-cache-file").cloned(),
     uct_iterations: matches.get_one("uct-iterations").copied().unwrap(),
     minimax_depth: matches.get_one("minimax-depth").copied().unwrap(),
     time_gap: matches
