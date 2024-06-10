@@ -83,7 +83,6 @@ cargo bench --features bench
 * Smart time control for Minimax.
 * Think on enemy's move.
 * Forbid typical losing ladders.
-* Fractional komi support.
 * Split trajectories by groups for Minimax and solve them independently.
 
 ## License
