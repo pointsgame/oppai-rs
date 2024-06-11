@@ -11,22 +11,19 @@ pub struct Coords {
 
 #[serde_as]
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value")]
+pub enum Constraint {
+  Time(#[serde_as(as = "DurationMilliSeconds")] Duration),
+  Complexity(f64),
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
 pub enum Request {
-  Init {
-    width: u32,
-    height: u32,
-  },
-  PutPoint {
-    coords: Coords,
-    player: Player,
-  },
+  Init { width: u32, height: u32 },
+  PutPoint { coords: Coords, player: Player },
   Undo,
-  Analyze {
-    player: Player,
-    #[serde_as(as = "DurationMilliSeconds")]
-    time: Duration,
-  },
+  Analyze { player: Player, constraint: Constraint },
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -80,13 +77,23 @@ mod tests {
   from_to_json_test!(undo_request, Request, Request::Undo, r#"{"command":"Undo"}"#);
 
   from_to_json_test!(
-    analyze_request,
+    analyze_with_time_request,
     Request,
     Request::Analyze {
       player: Player::Red,
-      time: Duration::from_secs(7),
+      constraint: Constraint::Time(Duration::from_secs(7)),
     },
-    r#"{"command":"Analyze","player":"Red","time":7000}"#
+    r#"{"command":"Analyze","player":"Red","constraint":{"type":"Time","value":7000}}"#
+  );
+
+  from_to_json_test!(
+    analyze_with_complexity_request,
+    Request,
+    Request::Analyze {
+      player: Player::Red,
+      constraint: Constraint::Complexity(1.0),
+    },
+    r#"{"command":"Analyze","player":"Red","constraint":{"type":"Complexity","value":1.0}}"#
   );
 
   from_to_json_test!(init_response, Response, Response::Init, r#"{"command":"Init"}"#);

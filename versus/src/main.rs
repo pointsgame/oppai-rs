@@ -15,7 +15,7 @@ use crossterm::{
   terminal::{Clear, ClearType},
   QueueableCommand,
 };
-use oppai_client::Client;
+use oppai_client::{Client, Constraint};
 use oppai_field::extended_field::ExtendedField;
 use oppai_field::field::{NonZeroPos, Pos};
 use oppai_field::player::Player;
@@ -84,9 +84,9 @@ struct Game {
 impl Game {
   async fn best_move(&mut self, player: Player, swap: bool) -> Result<Option<NonZeroPos>> {
     let moves = if swap {
-      self.client2.analyze(player, TIME).await?
+      self.client2.analyze(player, Constraint::Time(TIME)).await?
     } else {
-      self.client1.analyze(player, TIME).await?
+      self.client1.analyze(player, Constraint::Time(TIME)).await?
     };
     Ok(
       moves

@@ -1,7 +1,4 @@
-use std::{
-  io::{Error, Result},
-  time::Duration,
-};
+use std::io::{Error, Result};
 
 use async_process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use futures::{
@@ -10,6 +7,7 @@ use futures::{
 };
 use log::debug;
 use oppai_field::player::Player;
+pub use oppai_protocol::Constraint;
 use oppai_protocol::{Coords, Move, Request, Response};
 
 pub struct Client {
@@ -91,8 +89,8 @@ impl Client {
     }
   }
 
-  pub async fn analyze(&mut self, player: Player, time: Duration) -> Result<Vec<Move>> {
-    self.request(Request::Analyze { player, time }).await?;
+  pub async fn analyze(&mut self, player: Player, constraint: Constraint) -> Result<Vec<Move>> {
+    self.request(Request::Analyze { player, constraint }).await?;
 
     let response = self.response().await?;
 

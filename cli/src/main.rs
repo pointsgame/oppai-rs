@@ -6,13 +6,16 @@ mod config;
 use crate::config::cli_parse;
 use anyhow::Result;
 use oppai_ai::{ai::AI, analysis::Analysis};
-use oppai_ais::{oppai::Oppai, time_limited_ai::TimeLimitedAI};
+use oppai_ais::{
+  oppai::{InConfidence, Oppai},
+  time_limited_ai::TimeLimitedAI,
+};
 use oppai_field::{
   field::{length, Field},
   zobrist::Zobrist,
 };
 use oppai_patterns::patterns::Patterns;
-use oppai_protocol::{Coords, Move, Request, Response};
+use oppai_protocol::{Constraint, Coords, Move, Request, Response};
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 use std::{
@@ -96,10 +99,38 @@ fn main() -> Result<()> {
         let undone = state.field.undo();
         Response::Undo { undone }
       }
-      Request::Analyze { player, time } => {
+      Request::Analyze {
+        player,
+        constraint: Constraint::Time(time),
+      } => {
         let state = state_option.as_mut().ok_or(anyhow::anyhow!("Not initialized"))?;
         let mut oppai = TimeLimitedAI(time, &mut state.oppai);
         let analysis = oppai.analyze(&mut state.rng, &mut state.field, player, None, &|| false);
+        let moves = analysis
+          .moves()
+          .map(|(pos, weight)| Move {
+            coords: Coords {
+              x: state.field.to_x(pos),
+              y: state.field.to_y(pos),
+            },
+            weight: weight.to_f64().unwrap_or_default(),
+          })
+          .collect();
+        Response::Analyze { moves }
+      }
+      Request::Analyze {
+        player,
+        constraint: Constraint::Complexity(complexity),
+      } => {
+        let state = state_option.as_mut().ok_or(anyhow::anyhow!("Not initialized"))?;
+        let confidence = InConfidence {
+          minimax_depth: (8.0 * complexity).round() as u32,
+          uct_iterations: (100_000.0 * complexity).round() as usize,
+          zero_iterations: (1_000.0 * complexity).round() as usize,
+        };
+        let analysis = state
+          .oppai
+          .analyze(&mut state.rng, &mut state.field, player, Some(confidence), &|| false);
         let moves = analysis
           .moves()
           .map(|(pos, weight)| Move {
