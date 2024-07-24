@@ -1,0 +1,25 @@
+[package]
+name = "oppai-server"
+version = "0.1.0"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
+edition = "2021"
+
+[dependencies]
+rand.workspace = true
+anyhow.workspace = true
+futures = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio = { version = "1.0", features = ["full"] }
+tokio-tungstenite = "0.21"
+papaya = "0.1"
+im = "15.1"
+uuid = { version = "1.10", features = ["serde"] }
+oppai-field = { path = "../field" }
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
