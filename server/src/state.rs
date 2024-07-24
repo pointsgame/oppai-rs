@@ -69,19 +69,23 @@ impl State {
     });
   }
 
+  async fn send_to(tx: &mut Sender<Response>, response: Response) -> Result<()> {
+    tokio::time::timeout(Duration::from_millis(10), tx.send(response)).await??;
+    Ok(())
+  }
+
   pub async fn send_to_connection(&self, connection_id: ConnectionId, response: Response) -> Result<()> {
     let connection = if let Some(connection) = self.connections.pin().get(&connection_id) {
       connection.clone()
     } else {
       anyhow::bail!("no connection");
     };
+    let mut connection = connection.write().await;
 
-    tokio::time::timeout(Duration::from_millis(10), connection.write().await.send(response)).await??;
-
-    Ok(())
+    Self::send_to(&mut connection, response).await
   }
 
-  pub async fn send_to_player(&self, player_id: PlayerId, response: Response) -> Result<()> {
+  pub async fn send_to_player(&self, player_id: PlayerId, response: Response) {
     if let Some(connections) = self.players.pin_owned().get(&player_id) {
       for &connection_id in connections {
         if let Err(_) = self.send_to_connection(connection_id, response.clone()).await {
@@ -89,7 +93,14 @@ impl State {
         }
       }
     }
+  }
 
-    Ok(())
+  pub async fn send_to_all(&self, response: Response) {
+    for connection in self.connections.pin_owned().values() {
+      let mut connection = connection.write().await;
+      if let Err(_) = Self::send_to(&mut connection, response.clone()).await {
+        // TODO: log
+      }
+    }
   }
 }
