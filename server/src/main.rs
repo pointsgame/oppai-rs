@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use futures::channel::mpsc;
+use futures::channel::mpsc::{self, Sender};
 use futures_util::{select, FutureExt, SinkExt, StreamExt};
 use ids::*;
 use oppai_field::field::Field;
@@ -17,15 +17,7 @@ mod ids;
 mod message;
 mod state;
 
-async fn accept_connection<R: Rng>(state: Arc<State>, mut rng: R, stream: TcpStream) -> Result<()> {
-  let ws_stream = tokio_tungstenite::accept_async(stream).await?;
-  let (mut tx_ws, mut rx_ws) = ws_stream.split();
-
-  let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
-  let player_id = PlayerId(Builder::from_random_bytes(rng.gen()).into_uuid());
-
-  let (tx, mut rx) = mpsc::channel::<message::Response>(32);
-
+async fn init(state: &State, connection_id: ConnectionId, tx: Sender<message::Response>) -> Result<()> {
   // lock connection before inserting so we can be sure we send init message before any update
   let connection = Arc::new(RwLock::new(tx));
   let connection_c = connection.clone();
@@ -60,8 +52,19 @@ async fn accept_connection<R: Rng>(state: Arc<State>, mut rng: R, stream: TcpStr
   let init = message::Response::Init { open_games, games };
   connection_c_lock.send(init).await?;
 
-  drop(connection_c_lock);
-  drop(connection_c);
+  Ok(())
+}
+
+async fn accept_connection<R: Rng>(state: Arc<State>, mut rng: R, stream: TcpStream) -> Result<()> {
+  let ws_stream = tokio_tungstenite::accept_async(stream).await?;
+  let (mut tx_ws, mut rx_ws) = ws_stream.split();
+
+  let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
+  let player_id = PlayerId(Builder::from_random_bytes(rng.gen()).into_uuid());
+
+  let (tx, mut rx) = mpsc::channel::<message::Response>(32);
+
+  init(&state, connection_id, tx).await?;
 
   state.insert_players_connection(player_id, connection_id);
 
