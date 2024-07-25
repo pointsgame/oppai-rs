@@ -5,7 +5,7 @@ use futures_util::SinkExt;
 use im::HashSet as ImHashSet;
 use oppai_field::{field::Field, player::Player};
 use papaya::{HashMap, Operation};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -20,18 +20,12 @@ pub struct OpenGame {
   pub size: FieldSize,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct GameState {
-  pub watchers: HashSet<ConnectionId>,
-  pub field: Field,
-}
-
 #[derive(Debug, Clone)]
 pub struct Game {
   pub red_player_id: PlayerId,
   pub black_player_id: PlayerId,
   pub size: FieldSize,
-  pub state: Arc<RwLock<GameState>>,
+  pub field: Arc<RwLock<Field>>,
 }
 
 impl Game {
@@ -58,6 +52,8 @@ pub struct State {
   pub open_games: HashMap<GameId, OpenGame>,
   /// Games have mutable state inside.
   pub games: HashMap<GameId, Game>,
+  /// Immutable set just allows to avoid lock here.
+  pub watchers: HashMap<GameId, ImHashSet<ConnectionId>>,
 }
 
 impl State {
@@ -66,6 +62,24 @@ impl State {
       Some((_, connections)) if connections.contains(&connection_id) => Operation::Abort(()),
       Some((_, connections)) => Operation::Insert(connections.update(connection_id)),
       None => Operation::Insert(ImHashSet::unit(connection_id)),
+    });
+  }
+
+  pub fn subscribe(&self, connection_id: ConnectionId, game_id: GameId) {
+    self.watchers.pin().compute(game_id, |entry| match entry {
+      Some((_, connections)) if connections.contains(&connection_id) => Operation::Abort(()),
+      Some((_, connections)) => Operation::Insert(connections.update(connection_id)),
+      None => Operation::Insert(ImHashSet::unit(connection_id)),
+    });
+  }
+
+  pub fn unsubscribe(&self, connection_id: ConnectionId, game_id: GameId) {
+    self.watchers.pin().compute(game_id, |entry| match entry {
+      Some((_, connections)) if connections.contains(&connection_id) => {
+        Operation::Insert(connections.without(&connection_id))
+      }
+      Some((_, connections)) if connections.is_empty() => Operation::Remove,
+      _ => Operation::Abort(()),
     });
   }
 
@@ -87,6 +101,16 @@ impl State {
 
   pub async fn send_to_player(&self, player_id: PlayerId, response: Response) {
     if let Some(connections) = self.players.pin_owned().get(&player_id) {
+      for &connection_id in connections {
+        if let Err(_) = self.send_to_connection(connection_id, response.clone()).await {
+          // TODO: log
+        }
+      }
+    }
+  }
+
+  pub async fn send_to_watchers(&self, game_id: GameId, response: Response) {
+    if let Some(connections) = self.watchers.pin_owned().get(&game_id) {
       for &connection_id in connections {
         if let Err(_) = self.send_to_connection(connection_id, response.clone()).await {
           // TODO: log

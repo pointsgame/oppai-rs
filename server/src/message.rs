@@ -52,7 +52,7 @@ pub enum Response {
   /// First message after subscription.
   GameInit {},
   /// A new game was created in a lobby.
-  Create { game_id: GameId, width: u32, height: u32 },
+  Create { game_id: GameId, size: FieldSize },
   /// A new game started.
   Start { game_id: GameId },
   /// A point in a game was put.
