@@ -56,6 +56,14 @@ async fn init(state: &State, connection_id: ConnectionId, tx: Sender<message::Re
   Ok(())
 }
 
+fn finalize(state: &State, connection_id: ConnectionId, player_id: PlayerId, watching: &HashSet<GameId>) {
+  for &game_id in watching {
+    state.unsubscribe(connection_id, game_id);
+  }
+
+  state.remove_players_connection(player_id, connection_id);
+}
+
 async fn create<R: Rng>(rng: &mut R, player_id: PlayerId, state: &State, size: message::FieldSize) {
   let game_id = GameId(Builder::from_random_bytes(rng.gen()).into_uuid());
   let open_game = OpenGame {
@@ -192,12 +200,14 @@ async fn accept_connection<R: Rng>(state: Arc<State>, mut rng: R, stream: TcpStr
     Ok::<(), Error>(())
   };
 
-  select! {
+  let result = select! {
     r = future1.fuse() => r,
     r = future2.fuse() => r,
-  }?;
+  };
 
-  Ok(())
+  finalize(&state, connection_id, player_id, &watching);
+
+  result
 }
 
 #[tokio::main]

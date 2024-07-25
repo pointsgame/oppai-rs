@@ -65,6 +65,20 @@ impl State {
     });
   }
 
+  pub fn remove_players_connection(&self, player_id: PlayerId, connection_id: ConnectionId) {
+    self.players.pin().compute(player_id, |entry| match entry {
+      Some((_, connections)) if connections.contains(&connection_id) => {
+        let new_connections = connections.without(&connection_id);
+        if new_connections.is_empty() {
+          Operation::Remove
+        } else {
+          Operation::Insert(new_connections)
+        }
+      }
+      _ => Operation::Abort(()),
+    });
+  }
+
   pub fn subscribe(&self, connection_id: ConnectionId, game_id: GameId) {
     self.watchers.pin().compute(game_id, |entry| match entry {
       Some((_, connections)) if connections.contains(&connection_id) => Operation::Abort(()),
@@ -76,9 +90,13 @@ impl State {
   pub fn unsubscribe(&self, connection_id: ConnectionId, game_id: GameId) {
     self.watchers.pin().compute(game_id, |entry| match entry {
       Some((_, connections)) if connections.contains(&connection_id) => {
-        Operation::Insert(connections.without(&connection_id))
+        let new_connections = connections.without(&connection_id);
+        if new_connections.is_empty() {
+          Operation::Remove
+        } else {
+          Operation::Insert(new_connections)
+        }
       }
-      Some((_, connections)) if connections.is_empty() => Operation::Remove,
       _ => Operation::Abort(()),
     });
   }
