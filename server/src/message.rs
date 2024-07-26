@@ -15,12 +15,14 @@ pub struct Coordinate {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenGame {
   pub game_id: GameId,
   pub size: FieldSize,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Game {
   pub game_id: GameId,
   pub size: FieldSize,
@@ -28,6 +30,7 @@ pub struct Game {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
+#[serde(rename_all_fields = "camelCase")]
 pub enum Request {
   /// Create a new game in a lobby.
   Create { size: FieldSize },
@@ -43,6 +46,7 @@ pub enum Request {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
+#[serde(rename_all_fields = "camelCase")]
 pub enum Response {
   /// First message when connection is established.
   Init {
