@@ -32,6 +32,7 @@ async fn init(state: &State, connection_id: ConnectionId, tx: Sender<message::Re
     .iter()
     .map(|(&game_id, open_game)| message::OpenGame {
       game_id,
+      player_id: open_game.player_id,
       size: message::FieldSize {
         width: open_game.size.width,
         height: open_game.size.height,
@@ -77,7 +78,13 @@ async fn create<R: Rng>(rng: &mut R, player_id: PlayerId, state: &State, size: m
   // TODO: how many open games per player to allow?
   state.open_games.pin().insert(game_id, open_game);
 
-  state.send_to_all(message::Response::Create { game_id, size }).await;
+  state
+    .send_to_all(message::Response::Create {
+      game_id,
+      player_id,
+      size,
+    })
+    .await;
 }
 
 async fn join<R: Rng>(rng: &mut R, player_id: PlayerId, state: &State, game_id: GameId) {

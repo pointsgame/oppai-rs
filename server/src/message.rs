@@ -17,6 +17,7 @@ pub struct Coordinate {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenGame {
+  pub player_id: PlayerId,
   pub game_id: GameId,
   pub size: FieldSize,
 }
@@ -56,7 +57,7 @@ pub enum Response {
   /// First message after subscription.
   GameInit {},
   /// A new game was created in a lobby.
-  Create { game_id: GameId, size: FieldSize },
+  Create { game_id: GameId, player_id: PlayerId, size: FieldSize },
   /// A new game started.
   Start { game_id: GameId },
   /// A point in a game was put.
