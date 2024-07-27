@@ -182,7 +182,14 @@ async fn put_point(player_id: PlayerId, state: &State, game_id: GameId, coordina
   drop(field);
 
   state
-    .send_to_watchers(game_id, message::Response::PutPoint { game_id, coordinate })
+    .send_to_watchers(
+      game_id,
+      message::Response::PutPoint {
+        game_id,
+        coordinate,
+        player,
+      },
+    )
     .await;
 
   Ok(())

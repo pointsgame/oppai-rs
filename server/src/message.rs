@@ -72,5 +72,9 @@ pub enum Response {
   /// A new game started.
   Start { game_id: GameId },
   /// A point in a game was put.
-  PutPoint { game_id: GameId, coordinate: Coordinate },
+  PutPoint {
+    game_id: GameId,
+    coordinate: Coordinate,
+    player: Player,
+  },
 }
