@@ -108,7 +108,7 @@ async fn join<R: Rng>(rng: &mut R, player_id: PlayerId, state: &State, game_id: 
   state.send_to_all(message::Response::Start { game_id }).await;
 }
 
-fn subscribe(
+async fn subscribe(
   connection_id: ConnectionId,
   watching: &mut HashSet<GameId>,
   state: &State,
@@ -120,7 +120,31 @@ fn subscribe(
 
   state.subscribe(connection_id, game_id);
 
-  Ok(())
+  let field = if let Some(game) = state.games.pin().get(&game_id) {
+    game.field.clone()
+  } else {
+    // TODO: log
+    return Ok(());
+  };
+  let field = field.read().await;
+  state
+    .send_to_connection(
+      connection_id,
+      message::Response::GameInit {
+        game_id,
+        moves: field
+          .colored_moves()
+          .map(|(pos, player)| message::Move {
+            coordinate: message::Coordinate {
+              x: field.to_x(pos),
+              y: field.to_y(pos),
+            },
+            player,
+          })
+          .collect(),
+      },
+    )
+    .await
 }
 
 fn unsubscribe(
@@ -193,7 +217,7 @@ async fn accept_connection<R: Rng>(state: Arc<State>, mut rng: R, stream: TcpStr
         match message {
           message::Request::Create { size } => create(&mut rng, player_id, &state, size).await,
           message::Request::Join { game_id } => join(&mut rng, player_id, &state, game_id).await,
-          message::Request::Subscribe { game_id } => subscribe(connection_id, &mut watching, &state, game_id)?,
+          message::Request::Subscribe { game_id } => subscribe(connection_id, &mut watching, &state, game_id).await?,
           message::Request::Unsubscribe { game_id } => unsubscribe(connection_id, &mut watching, &state, game_id)?,
           message::Request::PutPoint { game_id, coordinate } => {
             put_point(player_id, &state, game_id, coordinate).await?

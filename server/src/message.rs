@@ -17,8 +17,8 @@ pub struct Coordinate {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Move {
-  coordinate: Coordinate,
-  player: Player,
+  pub coordinate: Coordinate,
+  pub player: Player,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
