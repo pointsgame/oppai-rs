@@ -1,3 +1,4 @@
+use oppai_field::player::Player;
 use serde::{Deserialize, Serialize};
 
 use crate::ids::*;
@@ -12,6 +13,12 @@ pub struct FieldSize {
 pub struct Coordinate {
   pub x: u32,
   pub y: u32,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Move {
+  coordinate: Coordinate,
+  player: Player,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -55,9 +62,13 @@ pub enum Response {
     games: Vec<Game>,
   },
   /// First message after subscription.
-  GameInit {},
+  GameInit { game_id: GameId, moves: Vec<Move> },
   /// A new game was created in a lobby.
-  Create { game_id: GameId, player_id: PlayerId, size: FieldSize },
+  Create {
+    game_id: GameId,
+    player_id: PlayerId,
+    size: FieldSize,
+  },
   /// A new game started.
   Start { game_id: GameId },
   /// A point in a game was put.
