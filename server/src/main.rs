@@ -91,7 +91,11 @@ async fn join<R: Rng>(rng: &mut R, player_id: PlayerId, state: &State, game_id: 
   let open_game = if let Some(open_game) = state.open_games.pin().remove(&game_id) {
     open_game.clone()
   } else {
-    // TODO: log
+    log::warn!(
+      "Player {} attempted to join a game {} which dosn't exist",
+      player_id,
+      game_id
+    );
     return;
   };
 
@@ -114,8 +118,11 @@ async fn subscribe(
   state: &State,
   game_id: GameId,
 ) -> Result<()> {
+  if watching.len() > 2 {
+    anyhow::bail!("too many subscriptions from a connection {}", connection_id);
+  }
   if watching.insert(game_id).is_some() {
-    anyhow::bail!("already watching");
+    anyhow::bail!("connection {} already watching the game {}", connection_id, game_id);
   }
 
   state.subscribe(connection_id, game_id);
@@ -154,7 +161,7 @@ fn unsubscribe(
   game_id: GameId,
 ) -> Result<()> {
   if watching.remove(&game_id).is_none() {
-    anyhow::bail!("not watching");
+    anyhow::bail!("connection {} not watching the game {}", connection_id, game_id);
   }
 
   state.unsubscribe(connection_id, game_id);
@@ -167,17 +174,30 @@ async fn put_point(player_id: PlayerId, state: &State, game_id: GameId, coordina
     let player = if let Some(player) = game.color(player_id) {
       player
     } else {
-      anyhow::bail!("putting point is not allowed");
+      anyhow::bail!(
+        "player {} attempted to put point in a wrong game {}",
+        player_id,
+        game_id,
+      );
     };
     (game.field.clone(), player)
   } else {
-    anyhow::bail!("no game to put point");
+    anyhow::bail!(
+      "player {} attempted to put point in a game {} that don't exist",
+      player_id,
+      game_id,
+    );
   };
 
   let mut field = field.write().await;
   let pos = field.to_pos(coordinate.x, coordinate.y);
   if !field.put_point(pos, player) {
-    anyhow::bail!("putting point on a wrong position");
+    anyhow::bail!(
+      "player {} attempted tp put point on a wrong position {:?} in game {}",
+      player_id,
+      (coordinate.x, coordinate.y),
+      game_id,
+    );
   }
   drop(field);
 
@@ -233,8 +253,6 @@ async fn accept_connection<R: Rng>(state: Arc<State>, mut rng: R, stream: TcpStr
       }
     }
 
-    // TODO: cleanup
-
     Ok::<(), Error>(())
   };
 
@@ -250,14 +268,22 @@ async fn accept_connection<R: Rng>(state: Arc<State>, mut rng: R, stream: TcpStr
 
 #[tokio::main]
 async fn main() -> Result<()> {
+  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  env_logger::Builder::from_env(env).init();
+
   let listener = TcpListener::bind("127.0.0.1:8080").await?;
   let state = Arc::new(State::default());
 
   let mut rng = StdRng::from_entropy();
 
   loop {
-    let (stream, _) = listener.accept().await?;
-    // todo log the result
-    tokio::spawn(accept_connection(state.clone(), StdRng::from_rng(&mut rng)?, stream));
+    let (stream, addr) = listener.accept().await?;
+    tokio::spawn(
+      accept_connection(state.clone(), StdRng::from_rng(&mut rng)?, stream).map(move |result| {
+        if let Err(error) = result {
+          log::warn!("Closed a connection from {} with an error: {}", addr, error);
+        }
+      }),
+    );
   }
 }

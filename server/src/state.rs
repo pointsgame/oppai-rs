@@ -110,7 +110,7 @@ impl State {
     let connection = if let Some(connection) = self.connections.pin().get(&connection_id) {
       connection.clone()
     } else {
-      anyhow::bail!("no connection");
+      anyhow::bail!("no connection {}", connection_id);
     };
     let mut connection = connection.write().await;
 
