@@ -114,7 +114,7 @@ async fn subscribe(
   state: &State,
   game_id: GameId,
 ) -> Result<()> {
-  if watching.contains(&game_id) {
+  if watching.insert(game_id).is_some() {
     anyhow::bail!("already watching");
   }
 
@@ -153,7 +153,7 @@ fn unsubscribe(
   state: &State,
   game_id: GameId,
 ) -> Result<()> {
-  if !watching.contains(&game_id) {
+  if watching.remove(&game_id).is_none() {
     anyhow::bail!("not watching");
   }
 
