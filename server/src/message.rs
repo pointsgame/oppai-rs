@@ -37,19 +37,38 @@ pub struct Game {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum AuthProvider {
+  Google,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
 #[serde(rename_all_fields = "camelCase")]
 pub enum Request {
+  GetAuthUrl {
+    provider: AuthProvider,
+  },
   /// Create a new game in a lobby.
-  Create { size: FieldSize },
+  Create {
+    size: FieldSize,
+  },
   /// Join a game from lobby.
-  Join { game_id: GameId },
+  Join {
+    game_id: GameId,
+  },
   /// Subscribe to game moves.
-  Subscribe { game_id: GameId },
+  Subscribe {
+    game_id: GameId,
+  },
   /// Subscribe from game moves.
-  Unsubscribe { game_id: GameId },
+  Unsubscribe {
+    game_id: GameId,
+  },
   /// Put a point in a game.
-  PutPoint { game_id: GameId, coordinate: Coordinate },
+  PutPoint {
+    game_id: GameId,
+    coordinate: Coordinate,
+  },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -62,7 +81,13 @@ pub enum Response {
     games: Vec<Game>,
   },
   /// First message after subscription.
-  GameInit { game_id: GameId, moves: Vec<Move> },
+  GameInit {
+    game_id: GameId,
+    moves: Vec<Move>,
+  },
+  AuthUrl {
+    url: String,
+  },
   /// A new game was created in a lobby.
   Create {
     game_id: GameId,
@@ -70,7 +95,9 @@ pub enum Response {
     size: FieldSize,
   },
   /// A new game started.
-  Start { game_id: GameId },
+  Start {
+    game_id: GameId,
+  },
   /// A point in a game was put.
   PutPoint {
     game_id: GameId,

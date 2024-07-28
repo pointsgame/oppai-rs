@@ -21,6 +21,10 @@ tokio-tungstenite = "0.21"
 papaya = "0.1"
 im = "15.1"
 uuid = { version = "1.10", features = ["serde"] }
+sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite" ] }
+reqwest = { version = "0.12", default-features = false, features = [ "rustls-tls", "rustls-tls-native-roots", "charset" ] }
+openidconnect = "4.0.0-alpha.2"
+cookie = "0.18"
 oppai-field = { path = "../field", features = ["serde"] }
 
 [[bin]]
