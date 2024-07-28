@@ -10,10 +10,10 @@ edition = "2021"
 ndarray.workspace = true
 thiserror.workspace = true
 num-traits.workspace = true
-burn = { workspace = true, features = ["train"] }
+burn = { workspace = true, features = ["autodiff", "autotune"] }
 serde.workspace = true
 log.workspace = true
 oppai-zero = { path = "../zero" }
 
 [dev-dependencies]
-burn = { workspace = true, features = ["train", "ndarray", "wgpu"] }
+burn = { workspace = true, features = ["autodiff", "autotune", "ndarray", "wgpu"] }
