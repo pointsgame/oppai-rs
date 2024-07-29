@@ -48,6 +48,10 @@ pub enum Request {
   GetAuthUrl {
     provider: AuthProvider,
   },
+  Auth {
+    code: String,
+    state: String,
+  },
   /// Create a new game in a lobby.
   Create {
     size: FieldSize,

@@ -4,10 +4,9 @@ use futures_util::{select, FutureExt, SinkExt, StreamExt};
 use ids::*;
 use im::HashSet;
 use openidconnect::{
-  core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreResponseType, CoreUserInfoClaims},
-  AccessTokenHash, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet,
-  EndpointNotSet, EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, RedirectUrl, Scope,
-  TokenResponse,
+  core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
+  AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet,
+  IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
 };
 use oppai_field::field::Field;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -27,6 +26,12 @@ mod state;
 type GoogleClient =
   CoreClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointMaybeSet, EndpointMaybeSet>;
 
+struct AuthState {
+  pkce_verifier: PkceCodeVerifier,
+  nonce: Nonce,
+  csrf_state: CsrfToken,
+}
+
 struct Session<R: Rng> {
   http_client: Arc<reqwest::Client>,
   google_client: Arc<GoogleClient>,
@@ -34,6 +39,7 @@ struct Session<R: Rng> {
   connection_id: ConnectionId,
   player_id: PlayerId,
   watching: HashSet<GameId>,
+  auth_state: Option<AuthState>,
 }
 
 impl<R: Rng> Session<R> {
@@ -47,12 +53,13 @@ impl<R: Rng> Session<R> {
       connection_id,
       player_id,
       watching: HashSet::new(),
+      auth_state: None,
     }
   }
 
-  async fn get_auth_url(&self, state: &State) -> Result<()> {
+  async fn get_auth_url(&mut self, state: &State) -> Result<()> {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-    let (auth_url, csrf_token, nonce) = self
+    let (auth_url, csrf_state, nonce) = self
       .google_client
       .authorize_url(
         CoreAuthenticationFlow::AuthorizationCode,
@@ -63,6 +70,12 @@ impl<R: Rng> Session<R> {
       .add_scope(Scope::new("profile".to_string()))
       .set_pkce_challenge(pkce_challenge)
       .url();
+
+    self.auth_state = Some(AuthState {
+      pkce_verifier,
+      nonce,
+      csrf_state,
+    });
 
     state
       .send_to_connection(
@@ -76,41 +89,51 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
-  // async fn login(&self, auth_code: &str) -> Result<()> {
-  //   let token_response = client
-  //     .exchange_code(AuthorizationCode::new("some authorization code".to_string()))?
-  //     .set_pkce_verifier(pkce_verifier)
-  //     .request_async(&http_client)
-  //     .await?;
+  async fn auth(&mut self, code: String, state: String) -> Result<()> {
+    let auth_state = self
+      .auth_state
+      .take()
+      .ok_or_else(|| anyhow::anyhow!("no auth state forconnection {}", self.connection_id))?;
 
-  //   // Extract the ID token claims after verifying its authenticity and nonce.
-  //   let id_token = token_response
-  //     .id_token()
-  //     .ok_or_else(|| anyhow::anyhow!("Server did not return an ID token"))?;
-  //   let id_token_verifier = client.id_token_verifier();
-  //   let claims = id_token.claims(&id_token_verifier, &nonce)?;
+    if auth_state.csrf_state.secret() != CsrfToken::new(state).secret() {
+      anyhow::bail!("invalid csrf token for connection {}", self.connection_id);
+    }
 
-  //   // Verify the access token hash to ensure that the access token hasn't been substituted for
-  //   // another user's.
-  //   if let Some(expected_access_token_hash) = claims.access_token_hash() {
-  //     let actual_access_token_hash = AccessTokenHash::from_token(
-  //       token_response.access_token(),
-  //       id_token.signing_alg()?,
-  //       id_token.signing_key(&id_token_verifier)?,
-  //     )?;
-  //     if actual_access_token_hash != *expected_access_token_hash {
-  //       return Err(anyhow::anyhow!("Invalid access token"));
-  //     }
-  //   }
+    let token_response = self
+      .google_client
+      .exchange_code(AuthorizationCode::new(code))?
+      .set_pkce_verifier(auth_state.pkce_verifier)
+      .request_async(self.http_client.as_ref())
+      .await?;
 
-  //   // The authenticated user's identity is now available. See the IdTokenClaims struct for a
-  //   // complete listing of the available claims.
-  //   println!(
-  //     "User {} with e-mail address {} has authenticated successfully",
-  //     claims.subject().as_str(),
-  //     claims.email().map(|email| email.as_str()).unwrap_or("<not provided>"),
-  //   );
-  // }
+    let id_token = token_response.id_token().ok_or_else(|| {
+      anyhow::anyhow!(
+        "server did not return an ID token for connection {}",
+        self.connection_id
+      )
+    })?;
+    let id_token_verifier = self.google_client.id_token_verifier();
+    let claims = id_token.claims(&id_token_verifier, &auth_state.nonce)?;
+
+    if let Some(expected_access_token_hash) = claims.access_token_hash() {
+      let actual_access_token_hash = AccessTokenHash::from_token(
+        token_response.access_token(),
+        id_token.signing_alg()?,
+        id_token.signing_key(&id_token_verifier)?,
+      )?;
+      if actual_access_token_hash != *expected_access_token_hash {
+        anyhow::bail!("invalid access token for connection {}", self.connection_id);
+      }
+    }
+
+    println!(
+      "User {} with e-mail address {} has authenticated successfully",
+      claims.subject().as_str(),
+      claims.email().map(|email| email.as_str()).unwrap_or("<not provided>"),
+    );
+
+    Ok(())
+  }
 
   async fn init(&self, state: &State, tx: Sender<message::Response>) -> Result<()> {
     // lock connection before inserting so we can be sure we send init message before any update
@@ -327,6 +350,7 @@ impl<R: Rng> Session<R> {
           let message: message::Request = serde_json::from_str(message.as_str())?;
           match message {
             message::Request::GetAuthUrl { provider: _ } => self.get_auth_url(&state).await?,
+            message::Request::Auth { code, state } => self.auth(code, state).await?,
             message::Request::Create { size } => self.create(&state, size).await,
             message::Request::Join { game_id } => self.join(&state, game_id).await,
             message::Request::Subscribe { game_id } => self.subscribe(&state, game_id).await?,
@@ -372,7 +396,7 @@ async fn main() -> Result<()> {
       .await?;
   let google_client =
     CoreClient::from_provider_metadata(provider_metadata, google_client_id, Some(google_client_secret))
-      .set_redirect_uri(RedirectUrl::new("https://kropki.org/openid".to_string())?);
+      .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
 
   let http_client = Arc::new(http_client);
   let google_client = Arc::new(google_client);
