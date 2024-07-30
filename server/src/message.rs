@@ -106,6 +106,8 @@ pub enum Response {
   /// A new game started.
   Start {
     game_id: GameId,
+    red_player_id: PlayerId,
+    black_player_id: PlayerId,
   },
   /// A point in a game was put.
   PutPoint {

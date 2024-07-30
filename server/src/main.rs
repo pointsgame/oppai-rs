@@ -289,7 +289,13 @@ impl<R: Rng> Session<R> {
 
     state.games.pin().insert(game_id, game);
 
-    state.send_to_all(message::Response::Start { game_id }).await;
+    state
+      .send_to_all(message::Response::Start {
+        game_id,
+        red_player_id: open_game.player_id,
+        black_player_id: player_id,
+      })
+      .await;
 
     Ok(())
   }
