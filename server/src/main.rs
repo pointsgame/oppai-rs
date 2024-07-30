@@ -190,6 +190,8 @@ impl<R: Rng> Session<R> {
       .iter()
       .map(|(&game_id, game)| message::Game {
         game_id,
+        red_player_id: game.red_player_id,
+        black_player_id: game.black_player_id,
         size: message::FieldSize {
           width: game.size.width,
           height: game.size.height,

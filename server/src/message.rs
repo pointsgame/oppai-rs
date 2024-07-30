@@ -33,6 +33,8 @@ pub struct OpenGame {
 #[serde(rename_all = "camelCase")]
 pub struct Game {
   pub game_id: GameId,
+  pub red_player_id: PlayerId,
+  pub black_player_id: PlayerId,
   pub size: FieldSize,
 }
 
