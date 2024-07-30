@@ -10,9 +10,9 @@ use openidconnect::{
 };
 use oppai_field::field::Field;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use state::{FieldSize, Game, OpenGame, State};
-use std::{env, str::FromStr, sync::Arc};
+use std::{env, sync::Arc};
 use tokio::{
   net::{TcpListener, TcpStream},
   sync::RwLock,
@@ -20,6 +20,7 @@ use tokio::{
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Builder;
 
+mod db;
 mod ids;
 mod message;
 mod state;
@@ -34,6 +35,7 @@ struct AuthState {
 }
 
 struct Session<R: Rng> {
+  db: Arc<db::SqlxDb>,
   http_client: Arc<reqwest::Client>,
   google_client: Arc<GoogleClient>,
   rng: R,
@@ -44,9 +46,10 @@ struct Session<R: Rng> {
 }
 
 impl<R: Rng> Session<R> {
-  fn new(mut rng: R, http_client: Arc<reqwest::Client>, google_client: Arc<GoogleClient>) -> Self {
+  fn new(mut rng: R, db: Arc<db::SqlxDb>, http_client: Arc<reqwest::Client>, google_client: Arc<GoogleClient>) -> Self {
     let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
     Session {
+      db,
       http_client,
       google_client,
       rng,
@@ -89,19 +92,19 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
-  async fn auth(&mut self, code: String, state: String) -> Result<()> {
+  async fn auth(&mut self, state: &State, oidc_code: String, oidc_state: String) -> Result<()> {
     let auth_state = self
       .auth_state
       .take()
       .ok_or_else(|| anyhow::anyhow!("no auth state forconnection {}", self.connection_id))?;
 
-    if auth_state.csrf_state.secret() != CsrfToken::new(state).secret() {
+    if auth_state.csrf_state.secret() != CsrfToken::new(oidc_state).secret() {
       anyhow::bail!("invalid csrf token for connection {}", self.connection_id);
     }
 
     let token_response = self
       .google_client
-      .exchange_code(AuthorizationCode::new(code))?
+      .exchange_code(AuthorizationCode::new(oidc_code))?
       .set_pkce_verifier(auth_state.pkce_verifier)
       .request_async(self.http_client.as_ref())
       .await?;
@@ -126,13 +129,29 @@ impl<R: Rng> Session<R> {
       }
     }
 
-    // state.insert_players_connection(self.player_id, self.connection_id);
+    let player_id = self
+      .db
+      .get_or_create_player(db::OidcPlayer {
+        provider: db::Provider::Google,
+        subject: claims.subject().to_string(),
+        email: claims.email().map(|email| email.to_string()),
+        name: claims
+          .name()
+          .and_then(|name| name.get(None))
+          .map(|name| name.to_string()),
+        nickname: claims
+          .nickname()
+          .and_then(|nickname| nickname.get(None))
+          .map(|nickname| nickname.to_string()),
+        preferred_username: claims
+          .preferred_username()
+          .map(|preferred_username| preferred_username.to_string()),
+      })
+      .await?;
+    let player_id = PlayerId(player_id);
 
-    println!(
-      "User {} with e-mail address {} has authenticated successfully",
-      claims.subject().as_str(),
-      claims.email().map(|email| email.as_str()).unwrap_or("<not provided>"),
-    );
+    self.player_id = Some(player_id);
+    state.insert_players_connection(player_id, self.connection_id);
 
     Ok(())
   }
@@ -383,7 +402,10 @@ impl<R: Rng> Session<R> {
           let message: message::Request = serde_json::from_str(message.as_str())?;
           match message {
             message::Request::GetAuthUrl { provider: _ } => self.get_auth_url(&state).await?,
-            message::Request::Auth { code, state } => self.auth(code, state).await?,
+            message::Request::Auth {
+              code: oidc_code,
+              state: oidc_state,
+            } => self.auth(&state, oidc_code, oidc_state).await?,
             message::Request::Create { size } => self.create(&state, size).await?,
             message::Request::Join { game_id } => self.join(&state, game_id).await?,
             message::Request::Subscribe { game_id } => self.subscribe(&state, game_id).await?,
@@ -420,9 +442,11 @@ async fn main() -> Result<()> {
 
   let mut rng = StdRng::from_entropy();
 
-  let options = SqliteConnectOptions::from_str("sqlite:///home/kurnevsky/kropki.db")?;
-  let pool = SqlitePoolOptions::new().connect_with(options).await?;
+  let pool = PgPoolOptions::new()
+    .connect("postgres://test:test@localhost/test")
+    .await?;
   sqlx::migrate!("./migrations").run(&pool).await?;
+  let db = Arc::new(db::SqlxDb::from(pool));
 
   let http_client = reqwest::ClientBuilder::new()
     .redirect(reqwest::redirect::Policy::none()) // Following redirects opens the client up to SSRF vulnerabilities.
@@ -440,7 +464,12 @@ async fn main() -> Result<()> {
 
   loop {
     let (stream, addr) = listener.accept().await?;
-    let session = Session::new(StdRng::from_rng(&mut rng)?, http_client.clone(), google_client.clone());
+    let session = Session::new(
+      StdRng::from_rng(&mut rng)?,
+      db.clone(),
+      http_client.clone(),
+      google_client.clone(),
+    );
     tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
       if let Err(error) = result {
         log::warn!("Closed a connection from {} with an error: {}", addr, error);
