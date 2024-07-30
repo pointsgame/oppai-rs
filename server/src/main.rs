@@ -264,6 +264,10 @@ impl<R: Rng> Session<R> {
       return Ok(());
     };
 
+    if open_game.player_id == player_id {
+      anyhow::bail!("attempt to join own game from player {}", player_id);
+    }
+
     let field = Field::new_from_rng(open_game.size.width, open_game.size.height, &mut self.rng);
     let game = Game {
       red_player_id: open_game.player_id,
