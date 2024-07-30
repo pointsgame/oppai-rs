@@ -38,7 +38,7 @@ struct Session<R: Rng> {
   google_client: Arc<GoogleClient>,
   rng: R,
   connection_id: ConnectionId,
-  player_id: PlayerId,
+  player_id: Option<PlayerId>,
   watching: HashSet<GameId>,
   auth_state: Option<AuthState>,
 }
@@ -46,13 +46,12 @@ struct Session<R: Rng> {
 impl<R: Rng> Session<R> {
   fn new(mut rng: R, http_client: Arc<reqwest::Client>, google_client: Arc<GoogleClient>) -> Self {
     let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
-    let player_id = PlayerId(Builder::from_random_bytes(rng.gen()).into_uuid());
     Session {
       http_client,
       google_client,
       rng,
       connection_id,
-      player_id,
+      player_id: None,
       watching: HashSet::new(),
       auth_state: None,
     }
@@ -127,6 +126,8 @@ impl<R: Rng> Session<R> {
       }
     }
 
+    // state.insert_players_connection(self.player_id, self.connection_id);
+
     println!(
       "User {} with e-mail address {} has authenticated successfully",
       claims.subject().as_str(),
@@ -180,13 +181,24 @@ impl<R: Rng> Session<R> {
       state.unsubscribe(self.connection_id, game_id);
     }
 
-    state.remove_players_connection(self.player_id, self.connection_id);
+    if let Some(player_id) = self.player_id {
+      state.remove_players_connection(player_id, self.connection_id);
+    }
   }
 
-  async fn create(&mut self, state: &State, size: message::FieldSize) {
+  async fn create(&mut self, state: &State, size: message::FieldSize) -> Result<()> {
+    let player_id = if let Some(player_id) = self.player_id {
+      player_id
+    } else {
+      anyhow::bail!(
+        "attempt to create a game from an unauthorized connection {}",
+        self.connection_id
+      )
+    };
+
     let game_id = GameId(Builder::from_random_bytes(self.rng.gen()).into_uuid());
     let open_game = OpenGame {
-      player_id: self.player_id,
+      player_id,
       size: FieldSize {
         width: size.width,
         height: size.height,
@@ -199,28 +211,39 @@ impl<R: Rng> Session<R> {
     state
       .send_to_all(message::Response::Create {
         game_id,
-        player_id: self.player_id,
+        player_id,
         size,
       })
       .await;
+
+    Ok(())
   }
 
-  async fn join(&mut self, state: &State, game_id: GameId) {
+  async fn join(&mut self, state: &State, game_id: GameId) -> Result<()> {
+    let player_id = if let Some(player_id) = self.player_id {
+      player_id
+    } else {
+      anyhow::bail!(
+        "attempt to join a game from an unauthorized connection {}",
+        self.connection_id
+      )
+    };
+
     let open_game = if let Some(open_game) = state.open_games.pin().remove(&game_id) {
       open_game.clone()
     } else {
       log::warn!(
         "Player {} attempted to join a game {} which dosn't exist",
-        self.player_id,
+        player_id,
         game_id
       );
-      return;
+      return Ok(());
     };
 
     let field = Field::new_from_rng(open_game.size.width, open_game.size.height, &mut self.rng);
     let game = Game {
       red_player_id: open_game.player_id,
-      black_player_id: self.player_id,
+      black_player_id: player_id,
       size: open_game.size,
       field: Arc::new(RwLock::new(field)),
     };
@@ -228,6 +251,8 @@ impl<R: Rng> Session<R> {
     state.games.pin().insert(game_id, game);
 
     state.send_to_all(message::Response::Start { game_id }).await;
+
+    Ok(())
   }
 
   async fn subscribe(&mut self, state: &State, game_id: GameId) -> Result<()> {
@@ -282,13 +307,22 @@ impl<R: Rng> Session<R> {
   }
 
   async fn put_point(&self, state: &State, game_id: GameId, coordinate: message::Coordinate) -> Result<()> {
+    let player_id = if let Some(player_id) = self.player_id {
+      player_id
+    } else {
+      anyhow::bail!(
+        "attempt to put a point from an unauthorized connection {}",
+        self.connection_id
+      )
+    };
+
     let (field, player) = if let Some(game) = state.games.pin().get(&game_id) {
-      let player = if let Some(player) = game.color(self.player_id) {
+      let player = if let Some(player) = game.color(player_id) {
         player
       } else {
         anyhow::bail!(
           "player {} attempted to put point in a wrong game {}",
-          self.player_id,
+          player_id,
           game_id,
         );
       };
@@ -296,7 +330,7 @@ impl<R: Rng> Session<R> {
     } else {
       anyhow::bail!(
         "player {} attempted to put point in a game {} that don't exist",
-        self.player_id,
+        player_id,
         game_id,
       );
     };
@@ -306,7 +340,7 @@ impl<R: Rng> Session<R> {
     if !field.put_point(pos, player) {
       anyhow::bail!(
         "player {} attempted tp put point on a wrong position {:?} in game {}",
-        self.player_id,
+        player_id,
         (coordinate.x, coordinate.y),
         game_id,
       );
@@ -335,8 +369,6 @@ impl<R: Rng> Session<R> {
 
     self.init(&state, tx).await?;
 
-    state.insert_players_connection(self.player_id, self.connection_id);
-
     let future1 = async {
       while let Some(message) = rx.next().await {
         tx_ws.send(Message::Text(serde_json::to_string(&message)?)).await?;
@@ -352,8 +384,8 @@ impl<R: Rng> Session<R> {
           match message {
             message::Request::GetAuthUrl { provider: _ } => self.get_auth_url(&state).await?,
             message::Request::Auth { code, state } => self.auth(code, state).await?,
-            message::Request::Create { size } => self.create(&state, size).await,
-            message::Request::Join { game_id } => self.join(&state, game_id).await,
+            message::Request::Create { size } => self.create(&state, size).await?,
+            message::Request::Join { game_id } => self.join(&state, game_id).await?,
             message::Request::Subscribe { game_id } => self.subscribe(&state, game_id).await?,
             message::Request::Unsubscribe { game_id } => self.unsubscribe(&state, game_id)?,
             message::Request::PutPoint { game_id, coordinate } => self.put_point(&state, game_id, coordinate).await?,
