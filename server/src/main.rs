@@ -42,6 +42,7 @@ struct Session<R: Rng> {
   connection_id: ConnectionId,
   player_id: Option<PlayerId>,
   watching: HashSet<GameId>,
+  open_game: Option<GameId>,
   auth_state: Option<AuthState>,
 }
 
@@ -56,6 +57,7 @@ impl<R: Rng> Session<R> {
       connection_id,
       player_id: None,
       watching: HashSet::new(),
+      open_game: None,
       auth_state: None,
     }
   }
@@ -220,6 +222,12 @@ impl<R: Rng> Session<R> {
       )
     };
 
+    if let Some(game_id) = self.open_game {
+      if state.open_games.pin().contains_key(&game_id) {
+        anyhow::bail!("game is already created by player {}", player_id)
+      }
+    }
+
     let game_id = GameId(Builder::from_random_bytes(self.rng.gen()).into_uuid());
     let open_game = OpenGame {
       player_id,
@@ -229,7 +237,8 @@ impl<R: Rng> Session<R> {
       },
     };
 
-    // TODO: how many open games per player to allow?
+    self.open_game = Some(game_id);
+
     state.open_games.pin().insert(game_id, open_game);
 
     state
