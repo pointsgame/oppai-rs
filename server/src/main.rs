@@ -10,8 +10,9 @@ use openidconnect::{
 };
 use oppai_field::field::Field;
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use state::{FieldSize, Game, OpenGame, State};
-use std::{env, sync::Arc};
+use std::{env, str::FromStr, sync::Arc};
 use tokio::{
   net::{TcpListener, TcpStream},
   sync::RwLock,
@@ -386,6 +387,10 @@ async fn main() -> Result<()> {
   let state = Arc::new(State::default());
 
   let mut rng = StdRng::from_entropy();
+
+  let options = SqliteConnectOptions::from_str("sqlite:///home/kurnevsky/kropki.db")?;
+  let pool = SqlitePoolOptions::new().connect_with(options).await?;
+  sqlx::migrate!("./migrations").run(&pool).await?;
 
   let http_client = reqwest::ClientBuilder::new()
     .redirect(reqwest::redirect::Policy::none()) // Following redirects opens the client up to SSRF vulnerabilities.
