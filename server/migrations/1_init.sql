@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS oidc_players (
   provider provider,
   subject text,
   email text,
+  email_verified boolean,
   "name" text,
   nickname text,
   preferred_username text,

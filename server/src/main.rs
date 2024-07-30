@@ -135,6 +135,7 @@ impl<R: Rng> Session<R> {
         provider: db::Provider::Google,
         subject: claims.subject().to_string(),
         email: claims.email().map(|email| email.to_string()),
+        email_verified: claims.email_verified(),
         name: claims
           .name()
           .and_then(|name| name.get(None))

@@ -19,6 +19,7 @@ pub struct OidcPlayer {
   pub provider: Provider,
   pub subject: String,
   pub email: Option<String>,
+  pub email_verified: Option<bool>,
   pub name: Option<String>,
   pub nickname: Option<String>,
   pub preferred_username: Option<String>,
@@ -37,8 +38,8 @@ impl SqlxDb {
       "
 WITH updated AS (
   UPDATE oidc_players
-  SET email = $1, name = $2, nickname = $3, preferred_username = $4
-  WHERE subject = $5 AND provider = $6
+  SET email = $1, email_verified = $2, name = $3, nickname = $4, preferred_username = $5
+  WHERE subject = $6 AND provider = $7
   RETURNING player_id
 )
 SELECT players.id FROM updated
@@ -46,6 +47,7 @@ JOIN players ON updated.player_id = players.id
 ",
     )
     .bind(oidc_player.email.as_ref())
+    .bind(oidc_player.email_verified)
     .bind(oidc_player.name.as_ref())
     .bind(oidc_player.nickname.as_ref())
     .bind(oidc_player.preferred_username.as_ref())
@@ -60,18 +62,22 @@ JOIN players ON updated.player_id = players.id
     }
 
     let player_id = if let Some(email) = oidc_player.email.as_ref() {
-      let player_id: Option<(Uuid,)> = sqlx::query_as(
-        "
+      if oidc_player.email_verified == Some(true) {
+        let player_id: Option<(Uuid,)> = sqlx::query_as(
+          "
 SELECT players.id FROM oidc_players
 JOIN players ON oidc_players.player_id = players.id
 WHERE oidc_players.email = $1
 LIMIT 1
 ",
-      )
-      .bind(email)
-      .fetch_optional(&mut *tx)
-      .await?;
-      player_id.map(|(player_id,)| player_id)
+        )
+        .bind(email)
+        .fetch_optional(&mut *tx)
+        .await?;
+        player_id.map(|(player_id,)| player_id)
+      } else {
+        None
+      }
     } else {
       None
     };
@@ -93,14 +99,15 @@ RETURNING id
 
     sqlx::query(
       "
-INSERT INTO oidc_players (player_id, provider, subject, email, \"name\", nickname, preferred_username)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO oidc_players (player_id, provider, subject, email, email_verified, \"name\", nickname, preferred_username)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ",
     )
     .bind(player_id)
     .bind(oidc_player.provider)
     .bind(oidc_player.subject)
     .bind(oidc_player.email)
+    .bind(oidc_player.email_verified)
     .bind(oidc_player.name)
     .bind(oidc_player.nickname)
     .bind(oidc_player.preferred_username)
