@@ -8,7 +8,7 @@ use openidconnect::{
   AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet,
   IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
 };
-use oppai_field::field::Field;
+use oppai_field::{field::Field, player::Player};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use sqlx::postgres::PgPoolOptions;
 use state::{FieldSize, Game, OpenGame, State};
@@ -382,6 +382,15 @@ impl<R: Rng> Session<R> {
 
     let mut field = field.write().await;
     let pos = field.to_pos(coordinate.x, coordinate.y);
+
+    if field.last_player().map_or(Player::Red, |player| player.next()) != player {
+      anyhow::bail!(
+        "player {} attempted to put point on opponent's turn in a game {}",
+        player_id,
+        game_id,
+      );
+    }
+
     if !field.put_point(pos, player) {
       anyhow::bail!(
         "player {} attempted tp put point on a wrong position {:?} in game {}",
