@@ -153,6 +153,10 @@ impl<R: Rng> Session<R> {
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
 
+    state
+      .send_to_connection(self.connection_id, message::Response::Auth { player_id })
+      .await?;
+
     Ok(())
   }
 

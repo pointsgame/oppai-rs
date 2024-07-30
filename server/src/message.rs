@@ -92,6 +92,9 @@ pub enum Response {
   AuthUrl {
     url: String,
   },
+  Auth {
+    player_id: PlayerId,
+  },
   /// A new game was created in a lobby.
   Create {
     game_id: GameId,
