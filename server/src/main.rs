@@ -254,6 +254,31 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
+  async fn close(&mut self, state: &State, game_id: GameId) -> Result<()> {
+    if self.player_id.is_none() {
+      anyhow::bail!(
+        "attempt to close a game from an unauthorized connection {}",
+        self.connection_id
+      )
+    }
+
+    if let Some(active_game_id) = self.open_game {
+      if game_id != active_game_id {
+        anyhow::bail!(
+          "attempt to close a wrong game {} from connection {}",
+          game_id,
+          self.connection_id
+        )
+      }
+
+      if state.open_games.pin().remove(&game_id).is_some() {
+        state.send_to_all(message::Response::Close { game_id }).await;
+      }
+    }
+
+    Ok(())
+  }
+
   async fn join(&mut self, state: &State, game_id: GameId) -> Result<()> {
     let player_id = if let Some(player_id) = self.player_id {
       player_id
@@ -442,6 +467,7 @@ impl<R: Rng> Session<R> {
               state: oidc_state,
             } => self.auth(&state, oidc_code, oidc_state).await?,
             message::Request::Create { size } => self.create(&state, size).await?,
+            message::Request::Close { game_id } => self.close(&state, game_id).await?,
             message::Request::Join { game_id } => self.join(&state, game_id).await?,
             message::Request::Subscribe { game_id } => self.subscribe(&state, game_id).await?,
             message::Request::Unsubscribe { game_id } => self.unsubscribe(&state, game_id)?,

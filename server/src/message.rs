@@ -58,6 +58,10 @@ pub enum Request {
   Create {
     size: FieldSize,
   },
+  /// Close an open game.
+  Close {
+    game_id: GameId,
+  },
   /// Join a game from lobby.
   Join {
     game_id: GameId,
@@ -102,6 +106,10 @@ pub enum Response {
     game_id: GameId,
     player_id: PlayerId,
     size: FieldSize,
+  },
+  /// An open game was closed.
+  Close {
+    game_id: GameId,
   },
   /// A new game started.
   Start {
