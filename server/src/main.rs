@@ -163,6 +163,21 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
+  #[cfg(feature = "test")]
+  async fn auth_test(&mut self, state: &State, name: String) -> Result<()> {
+    let player_id = self.db.get_or_create_test_player(name).await?;
+    let player_id = PlayerId(player_id);
+
+    self.player_id = Some(player_id);
+    state.insert_players_connection(player_id, self.connection_id);
+
+    state
+      .send_to_connection(self.connection_id, message::Response::Auth { player_id })
+      .await?;
+
+    Ok(())
+  }
+
   async fn init(&self, state: &State, tx: Sender<message::Response>) -> Result<()> {
     // lock connection before inserting so we can be sure we send init message before any update
     let connection = Arc::new(RwLock::new(tx));
@@ -466,6 +481,8 @@ impl<R: Rng> Session<R> {
               code: oidc_code,
               state: oidc_state,
             } => self.auth(&state, oidc_code, oidc_state).await?,
+            #[cfg(feature = "test")]
+            message::Request::AuthTest { name } => self.auth_test(&state, name).await?,
             message::Request::Create { size } => self.create(&state, size).await?,
             message::Request::Close { game_id } => self.close(&state, game_id).await?,
             message::Request::Join { game_id } => self.join(&state, game_id).await?,

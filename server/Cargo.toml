@@ -27,6 +27,9 @@ openidconnect = "4.0.0-alpha.2"
 cookie = "0.18"
 oppai-field = { path = "../field", features = ["serde"] }
 
+[features]
+test = [ "uuid/v5" ]
+
 [[bin]]
 name = "main"
 path = "src/main.rs"

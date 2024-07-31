@@ -118,4 +118,22 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 
     Ok(player_id)
   }
+
+  #[cfg(feature = "test")]
+  pub async fn get_or_create_test_player(&self, name: String) -> Result<Uuid> {
+    let player_id = Uuid::new_v5(&Uuid::default(), name.as_bytes());
+
+    sqlx::query(
+      "
+INSERT INTO players (id, registration_time)
+VALUES ($1, now())
+ON CONFLICT DO NOTHING
+",
+    )
+    .bind(player_id)
+    .execute(&self.pool)
+    .await?;
+
+    Ok(player_id)
+  }
 }

@@ -54,6 +54,10 @@ pub enum Request {
     code: String,
     state: String,
   },
+  #[cfg(feature = "test")]
+  AuthTest {
+    name: String,
+  },
   /// Create a new game in a lobby.
   Create {
     size: FieldSize,
