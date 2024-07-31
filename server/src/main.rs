@@ -230,6 +230,15 @@ impl<R: Rng> Session<R> {
   }
 
   async fn create(&mut self, state: &State, size: message::FieldSize) -> Result<()> {
+    if !size.is_valid() {
+      anyhow::bail!(
+        "invalid filed size {}:{} from connection {}",
+        size.width,
+        size.height,
+        self.connection_id
+      );
+    }
+
     let player_id = if let Some(player_id) = self.player_id {
       player_id
     } else {

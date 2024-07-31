@@ -9,6 +9,18 @@ pub struct FieldSize {
   pub height: u32,
 }
 
+impl FieldSize {
+  const MIN_SIZE: u32 = 10;
+  const MAX_SIZE: u32 = 50;
+
+  pub fn is_valid(&self) -> bool {
+    self.width >= Self::MIN_SIZE
+      && self.width <= Self::MAX_SIZE
+      && self.height >= Self::MIN_SIZE
+      && self.height <= Self::MAX_SIZE
+  }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Coordinate {
   pub x: u32,
