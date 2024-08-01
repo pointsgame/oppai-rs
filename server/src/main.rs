@@ -25,19 +25,34 @@ mod ids;
 mod message;
 mod state;
 
-type GoogleClient =
+type OidcClient =
   CoreClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointMaybeSet, EndpointMaybeSet>;
 
 struct AuthState {
+  provider: message::AuthProvider,
   pkce_verifier: PkceCodeVerifier,
   nonce: Nonce,
   csrf_state: CsrfToken,
 }
 
+struct OidcClients {
+  google_client: Arc<OidcClient>,
+  gitlab_client: Arc<OidcClient>,
+}
+
+impl OidcClients {
+  fn oidc_client(&self, provider: message::AuthProvider) -> &OidcClient {
+    match provider {
+      message::AuthProvider::Google => &self.google_client,
+      message::AuthProvider::GitLab => &self.gitlab_client,
+    }
+  }
+}
+
 struct Session<R: Rng> {
   db: Arc<db::SqlxDb>,
   http_client: Arc<reqwest::Client>,
-  google_client: Arc<GoogleClient>,
+  oidc_clients: OidcClients,
   rng: R,
   connection_id: ConnectionId,
   player_id: Option<PlayerId>,
@@ -47,12 +62,23 @@ struct Session<R: Rng> {
 }
 
 impl<R: Rng> Session<R> {
-  fn new(mut rng: R, db: Arc<db::SqlxDb>, http_client: Arc<reqwest::Client>, google_client: Arc<GoogleClient>) -> Self {
+  fn new(
+    mut rng: R,
+    db: Arc<db::SqlxDb>,
+    http_client: Arc<reqwest::Client>,
+    google_client: Arc<OidcClient>,
+    gitlab_client: Arc<OidcClient>,
+  ) -> Self {
     let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
     Session {
       db,
       http_client,
-      google_client,
+      oidc_clients: {
+        OidcClients {
+          google_client,
+          gitlab_client,
+        }
+      },
       rng,
       connection_id,
       player_id: None,
@@ -62,10 +88,11 @@ impl<R: Rng> Session<R> {
     }
   }
 
-  async fn get_auth_url(&mut self, state: &State) -> Result<()> {
+  async fn get_auth_url(&mut self, state: &State, provider: message::AuthProvider) -> Result<()> {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
     let (auth_url, csrf_state, nonce) = self
-      .google_client
+      .oidc_clients
+      .oidc_client(provider)
       .authorize_url(
         CoreAuthenticationFlow::AuthorizationCode,
         CsrfToken::new_random,
@@ -77,6 +104,7 @@ impl<R: Rng> Session<R> {
       .url();
 
     self.auth_state = Some(AuthState {
+      provider,
       pkce_verifier,
       nonce,
       csrf_state,
@@ -105,7 +133,8 @@ impl<R: Rng> Session<R> {
     }
 
     let token_response = self
-      .google_client
+      .oidc_clients
+      .oidc_client(auth_state.provider)
       .exchange_code(AuthorizationCode::new(oidc_code))?
       .set_pkce_verifier(auth_state.pkce_verifier)
       .request_async(self.http_client.as_ref())
@@ -117,7 +146,7 @@ impl<R: Rng> Session<R> {
         self.connection_id
       )
     })?;
-    let id_token_verifier = self.google_client.id_token_verifier();
+    let id_token_verifier = self.oidc_clients.oidc_client(auth_state.provider).id_token_verifier();
     let claims = id_token.claims(&id_token_verifier, &auth_state.nonce)?;
 
     if let Some(expected_access_token_hash) = claims.access_token_hash() {
@@ -131,10 +160,15 @@ impl<R: Rng> Session<R> {
       }
     }
 
+    let db_provider = match auth_state.provider {
+      message::AuthProvider::Google => db::Provider::Google,
+      message::AuthProvider::GitLab => db::Provider::GitLab,
+    };
+
     let player_id = self
       .db
       .get_or_create_player(db::OidcPlayer {
-        provider: db::Provider::Google,
+        provider: db_provider,
         subject: claims.subject().to_string(),
         email: claims.email().map(|email| email.to_string()),
         email_verified: claims.email_verified(),
@@ -485,7 +519,7 @@ impl<R: Rng> Session<R> {
         if let Message::Text(message) = message? {
           let message: message::Request = serde_json::from_str(message.as_str())?;
           match message {
-            message::Request::GetAuthUrl { provider: _ } => self.get_auth_url(&state).await?,
+            message::Request::GetAuthUrl { provider } => self.get_auth_url(&state, provider).await?,
             message::Request::Auth {
               code: oidc_code,
               state: oidc_state,
@@ -524,6 +558,9 @@ async fn main() -> Result<()> {
   let google_client_id = ClientId::new(env::var("GOOGLE_CLIENT_ID")?);
   let google_client_secret = ClientSecret::new(env::var("GOOGLE_CLIENT_SECRET")?);
 
+  let gitlab_client_id = ClientId::new(env::var("GITLAB_CLIENT_ID")?);
+  let gitlab_client_secret = ClientSecret::new(env::var("GITLAB_CLIENT_SECRET")?);
+
   let listener = TcpListener::bind("127.0.0.1:8080").await?;
   let state = Arc::new(State::default());
 
@@ -546,8 +583,15 @@ async fn main() -> Result<()> {
     CoreClient::from_provider_metadata(provider_metadata, google_client_id, Some(google_client_secret))
       .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
 
+  let provider_metadata =
+    CoreProviderMetadata::discover_async(IssuerUrl::new("https://gitlab.com".to_string())?, &http_client).await?;
+  let gitlab_client =
+    CoreClient::from_provider_metadata(provider_metadata, gitlab_client_id, Some(gitlab_client_secret))
+      .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
+
   let http_client = Arc::new(http_client);
   let google_client = Arc::new(google_client);
+  let gitlab_client = Arc::new(gitlab_client);
 
   loop {
     let (stream, addr) = listener.accept().await?;
@@ -556,6 +600,7 @@ async fn main() -> Result<()> {
       db.clone(),
       http_client.clone(),
       google_client.clone(),
+      gitlab_client.clone(),
     );
     tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
       if let Err(error) = result {

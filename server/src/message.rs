@@ -50,9 +50,10 @@ pub struct Game {
   pub size: FieldSize,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum AuthProvider {
   Google,
+  GitLab,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

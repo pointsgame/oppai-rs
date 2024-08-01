@@ -13,6 +13,7 @@ use uuid::Uuid;
 #[sqlx(rename_all = "lowercase")]
 pub enum Provider {
   Google,
+  GitLab,
 }
 
 pub struct OidcPlayer {

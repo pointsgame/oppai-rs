@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS players (
   registration_time timestamp NOT NULL
 );
 
-CREATE TYPE provider AS ENUM ('google');
+CREATE TYPE provider AS ENUM ('google', 'gitlab');
 
 CREATE TABLE IF NOT EXISTS oidc_players (
   player_id uuid NOT NULL REFERENCES players (id),
