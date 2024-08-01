@@ -3,10 +3,10 @@ use derive_more::{From, Into};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-// pub struct Player {
-//   pub id: Uuid,
-//   pub registration_time: Instant,
-// }
+pub struct Player {
+  pub id: Uuid,
+  pub nickname: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "provider")]
@@ -24,6 +24,17 @@ pub struct OidcPlayer {
   pub name: Option<String>,
   pub nickname: Option<String>,
   pub preferred_username: Option<String>,
+}
+
+impl OidcPlayer {
+  fn nickname(&self) -> &str {
+    self
+      .preferred_username
+      .as_deref()
+      .or(self.nickname.as_deref())
+      .or(self.name.as_deref())
+      .unwrap_or(self.subject.as_str())
+  }
 }
 
 #[derive(From, Into)]
@@ -88,11 +99,12 @@ LIMIT 1
     } else {
       let (player_id,) = sqlx::query_as(
         "
-INSERT INTO players (id, registration_time)
-VALUES (gen_random_uuid(), now())
+INSERT INTO players (id, nickname, registration_time)
+VALUES (gen_random_uuid(), unique_nickname($1), now())
 RETURNING id
 ",
       )
+      .bind(oidc_player.nickname())
       .fetch_one(&mut *tx)
       .await?;
       player_id
@@ -126,12 +138,13 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 
     sqlx::query(
       "
-INSERT INTO players (id, registration_time)
-VALUES ($1, now())
+INSERT INTO players (id, nickname, registration_time)
+VALUES ($1, unique_nickname($2), now())
 ON CONFLICT DO NOTHING
 ",
     )
     .bind(player_id)
+    .bind(name)
     .execute(&self.pool)
     .await?;
 
