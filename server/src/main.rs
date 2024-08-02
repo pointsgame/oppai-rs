@@ -1,6 +1,6 @@
 use anyhow::{Error, Result};
 use cookie::time::{Duration, OffsetDateTime};
-use cookie::{Cookie, CookieJar, Expiration, Key};
+use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 use futures::channel::mpsc::{self, Sender};
 use futures_util::{select, FutureExt, SinkExt, StreamExt};
 use ids::*;
@@ -195,8 +195,10 @@ impl<R: Rng> Session<R> {
     let key = Key::generate();
 
     let mut jar = CookieJar::new();
-    let mut cookie = Cookie::new("playerId", player_id.0.to_string());
-    cookie.set_expires(OffsetDateTime::now_utc() + Duration::weeks(12));
+    let cookie = Cookie::build(("playerId", player_id.0.to_string()))
+      .expires(OffsetDateTime::now_utc() + Duration::weeks(12))
+      .same_site(SameSite::Strict)
+      .build();
     jar.signed_mut(&key).add(cookie);
 
     state
@@ -223,8 +225,10 @@ impl<R: Rng> Session<R> {
     let key = Key::generate();
 
     let mut jar = CookieJar::new();
-    let mut cookie = Cookie::new("playerId", player_id.0.to_string());
-    cookie.set_expires(Expiration::Session);
+    let cookie = Cookie::build(("playerId", player_id.0.to_string()))
+      .expires(Expiration::Session)
+      .same_site(SameSite::Strict)
+      .build();
     jar.signed_mut(&key).add(cookie);
 
     state
