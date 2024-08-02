@@ -62,6 +62,7 @@ pub enum AuthProvider {
 pub enum Request {
   GetAuthUrl {
     provider: AuthProvider,
+    remember_me: bool,
   },
   Auth {
     code: String,

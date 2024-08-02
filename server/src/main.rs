@@ -35,6 +35,7 @@ struct AuthState {
   pkce_verifier: PkceCodeVerifier,
   nonce: Nonce,
   csrf_state: CsrfToken,
+  remember_me: bool,
 }
 
 struct OidcClients {
@@ -90,7 +91,7 @@ impl<R: Rng> Session<R> {
     }
   }
 
-  async fn get_auth_url(&mut self, state: &State, provider: message::AuthProvider) -> Result<()> {
+  async fn get_auth_url(&mut self, state: &State, provider: message::AuthProvider, remember_me: bool) -> Result<()> {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
     let (auth_url, csrf_state, nonce) = self
       .oidc_clients
@@ -110,6 +111,7 @@ impl<R: Rng> Session<R> {
       pkce_verifier,
       nonce,
       csrf_state,
+      remember_me,
     });
 
     state
@@ -196,7 +198,11 @@ impl<R: Rng> Session<R> {
 
     let mut jar = CookieJar::new();
     let cookie = Cookie::build(("playerId", player_id.0.to_string()))
-      .expires(OffsetDateTime::now_utc() + Duration::weeks(12))
+      .expires(if auth_state.remember_me {
+        Expiration::DateTime(OffsetDateTime::now_utc() + Duration::weeks(12))
+      } else {
+        Expiration::Session
+      })
       .same_site(SameSite::Strict)
       .build();
     jar.signed_mut(&key).add(cookie);
@@ -551,7 +557,9 @@ impl<R: Rng> Session<R> {
         if let Message::Text(message) = message? {
           let message: message::Request = serde_json::from_str(message.as_str())?;
           match message {
-            message::Request::GetAuthUrl { provider } => self.get_auth_url(&state, provider).await?,
+            message::Request::GetAuthUrl { provider, remember_me } => {
+              self.get_auth_url(&state, provider, remember_me).await?
+            }
             message::Request::Auth {
               code: oidc_code,
               state: oidc_state,
