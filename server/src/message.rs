@@ -117,6 +117,7 @@ pub enum Response {
   },
   Auth {
     player_id: PlayerId,
+    cookie: String,
   },
   /// A new game was created in a lobby.
   Create {

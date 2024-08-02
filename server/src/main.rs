@@ -1,4 +1,6 @@
 use anyhow::{Error, Result};
+use cookie::time::{Duration, OffsetDateTime};
+use cookie::{Cookie, CookieJar, Expiration, Key};
 use futures::channel::mpsc::{self, Sender};
 use futures_util::{select, FutureExt, SinkExt, StreamExt};
 use ids::*;
@@ -190,8 +192,21 @@ impl<R: Rng> Session<R> {
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
 
+    let key = Key::generate();
+
+    let mut jar = CookieJar::new();
+    let mut cookie = Cookie::new("playerId", player_id.0.to_string());
+    cookie.set_expires(OffsetDateTime::now_utc() + Duration::weeks(12));
+    jar.signed_mut(&key).add(cookie);
+
     state
-      .send_to_connection(self.connection_id, message::Response::Auth { player_id })
+      .send_to_connection(
+        self.connection_id,
+        message::Response::Auth {
+          player_id,
+          cookie: jar.get("playerId").unwrap().to_string(),
+        },
+      )
       .await?;
 
     Ok(())
@@ -205,8 +220,21 @@ impl<R: Rng> Session<R> {
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
 
+    let key = Key::generate();
+
+    let mut jar = CookieJar::new();
+    let mut cookie = Cookie::new("playerId", player_id.0.to_string());
+    cookie.set_expires(Expiration::Session);
+    jar.signed_mut(&key).add(cookie);
+
     state
-      .send_to_connection(self.connection_id, message::Response::Auth { player_id })
+      .send_to_connection(
+        self.connection_id,
+        message::Response::Auth {
+          player_id,
+          cookie: jar.get("playerId").unwrap().to_string(),
+        },
+      )
       .await?;
 
     Ok(())

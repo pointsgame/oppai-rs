@@ -24,7 +24,7 @@ uuid = { version = "1.10", features = ["serde"] }
 sqlx = { version = "0.8", features = [ "runtime-tokio", "postgres", "uuid" ] }
 reqwest = { version = "0.12", default-features = false, features = [ "rustls-tls", "rustls-tls-native-roots", "charset" ] }
 openidconnect = "4.0.0-alpha.2"
-cookie = "0.18"
+cookie = { version = "0.18", features = [ "signed" ] }
 oppai-field = { path = "../field", features = ["serde"] }
 
 [features]
