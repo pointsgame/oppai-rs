@@ -105,6 +105,7 @@ pub enum Request {
 pub enum Response {
   /// First message when connection is established.
   Init {
+    player_id: Option<PlayerId>,
     open_games: Vec<OpenGame>,
     games: Vec<Game>,
   },

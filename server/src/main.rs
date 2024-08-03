@@ -14,13 +14,15 @@ use oppai_field::{field::Field, player::Player};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use sqlx::postgres::PgPoolOptions;
 use state::{FieldSize, Game, OpenGame, State};
+use std::str::FromStr;
 use std::{env, sync::Arc};
 use tokio::{
   net::{TcpListener, TcpStream},
   sync::RwLock,
 };
+use tokio_tungstenite::tungstenite::handshake::server::Request;
 use tokio_tungstenite::tungstenite::Message;
-use uuid::Builder;
+use uuid::{Builder, Uuid};
 
 mod db;
 mod ids;
@@ -62,6 +64,7 @@ struct Session<R: Rng> {
   watching: HashSet<GameId>,
   open_game: Option<GameId>,
   auth_state: Option<AuthState>,
+  cookie_key: Arc<Key>,
 }
 
 impl<R: Rng> Session<R> {
@@ -71,6 +74,7 @@ impl<R: Rng> Session<R> {
     http_client: Arc<reqwest::Client>,
     google_client: Arc<OidcClient>,
     gitlab_client: Arc<OidcClient>,
+    cookie_key: Arc<Key>,
   ) -> Self {
     let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
     Session {
@@ -88,6 +92,7 @@ impl<R: Rng> Session<R> {
       watching: HashSet::new(),
       open_game: None,
       auth_state: None,
+      cookie_key,
     }
   }
 
@@ -194,8 +199,6 @@ impl<R: Rng> Session<R> {
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
 
-    let key = Key::generate();
-
     let mut jar = CookieJar::new();
     let cookie = Cookie::build(("playerId", player_id.0.to_string()))
       .expires(if auth_state.remember_me {
@@ -204,8 +207,9 @@ impl<R: Rng> Session<R> {
         Expiration::Session
       })
       .same_site(SameSite::Strict)
+      .secure(true)
       .build();
-    jar.signed_mut(&key).add(cookie);
+    jar.signed_mut(&self.cookie_key).add(cookie);
 
     state
       .send_to_connection(
@@ -228,14 +232,13 @@ impl<R: Rng> Session<R> {
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
 
-    let key = Key::generate();
-
     let mut jar = CookieJar::new();
     let cookie = Cookie::build(("playerId", player_id.0.to_string()))
       .expires(Expiration::Session)
       .same_site(SameSite::Strict)
+      .secure(true)
       .build();
-    jar.signed_mut(&key).add(cookie);
+    jar.signed_mut(&self.cookie_key).add(cookie);
 
     state
       .send_to_connection(
@@ -285,7 +288,11 @@ impl<R: Rng> Session<R> {
         },
       })
       .collect();
-    let init = message::Response::Init { open_games, games };
+    let init = message::Response::Init {
+      player_id: self.player_id,
+      open_games,
+      games,
+    };
     connection_c_lock.send(init).await?;
 
     Ok(())
@@ -537,7 +544,30 @@ impl<R: Rng> Session<R> {
   }
 
   async fn accept_connection(mut self, state: Arc<State>, stream: TcpStream) -> Result<()> {
-    let ws_stream = tokio_tungstenite::accept_async(stream).await?;
+    let ws_stream = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response| {
+      let mut jar = CookieJar::new();
+      if let Some(cookie) = request
+        .headers()
+        .get("Cookie")
+        .and_then(|cookie| cookie.to_str().ok())
+        .and_then(|cookie| {
+          Cookie::split_parse(cookie)
+            .flat_map(|cookie| cookie.into_iter())
+            .find(|cookie| cookie.name() == "playerId")
+            .map(|cookie| cookie.into_owned())
+        })
+      {
+        jar.add(cookie);
+      }
+      self.player_id = jar
+        .signed(&self.cookie_key)
+        .get("playerId")
+        .and_then(|cookie| Uuid::from_str(cookie.value()).ok())
+        .map(PlayerId);
+      Ok(response)
+    })
+    .await?;
+
     let (mut tx_ws, mut rx_ws) = ws_stream.split();
 
     let (tx, mut rx) = mpsc::channel::<message::Response>(32);
@@ -632,6 +662,7 @@ async fn main() -> Result<()> {
   let http_client = Arc::new(http_client);
   let google_client = Arc::new(google_client);
   let gitlab_client = Arc::new(gitlab_client);
+  let key = Arc::new(Key::generate());
 
   loop {
     let (stream, addr) = listener.accept().await?;
@@ -641,6 +672,7 @@ async fn main() -> Result<()> {
       http_client.clone(),
       google_client.clone(),
       gitlab_client.clone(),
+      key.clone(),
     );
     tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
       if let Err(error) = result {
