@@ -31,5 +31,5 @@ oppai-field = { path = "../field", features = ["serde"] }
 test = [ "uuid/v5" ]
 
 [[bin]]
-name = "main"
+name = "kropki"
 path = "src/main.rs"
