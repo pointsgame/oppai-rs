@@ -7,16 +7,16 @@ use ids::*;
 use im::HashSet;
 use openidconnect::{
   core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
-  AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet,
-  IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
+  AccessTokenHash, AuthorizationCode, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce,
+  OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
 };
 use oppai_field::{field::Field, player::Player};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use state::{FieldSize, Game, OpenGame, State};
+use std::sync::Arc;
 use std::time::SystemTime;
-use std::{env, sync::Arc};
 use tokio::{
   net::{TcpListener, TcpStream},
   sync::RwLock,
@@ -25,6 +25,7 @@ use tokio_tungstenite::tungstenite::handshake::server::Request;
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Builder;
 
+mod config;
 mod db;
 mod ids;
 mod message;
@@ -657,20 +658,14 @@ async fn main() -> Result<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
 
-  let google_client_id = ClientId::new(env::var("GOOGLE_CLIENT_ID")?);
-  let google_client_secret = ClientSecret::new(env::var("GOOGLE_CLIENT_SECRET")?);
-
-  let gitlab_client_id = ClientId::new(env::var("GITLAB_CLIENT_ID")?);
-  let gitlab_client_secret = ClientSecret::new(env::var("GITLAB_CLIENT_SECRET")?);
+  let config = config::cli_parse();
 
   let listener = TcpListener::bind("127.0.0.1:8080").await?;
   let state = Arc::new(State::default());
 
   let mut rng = StdRng::from_entropy();
 
-  let pool = PgPoolOptions::new()
-    .connect("postgres://test:test@localhost/test")
-    .await?;
+  let pool = PgPoolOptions::new().connect(&config.postgres_url).await?;
   sqlx::migrate!("./migrations").run(&pool).await?;
   let db = Arc::new(db::SqlxDb::from(pool));
 
@@ -681,15 +676,21 @@ async fn main() -> Result<()> {
   let provider_metadata =
     CoreProviderMetadata::discover_async(IssuerUrl::new("https://accounts.google.com".to_string())?, &http_client)
       .await?;
-  let google_client =
-    CoreClient::from_provider_metadata(provider_metadata, google_client_id, Some(google_client_secret))
-      .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
+  let google_client = CoreClient::from_provider_metadata(
+    provider_metadata,
+    config.google_oidc.client_id,
+    Some(config.google_oidc.client_secret),
+  )
+  .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
 
   let provider_metadata =
     CoreProviderMetadata::discover_async(IssuerUrl::new("https://gitlab.com".to_string())?, &http_client).await?;
-  let gitlab_client =
-    CoreClient::from_provider_metadata(provider_metadata, gitlab_client_id, Some(gitlab_client_secret))
-      .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
+  let gitlab_client = CoreClient::from_provider_metadata(
+    provider_metadata,
+    config.gitlab_oidc.client_id,
+    Some(config.gitlab_oidc.client_secret),
+  )
+  .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
 
   let http_client = Arc::new(http_client);
   let google_client = Arc::new(google_client);

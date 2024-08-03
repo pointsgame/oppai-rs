@@ -4129,6 +4129,7 @@ name = "oppai-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "cookie",
  "derive_more",
  "env_logger",

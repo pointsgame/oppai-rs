@@ -11,6 +11,7 @@ rand.workspace = true
 anyhow.workspace = true
 log.workspace = true
 env_logger.workspace = true
+clap = { workspace = true, features = ["env", "cargo"] }
 derive_more = "0.99"
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
