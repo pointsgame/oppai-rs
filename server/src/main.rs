@@ -62,7 +62,6 @@ struct Session<R: Rng> {
   connection_id: ConnectionId,
   player_id: Option<PlayerId>,
   watching: HashSet<GameId>,
-  open_game: Option<GameId>,
   auth_state: Option<AuthState>,
   cookie_key: Arc<Key>,
 }
@@ -90,7 +89,6 @@ impl<R: Rng> Session<R> {
       connection_id,
       player_id: None,
       watching: HashSet::new(),
-      open_game: None,
       auth_state: None,
       cookie_key,
     }
@@ -327,10 +325,15 @@ impl<R: Rng> Session<R> {
       )
     };
 
-    if let Some(game_id) = self.open_game {
-      if state.open_games.pin().contains_key(&game_id) {
-        anyhow::bail!("game is already created by player {}", player_id)
-      }
+    if state
+      .open_games
+      .pin()
+      .values()
+      .filter(|open_game| open_game.player_id == player_id)
+      .count()
+      > 2
+    {
+      anyhow::bail!("too many open games for player {}", player_id);
     }
 
     let game_id = GameId(Builder::from_random_bytes(self.rng.gen()).into_uuid());
@@ -341,8 +344,6 @@ impl<R: Rng> Session<R> {
         height: size.height,
       },
     };
-
-    self.open_game = Some(game_id);
 
     state.open_games.pin().insert(game_id, open_game);
 
@@ -358,25 +359,29 @@ impl<R: Rng> Session<R> {
   }
 
   async fn close(&mut self, state: &State, game_id: GameId) -> Result<()> {
-    if self.player_id.is_none() {
+    let player_id = if let Some(player_id) = self.player_id {
+      player_id
+    } else {
       anyhow::bail!(
         "attempt to close a game from an unauthorized connection {}",
         self.connection_id
       )
-    }
+    };
 
-    if let Some(active_game_id) = self.open_game {
-      if game_id != active_game_id {
+    if let Some(open_game) = state.open_games.pin().get(&game_id) {
+      if player_id != open_game.player_id {
         anyhow::bail!(
           "attempt to close a wrong game {} from connection {}",
           game_id,
           self.connection_id
         )
       }
+    } else {
+      return Ok(());
+    }
 
-      if state.open_games.pin().remove(&game_id).is_some() {
-        state.send_to_all(message::Response::Close { game_id }).await;
-      }
+    if state.open_games.pin().remove(&game_id).is_some() {
+      state.send_to_all(message::Response::Close { game_id }).await;
     }
 
     Ok(())
