@@ -12,9 +12,10 @@ use openidconnect::{
 };
 use oppai_field::{field::Field, player::Player};
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use state::{FieldSize, Game, OpenGame, State};
-use std::str::FromStr;
+use std::time::SystemTime;
 use std::{env, sync::Arc};
 use tokio::{
   net::{TcpListener, TcpStream},
@@ -22,12 +23,18 @@ use tokio::{
 };
 use tokio_tungstenite::tungstenite::handshake::server::Request;
 use tokio_tungstenite::tungstenite::Message;
-use uuid::{Builder, Uuid};
+use uuid::Builder;
 
 mod db;
 mod ids;
 mod message;
 mod state;
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+struct CookieData {
+  player_id: PlayerId,
+  expires_at: SystemTime,
+}
 
 type OidcClient =
   CoreClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointMaybeSet, EndpointMaybeSet>;
@@ -197,24 +204,36 @@ impl<R: Rng> Session<R> {
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
 
+    let duration = if auth_state.remember_me {
+      Duration::weeks(12)
+    } else {
+      Duration::weeks(1)
+    };
     let mut jar = CookieJar::new();
-    let cookie = Cookie::build(("playerId", player_id.0.to_string()))
-      .expires(if auth_state.remember_me {
-        Expiration::DateTime(OffsetDateTime::now_utc() + Duration::weeks(12))
-      } else {
-        Expiration::Session
+    let cookie = Cookie::build((
+      "kropki",
+      serde_json::to_string(&CookieData {
+        player_id,
+        expires_at: SystemTime::now() + duration,
       })
-      .same_site(SameSite::Strict)
-      .secure(true)
-      .build();
-    jar.signed_mut(&self.cookie_key).add(cookie);
+      .unwrap(),
+    ))
+    .expires(if auth_state.remember_me {
+      Expiration::DateTime(OffsetDateTime::now_utc() + duration)
+    } else {
+      Expiration::Session
+    })
+    .same_site(SameSite::Strict)
+    .secure(true)
+    .build();
+    jar.private_mut(&self.cookie_key).add(cookie);
 
     state
       .send_to_connection(
         self.connection_id,
         message::Response::Auth {
           player_id,
-          cookie: jar.get("playerId").unwrap().to_string(),
+          cookie: jar.get("kropki").unwrap().to_string(),
         },
       )
       .await?;
@@ -231,19 +250,26 @@ impl<R: Rng> Session<R> {
     state.insert_players_connection(player_id, self.connection_id);
 
     let mut jar = CookieJar::new();
-    let cookie = Cookie::build(("playerId", player_id.0.to_string()))
-      .expires(Expiration::Session)
-      .same_site(SameSite::Strict)
-      .secure(true)
-      .build();
-    jar.signed_mut(&self.cookie_key).add(cookie);
+    let cookie = Cookie::build((
+      "kropki",
+      serde_json::to_string(&CookieData {
+        player_id,
+        expires_at: SystemTime::now() + Duration::weeks(1),
+      })
+      .unwrap(),
+    ))
+    .expires(Expiration::Session)
+    .same_site(SameSite::Strict)
+    .secure(true)
+    .build();
+    jar.private_mut(&self.cookie_key).add(cookie);
 
     state
       .send_to_connection(
         self.connection_id,
         message::Response::Auth {
           player_id,
-          cookie: jar.get("playerId").unwrap().to_string(),
+          cookie: jar.get("kropki").unwrap().to_string(),
         },
       )
       .await?;
@@ -558,17 +584,18 @@ impl<R: Rng> Session<R> {
         .and_then(|cookie| {
           Cookie::split_parse(cookie)
             .flat_map(|cookie| cookie.into_iter())
-            .find(|cookie| cookie.name() == "playerId")
+            .find(|cookie| cookie.name() == "kropki")
             .map(|cookie| cookie.into_owned())
         })
       {
         jar.add(cookie);
       }
       self.player_id = jar
-        .signed(&self.cookie_key)
-        .get("playerId")
-        .and_then(|cookie| Uuid::from_str(cookie.value()).ok())
-        .map(PlayerId);
+        .private(&self.cookie_key)
+        .get("kropki")
+        .and_then(|cookie| serde_json::from_str(cookie.value()).ok())
+        .filter(|data: &CookieData| data.expires_at >= SystemTime::now())
+        .map(|data| data.player_id);
       Ok(response)
     })
     .await?;
