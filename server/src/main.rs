@@ -54,10 +54,11 @@ struct OidcClients {
 }
 
 impl OidcClients {
-  fn oidc_client(&self, provider: message::AuthProvider) -> &OidcClient {
+  fn oidc_client(&self, provider: message::AuthProvider) -> Option<&OidcClient> {
     match provider {
-      message::AuthProvider::Google => &self.google_client,
-      message::AuthProvider::GitLab => &self.gitlab_client,
+      message::AuthProvider::Google => Some(&self.google_client),
+      message::AuthProvider::GitLab => Some(&self.gitlab_client),
+      message::AuthProvider::Test => None,
     }
   }
 }
@@ -107,6 +108,7 @@ impl<R: Rng> Session<R> {
     let (auth_url, csrf_state, nonce) = self
       .oidc_clients
       .oidc_client(provider)
+      .ok_or_else(|| anyhow::anyhow!("invalid auth provider"))?
       .authorize_url(
         CoreAuthenticationFlow::AuthorizationCode,
         CsrfToken::new_random,
@@ -150,6 +152,7 @@ impl<R: Rng> Session<R> {
     let token_response = self
       .oidc_clients
       .oidc_client(auth_state.provider)
+      .ok_or_else(|| anyhow::anyhow!("invalid auth provider"))?
       .exchange_code(AuthorizationCode::new(oidc_code))?
       .set_pkce_verifier(auth_state.pkce_verifier)
       .request_async(self.http_client.as_ref())
@@ -161,7 +164,11 @@ impl<R: Rng> Session<R> {
         self.connection_id
       )
     })?;
-    let id_token_verifier = self.oidc_clients.oidc_client(auth_state.provider).id_token_verifier();
+    let id_token_verifier = self
+      .oidc_clients
+      .oidc_client(auth_state.provider)
+      .ok_or_else(|| anyhow::anyhow!("invalid auth provider"))?
+      .id_token_verifier();
     let claims = id_token.claims(&id_token_verifier, &auth_state.nonce)?;
 
     if let Some(expected_access_token_hash) = claims.access_token_hash() {
@@ -178,6 +185,7 @@ impl<R: Rng> Session<R> {
     let db_provider = match auth_state.provider {
       message::AuthProvider::Google => db::Provider::Google,
       message::AuthProvider::GitLab => db::Provider::GitLab,
+      message::AuthProvider::Test => anyhow::bail!("invalid auth provider"),
     };
 
     let player_id = self
@@ -314,6 +322,14 @@ impl<R: Rng> Session<R> {
       })
       .collect();
     let init = message::Response::Init {
+      #[cfg(feature = "test")]
+      auth_providers: vec![
+        message::AuthProvider::Google,
+        message::AuthProvider::GitLab,
+        message::AuthProvider::Test,
+      ],
+      #[cfg(not(feature = "test"))]
+      auth_providers: vec![message::AuthProvider::Google, message::AuthProvider::GitLab],
       player_id: self.player_id,
       open_games,
       games,

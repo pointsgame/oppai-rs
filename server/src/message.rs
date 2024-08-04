@@ -54,6 +54,7 @@ pub struct Game {
 pub enum AuthProvider {
   Google,
   GitLab,
+  Test,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -105,6 +106,7 @@ pub enum Request {
 pub enum Response {
   /// First message when connection is established.
   Init {
+    auth_providers: Vec<AuthProvider>,
     player_id: Option<PlayerId>,
     open_games: Vec<OpenGame>,
     games: Vec<Game>,
