@@ -13,7 +13,7 @@ use openidconnect::{
 use oppai_field::{field::Field, player::Player};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use state::{FieldSize, Game, OpenGame, State};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -665,7 +665,8 @@ async fn main() -> Result<()> {
 
   let mut rng = StdRng::from_entropy();
 
-  let pool = PgPoolOptions::new().connect(&config.postgres_url).await?;
+  let options = PgConnectOptions::new_without_pgpass().socket(&config.postgres_socket);
+  let pool = PgPoolOptions::new().connect_with(options).await?;
   sqlx::migrate!("./migrations").run(&pool).await?;
   let db = Arc::new(db::SqlxDb::from(pool));
 

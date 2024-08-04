@@ -9,7 +9,7 @@ pub struct OidcConfig {
 pub struct Config {
   pub google_oidc: OidcConfig,
   pub gitlab_oidc: OidcConfig,
-  pub postgres_url: String,
+  pub postgres_socket: String,
 }
 
 pub fn cli_parse() -> Config {
@@ -50,12 +50,12 @@ pub fn cli_parse() -> Config {
         .env("GITLAB_OIDC_CLIENT_SECRET"),
     )
     .arg(
-      Arg::new("postgres-url")
-        .long("postgres-url")
-        .help("Postgres connection url")
+      Arg::new("postgres-socket")
+        .long("postgres-socket")
+        .help("Postgres UNIX socket")
         .num_args(1)
         .required(true)
-        .env("POSTGRES_URL"),
+        .env("POSTGRES_SOCKET"),
     )
     .get_matches();
   Config {
@@ -67,6 +67,6 @@ pub fn cli_parse() -> Config {
       client_id: ClientId::new(matches.get_one("gitlab-oidc-client-id").cloned().unwrap()),
       client_secret: ClientSecret::new(matches.get_one("gitlab-oidc-client-secret").cloned().unwrap()),
     },
-    postgres_url: matches.get_one("postgres-url").cloned().unwrap(),
+    postgres_socket: matches.get_one("postgres-socket").cloned().unwrap(),
   }
 }
