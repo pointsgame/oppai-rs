@@ -1,4 +1,5 @@
 use clap::{Arg, Command};
+use cookie::Key;
 use openidconnect::{ClientId, ClientSecret};
 
 pub struct OidcConfig {
@@ -10,6 +11,7 @@ pub struct Config {
   pub google_oidc: OidcConfig,
   pub gitlab_oidc: OidcConfig,
   pub postgres_socket: String,
+  pub cookie_key: Key,
 }
 
 pub fn cli_parse() -> Config {
@@ -57,6 +59,14 @@ pub fn cli_parse() -> Config {
         .required(true)
         .env("POSTGRES_SOCKET"),
     )
+    .arg(
+      Arg::new("cookie-key")
+        .long("cookie-key")
+        .help("Cookie secret key")
+        .num_args(1)
+        .required(true)
+        .env("COOKIE_KEY"),
+    )
     .get_matches();
   Config {
     google_oidc: OidcConfig {
@@ -68,5 +78,10 @@ pub fn cli_parse() -> Config {
       client_secret: ClientSecret::new(matches.get_one("gitlab-oidc-client-secret").cloned().unwrap()),
     },
     postgres_socket: matches.get_one("postgres-socket").cloned().unwrap(),
+    cookie_key: Key::from(
+      hex::decode(matches.get_one::<String>("cookie-key").cloned().unwrap().as_str())
+        .unwrap()
+        .as_slice(),
+    ),
   }
 }

@@ -4135,6 +4135,7 @@ dependencies = [
  "env_logger",
  "futures",
  "futures-util",
+ "hex",
  "im",
  "log",
  "openidconnect",

@@ -712,7 +712,7 @@ async fn main() -> Result<()> {
   let http_client = Arc::new(http_client);
   let google_client = Arc::new(google_client);
   let gitlab_client = Arc::new(gitlab_client);
-  let key = Arc::new(Key::generate());
+  let cookie_key = Arc::new(config.cookie_key);
 
   loop {
     let (stream, addr) = listener.accept().await?;
@@ -722,7 +722,7 @@ async fn main() -> Result<()> {
       http_client.clone(),
       google_client.clone(),
       gitlab_client.clone(),
-      key.clone(),
+      cookie_key.clone(),
     );
     tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
       if let Err(error) = result {
