@@ -58,6 +58,7 @@ impl OidcClients {
     match provider {
       message::AuthProvider::Google => Some(&self.google_client),
       message::AuthProvider::GitLab => Some(&self.gitlab_client),
+      #[cfg(feature = "test")]
       message::AuthProvider::Test => None,
     }
   }
@@ -185,10 +186,11 @@ impl<R: Rng> Session<R> {
     let db_provider = match auth_state.provider {
       message::AuthProvider::Google => db::Provider::Google,
       message::AuthProvider::GitLab => db::Provider::GitLab,
+      #[cfg(feature = "test")]
       message::AuthProvider::Test => anyhow::bail!("invalid auth provider"),
     };
 
-    let player_id = self
+    let player = self
       .db
       .get_or_create_player(db::OidcPlayer {
         provider: db_provider,
@@ -208,10 +210,19 @@ impl<R: Rng> Session<R> {
           .map(|preferred_username| preferred_username.to_string()),
       })
       .await?;
-    let player_id = PlayerId(player_id);
+    let player_id = PlayerId(player.id);
 
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
+
+    state
+      .send_to_all(message::Response::PlayerJoined {
+        player: message::Player {
+          player_id,
+          nickname: player.nickname,
+        },
+      })
+      .await;
 
     let duration = if auth_state.remember_me {
       Duration::weeks(12)
@@ -252,11 +263,20 @@ impl<R: Rng> Session<R> {
 
   #[cfg(feature = "test")]
   async fn auth_test(&mut self, state: &State, name: String) -> Result<()> {
-    let player_id = self.db.get_or_create_test_player(name).await?;
-    let player_id = PlayerId(player_id);
+    let player = self.db.get_or_create_test_player(name).await?;
+    let player_id = PlayerId(player.id);
 
     self.player_id = Some(player_id);
     state.insert_players_connection(player_id, self.connection_id);
+
+    state
+      .send_to_all(message::Response::PlayerJoined {
+        player: message::Player {
+          player_id,
+          nickname: player.nickname,
+        },
+      })
+      .await;
 
     let mut jar = CookieJar::new();
     let cookie = Cookie::build((
@@ -287,12 +307,34 @@ impl<R: Rng> Session<R> {
   }
 
   async fn init(&self, state: &State, tx: Sender<message::Response>) -> Result<()> {
+    let player = if let Some(player_id) = self.player_id {
+      Some(self.db.get_player(player_id.0).await?)
+    } else {
+      None
+    };
+
     // lock connection before inserting so we can be sure we send init message before any update
     let connection = Arc::new(RwLock::new(tx));
     let connection_c = connection.clone();
     let mut connection_c_lock = connection_c.write().await;
 
     state.connections.pin().insert(self.connection_id, connection);
+
+    if let Some(player) = player {
+      let player_id = PlayerId(player.id);
+      state.insert_players_connection(player_id, self.connection_id);
+      state
+        .send_to_all_except(
+          self.connection_id,
+          message::Response::PlayerJoined {
+            player: message::Player {
+              player_id,
+              nickname: player.nickname,
+            },
+          },
+        )
+        .await;
+    }
 
     let open_games = state
       .open_games
@@ -321,6 +363,22 @@ impl<R: Rng> Session<R> {
         },
       })
       .collect();
+    let player_ids = state
+      .players
+      .pin()
+      .keys()
+      .map(|player_id| player_id.0)
+      .collect::<Vec<_>>();
+    let players = self
+      .db
+      .get_players(&player_ids)
+      .await?
+      .into_iter()
+      .map(|player| message::Player {
+        player_id: PlayerId(player.id),
+        nickname: player.nickname,
+      })
+      .collect();
     let init = message::Response::Init {
       #[cfg(feature = "test")]
       auth_providers: vec![
@@ -331,6 +389,7 @@ impl<R: Rng> Session<R> {
       #[cfg(not(feature = "test"))]
       auth_providers: vec![message::AuthProvider::Google, message::AuthProvider::GitLab],
       player_id: self.player_id,
+      players,
       open_games,
       games,
     };
@@ -345,7 +404,9 @@ impl<R: Rng> Session<R> {
     }
 
     if let Some(player_id) = self.player_id {
-      state.remove_players_connection(player_id, self.connection_id);
+      if state.remove_players_connection(player_id, self.connection_id) {
+        state.send_to_all(message::Response::PlayerLeft { player_id });
+      }
     }
   }
 
@@ -582,8 +643,7 @@ impl<R: Rng> Session<R> {
         game_id,
         message::Response::PutPoint {
           game_id,
-          coordinate,
-          player,
+          _move: message::Move { coordinate, player },
         },
       )
       .await;

@@ -1,4 +1,4 @@
-use oppai_field::player::Player;
+use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
 
 use crate::ids::*;
@@ -30,7 +30,14 @@ pub struct Coordinate {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Move {
   pub coordinate: Coordinate,
-  pub player: Player,
+  pub player: Color,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Player {
+  pub player_id: PlayerId,
+  pub nickname: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -54,6 +61,7 @@ pub struct Game {
 pub enum AuthProvider {
   Google,
   GitLab,
+  #[cfg(feature = "test")]
   Test,
 }
 
@@ -108,6 +116,7 @@ pub enum Response {
   Init {
     auth_providers: Vec<AuthProvider>,
     player_id: Option<PlayerId>,
+    players: Vec<Player>,
     open_games: Vec<OpenGame>,
     games: Vec<Game>,
   },
@@ -122,6 +131,12 @@ pub enum Response {
   Auth {
     player_id: PlayerId,
     cookie: String,
+  },
+  PlayerJoined {
+    player: Player,
+  },
+  PlayerLeft {
+    player_id: PlayerId,
   },
   /// A new game was created in a lobby.
   Create {
@@ -142,7 +157,7 @@ pub enum Response {
   /// A point in a game was put.
   PutPoint {
     game_id: GameId,
-    coordinate: Coordinate,
-    player: Player,
+    #[serde(rename = "move")]
+    _move: Move,
   },
 }

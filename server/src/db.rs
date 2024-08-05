@@ -3,6 +3,7 @@ use derive_more::{From, Into};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
+#[derive(sqlx::FromRow)]
 pub struct Player {
   pub id: Uuid,
   pub nickname: String,
@@ -43,10 +44,10 @@ pub struct SqlxDb {
 }
 
 impl SqlxDb {
-  pub async fn get_or_create_player(&self, oidc_player: OidcPlayer) -> Result<Uuid> {
+  pub async fn get_or_create_player(&self, oidc_player: OidcPlayer) -> Result<Player> {
     let mut tx = self.pool.begin().await?;
 
-    let player_id: Option<(Uuid,)> = sqlx::query_as(
+    let player: Option<Player> = sqlx::query_as(
       "
 WITH updated AS (
   UPDATE oidc_players
@@ -54,7 +55,7 @@ WITH updated AS (
   WHERE subject = $6 AND provider = $7
   RETURNING player_id
 )
-SELECT players.id FROM updated
+SELECT players.id, players.nickname FROM updated
 JOIN players ON updated.player_id = players.id
 ",
     )
@@ -68,9 +69,9 @@ JOIN players ON updated.player_id = players.id
     .fetch_optional(&mut *tx)
     .await?;
 
-    if let Some((player_id,)) = player_id {
+    if let Some(player) = player {
       tx.commit().await?;
-      return Ok(player_id);
+      return Ok(player);
     }
 
     let player_id = if let Some(email) = oidc_player.email.as_ref() {
@@ -118,18 +119,21 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     )
     .bind(player_id)
     .bind(oidc_player.provider)
-    .bind(oidc_player.subject)
-    .bind(oidc_player.email)
+    .bind(&oidc_player.subject)
+    .bind(&oidc_player.email)
     .bind(oidc_player.email_verified)
-    .bind(oidc_player.name)
-    .bind(oidc_player.nickname)
-    .bind(oidc_player.preferred_username)
+    .bind(&oidc_player.name)
+    .bind(&oidc_player.nickname)
+    .bind(&oidc_player.preferred_username)
     .execute(&mut *tx)
     .await?;
 
     tx.commit().await?;
 
-    Ok(player_id)
+    Ok(Player {
+      id: player_id,
+      nickname: oidc_player.nickname().to_string(),
+    })
   }
 
   #[cfg(feature = "test")]
@@ -149,5 +153,33 @@ ON CONFLICT DO NOTHING
     .await?;
 
     Ok(player_id)
+  }
+
+  pub async fn get_player(&self, player_id: Uuid) -> Result<Player> {
+    sqlx::query_as(
+      "
+SELECT id, nickname
+FROM players
+WHERE id = $1
+",
+    )
+    .bind(player_id)
+    .fetch_one(&self.pool)
+    .await
+    .map_err(From::from)
+  }
+
+  pub async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>> {
+    sqlx::query_as(
+      "
+SELECT id, nickname
+FROM players
+WHERE id IN (SELECT unnest($1::uuid[]))
+",
+    )
+    .bind(player_ids)
+    .fetch_all(&self.pool)
+    .await
+    .map_err(From::from)
   }
 }

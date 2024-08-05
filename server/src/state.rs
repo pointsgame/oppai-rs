@@ -1,11 +1,10 @@
 use crate::{ids::*, message::Response};
 use anyhow::Result;
 use futures::channel::mpsc::Sender;
-use futures_util::SinkExt;
 use im::HashSet as ImHashSet;
 use oppai_field::{field::Field, player::Player};
-use papaya::{HashMap, Operation};
-use std::{sync::Arc, time::Duration};
+use papaya::{Compute, HashMap, Operation};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -65,8 +64,9 @@ impl State {
     });
   }
 
-  pub fn remove_players_connection(&self, player_id: PlayerId, connection_id: ConnectionId) {
-    self.players.pin().compute(player_id, |entry| match entry {
+  pub fn remove_players_connection(&self, player_id: PlayerId, connection_id: ConnectionId) -> bool {
+    let pin = self.players.pin();
+    let result = pin.compute(player_id, |entry| match entry {
       Some((_, connections)) if connections.contains(&connection_id) => {
         let new_connections = connections.without(&connection_id);
         if new_connections.is_empty() {
@@ -77,6 +77,7 @@ impl State {
       }
       _ => Operation::Abort(()),
     });
+    matches!(result, Compute::Removed(_, _))
   }
 
   pub fn subscribe(&self, connection_id: ConnectionId, game_id: GameId) {
@@ -101,11 +102,6 @@ impl State {
     });
   }
 
-  async fn send_to(tx: &mut Sender<Response>, response: Response) -> Result<()> {
-    tokio::time::timeout(Duration::from_millis(10), tx.send(response)).await??;
-    Ok(())
-  }
-
   pub async fn send_to_connection(&self, connection_id: ConnectionId, response: Response) -> Result<()> {
     let connection = if let Some(connection) = self.connections.pin().get(&connection_id) {
       connection.clone()
@@ -114,14 +110,15 @@ impl State {
     };
     let mut connection = connection.write().await;
 
-    Self::send_to(&mut connection, response).await
+    connection.try_send(response).map_err(From::from)
   }
 
   pub async fn send_to_player(&self, player_id: PlayerId, response: Response) {
     if let Some(connections) = self.players.pin_owned().get(&player_id) {
       for &connection_id in connections {
-        if let Err(_) = self.send_to_connection(connection_id, response.clone()).await {
-          // TODO: log
+        if let Err(error) = self.send_to_connection(connection_id, response.clone()).await {
+          self.connections.pin().remove(&connection_id);
+          log::warn!("failed to send message to connection {}: {}", connection_id, error);
         }
       }
     }
@@ -130,18 +127,35 @@ impl State {
   pub async fn send_to_watchers(&self, game_id: GameId, response: Response) {
     if let Some(connections) = self.watchers.pin_owned().get(&game_id) {
       for &connection_id in connections {
-        if let Err(_) = self.send_to_connection(connection_id, response.clone()).await {
-          // TODO: log
+        if let Err(error) = self.send_to_connection(connection_id, response.clone()).await {
+          self.connections.pin().remove(&connection_id);
+          log::warn!("failed to send message to connection {}: {}", connection_id, error);
         }
       }
     }
   }
 
   pub async fn send_to_all(&self, response: Response) {
-    for connection in self.connections.pin_owned().values() {
+    let pin = self.connections.pin_owned();
+    for (connection_id, connection) in pin.iter() {
       let mut connection = connection.write().await;
-      if let Err(_) = Self::send_to(&mut connection, response.clone()).await {
-        // TODO: log
+      if let Err(error) = connection.try_send(response.clone()) {
+        pin.remove(connection_id);
+        log::warn!("failed to send message to connection {}: {}", connection_id, error);
+      }
+    }
+  }
+
+  pub async fn send_to_all_except(&self, except: ConnectionId, response: Response) {
+    let pin = self.connections.pin_owned();
+    for (&connection_id, connection) in pin.iter() {
+      if except == connection_id {
+        continue;
+      }
+      let mut connection = connection.write().await;
+      if let Err(error) = connection.try_send(response.clone()) {
+        pin.remove(&connection_id);
+        log::warn!("failed to send message to connection {}: {}", connection_id, error);
       }
     }
   }
