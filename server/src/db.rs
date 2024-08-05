@@ -137,7 +137,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
   }
 
   #[cfg(feature = "test")]
-  pub async fn get_or_create_test_player(&self, name: String) -> Result<Uuid> {
+  pub async fn get_or_create_test_player(&self, name: String) -> Result<Player> {
     let player_id = Uuid::new_v5(&Uuid::default(), name.as_bytes());
 
     sqlx::query(
@@ -148,11 +148,14 @@ ON CONFLICT DO NOTHING
 ",
     )
     .bind(player_id)
-    .bind(name)
+    .bind(&name)
     .execute(&self.pool)
     .await?;
 
-    Ok(player_id)
+    Ok(Player {
+      id: player_id,
+      nickname: name,
+    })
   }
 
   pub async fn get_player(&self, player_id: Uuid) -> Result<Player> {
