@@ -415,8 +415,12 @@ impl<R: Rng> Session<R> {
   }
 
   async fn sign_out(&mut self, state: &State) {
-    self.finalize(state).await;
-    self.player_id = None;
+    if let Some(player_id) = self.player_id {
+      self.player_id = None;
+      if state.remove_players_connection(player_id, self.connection_id) {
+        state.send_to_all(message::Response::PlayerLeft { player_id }).await;
+      }
+    }
   }
 
   async fn create(&mut self, state: &State, size: message::FieldSize) -> Result<()> {
