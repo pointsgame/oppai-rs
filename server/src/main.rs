@@ -412,6 +412,11 @@ impl<R: Rng> Session<R> {
     }
   }
 
+  async fn sign_out(&mut self, state: &State) {
+    self.finalize(state).await;
+    self.player_id = None;
+  }
+
   async fn create(&mut self, state: &State, size: message::FieldSize) -> Result<()> {
     if !size.is_valid() {
       anyhow::bail!(
@@ -707,6 +712,7 @@ impl<R: Rng> Session<R> {
             } => self.auth(&state, oidc_code, oidc_state).await?,
             #[cfg(feature = "test")]
             message::Request::AuthTest { name } => self.auth_test(&state, name).await?,
+            message::Request::SignOut => self.sign_out(&state).await,
             message::Request::Create { size } => self.create(&state, size).await?,
             message::Request::Close { game_id } => self.close(&state, game_id).await?,
             message::Request::Join { game_id } => self.join(&state, game_id).await?,

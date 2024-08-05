@@ -81,6 +81,7 @@ pub enum Request {
   AuthTest {
     name: String,
   },
+  SignOut,
   /// Create a new game in a lobby.
   Create {
     size: FieldSize,
