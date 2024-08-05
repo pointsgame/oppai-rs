@@ -399,6 +399,8 @@ impl<R: Rng> Session<R> {
   }
 
   async fn finalize(&self, state: &State) {
+    state.connections.pin().remove(&self.connection_id);
+
     for &game_id in &self.watching {
       state.unsubscribe(self.connection_id, game_id);
     }
