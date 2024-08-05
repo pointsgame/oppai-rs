@@ -238,6 +238,7 @@ impl<R: Rng> Session<R> {
       })
       .unwrap(),
     ))
+    .path("/")
     .expires(if auth_state.remember_me {
       Expiration::DateTime(OffsetDateTime::now_utc() + duration)
     } else {
@@ -287,6 +288,7 @@ impl<R: Rng> Session<R> {
       })
       .unwrap(),
     ))
+    .path("/")
     .expires(Expiration::Session)
     .same_site(SameSite::Strict)
     .secure(true)
