@@ -774,7 +774,7 @@ async fn main() -> Result<()> {
     .redirect(reqwest::redirect::Policy::none()) // Following redirects opens the client up to SSRF vulnerabilities.
     .build()?;
 
-  let redirect_url = RedirectUrl::new("https://kropki.org".to_string())?;
+  let redirect_url = RedirectUrl::new("https://kropki.org/".to_string())?;
 
   let google_client = match config.google_oidc {
     Some(oidc_config) => {
