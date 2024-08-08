@@ -75,11 +75,11 @@ JOIN players ON updated.player_id = players.id
       return Ok(player);
     }
 
-    let player_id = if let Some(email) = oidc_player.email.as_ref() {
+    let player: Option<Player> = if let Some(email) = oidc_player.email.as_ref() {
       if oidc_player.email_verified == Some(true) {
-        let player_id: Option<(Uuid,)> = sqlx::query_as(
+        sqlx::query_as(
           "
-SELECT players.id FROM oidc_players
+SELECT players.id, players.nickname FROM oidc_players
 JOIN players ON oidc_players.player_id = players.id
 WHERE oidc_players.email = $1
 LIMIT 1
@@ -87,8 +87,7 @@ LIMIT 1
         )
         .bind(email)
         .fetch_optional(&mut *tx)
-        .await?;
-        player_id.map(|(player_id,)| player_id)
+        .await?
       } else {
         None
       }
@@ -96,20 +95,19 @@ LIMIT 1
       None
     };
 
-    let player_id = if let Some(player_id) = player_id {
-      player_id
+    let player = if let Some(player) = player {
+      player
     } else {
-      let (player_id,) = sqlx::query_as(
+      sqlx::query_as(
         "
 INSERT INTO players (id, nickname, registration_time)
 VALUES (gen_random_uuid(), unique_nickname($1), now())
-RETURNING id
+RETURNING id, nickname
 ",
       )
       .bind(oidc_player.nickname())
       .fetch_one(&mut *tx)
-      .await?;
-      player_id
+      .await?
     };
 
     sqlx::query(
@@ -118,7 +116,7 @@ INSERT INTO oidc_players (player_id, provider, subject, email, email_verified, \
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ",
     )
-    .bind(player_id)
+    .bind(player.id)
     .bind(oidc_player.provider)
     .bind(&oidc_player.subject)
     .bind(&oidc_player.email)
@@ -131,10 +129,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 
     tx.commit().await?;
 
-    Ok(Player {
-      id: player_id,
-      nickname: oidc_player.nickname().to_string(),
-    })
+    Ok(player)
   }
 
   #[cfg(feature = "test")]
