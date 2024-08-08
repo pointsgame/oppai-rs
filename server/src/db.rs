@@ -13,6 +13,7 @@ pub struct Player {
 #[sqlx(type_name = "provider")]
 #[sqlx(rename_all = "lowercase")]
 pub enum Provider {
+  Portier,
   Google,
   GitLab,
 }

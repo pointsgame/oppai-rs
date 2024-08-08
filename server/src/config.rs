@@ -8,8 +8,8 @@ pub struct OidcConfig {
 }
 
 pub struct Config {
-  pub google_oidc: OidcConfig,
-  pub gitlab_oidc: OidcConfig,
+  pub google_oidc: Option<OidcConfig>,
+  pub gitlab_oidc: Option<OidcConfig>,
   pub postgres_socket: String,
   pub cookie_key: Key,
 }
@@ -24,7 +24,7 @@ pub fn cli_parse() -> Config {
         .long("google-oidc-client-id")
         .help("Google OIDC client ID")
         .num_args(1)
-        .required(true)
+        .requires("google-oidc-client-secret")
         .env("GOOGLE_OIDC_CLIENT_ID"),
     )
     .arg(
@@ -32,7 +32,6 @@ pub fn cli_parse() -> Config {
         .long("google-oidc-client-secret")
         .help("Google OIDC client secret")
         .num_args(1)
-        .required(true)
         .env("GOOGLE_OIDC_CLIENT_SECRET"),
     )
     .arg(
@@ -40,7 +39,7 @@ pub fn cli_parse() -> Config {
         .long("gitlab-oidc-client-id")
         .help("GitLab OIDC client ID")
         .num_args(1)
-        .required(true)
+        .requires("gitlab-oidc-client-secret")
         .env("GITLAB_OIDC_CLIENT_ID"),
     )
     .arg(
@@ -48,7 +47,6 @@ pub fn cli_parse() -> Config {
         .long("gitlab-oidc-client-secret")
         .help("GitLab OIDC client secret")
         .num_args(1)
-        .required(true)
         .env("GITLAB_OIDC_CLIENT_SECRET"),
     )
     .arg(
@@ -68,15 +66,37 @@ pub fn cli_parse() -> Config {
         .env("COOKIE_KEY"),
     )
     .get_matches();
+  let google_oidc = matches
+    .get_one("google-oidc-client-id")
+    .cloned()
+    .map(ClientId::new)
+    .zip(
+      matches
+        .get_one("google-oidc-client-secret")
+        .cloned()
+        .map(ClientSecret::new),
+    )
+    .map(|(client_id, client_secret)| OidcConfig {
+      client_id,
+      client_secret,
+    });
+  let gitlab_oidc = matches
+    .get_one("gitlab-oidc-client-id")
+    .cloned()
+    .map(ClientId::new)
+    .zip(
+      matches
+        .get_one("gitlab-oidc-client-secret")
+        .cloned()
+        .map(ClientSecret::new),
+    )
+    .map(|(client_id, client_secret)| OidcConfig {
+      client_id,
+      client_secret,
+    });
   Config {
-    google_oidc: OidcConfig {
-      client_id: ClientId::new(matches.get_one("google-oidc-client-id").cloned().unwrap()),
-      client_secret: ClientSecret::new(matches.get_one("google-oidc-client-secret").cloned().unwrap()),
-    },
-    gitlab_oidc: OidcConfig {
-      client_id: ClientId::new(matches.get_one("gitlab-oidc-client-id").cloned().unwrap()),
-      client_secret: ClientSecret::new(matches.get_one("gitlab-oidc-client-secret").cloned().unwrap()),
-    },
+    google_oidc,
+    gitlab_oidc,
     postgres_socket: matches.get_one("postgres-socket").cloned().unwrap(),
     cookie_key: Key::from(
       hex::decode(matches.get_one::<String>("cookie-key").cloned().unwrap().as_str())

@@ -5,6 +5,7 @@ use futures::channel::mpsc::{self, Sender};
 use futures_util::{select, FutureExt, SinkExt, StreamExt};
 use ids::*;
 use im::HashSet;
+use openidconnect::ClientId;
 use openidconnect::{
   core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
   AccessTokenHash, AuthorizationCode, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce,
@@ -40,6 +41,7 @@ struct CookieData {
 type OidcClient =
   CoreClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointMaybeSet, EndpointMaybeSet>;
 
+#[derive(Debug)]
 struct AuthState {
   provider: message::AuthProvider,
   pkce_verifier: PkceCodeVerifier,
@@ -48,16 +50,19 @@ struct AuthState {
   remember_me: bool,
 }
 
+#[derive(Debug, Clone)]
 struct OidcClients {
-  google_client: Arc<OidcClient>,
-  gitlab_client: Arc<OidcClient>,
+  portier_client: Option<Arc<OidcClient>>,
+  google_client: Option<Arc<OidcClient>>,
+  gitlab_client: Option<Arc<OidcClient>>,
 }
 
 impl OidcClients {
   fn oidc_client(&self, provider: message::AuthProvider) -> Option<&OidcClient> {
     match provider {
-      message::AuthProvider::Google => Some(&self.google_client),
-      message::AuthProvider::GitLab => Some(&self.gitlab_client),
+      message::AuthProvider::Portier => self.portier_client.as_deref(),
+      message::AuthProvider::Google => self.google_client.as_deref(),
+      message::AuthProvider::GitLab => self.gitlab_client.as_deref(),
       #[cfg(feature = "test")]
       message::AuthProvider::Test => None,
     }
@@ -81,20 +86,14 @@ impl<R: Rng> Session<R> {
     mut rng: R,
     db: Arc<db::SqlxDb>,
     http_client: Arc<reqwest::Client>,
-    google_client: Arc<OidcClient>,
-    gitlab_client: Arc<OidcClient>,
+    oidc_clients: OidcClients,
     cookie_key: Arc<Key>,
   ) -> Self {
     let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
     Session {
       db,
       http_client,
-      oidc_clients: {
-        OidcClients {
-          google_client,
-          gitlab_client,
-        }
-      },
+      oidc_clients,
       rng,
       connection_id,
       player_id: None,
@@ -184,6 +183,7 @@ impl<R: Rng> Session<R> {
     }
 
     let db_provider = match auth_state.provider {
+      message::AuthProvider::Portier => db::Provider::Portier,
       message::AuthProvider::Google => db::Provider::Google,
       message::AuthProvider::GitLab => db::Provider::GitLab,
       #[cfg(feature = "test")]
@@ -764,28 +764,60 @@ async fn main() -> Result<()> {
     .redirect(reqwest::redirect::Policy::none()) // Following redirects opens the client up to SSRF vulnerabilities.
     .build()?;
 
-  let provider_metadata =
-    CoreProviderMetadata::discover_async(IssuerUrl::new("https://accounts.google.com".to_string())?, &http_client)
-      .await?;
-  let google_client = CoreClient::from_provider_metadata(
-    provider_metadata,
-    config.google_oidc.client_id,
-    Some(config.google_oidc.client_secret),
-  )
-  .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
+  let redirect_url = RedirectUrl::new("https://kropki.org".to_string())?;
 
-  let provider_metadata =
-    CoreProviderMetadata::discover_async(IssuerUrl::new("https://gitlab.com".to_string())?, &http_client).await?;
-  let gitlab_client = CoreClient::from_provider_metadata(
-    provider_metadata,
-    config.gitlab_oidc.client_id,
-    Some(config.gitlab_oidc.client_secret),
-  )
-  .set_redirect_uri(RedirectUrl::new("https://kropki.org".to_string())?);
+  let google_client = match config.google_oidc {
+    Some(oidc_config) => {
+      CoreProviderMetadata::discover_async(IssuerUrl::new("https://accounts.google.com".to_string())?, &http_client)
+        .await
+        .inspect_err(|e| log::error!("failed to fetch google metatdata: {}", e))
+        .ok()
+        .map(|provider_metadata| {
+          CoreClient::from_provider_metadata(
+            provider_metadata,
+            oidc_config.client_id,
+            Some(oidc_config.client_secret),
+          )
+          .set_redirect_uri(redirect_url.clone())
+        })
+    }
+    None => None,
+  };
+
+  let gitlab_client = match config.gitlab_oidc {
+    Some(oidc_config) => {
+      CoreProviderMetadata::discover_async(IssuerUrl::new("https://gitlab.com".to_string())?, &http_client)
+        .await
+        .inspect_err(|e| log::error!("failed to fetch gitlab metatdata: {}", e))
+        .ok()
+        .map(|provider_metadata| {
+          CoreClient::from_provider_metadata(
+            provider_metadata,
+            oidc_config.client_id,
+            Some(oidc_config.client_secret),
+          )
+          .set_redirect_uri(redirect_url.clone())
+        })
+    }
+    None => None,
+  };
+
+  let portier_client =
+    CoreProviderMetadata::discover_async(IssuerUrl::new("https://broker.portier.io".to_string())?, &http_client)
+      .await
+      .inspect_err(|e| log::error!("failed to fetch portier metatdata: {}", e))
+      .ok()
+      .map(|provider_metadata| {
+        CoreClient::from_provider_metadata(provider_metadata, ClientId::new("https://kropki.org".to_string()), None)
+          .set_redirect_uri(redirect_url)
+      });
 
   let http_client = Arc::new(http_client);
-  let google_client = Arc::new(google_client);
-  let gitlab_client = Arc::new(gitlab_client);
+  let oidc_clients = OidcClients {
+    portier_client: portier_client.map(Arc::new),
+    google_client: google_client.map(Arc::new),
+    gitlab_client: gitlab_client.map(Arc::new),
+  };
   let cookie_key = Arc::new(config.cookie_key);
 
   loop {
@@ -794,8 +826,7 @@ async fn main() -> Result<()> {
       StdRng::from_rng(&mut rng)?,
       db.clone(),
       http_client.clone(),
-      google_client.clone(),
-      gitlab_client.clone(),
+      oidc_clients.clone(),
       cookie_key.clone(),
     );
     tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
