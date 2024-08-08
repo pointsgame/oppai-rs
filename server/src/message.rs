@@ -43,8 +43,8 @@ pub struct Player {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenGame {
-  pub player_id: PlayerId,
   pub game_id: GameId,
+  pub player: Player,
   pub size: FieldSize,
 }
 
@@ -52,8 +52,8 @@ pub struct OpenGame {
 #[serde(rename_all = "camelCase")]
 pub struct Game {
   pub game_id: GameId,
-  pub red_player_id: PlayerId,
-  pub black_player_id: PlayerId,
+  pub red_player: Player,
+  pub black_player: Player,
   pub size: FieldSize,
 }
 
@@ -142,9 +142,7 @@ pub enum Response {
   },
   /// A new game was created in a lobby.
   Create {
-    game_id: GameId,
-    player_id: PlayerId,
-    size: FieldSize,
+    open_game: OpenGame,
   },
   /// An open game was closed.
   Close {
@@ -152,9 +150,7 @@ pub enum Response {
   },
   /// A new game started.
   Start {
-    game_id: GameId,
-    red_player_id: PlayerId,
-    black_player_id: PlayerId,
+    game: Game,
   },
   /// A point in a game was put.
   PutPoint {

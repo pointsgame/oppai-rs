@@ -4,7 +4,6 @@ use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 use futures::channel::mpsc::{self, Sender};
 use futures_util::{select, FutureExt, SinkExt, StreamExt};
 use ids::*;
-use im::HashSet;
 use openidconnect::ClientId;
 use openidconnect::{
   core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
@@ -16,6 +15,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use state::{FieldSize, Game, OpenGame, State};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::{
@@ -354,47 +354,89 @@ impl<R: Rng> Session<R> {
         .await;
     }
 
+    let player_ids = state
+      .players
+      .pin()
+      .keys()
+      .chain(state.open_games.pin().values().map(|open_game| &open_game.player_id))
+      .chain(
+        state
+          .games
+          .pin()
+          .values()
+          .flat_map(|game| [&game.black_player_id, &game.red_player_id].into_iter()),
+      )
+      .map(|player_id| player_id.0)
+      .collect::<HashSet<_>>()
+      .into_iter()
+      .collect::<Vec<_>>();
+    let mut players = self
+      .db
+      .get_players(&player_ids)
+      .await?
+      .into_iter()
+      .map(|player| (player.id, player))
+      .collect::<HashMap<_, _>>();
+
     let open_games = state
       .open_games
       .pin()
       .iter()
-      .map(|(&game_id, open_game)| message::OpenGame {
-        game_id,
-        player_id: open_game.player_id,
-        size: message::FieldSize {
-          width: open_game.size.width,
-          height: open_game.size.height,
-        },
+      .flat_map(|(&game_id, open_game)| {
+        players
+          .get(&open_game.player_id.0)
+          .map(|player| message::OpenGame {
+            game_id,
+            player: message::Player {
+              player_id: open_game.player_id,
+              nickname: player.nickname.clone(),
+            },
+            size: message::FieldSize {
+              width: open_game.size.width,
+              height: open_game.size.height,
+            },
+          })
+          .into_iter()
       })
       .collect();
     let games = state
       .games
       .pin()
       .iter()
-      .map(|(&game_id, game)| message::Game {
-        game_id,
-        red_player_id: game.red_player_id,
-        black_player_id: game.black_player_id,
-        size: message::FieldSize {
-          width: game.size.width,
-          height: game.size.height,
-        },
+      .flat_map(|(&game_id, game)| {
+        players
+          .get(&game.red_player_id.0)
+          .zip(players.get(&game.black_player_id.0))
+          .map(|(red_player, black_player)| message::Game {
+            game_id,
+            red_player: message::Player {
+              player_id: game.red_player_id,
+              nickname: red_player.nickname.clone(),
+            },
+            black_player: message::Player {
+              player_id: game.black_player_id,
+              nickname: black_player.nickname.clone(),
+            },
+            size: message::FieldSize {
+              width: game.size.width,
+              height: game.size.height,
+            },
+          })
+          .into_iter()
       })
       .collect();
-    let player_ids = state
+    let players = state
       .players
       .pin()
       .keys()
-      .map(|player_id| player_id.0)
-      .collect::<Vec<_>>();
-    let players = self
-      .db
-      .get_players(&player_ids)
-      .await?
-      .into_iter()
-      .map(|player| message::Player {
-        player_id: PlayerId(player.id),
-        nickname: player.nickname,
+      .flat_map(|player_id| {
+        players
+          .remove(&player_id.0)
+          .map(|player| message::Player {
+            player_id: PlayerId(player.id),
+            nickname: player.nickname,
+          })
+          .into_iter()
       })
       .collect();
 
@@ -474,11 +516,18 @@ impl<R: Rng> Session<R> {
 
     state.open_games.pin().insert(game_id, open_game);
 
+    let player = self.db.get_player(player_id.0).await?;
+
     state
       .send_to_all(message::Response::Create {
-        game_id,
-        player_id,
-        size,
+        open_game: message::OpenGame {
+          game_id,
+          player: message::Player {
+            player_id,
+            nickname: player.nickname,
+          },
+          size,
+        },
       })
       .await;
 
@@ -543,17 +592,41 @@ impl<R: Rng> Session<R> {
     let game = Game {
       red_player_id: open_game.player_id,
       black_player_id: player_id,
-      size: open_game.size,
+      size: open_game.size.clone(),
       field: Arc::new(RwLock::new(field)),
     };
 
     state.games.pin().insert(game_id, game);
 
+    let [player_1, player_2] = self
+      .db
+      .get_players(&[open_game.player_id.0, player_id.0])
+      .await?
+      .try_into()
+      .map_err(|_| anyhow::anyhow!("can't find players {} and {}", open_game.player_id.0, player_id.0))?;
+    let [red_player, black_player] = if player_1.id == open_game.player_id.0 {
+      [player_1, player_2]
+    } else {
+      [player_2, player_1]
+    };
+
     state
       .send_to_all(message::Response::Start {
-        game_id,
-        red_player_id: open_game.player_id,
-        black_player_id: player_id,
+        game: message::Game {
+          game_id,
+          red_player: message::Player {
+            player_id: PlayerId(red_player.id),
+            nickname: red_player.nickname,
+          },
+          black_player: message::Player {
+            player_id: PlayerId(black_player.id),
+            nickname: black_player.nickname,
+          },
+          size: message::FieldSize {
+            width: open_game.size.width,
+            height: open_game.size.height,
+          },
+        },
       })
       .await;
 
@@ -564,7 +637,7 @@ impl<R: Rng> Session<R> {
     if self.watching.len() > 2 {
       anyhow::bail!("too many subscriptions from a connection {}", self.connection_id);
     }
-    if self.watching.insert(game_id).is_some() {
+    if !self.watching.insert(game_id) {
       anyhow::bail!(
         "connection {} already watching the game {}",
         self.connection_id,
@@ -602,7 +675,7 @@ impl<R: Rng> Session<R> {
   }
 
   fn unsubscribe(&mut self, state: &State, game_id: GameId) -> Result<()> {
-    if self.watching.remove(&game_id).is_none() {
+    if !self.watching.remove(&game_id) {
       anyhow::bail!("connection {} not watching the game {}", self.connection_id, game_id);
     }
 
