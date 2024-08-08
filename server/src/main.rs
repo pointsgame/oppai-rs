@@ -58,6 +58,22 @@ struct OidcClients {
 }
 
 impl OidcClients {
+  pub fn providers(&self) -> Vec<message::AuthProvider> {
+    let mut providers = Vec::new();
+    if self.portier_client.is_some() {
+      providers.push(message::AuthProvider::Portier);
+    }
+    if self.google_client.is_some() {
+      providers.push(message::AuthProvider::Google);
+    }
+    if self.gitlab_client.is_some() {
+      providers.push(message::AuthProvider::GitLab);
+    }
+    #[cfg(feature = "test")]
+    providers.push(message::AuthProvider::Test);
+    providers
+  }
+
   fn oidc_client(&self, provider: message::AuthProvider) -> Option<&OidcClient> {
     match provider {
       message::AuthProvider::Portier => self.portier_client.as_deref(),
@@ -381,15 +397,9 @@ impl<R: Rng> Session<R> {
         nickname: player.nickname,
       })
       .collect();
+
     let init = message::Response::Init {
-      #[cfg(feature = "test")]
-      auth_providers: vec![
-        message::AuthProvider::Google,
-        message::AuthProvider::GitLab,
-        message::AuthProvider::Test,
-      ],
-      #[cfg(not(feature = "test"))]
-      auth_providers: vec![message::AuthProvider::Google, message::AuthProvider::GitLab],
+      auth_providers: self.oidc_clients.providers(),
       player_id: self.player_id,
       players,
       open_games,
