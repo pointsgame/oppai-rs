@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
 
@@ -36,14 +38,13 @@ pub struct Move {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
-  pub player_id: PlayerId,
   pub nickname: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenGame {
-  pub game_id: GameId,
+  pub player_id: PlayerId,
   pub player: Player,
   pub size: FieldSize,
 }
@@ -51,7 +52,8 @@ pub struct OpenGame {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Game {
-  pub game_id: GameId,
+  pub red_player_id: PlayerId,
+  pub black_player_id: PlayerId,
   pub red_player: Player,
   pub black_player: Player,
   pub size: FieldSize,
@@ -118,9 +120,9 @@ pub enum Response {
   Init {
     auth_providers: Vec<AuthProvider>,
     player_id: Option<PlayerId>,
-    players: Vec<Player>,
-    open_games: Vec<OpenGame>,
-    games: Vec<Game>,
+    players: HashMap<PlayerId, Player>,
+    open_games: HashMap<GameId, OpenGame>,
+    games: HashMap<GameId, Game>,
   },
   /// First message after subscription.
   GameInit {
@@ -135,6 +137,7 @@ pub enum Response {
     cookie: String,
   },
   PlayerJoined {
+    player_id: PlayerId,
     player: Player,
   },
   PlayerLeft {
@@ -142,6 +145,7 @@ pub enum Response {
   },
   /// A new game was created in a lobby.
   Create {
+    game_id: GameId,
     open_game: OpenGame,
   },
   /// An open game was closed.
@@ -150,6 +154,7 @@ pub enum Response {
   },
   /// A new game started.
   Start {
+    game_id: GameId,
     game: Game,
   },
   /// A point in a game was put.

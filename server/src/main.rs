@@ -233,8 +233,8 @@ impl<R: Rng> Session<R> {
 
     state
       .send_to_all(message::Response::PlayerJoined {
+        player_id,
         player: message::Player {
-          player_id,
           nickname: player.nickname,
         },
       })
@@ -288,8 +288,8 @@ impl<R: Rng> Session<R> {
 
     state
       .send_to_all(message::Response::PlayerJoined {
+        player_id,
         player: message::Player {
-          player_id,
           nickname: player.nickname,
         },
       })
@@ -345,8 +345,8 @@ impl<R: Rng> Session<R> {
         .send_to_all_except(
           self.connection_id,
           message::Response::PlayerJoined {
+            player_id,
             player: message::Player {
-              player_id,
               nickname: player.nickname,
             },
           },
@@ -385,16 +385,20 @@ impl<R: Rng> Session<R> {
       .flat_map(|(&game_id, open_game)| {
         players
           .get(&open_game.player_id.0)
-          .map(|player| message::OpenGame {
-            game_id,
-            player: message::Player {
-              player_id: open_game.player_id,
-              nickname: player.nickname.clone(),
-            },
-            size: message::FieldSize {
-              width: open_game.size.width,
-              height: open_game.size.height,
-            },
+          .map(|player| {
+            (
+              game_id,
+              message::OpenGame {
+                player_id: open_game.player_id,
+                player: message::Player {
+                  nickname: player.nickname.clone(),
+                },
+                size: message::FieldSize {
+                  width: open_game.size.width,
+                  height: open_game.size.height,
+                },
+              },
+            )
           })
           .into_iter()
       })
@@ -407,20 +411,24 @@ impl<R: Rng> Session<R> {
         players
           .get(&game.red_player_id.0)
           .zip(players.get(&game.black_player_id.0))
-          .map(|(red_player, black_player)| message::Game {
-            game_id,
-            red_player: message::Player {
-              player_id: game.red_player_id,
-              nickname: red_player.nickname.clone(),
-            },
-            black_player: message::Player {
-              player_id: game.black_player_id,
-              nickname: black_player.nickname.clone(),
-            },
-            size: message::FieldSize {
-              width: game.size.width,
-              height: game.size.height,
-            },
+          .map(|(red_player, black_player)| {
+            (
+              game_id,
+              message::Game {
+                red_player_id: game.red_player_id,
+                black_player_id: game.black_player_id,
+                red_player: message::Player {
+                  nickname: red_player.nickname.clone(),
+                },
+                black_player: message::Player {
+                  nickname: black_player.nickname.clone(),
+                },
+                size: message::FieldSize {
+                  width: game.size.width,
+                  height: game.size.height,
+                },
+              },
+            )
           })
           .into_iter()
       })
@@ -432,9 +440,13 @@ impl<R: Rng> Session<R> {
       .flat_map(|player_id| {
         players
           .remove(&player_id.0)
-          .map(|player| message::Player {
-            player_id: PlayerId(player.id),
-            nickname: player.nickname,
+          .map(|player| {
+            (
+              PlayerId(player.id),
+              message::Player {
+                nickname: player.nickname,
+              },
+            )
           })
           .into_iter()
       })
@@ -520,10 +532,10 @@ impl<R: Rng> Session<R> {
 
     state
       .send_to_all(message::Response::Create {
+        game_id,
         open_game: message::OpenGame {
-          game_id,
+          player_id,
           player: message::Player {
-            player_id,
             nickname: player.nickname,
           },
           size,
@@ -612,14 +624,14 @@ impl<R: Rng> Session<R> {
 
     state
       .send_to_all(message::Response::Start {
+        game_id,
         game: message::Game {
-          game_id,
+          red_player_id: PlayerId(red_player.id),
+          black_player_id: PlayerId(black_player.id),
           red_player: message::Player {
-            player_id: PlayerId(red_player.id),
             nickname: red_player.nickname,
           },
           black_player: message::Player {
-            player_id: PlayerId(black_player.id),
             nickname: black_player.nickname,
           },
           size: message::FieldSize {
