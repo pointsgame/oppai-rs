@@ -1,7 +1,7 @@
 use crate::{ids::*, message::Response};
 use anyhow::Result;
 use futures::channel::mpsc::Sender;
-use im::HashSet as ImHashSet;
+use imbl::HashSet as ImHashSet;
 use oppai_field::{field::Field, player::Player};
 use papaya::{Compute, HashMap, Operation};
 use std::{sync::Arc, time::Duration};

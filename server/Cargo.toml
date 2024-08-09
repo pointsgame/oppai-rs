@@ -21,7 +21,7 @@ serde_json.workspace = true
 tokio = { version = "1.0", features = ["full"] }
 tokio-tungstenite = "0.21"
 papaya = "0.1"
-im = "15.1"
+imbl = "3.0"
 uuid = { version = "1.10", features = ["serde"] }
 time = "0.3"
 sqlx = { version = "0.8", features = [ "runtime-tokio", "postgres", "uuid", "time" ] }
