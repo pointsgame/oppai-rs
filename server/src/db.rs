@@ -1,5 +1,6 @@
 use anyhow::Result;
 use derive_more::{From, Into};
+use rand::Rng;
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
@@ -29,13 +30,12 @@ pub struct OidcPlayer {
 }
 
 impl OidcPlayer {
-  fn nickname(&self) -> &str {
+  fn nickname(&self) -> Option<&str> {
     self
       .preferred_username
       .as_deref()
       .or(self.nickname.as_deref())
       .or(self.name.as_deref())
-      .unwrap_or(self.subject.as_str())
   }
 }
 
@@ -45,7 +45,7 @@ pub struct SqlxDb {
 }
 
 impl SqlxDb {
-  pub async fn get_or_create_player(&self, oidc_player: OidcPlayer) -> Result<Player> {
+  pub async fn get_or_create_player<R: Rng>(&self, oidc_player: OidcPlayer, rng: &mut R) -> Result<Player> {
     let mut tx = self.pool.begin().await?;
 
     let player: Option<Player> = sqlx::query_as(
@@ -95,6 +95,11 @@ LIMIT 1
       None
     };
 
+    let nickname = oidc_player
+      .nickname()
+      .map(|nickname| nickname.to_string())
+      .unwrap_or_else(|| format!("player_{}", rng.next_u32()));
+
     let player = if let Some(player) = player {
       player
     } else {
@@ -105,7 +110,7 @@ VALUES (gen_random_uuid(), unique_nickname($1), now())
 RETURNING id, nickname
 ",
       )
-      .bind(oidc_player.nickname())
+      .bind(nickname)
       .fetch_one(&mut *tx)
       .await?
     };

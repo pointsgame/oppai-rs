@@ -209,23 +209,26 @@ impl<R: Rng> Session<R> {
 
     let player = self
       .db
-      .get_or_create_player(db::OidcPlayer {
-        provider: db_provider,
-        subject: claims.subject().to_string(),
-        email: claims.email().map(|email| email.to_string()),
-        email_verified: claims.email_verified(),
-        name: claims
-          .name()
-          .and_then(|name| name.get(None))
-          .map(|name| name.to_string()),
-        nickname: claims
-          .nickname()
-          .and_then(|nickname| nickname.get(None))
-          .map(|nickname| nickname.to_string()),
-        preferred_username: claims
-          .preferred_username()
-          .map(|preferred_username| preferred_username.to_string()),
-      })
+      .get_or_create_player(
+        db::OidcPlayer {
+          provider: db_provider,
+          subject: claims.subject().to_string(),
+          email: claims.email().map(|email| email.to_string()),
+          email_verified: claims.email_verified(),
+          name: claims
+            .name()
+            .and_then(|name| name.get(None))
+            .map(|name| name.to_string()),
+          nickname: claims
+            .nickname()
+            .and_then(|nickname| nickname.get(None))
+            .map(|nickname| nickname.to_string()),
+          preferred_username: claims
+            .preferred_username()
+            .map(|preferred_username| preferred_username.to_string()),
+        },
+        &mut self.rng,
+      )
       .await?;
     let player_id = PlayerId(player.id);
 
