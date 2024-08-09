@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use cookie::time::{Duration, OffsetDateTime};
+use cookie::time::{Duration as CookieDuration, OffsetDateTime};
 use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 use futures::channel::mpsc::{self, Sender};
 use futures_util::{select, FutureExt, SinkExt, StreamExt};
@@ -15,10 +15,10 @@ use oppai_field::{field::Field, player::Player};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use state::{FieldSize, Game, OpenGame, State};
+use state::{FieldSize, Game, GameConfig, GameTime, OpenGame, State};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use time::PrimitiveDateTime;
 use tokio::{
   net::{TcpListener, TcpStream},
@@ -246,9 +246,9 @@ impl<R: Rng> Session<R> {
       .await;
 
     let duration = if auth_state.remember_me {
-      Duration::weeks(12)
+      CookieDuration::weeks(12)
     } else {
-      Duration::weeks(1)
+      CookieDuration::weeks(1)
     };
     let mut jar = CookieJar::new();
     let cookie = Cookie::build((
@@ -405,8 +405,8 @@ impl<R: Rng> Session<R> {
                   nickname: player.nickname.clone(),
                 },
                 size: message::FieldSize {
-                  width: open_game.size.width,
-                  height: open_game.size.height,
+                  width: open_game.config.size.width,
+                  height: open_game.config.size.height,
                 },
               },
             )
@@ -435,8 +435,8 @@ impl<R: Rng> Session<R> {
                   nickname: black_player.nickname.clone(),
                 },
                 size: message::FieldSize {
-                  width: game.size.width,
-                  height: game.size.height,
+                  width: game.config.size.width,
+                  height: game.config.size.height,
                 },
               },
             )
@@ -524,9 +524,15 @@ impl<R: Rng> Session<R> {
     let game_id = GameId(Builder::from_random_bytes(self.rng.gen()).into_uuid());
     let open_game = OpenGame {
       player_id,
-      size: FieldSize {
-        width: size.width,
-        height: size.height,
+      config: GameConfig {
+        size: FieldSize {
+          width: size.width,
+          height: size.height,
+        },
+        time: GameTime {
+          total: Duration::from_secs(5 * 60),
+          increment: Duration::from_secs(5),
+        },
       },
     };
 
@@ -616,11 +622,11 @@ impl<R: Rng> Session<R> {
       })
       .await?;
 
-    let field = Field::new_from_rng(open_game.size.width, open_game.size.height, &mut self.rng);
+    let field = Field::new_from_rng(open_game.config.size.width, open_game.config.size.height, &mut self.rng);
     let game = Game {
       red_player_id: open_game.player_id,
       black_player_id: player_id,
-      size: open_game.size.clone(),
+      config: open_game.config.clone(),
       field: Arc::new(RwLock::new(field)),
     };
 
@@ -651,8 +657,8 @@ impl<R: Rng> Session<R> {
             nickname: black_player.nickname,
           },
           size: message::FieldSize {
-            width: open_game.size.width,
-            height: open_game.size.height,
+            width: open_game.config.size.width,
+            height: open_game.config.size.height,
           },
         },
       })

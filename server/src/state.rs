@@ -4,7 +4,7 @@ use futures::channel::mpsc::Sender;
 use im::HashSet as ImHashSet;
 use oppai_field::{field::Field, player::Player};
 use papaya::{Compute, HashMap, Operation};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -13,17 +13,29 @@ pub struct FieldSize {
   pub height: u32,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct GameTime {
+  pub total: Duration,
+  pub increment: Duration,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct GameConfig {
+  pub size: FieldSize,
+  pub time: GameTime,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OpenGame {
   pub player_id: PlayerId,
-  pub size: FieldSize,
+  pub config: GameConfig,
 }
 
 #[derive(Debug, Clone)]
 pub struct Game {
   pub red_player_id: PlayerId,
   pub black_player_id: PlayerId,
-  pub size: FieldSize,
+  pub config: GameConfig,
   pub field: Arc<RwLock<Field>>,
 }
 
