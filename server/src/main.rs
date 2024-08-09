@@ -766,6 +766,24 @@ impl<R: Rng> Session<R> {
         game_id,
       );
     }
+
+    let now = OffsetDateTime::now_utc();
+
+    self
+      .db
+      .create_move(db::Move {
+        game_id: game_id.0,
+        player_id: player_id.0,
+        number: (field.moves_count() - 1) as i16,
+        x: coordinate.x as i16,
+        y: coordinate.y as i16,
+        putting_time: PrimitiveDateTime::new(now.date(), now.time()),
+      })
+      .await
+      .inspect_err(|_| {
+        field.undo();
+      })?;
+
     drop(field);
 
     state

@@ -47,6 +47,15 @@ pub struct Game {
   pub start_time: PrimitiveDateTime,
 }
 
+pub struct Move {
+  pub game_id: Uuid,
+  pub player_id: Uuid,
+  pub number: i16,
+  pub x: i16,
+  pub y: i16,
+  pub putting_time: PrimitiveDateTime,
+}
+
 #[derive(From, Into)]
 pub struct SqlxDb {
   pool: Pool<Postgres>,
@@ -200,13 +209,31 @@ WHERE id IN (SELECT unnest($1::uuid[]))
       "
 INSERT INTO games (id, red_player_id, black_player_id, start_time)
 VALUES ($1, $2, $3, $4)
-ON CONFLICT DO NOTHING
 ",
     )
     .bind(game.id)
     .bind(game.red_player_id)
     .bind(game.black_player_id)
     .bind(game.start_time)
+    .execute(&self.pool)
+    .await
+    .map_err(From::from)
+    .map(|_| ())
+  }
+
+  pub async fn create_move(&self, m: Move) -> Result<()> {
+    sqlx::query(
+      "
+INSERT INTO moves (game_id, player_id, \"number\", x, y, putting_time)
+VALUES ($1, $2, $3, $4, $5, $6)
+",
+    )
+    .bind(m.game_id)
+    .bind(m.player_id)
+    .bind(m.number)
+    .bind(m.x)
+    .bind(m.y)
+    .bind(m.putting_time)
     .execute(&self.pool)
     .await
     .map_err(From::from)
