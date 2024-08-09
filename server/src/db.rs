@@ -2,6 +2,7 @@ use anyhow::Result;
 use derive_more::{From, Into};
 use rand::Rng;
 use sqlx::{Pool, Postgres};
+use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 #[derive(sqlx::FromRow)]
@@ -37,6 +38,13 @@ impl OidcPlayer {
       .or(self.nickname.as_deref())
       .or(self.name.as_deref())
   }
+}
+
+pub struct Game {
+  pub id: Uuid,
+  pub red_player_id: Uuid,
+  pub black_player_id: Uuid,
+  pub start_time: PrimitiveDateTime,
 }
 
 #[derive(From, Into)]
@@ -185,5 +193,23 @@ WHERE id IN (SELECT unnest($1::uuid[]))
     .fetch_all(&self.pool)
     .await
     .map_err(From::from)
+  }
+
+  pub async fn create_game(&self, game: Game) -> Result<()> {
+    sqlx::query(
+      "
+INSERT INTO games (id, red_player_id, black_player_id, start_time)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT DO NOTHING
+",
+    )
+    .bind(game.id)
+    .bind(game.red_player_id)
+    .bind(game.black_player_id)
+    .bind(game.start_time)
+    .execute(&self.pool)
+    .await
+    .map_err(From::from)
+    .map(|_| ())
   }
 }

@@ -19,6 +19,7 @@ use state::{FieldSize, Game, OpenGame, State};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
+use time::PrimitiveDateTime;
 use tokio::{
   net::{TcpListener, TcpStream},
   sync::RwLock,
@@ -602,6 +603,18 @@ impl<R: Rng> Session<R> {
     if open_game.player_id == player_id {
       anyhow::bail!("attempt to join own game from player {}", player_id);
     }
+
+    let now = OffsetDateTime::now_utc();
+
+    self
+      .db
+      .create_game(db::Game {
+        id: game_id.0,
+        red_player_id: open_game.player_id.0,
+        black_player_id: player_id.0,
+        start_time: PrimitiveDateTime::new(now.date(), now.time()),
+      })
+      .await?;
 
     let field = Field::new_from_rng(open_game.size.width, open_game.size.height, &mut self.rng);
     let game = Game {
