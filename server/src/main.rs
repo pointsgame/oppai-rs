@@ -375,7 +375,14 @@ impl<R: Rng> Session<R> {
       .get_players(&player_ids)
       .await?
       .into_iter()
-      .map(|player| (player.id, player))
+      .map(|player| {
+        (
+          player.id,
+          message::Player {
+            nickname: player.nickname,
+          },
+        )
+      })
       .collect::<HashMap<_, _>>();
 
     let open_games = state
@@ -437,17 +444,10 @@ impl<R: Rng> Session<R> {
       .players
       .pin()
       .keys()
-      .flat_map(|player_id| {
+      .flat_map(|&player_id| {
         players
           .remove(&player_id.0)
-          .map(|player| {
-            (
-              PlayerId(player.id),
-              message::Player {
-                nickname: player.nickname,
-              },
-            )
-          })
+          .map(|player| (player_id, player))
           .into_iter()
       })
       .collect();
