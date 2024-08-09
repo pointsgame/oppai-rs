@@ -4,6 +4,7 @@ use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 use futures::channel::mpsc::{self, Sender};
 use futures_util::{select, FutureExt, SinkExt, StreamExt};
 use ids::*;
+use itertools::Itertools;
 use openidconnect::ClientId;
 use openidconnect::{
   core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
@@ -367,8 +368,7 @@ impl<R: Rng> Session<R> {
           .flat_map(|game| [&game.black_player_id, &game.red_player_id].into_iter()),
       )
       .map(|player_id| player_id.0)
-      .collect::<HashSet<_>>()
-      .into_iter()
+      .unique()
       .collect::<Vec<_>>();
     let mut players = self
       .db

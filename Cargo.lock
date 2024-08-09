@@ -4137,6 +4137,7 @@ dependencies = [
  "futures-util",
  "hex",
  "im",
+ "itertools 0.13.0",
  "log",
  "openidconnect",
  "oppai-field",
