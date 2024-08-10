@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DurationSeconds};
 
 use crate::ids::*;
 
@@ -20,6 +21,39 @@ impl FieldSize {
       && self.width <= Self::MAX_SIZE
       && self.height >= Self::MIN_SIZE
       && self.height <= Self::MAX_SIZE
+  }
+}
+
+#[serde_as]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameTime {
+  #[serde_as(as = "DurationSeconds")]
+  pub total: Duration,
+  #[serde_as(as = "DurationSeconds")]
+  pub increment: Duration,
+}
+
+impl GameTime {
+  const MIN_TOTAL: Duration = Duration::from_secs(30);
+  const MAX_TOTAL: Duration = Duration::from_secs(4 * 60 * 60);
+  const MAX_INCREMENT: Duration = Duration::from_secs(60);
+
+  pub fn is_valid(&self) -> bool {
+    self.total >= Self::MIN_TOTAL && self.total <= Self::MAX_TOTAL && self.increment <= Self::MAX_INCREMENT
+  }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameConfig {
+  pub size: FieldSize,
+  pub time: GameTime,
+}
+
+impl GameConfig {
+  pub fn is_valid(&self) -> bool {
+    self.size.is_valid() && self.time.is_valid()
   }
 }
 
@@ -46,7 +80,7 @@ pub struct Player {
 pub struct OpenGame {
   pub player_id: PlayerId,
   pub player: Player,
-  pub size: FieldSize,
+  pub config: GameConfig,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -56,7 +90,7 @@ pub struct Game {
   pub black_player_id: PlayerId,
   pub red_player: Player,
   pub black_player: Player,
-  pub size: FieldSize,
+  pub config: GameConfig,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -87,7 +121,7 @@ pub enum Request {
   SignOut,
   /// Create a new game in a lobby.
   Create {
-    size: FieldSize,
+    config: GameConfig,
   },
   /// Close an open game.
   Close {

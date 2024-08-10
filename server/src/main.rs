@@ -18,7 +18,7 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use state::{FieldSize, Game, GameConfig, GameTime, OpenGame, State};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use time::PrimitiveDateTime;
 use tokio::{
   net::{TcpListener, TcpStream},
@@ -404,9 +404,15 @@ impl<R: Rng> Session<R> {
                 player: message::Player {
                   nickname: player.nickname.clone(),
                 },
-                size: message::FieldSize {
-                  width: open_game.config.size.width,
-                  height: open_game.config.size.height,
+                config: message::GameConfig {
+                  size: message::FieldSize {
+                    width: open_game.config.size.width,
+                    height: open_game.config.size.height,
+                  },
+                  time: message::GameTime {
+                    total: open_game.config.time.total,
+                    increment: open_game.config.time.increment,
+                  },
                 },
               },
             )
@@ -434,9 +440,15 @@ impl<R: Rng> Session<R> {
                 black_player: message::Player {
                   nickname: black_player.nickname.clone(),
                 },
-                size: message::FieldSize {
-                  width: game.config.size.width,
-                  height: game.config.size.height,
+                config: message::GameConfig {
+                  size: message::FieldSize {
+                    width: game.config.size.width,
+                    height: game.config.size.height,
+                  },
+                  time: message::GameTime {
+                    total: game.config.time.total,
+                    increment: game.config.time.increment,
+                  },
                 },
               },
             )
@@ -491,12 +503,11 @@ impl<R: Rng> Session<R> {
     }
   }
 
-  async fn create(&mut self, state: &State, size: message::FieldSize) -> Result<()> {
-    if !size.is_valid() {
+  async fn create(&mut self, state: &State, config: message::GameConfig) -> Result<()> {
+    if !config.is_valid() {
       anyhow::bail!(
-        "invalid filed size {}:{} from connection {}",
-        size.width,
-        size.height,
+        "invalid game config {:?} from connection {}",
+        config,
         self.connection_id
       );
     }
@@ -526,12 +537,12 @@ impl<R: Rng> Session<R> {
       player_id,
       config: GameConfig {
         size: FieldSize {
-          width: size.width,
-          height: size.height,
+          width: config.size.width,
+          height: config.size.height,
         },
         time: GameTime {
-          total: Duration::from_secs(5 * 60),
-          increment: Duration::from_secs(5),
+          total: config.time.total,
+          increment: config.time.increment,
         },
       },
     };
@@ -548,7 +559,7 @@ impl<R: Rng> Session<R> {
           player: message::Player {
             nickname: player.nickname,
           },
-          size,
+          config,
         },
       })
       .await;
@@ -656,9 +667,15 @@ impl<R: Rng> Session<R> {
           black_player: message::Player {
             nickname: black_player.nickname,
           },
-          size: message::FieldSize {
-            width: open_game.config.size.width,
-            height: open_game.config.size.height,
+          config: message::GameConfig {
+            size: message::FieldSize {
+              width: open_game.config.size.width,
+              height: open_game.config.size.height,
+            },
+            time: message::GameTime {
+              total: open_game.config.time.total,
+              increment: open_game.config.time.increment,
+            },
           },
         },
       })
@@ -854,7 +871,7 @@ impl<R: Rng> Session<R> {
             #[cfg(feature = "test")]
             message::Request::AuthTest { name } => self.auth_test(&state, name).await?,
             message::Request::SignOut => self.sign_out(&state).await,
-            message::Request::Create { size } => self.create(&state, size).await?,
+            message::Request::Create { config } => self.create(&state, config).await?,
             message::Request::Close { game_id } => self.close(&state, game_id).await?,
             message::Request::Join { game_id } => self.join(&state, game_id).await?,
             message::Request::Subscribe { game_id } => self.subscribe(&state, game_id).await?,
