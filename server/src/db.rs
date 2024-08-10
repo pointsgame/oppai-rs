@@ -56,13 +56,23 @@ pub struct Move {
   pub putting_time: PrimitiveDateTime,
 }
 
+pub trait Db {
+  async fn get_or_create_player<R: Rng>(&self, oidc_player: OidcPlayer, rng: &mut R) -> Result<Player>;
+  #[cfg(feature = "test")]
+  async fn get_or_create_test_player(&self, name: String) -> Result<Player>;
+  async fn get_player(&self, player_id: Uuid) -> Result<Player>;
+  async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>>;
+  async fn create_game(&self, game: Game) -> Result<()>;
+  async fn create_move(&self, m: Move) -> Result<()>;
+}
+
 #[derive(From, Into)]
 pub struct SqlxDb {
   pool: Pool<Postgres>,
 }
 
-impl SqlxDb {
-  pub async fn get_or_create_player<R: Rng>(&self, oidc_player: OidcPlayer, rng: &mut R) -> Result<Player> {
+impl Db for SqlxDb {
+  async fn get_or_create_player<R: Rng>(&self, oidc_player: OidcPlayer, rng: &mut R) -> Result<Player> {
     let mut tx = self.pool.begin().await?;
 
     let player: Option<Player> = sqlx::query_as(
@@ -155,7 +165,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
   }
 
   #[cfg(feature = "test")]
-  pub async fn get_or_create_test_player(&self, name: String) -> Result<Player> {
+  async fn get_or_create_test_player(&self, name: String) -> Result<Player> {
     let player_id = Uuid::new_v5(&Uuid::default(), name.as_bytes());
 
     sqlx::query(
@@ -176,7 +186,7 @@ ON CONFLICT DO NOTHING
     })
   }
 
-  pub async fn get_player(&self, player_id: Uuid) -> Result<Player> {
+  async fn get_player(&self, player_id: Uuid) -> Result<Player> {
     sqlx::query_as(
       "
 SELECT id, nickname
@@ -190,7 +200,7 @@ WHERE id = $1
     .map_err(From::from)
   }
 
-  pub async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>> {
+  async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>> {
     sqlx::query_as(
       "
 SELECT id, nickname
@@ -204,7 +214,7 @@ WHERE id IN (SELECT unnest($1::uuid[]))
     .map_err(From::from)
   }
 
-  pub async fn create_game(&self, game: Game) -> Result<()> {
+  async fn create_game(&self, game: Game) -> Result<()> {
     sqlx::query(
       "
 INSERT INTO games (id, red_player_id, black_player_id, start_time)
@@ -221,7 +231,7 @@ VALUES ($1, $2, $3, $4)
     .map(|_| ())
   }
 
-  pub async fn create_move(&self, m: Move) -> Result<()> {
+  async fn create_move(&self, m: Move) -> Result<()> {
     sqlx::query(
       "
 INSERT INTO moves (game_id, player_id, \"number\", x, y, putting_time)

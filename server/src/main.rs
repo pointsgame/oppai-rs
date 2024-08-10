@@ -1,3 +1,4 @@
+use crate::db::Db;
 use anyhow::{Error, Result};
 use cookie::time::{Duration as CookieDuration, OffsetDateTime};
 use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
