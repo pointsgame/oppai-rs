@@ -20,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
 use time::PrimitiveDateTime;
+use tokio::sync::Mutex;
 use tokio::{
   net::{TcpListener, TcpStream},
   sync::RwLock,
@@ -337,9 +338,9 @@ impl<R: Rng> Session<R> {
     };
 
     // lock connection before inserting so we can be sure we send init message before any update
-    let connection = Arc::new(RwLock::new(tx));
+    let connection = Arc::new(Mutex::new(tx));
     let connection_c = connection.clone();
-    let mut connection_c_lock = connection_c.write().await;
+    let mut connection_c_lock = connection_c.lock().await;
 
     state.connections.pin().insert(self.connection_id, connection);
 
@@ -710,22 +711,36 @@ impl<R: Rng> Session<R> {
       return Ok(());
     };
     let game_state = game_state.read().await;
+
+    let moves = game_state
+      .field
+      .colored_moves()
+      .map(|(pos, player)| message::Move {
+        coordinate: message::Coordinate {
+          x: game_state.field.to_x(pos),
+          y: game_state.field.to_y(pos),
+        },
+        player,
+      })
+      .collect();
+
+    let now = OffsetDateTime::now_utc();
+    let init_time = PrimitiveDateTime::new(now.date(), now.time());
+    let time_left = message::TimeLeft {
+      red: game_state.red_time,
+      black: game_state.black_time,
+    };
+
+    drop(game_state);
+
     state
       .send_to_connection(
         self.connection_id,
         message::Response::GameInit {
           game_id,
-          moves: game_state
-            .field
-            .colored_moves()
-            .map(|(pos, player)| message::Move {
-              coordinate: message::Coordinate {
-                x: game_state.field.to_x(pos),
-                y: game_state.field.to_y(pos),
-              },
-              player,
-            })
-            .collect(),
+          moves,
+          init_time,
+          time_left,
         },
       )
       .await
@@ -813,6 +828,11 @@ impl<R: Rng> Session<R> {
         game_state.field.undo();
       })?;
 
+    let time_left = message::TimeLeft {
+      red: game_state.red_time,
+      black: game_state.black_time,
+    };
+
     drop(game_state);
 
     state
@@ -822,6 +842,7 @@ impl<R: Rng> Session<R> {
           game_id,
           _move: message::Move { coordinate, player },
           putting_time,
+          time_left,
         },
       )
       .await;

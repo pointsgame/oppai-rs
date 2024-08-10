@@ -5,7 +5,7 @@ use imbl::HashSet as ImHashSet;
 use oppai_field::{field::Field, player::Player};
 use papaya::{Compute, HashMap, Operation};
 use std::{sync::Arc, time::Duration};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct FieldSize {
@@ -63,7 +63,7 @@ pub struct State {
   /// Sender is behind a lock since we need exclusive access to send a message.
   /// Also it's useful to make sure we don't send any updates before initial message is sent
   /// but at the same time don't lose that updates.
-  pub connections: HashMap<ConnectionId, Arc<RwLock<Sender<Response>>>>,
+  pub connections: HashMap<ConnectionId, Arc<Mutex<Sender<Response>>>>,
   /// Immutable set allows to use CAS loop which is useful to avoid races when player is deleted.
   pub players: HashMap<PlayerId, ImHashSet<ConnectionId>>,
   /// Open games are never muated, they can be only created or removed.
@@ -127,7 +127,7 @@ impl State {
     } else {
       anyhow::bail!("no connection {}", connection_id);
     };
-    let mut connection = connection.write().await;
+    let mut connection = connection.lock().await;
 
     connection.try_send(response).map_err(From::from)
   }
@@ -157,7 +157,7 @@ impl State {
   pub async fn send_to_all(&self, response: Response) {
     let pin = self.connections.pin_owned();
     for (connection_id, connection) in pin.iter() {
-      let mut connection = connection.write().await;
+      let mut connection = connection.lock().await;
       if let Err(error) = connection.try_send(response.clone()) {
         pin.remove(connection_id);
         log::warn!("failed to send message to connection {}: {}", connection_id, error);
@@ -171,7 +171,7 @@ impl State {
       if except == connection_id {
         continue;
       }
-      let mut connection = connection.write().await;
+      let mut connection = connection.lock().await;
       if let Err(error) = connection.try_send(response.clone()) {
         pin.remove(&connection_id);
         log::warn!("failed to send message to connection {}: {}", connection_id, error);

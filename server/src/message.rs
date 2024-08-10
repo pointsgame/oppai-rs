@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationSeconds};
+use serde_with::{serde_as, DurationMicroSeconds, DurationSeconds};
 use time::PrimitiveDateTime;
 
 use crate::ids::*;
@@ -33,6 +33,16 @@ pub struct GameTime {
   pub total: Duration,
   #[serde_as(as = "DurationSeconds")]
   pub increment: Duration,
+}
+
+#[serde_as]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeLeft {
+  #[serde_as(as = "DurationMicroSeconds")]
+  pub red: Duration,
+  #[serde_as(as = "DurationMicroSeconds")]
+  pub black: Duration,
 }
 
 impl GameTime {
@@ -163,6 +173,8 @@ pub enum Response {
   GameInit {
     game_id: GameId,
     moves: Vec<Move>,
+    init_time: PrimitiveDateTime,
+    time_left: TimeLeft,
   },
   AuthUrl {
     url: String,
@@ -198,5 +210,6 @@ pub enum Response {
     #[serde(rename = "move")]
     _move: Move,
     putting_time: PrimitiveDateTime,
+    time_left: TimeLeft,
   },
 }
