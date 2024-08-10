@@ -785,6 +785,7 @@ impl<R: Rng> Session<R> {
     }
 
     let now = OffsetDateTime::now_utc();
+    let putting_time = PrimitiveDateTime::new(now.date(), now.time());
 
     self
       .db
@@ -794,7 +795,7 @@ impl<R: Rng> Session<R> {
         number: (field.moves_count() - 1) as i16,
         x: coordinate.x as i16,
         y: coordinate.y as i16,
-        putting_time: PrimitiveDateTime::new(now.date(), now.time()),
+        putting_time,
       })
       .await
       .inspect_err(|_| {
@@ -809,6 +810,7 @@ impl<R: Rng> Session<R> {
         message::Response::PutPoint {
           game_id,
           _move: message::Move { coordinate, player },
+          putting_time,
         },
       )
       .await;

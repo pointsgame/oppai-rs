@@ -24,7 +24,7 @@ tokio-tungstenite = "0.21"
 papaya = "0.1"
 imbl = "3.0"
 uuid = { version = "1.10", features = ["serde"] }
-time = "0.3"
+time = { version = "0.3", features = ["serde"] }
 sqlx = { version = "0.8", features = [ "runtime-tokio", "postgres", "uuid", "time" ] }
 reqwest = { version = "0.12", default-features = false, features = [ "rustls-tls", "rustls-tls-native-roots", "charset" ] }
 openidconnect = "4.0.0-alpha.2"

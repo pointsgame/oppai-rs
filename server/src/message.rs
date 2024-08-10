@@ -3,6 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSeconds};
+use time::PrimitiveDateTime;
 
 use crate::ids::*;
 
@@ -196,5 +197,6 @@ pub enum Response {
     game_id: GameId,
     #[serde(rename = "move")]
     _move: Move,
+    putting_time: PrimitiveDateTime,
   },
 }
