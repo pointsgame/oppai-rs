@@ -15,7 +15,7 @@ use oppai_field::{field::Field, player::Player};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use state::{FieldSize, Game, GameConfig, GameTime, OpenGame, State};
+use state::{FieldSize, Game, GameConfig, GameState, GameTime, OpenGame, State};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -634,11 +634,16 @@ impl<R: Rng> Session<R> {
       .await?;
 
     let field = Field::new_from_rng(open_game.config.size.width, open_game.config.size.height, &mut self.rng);
+    let game_state = GameState {
+      field,
+      red_time: open_game.config.time.total,
+      black_time: open_game.config.time.total,
+    };
     let game = Game {
       red_player_id: open_game.player_id,
       black_player_id: player_id,
       config: open_game.config.clone(),
-      field: Arc::new(RwLock::new(field)),
+      state: Arc::new(RwLock::new(game_state)),
     };
 
     state.games.pin().insert(game_id, game);
@@ -698,24 +703,25 @@ impl<R: Rng> Session<R> {
 
     state.subscribe(self.connection_id, game_id);
 
-    let field = if let Some(game) = state.games.pin().get(&game_id) {
-      game.field.clone()
+    let game_state = if let Some(game) = state.games.pin().get(&game_id) {
+      game.state.clone()
     } else {
       // TODO: log
       return Ok(());
     };
-    let field = field.read().await;
+    let game_state = game_state.read().await;
     state
       .send_to_connection(
         self.connection_id,
         message::Response::GameInit {
           game_id,
-          moves: field
+          moves: game_state
+            .field
             .colored_moves()
             .map(|(pos, player)| message::Move {
               coordinate: message::Coordinate {
-                x: field.to_x(pos),
-                y: field.to_y(pos),
+                x: game_state.field.to_x(pos),
+                y: game_state.field.to_y(pos),
               },
               player,
             })
@@ -745,7 +751,7 @@ impl<R: Rng> Session<R> {
       )
     };
 
-    let (field, player) = if let Some(game) = state.games.pin().get(&game_id) {
+    let (game_state, player) = if let Some(game) = state.games.pin().get(&game_id) {
       let player = if let Some(player) = game.color(player_id) {
         player
       } else {
@@ -755,7 +761,7 @@ impl<R: Rng> Session<R> {
           game_id,
         );
       };
-      (game.field.clone(), player)
+      (game.state.clone(), player)
     } else {
       anyhow::bail!(
         "player {} attempted to put point in a game {} that don't exist",
@@ -764,10 +770,15 @@ impl<R: Rng> Session<R> {
       );
     };
 
-    let mut field = field.write().await;
-    let pos = field.to_pos(coordinate.x, coordinate.y);
+    let mut game_state = game_state.write().await;
+    let pos = game_state.field.to_pos(coordinate.x, coordinate.y);
 
-    if field.last_player().map_or(Player::Red, |player| player.next()) != player {
+    if game_state
+      .field
+      .last_player()
+      .map_or(Player::Red, |player| player.next())
+      != player
+    {
       anyhow::bail!(
         "player {} attempted to put point on opponent's turn in a game {}",
         player_id,
@@ -775,7 +786,7 @@ impl<R: Rng> Session<R> {
       );
     }
 
-    if !field.put_point(pos, player) {
+    if !game_state.field.put_point(pos, player) {
       anyhow::bail!(
         "player {} attempted tp put point on a wrong position {:?} in game {}",
         player_id,
@@ -792,17 +803,17 @@ impl<R: Rng> Session<R> {
       .create_move(db::Move {
         game_id: game_id.0,
         player_id: player_id.0,
-        number: (field.moves_count() - 1) as i16,
+        number: (game_state.field.moves_count() - 1) as i16,
         x: coordinate.x as i16,
         y: coordinate.y as i16,
         putting_time,
       })
       .await
       .inspect_err(|_| {
-        field.undo();
+        game_state.field.undo();
       })?;
 
-    drop(field);
+    drop(game_state);
 
     state
       .send_to_watchers(

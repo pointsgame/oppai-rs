@@ -31,12 +31,19 @@ pub struct OpenGame {
   pub config: GameConfig,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct GameState {
+  pub field: Field,
+  pub red_time: Duration,
+  pub black_time: Duration,
+}
+
 #[derive(Debug, Clone)]
 pub struct Game {
   pub red_player_id: PlayerId,
   pub black_player_id: PlayerId,
   pub config: GameConfig,
-  pub field: Arc<RwLock<Field>>,
+  pub state: Arc<RwLock<GameState>>,
 }
 
 impl Game {
