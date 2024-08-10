@@ -623,6 +623,7 @@ impl<R: Rng> Session<R> {
     }
 
     let now = OffsetDateTime::now_utc();
+    let start_time = PrimitiveDateTime::new(now.date(), now.time());
 
     self
       .db
@@ -630,7 +631,7 @@ impl<R: Rng> Session<R> {
         id: game_id.0,
         red_player_id: open_game.player_id.0,
         black_player_id: player_id.0,
-        start_time: PrimitiveDateTime::new(now.date(), now.time()),
+        start_time,
       })
       .await?;
 
@@ -639,6 +640,7 @@ impl<R: Rng> Session<R> {
       field,
       red_time: open_game.config.time.total,
       black_time: open_game.config.time.total,
+      last_move_time: start_time,
     };
     let game = Game {
       red_player_id: open_game.player_id,
@@ -766,7 +768,7 @@ impl<R: Rng> Session<R> {
       )
     };
 
-    let (game_state, player) = if let Some(game) = state.games.pin().get(&game_id) {
+    let (game_state, player, increment) = if let Some(game) = state.games.pin().get(&game_id) {
       let player = if let Some(player) = game.color(player_id) {
         player
       } else {
@@ -776,7 +778,7 @@ impl<R: Rng> Session<R> {
           game_id,
         );
       };
-      (game.state.clone(), player)
+      (game.state.clone(), player, game.config.time.increment)
     } else {
       anyhow::bail!(
         "player {} attempted to put point in a game {} that don't exist",
@@ -812,6 +814,14 @@ impl<R: Rng> Session<R> {
 
     let now = OffsetDateTime::now_utc();
     let putting_time = PrimitiveDateTime::new(now.date(), now.time());
+
+    let elapsed = (putting_time - game_state.last_move_time).unsigned_abs();
+    match player {
+      Player::Red => game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment,
+      Player::Black => game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment,
+    }
+
+    game_state.last_move_time = putting_time;
 
     self
       .db

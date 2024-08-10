@@ -5,6 +5,7 @@ use imbl::HashSet as ImHashSet;
 use oppai_field::{field::Field, player::Player};
 use papaya::{Compute, HashMap, Operation};
 use std::{sync::Arc, time::Duration};
+use time::PrimitiveDateTime;
 use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -36,6 +37,7 @@ pub struct GameState {
   pub field: Field,
   pub red_time: Duration,
   pub black_time: Duration,
+  pub last_move_time: PrimitiveDateTime,
 }
 
 #[derive(Debug, Clone)]
