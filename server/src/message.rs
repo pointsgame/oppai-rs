@@ -173,6 +173,8 @@ pub enum Response {
   GameInit {
     game_id: GameId,
     moves: Vec<Move>,
+    red_player: Player,
+    black_player: Player,
     init_time: PrimitiveDateTime,
     time_left: TimeLeft,
   },

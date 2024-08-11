@@ -707,8 +707,8 @@ impl<R: Rng> Session<R> {
 
     state.subscribe(self.connection_id, game_id);
 
-    let game_state = if let Some(game) = state.games.pin().get(&game_id) {
-      game.state.clone()
+    let (game_state, red_player_id, black_player_id) = if let Some(game) = state.games.pin().get(&game_id) {
+      (game.state.clone(), game.red_player_id, game.black_player_id)
     } else {
       // TODO: log
       return Ok(());
@@ -736,12 +736,30 @@ impl<R: Rng> Session<R> {
 
     drop(game_state);
 
+    let [player_1, player_2] = self
+      .db
+      .get_players(&[red_player_id.0, black_player_id.0])
+      .await?
+      .try_into()
+      .map_err(|_| anyhow::anyhow!("can't find players {} and {}", red_player_id.0, black_player_id.0))?;
+    let [red_player, black_player] = if player_1.id == red_player_id.0 {
+      [player_1, player_2]
+    } else {
+      [player_2, player_1]
+    };
+
     state
       .send_to_connection(
         self.connection_id,
         message::Response::GameInit {
           game_id,
           moves,
+          red_player: message::Player {
+            nickname: red_player.nickname,
+          },
+          black_player: message::Player {
+            nickname: black_player.nickname,
+          },
           init_time,
           time_left,
         },
