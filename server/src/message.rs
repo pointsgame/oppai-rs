@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationMicroSeconds, DurationSeconds};
+use serde_with::{serde_as, DurationMilliSeconds, DurationSeconds};
 use time::PrimitiveDateTime;
 
 use crate::ids::*;
@@ -39,9 +39,9 @@ pub struct GameTime {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeLeft {
-  #[serde_as(as = "DurationMicroSeconds")]
+  #[serde_as(as = "DurationMilliSeconds")]
   pub red: Duration,
-  #[serde_as(as = "DurationMicroSeconds")]
+  #[serde_as(as = "DurationMilliSeconds")]
   pub black: Duration,
 }
 
