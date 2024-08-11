@@ -307,7 +307,7 @@ impl<R: Rng> Session<R> {
       "kropki",
       serde_json::to_string(&CookieData {
         player_id,
-        expires_at: SystemTime::now() + Duration::weeks(1),
+        expires_at: SystemTime::now() + CookieDuration::weeks(1),
       })
       .unwrap(),
     ))
