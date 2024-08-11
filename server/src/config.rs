@@ -62,7 +62,6 @@ pub fn cli_parse() -> Config {
         .long("cookie-key")
         .help("Cookie secret key")
         .num_args(1)
-        .required(true)
         .env("COOKIE_KEY"),
     )
     .get_matches();
@@ -94,14 +93,13 @@ pub fn cli_parse() -> Config {
       client_id,
       client_secret,
     });
+  let cookie_key = matches.get_one::<String>("cookie-key").map_or_else(Key::generate, |s| {
+    Key::from(hex::decode(s.as_str()).unwrap().as_slice())
+  });
   Config {
     google_oidc,
     gitlab_oidc,
     postgres_socket: matches.get_one("postgres-socket").cloned().unwrap(),
-    cookie_key: Key::from(
-      hex::decode(matches.get_one::<String>("cookie-key").cloned().unwrap().as_str())
-        .unwrap()
-        .as_slice(),
-    ),
+    cookie_key,
   }
 }
