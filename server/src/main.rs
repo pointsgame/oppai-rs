@@ -623,8 +623,9 @@ impl<R: Rng> Session<R> {
       anyhow::bail!("attempt to join own game from player {}", player_id);
     }
 
-    let now = OffsetDateTime::now_utc();
-    let start_time = PrimitiveDateTime::new(now.date(), now.time());
+    let now = SystemTime::now();
+    let now_offset = OffsetDateTime::from(now);
+    let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
 
     self
       .db
@@ -632,7 +633,7 @@ impl<R: Rng> Session<R> {
         id: game_id.0,
         red_player_id: open_game.player_id.0,
         black_player_id: player_id.0,
-        start_time,
+        start_time: now_primitive,
       })
       .await?;
 
@@ -641,7 +642,7 @@ impl<R: Rng> Session<R> {
       field,
       red_time: open_game.config.time.total,
       black_time: open_game.config.time.total,
-      last_move_time: start_time,
+      last_move_time: now,
     };
     let game = Game {
       red_player_id: open_game.player_id,
@@ -727,8 +728,9 @@ impl<R: Rng> Session<R> {
       })
       .collect();
 
-    let now = OffsetDateTime::now_utc();
-    let init_time = PrimitiveDateTime::new(now.date(), now.time());
+    let now = SystemTime::now();
+    let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+
     let time_left = message::TimeLeft {
       red: game_state.red_time,
       black: game_state.black_time,
@@ -760,7 +762,7 @@ impl<R: Rng> Session<R> {
           black_player: message::Player {
             nickname: black_player.nickname,
           },
-          init_time,
+          init_time: now_epoch,
           time_left,
         },
       )
@@ -831,16 +833,18 @@ impl<R: Rng> Session<R> {
       );
     }
 
-    let now = OffsetDateTime::now_utc();
-    let putting_time = PrimitiveDateTime::new(now.date(), now.time());
+    let now = SystemTime::now();
+    let now_offset = OffsetDateTime::from(now);
+    let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
+    let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
 
-    let elapsed = (putting_time - game_state.last_move_time).unsigned_abs();
+    let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
     match player {
       Player::Red => game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment,
       Player::Black => game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment,
     }
 
-    game_state.last_move_time = putting_time;
+    game_state.last_move_time = now;
 
     self
       .db
@@ -850,7 +854,7 @@ impl<R: Rng> Session<R> {
         number: (game_state.field.moves_count() - 1) as i16,
         x: coordinate.x as i16,
         y: coordinate.y as i16,
-        putting_time,
+        putting_time: now_primitive,
       })
       .await
       .inspect_err(|_| {
@@ -870,7 +874,7 @@ impl<R: Rng> Session<R> {
         message::Response::PutPoint {
           game_id,
           _move: message::Move { coordinate, player },
-          putting_time,
+          putting_time: now_epoch,
           time_left,
         },
       )

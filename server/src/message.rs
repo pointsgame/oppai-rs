@@ -157,6 +157,7 @@ pub enum Request {
   },
 }
 
+#[serde_as]
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
 #[serde(rename_all_fields = "camelCase")]
@@ -175,7 +176,8 @@ pub enum Response {
     moves: Vec<Move>,
     red_player: Player,
     black_player: Player,
-    init_time: PrimitiveDateTime,
+    #[serde_as(as = "DurationMilliSeconds")]
+    init_time: Duration,
     time_left: TimeLeft,
   },
   AuthUrl {
@@ -211,7 +213,8 @@ pub enum Response {
     game_id: GameId,
     #[serde(rename = "move")]
     _move: Move,
-    putting_time: PrimitiveDateTime,
+    #[serde_as(as = "DurationMilliSeconds")]
+    putting_time: Duration,
     time_left: TimeLeft,
   },
 }
