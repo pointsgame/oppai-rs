@@ -735,10 +735,21 @@ impl<R: Rng> Session<R> {
 
     let now = SystemTime::now();
     let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+    let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
 
-    let time_left = message::TimeLeft {
-      red: game_state.red_time,
-      black: game_state.black_time,
+    let time_left = match game_state
+      .field
+      .last_player()
+      .map_or(Player::Red, |player| player.next())
+    {
+      Player::Red => message::TimeLeft {
+        red: game_state.red_time.saturating_sub(elapsed),
+        black: game_state.black_time,
+      },
+      Player::Black => message::TimeLeft {
+        red: game_state.red_time,
+        black: game_state.black_time.saturating_sub(elapsed),
+      },
     };
 
     drop(game_state);
