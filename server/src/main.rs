@@ -708,8 +708,13 @@ impl<R: Rng> Session<R> {
 
     state.subscribe(self.connection_id, game_id);
 
-    let (game_state, red_player_id, black_player_id) = if let Some(game) = state.games.pin().get(&game_id) {
-      (game.state.clone(), game.red_player_id, game.black_player_id)
+    let (game_state, red_player_id, black_player_id, config) = if let Some(game) = state.games.pin().get(&game_id) {
+      (
+        game.state.clone(),
+        game.red_player_id,
+        game.black_player_id,
+        game.config.clone(),
+      )
     } else {
       // TODO: log
       return Ok(());
@@ -755,13 +760,27 @@ impl<R: Rng> Session<R> {
         self.connection_id,
         message::Response::GameInit {
           game_id,
+          game: message::Game {
+            red_player_id: PlayerId(red_player.id),
+            black_player_id: PlayerId(black_player.id),
+            red_player: message::Player {
+              nickname: red_player.nickname,
+            },
+            black_player: message::Player {
+              nickname: black_player.nickname,
+            },
+            config: message::GameConfig {
+              size: message::FieldSize {
+                width: config.size.width,
+                height: config.size.height,
+              },
+              time: message::GameTime {
+                total: config.time.total,
+                increment: config.time.increment,
+              },
+            },
+          },
           moves,
-          red_player: message::Player {
-            nickname: red_player.nickname,
-          },
-          black_player: message::Player {
-            nickname: black_player.nickname,
-          },
           init_time: now_epoch,
           time_left,
         },

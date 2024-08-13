@@ -3,7 +3,6 @@ use std::{collections::HashMap, time::Duration};
 use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds, DurationSeconds};
-use time::PrimitiveDateTime;
 
 use crate::ids::*;
 
@@ -173,9 +172,8 @@ pub enum Response {
   /// First message after subscription.
   GameInit {
     game_id: GameId,
+    game: Game,
     moves: Vec<Move>,
-    red_player: Player,
-    black_player: Player,
     #[serde_as(as = "DurationMilliSeconds")]
     init_time: Duration,
     time_left: TimeLeft,
