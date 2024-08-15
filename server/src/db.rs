@@ -1,6 +1,6 @@
 use anyhow::Result;
 use derive_more::{From, Into};
-use rand::Rng;
+use rand::{distributions::Alphanumeric, Rng};
 use sqlx::{Pool, Postgres};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
@@ -125,7 +125,16 @@ LIMIT 1
     let nickname = oidc_player
       .nickname()
       .map(|nickname| nickname.to_string())
-      .unwrap_or_else(|| format!("player_{}", rng.next_u32()));
+      .unwrap_or_else(|| {
+        format!(
+          "player_{}",
+          rng
+            .sample_iter(&Alphanumeric)
+            .map(|n| n as char)
+            .take(4)
+            .collect::<String>()
+        )
+      });
 
     let player = if let Some(player) = player {
       player
