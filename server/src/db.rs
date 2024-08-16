@@ -78,7 +78,7 @@ pub trait Db {
   async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>>;
   async fn create_game(&self, game: Game) -> Result<()>;
   async fn create_move(&self, m: Move) -> Result<()>;
-  async fn set_result(&self, game_id: Uuid, result: GameResult) -> Result<()>;
+  async fn set_result(&self, game_id: Uuid, finish_time: PrimitiveDateTime, result: GameResult) -> Result<()>;
 }
 
 #[derive(From, Into)]
@@ -274,14 +274,15 @@ VALUES ($1, $2, $3, $4, $5, $6)
     .map(|_| ())
   }
 
-  async fn set_result(&self, game_id: Uuid, result: GameResult) -> Result<()> {
+  async fn set_result(&self, game_id: Uuid, finish_time: PrimitiveDateTime, result: GameResult) -> Result<()> {
     sqlx::query(
       "
-UPDATE games SET \"result\" = $1
-WHERE id = $2 AND \"result\" IS NULL
+UPDATE games SET \"result\" = $1, finish_time = $2
+WHERE id = $3 AND \"result\" IS NULL
 ",
     )
     .bind(result)
+    .bind(finish_time)
     .bind(game_id)
     .execute(&self.pool)
     .await

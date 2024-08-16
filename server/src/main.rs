@@ -952,10 +952,15 @@ impl<R: Rng> Session<R> {
       player
     };
 
+    let now = SystemTime::now();
+    let now_offset = OffsetDateTime::from(now);
+    let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
+
     self
       .db
       .set_result(
         game_id.0,
+        now_primitive,
         match player {
           Player::Red => db::GameResult::ResignedBlack,
           Player::Black => db::GameResult::ResignedRed,
