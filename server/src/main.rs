@@ -643,6 +643,7 @@ impl<R: Rng> Session<R> {
       red_time: open_game.config.time.total,
       black_time: open_game.config.time.total,
       last_move_time: now,
+      draw_offer: None,
     };
     let game = Game {
       red_player_id: open_game.player_id,
@@ -794,6 +795,7 @@ impl<R: Rng> Session<R> {
           moves,
           init_time: now_epoch,
           time_left,
+          result: None,
         },
       )
       .await
@@ -913,6 +915,70 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
+  async fn resign(&self, state: &State, game_id: GameId) -> Result<()> {
+    let player_id = if let Some(player_id) = self.player_id {
+      player_id
+    } else {
+      anyhow::bail!(
+        "attempt to resign from an unauthorized connection {}",
+        self.connection_id
+      )
+    };
+
+    let player = {
+      let pin = state.games.pin();
+
+      let player = if let Some(game) = pin.get(&game_id) {
+        if player_id == game.red_player_id {
+          Player::Red
+        } else if player_id == game.black_player_id {
+          Player::Black
+        } else {
+          anyhow::bail!("player {} attempted to resign in a wrong game {}", player_id, game_id,)
+        }
+      } else {
+        anyhow::bail!(
+          "player {} attempted to resign in a game {} that don't exist",
+          player_id,
+          game_id,
+        )
+      };
+
+      if pin.remove(&game_id).is_none() {
+        log::warn!("Game {} is already finished", game_id);
+        return Ok(());
+      };
+
+      player
+    };
+
+    self
+      .db
+      .set_result(
+        game_id.0,
+        match player {
+          Player::Red => db::GameResult::ResignedBlack,
+          Player::Black => db::GameResult::ResignedRed,
+        },
+      )
+      .await?;
+
+    state
+      .send_to_watchers(
+        game_id,
+        message::Response::GameResult {
+          result: message::GameResult::Resigned { winner: player.next() },
+        },
+      )
+      .await;
+
+    Ok(())
+  }
+
+  async fn draw(&self, state: &State, game_id: GameId) -> Result<()> {
+    Ok(())
+  }
+
   async fn accept_connection(mut self, state: Arc<State>, stream: TcpStream) -> Result<()> {
     let ws_stream = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response| {
       let mut jar = CookieJar::new();
@@ -974,6 +1040,8 @@ impl<R: Rng> Session<R> {
             message::Request::Subscribe { game_id } => self.subscribe(&state, game_id).await?,
             message::Request::Unsubscribe { game_id } => self.unsubscribe(&state, game_id)?,
             message::Request::PutPoint { game_id, coordinate } => self.put_point(&state, game_id, coordinate).await?,
+            message::Request::Resign { game_id } => self.resign(&state, game_id).await?,
+            message::Request::Draw { game_id } => self.draw(&state, game_id).await?,
           }
         }
       }

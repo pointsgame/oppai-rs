@@ -40,6 +40,20 @@ impl OidcPlayer {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "provider")]
+#[sqlx(rename_all = "lowercase")]
+pub enum GameResult {
+  ResignedRed,
+  ResignedBlack,
+  GroundedRed,
+  GroundedBlack,
+  TimeOutRed,
+  TimeOutBlack,
+  DrawAgreement,
+  DrawGrounded,
+}
+
 pub struct Game {
   pub id: Uuid,
   pub red_player_id: Uuid,
@@ -64,6 +78,7 @@ pub trait Db {
   async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>>;
   async fn create_game(&self, game: Game) -> Result<()>;
   async fn create_move(&self, m: Move) -> Result<()>;
+  async fn set_result(&self, game_id: Uuid, result: GameResult) -> Result<()>;
 }
 
 #[derive(From, Into)]
@@ -253,6 +268,21 @@ VALUES ($1, $2, $3, $4, $5, $6)
     .bind(m.x)
     .bind(m.y)
     .bind(m.putting_time)
+    .execute(&self.pool)
+    .await
+    .map_err(From::from)
+    .map(|_| ())
+  }
+
+  async fn set_result(&self, game_id: Uuid, result: GameResult) -> Result<()> {
+    sqlx::query(
+      "
+UPDATE games SET \"result\" = $1
+WHERE id = $2 AND \"result\" IS NULL
+",
+    )
+    .bind(result)
+    .bind(game_id)
     .execute(&self.pool)
     .await
     .map_err(From::from)

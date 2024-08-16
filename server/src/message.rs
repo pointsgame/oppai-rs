@@ -112,6 +112,22 @@ pub enum AuthProvider {
   Test,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum DrawReason {
+  Agreement,
+  Grounded,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all_fields = "camelCase")]
+pub enum GameResult {
+  Resigned { winner: Color },
+  Grounded { winner: Color },
+  TimeOut { winner: Color },
+  Draw { reason: DrawReason },
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
 #[serde(rename_all_fields = "camelCase")]
@@ -154,6 +170,14 @@ pub enum Request {
     game_id: GameId,
     coordinate: Coordinate,
   },
+  /// Resign a game.
+  Resign {
+    game_id: GameId,
+  },
+  /// Offer or accept a draw.
+  Draw {
+    game_id: GameId,
+  },
 }
 
 #[serde_as]
@@ -177,6 +201,7 @@ pub enum Response {
     #[serde_as(as = "DurationMilliSeconds")]
     init_time: Duration,
     time_left: TimeLeft,
+    result: Option<GameResult>,
   },
   AuthUrl {
     url: String,
@@ -214,5 +239,12 @@ pub enum Response {
     #[serde_as(as = "DurationMilliSeconds")]
     putting_time: Duration,
     time_left: TimeLeft,
+  },
+  /// Offer a draw.
+  Draw {
+    game_id: GameId,
+  },
+  GameResult {
+    result: GameResult,
   },
 }

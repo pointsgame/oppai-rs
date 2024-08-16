@@ -40,6 +40,7 @@ pub struct GameState {
   pub red_time: Duration,
   pub black_time: Duration,
   pub last_move_time: SystemTime,
+  pub draw_offer: Option<Player>,
 }
 
 #[derive(Debug, Clone)]
