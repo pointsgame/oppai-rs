@@ -118,13 +118,18 @@ pub enum DrawReason {
   Grounded,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum WinReason {
+  Resigned,
+  Grounded,
+  TimeOut,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all_fields = "camelCase")]
 pub enum GameResult {
-  Resigned { winner: Color },
-  Grounded { winner: Color },
-  TimeOut { winner: Color },
+  Win { winner: Color, reason: WinReason },
   Draw { reason: DrawReason },
 }
 

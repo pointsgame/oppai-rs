@@ -973,7 +973,10 @@ impl<R: Rng> Session<R> {
         game_id,
         message::Response::GameResult {
           game_id,
-          result: message::GameResult::Resigned { winner: player.next() },
+          result: message::GameResult::Win {
+            winner: player.next(),
+            reason: message::WinReason::Resigned,
+          },
         },
       )
       .await;
