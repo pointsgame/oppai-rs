@@ -245,6 +245,7 @@ pub enum Response {
     game_id: GameId,
   },
   GameResult {
+    game_id: GameId,
     result: GameResult,
   },
 }

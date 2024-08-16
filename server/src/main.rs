@@ -972,6 +972,7 @@ impl<R: Rng> Session<R> {
       .send_to_watchers(
         game_id,
         message::Response::GameResult {
+          game_id,
           result: message::GameResult::Resigned { winner: player.next() },
         },
       )
