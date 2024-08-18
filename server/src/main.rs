@@ -47,6 +47,7 @@ type OidcClient =
 
 #[derive(Debug)]
 struct AuthState {
+  oidc_client: OidcClient,
   provider: message::AuthProvider,
   pkce_verifier: PkceCodeVerifier,
   nonce: Nonce,
@@ -54,81 +55,97 @@ struct AuthState {
   remember_me: bool,
 }
 
-#[derive(Debug, Clone)]
-struct OidcClients {
-  portier_client: Option<Arc<OidcClient>>,
-  google_client: Option<Arc<OidcClient>>,
-  gitlab_client: Option<Arc<OidcClient>>,
-}
-
-impl OidcClients {
-  pub fn providers(&self) -> Vec<message::AuthProvider> {
-    let mut providers = Vec::new();
-    if self.portier_client.is_some() {
-      providers.push(message::AuthProvider::Portier);
-    }
-    if self.google_client.is_some() {
-      providers.push(message::AuthProvider::Google);
-    }
-    if self.gitlab_client.is_some() {
-      providers.push(message::AuthProvider::GitLab);
-    }
-    #[cfg(feature = "test")]
-    providers.push(message::AuthProvider::Test);
-    providers
-  }
-
-  fn oidc_client(&self, provider: message::AuthProvider) -> Option<&OidcClient> {
-    match provider {
-      message::AuthProvider::Portier => self.portier_client.as_deref(),
-      message::AuthProvider::Google => self.google_client.as_deref(),
-      message::AuthProvider::GitLab => self.gitlab_client.as_deref(),
-      #[cfg(feature = "test")]
-      message::AuthProvider::Test => None,
-    }
-  }
+struct SessionShared {
+  db: db::SqlxDb,
+  http_client: reqwest::Client,
+  cookie_key: Key,
+  google_oidc: Option<config::OidcConfig>,
+  gitlab_oidc: Option<config::OidcConfig>,
 }
 
 struct Session<R: Rng> {
-  db: Arc<db::SqlxDb>,
-  http_client: Arc<reqwest::Client>,
-  oidc_clients: OidcClients,
+  shared: Arc<SessionShared>,
   rng: R,
   connection_id: ConnectionId,
   player_id: Option<PlayerId>,
   watching: HashSet<GameId>,
   auth_state: Option<AuthState>,
-  cookie_key: Arc<Key>,
 }
 
 impl<R: Rng> Session<R> {
-  fn new(
-    mut rng: R,
-    db: Arc<db::SqlxDb>,
-    http_client: Arc<reqwest::Client>,
-    oidc_clients: OidcClients,
-    cookie_key: Arc<Key>,
-  ) -> Self {
+  fn new(shared: Arc<SessionShared>, mut rng: R) -> Self {
     let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
     Session {
-      db,
-      http_client,
-      oidc_clients,
+      shared,
       rng,
       connection_id,
       player_id: None,
       watching: HashSet::new(),
       auth_state: None,
-      cookie_key,
+    }
+  }
+
+  async fn oidc_client(&self, provider: message::AuthProvider) -> Result<OidcClient> {
+    let redirect_url = RedirectUrl::new("https://kropki.org/".to_string())?;
+    match provider {
+      message::AuthProvider::Portier => {
+        let provider_metadata = CoreProviderMetadata::discover_async(
+          IssuerUrl::new("https://broker.portier.io".to_string())?,
+          &self.shared.http_client,
+        )
+        .await?;
+        let client =
+          CoreClient::from_provider_metadata(provider_metadata, ClientId::new("https://kropki.org".to_string()), None)
+            .set_redirect_uri(redirect_url);
+        Ok(client)
+      }
+      message::AuthProvider::Google => {
+        let oidc_config = self
+          .shared
+          .google_oidc
+          .clone()
+          .ok_or(anyhow::anyhow!("google oidc isn't configured"))?;
+        let provider_metadata = CoreProviderMetadata::discover_async(
+          IssuerUrl::new("https://accounts.google.com".to_string())?,
+          &self.shared.http_client,
+        )
+        .await?;
+        let client = CoreClient::from_provider_metadata(
+          provider_metadata,
+          oidc_config.client_id,
+          Some(oidc_config.client_secret),
+        )
+        .set_redirect_uri(redirect_url.clone());
+        Ok(client)
+      }
+      message::AuthProvider::GitLab => {
+        let oidc_config = self
+          .shared
+          .gitlab_oidc
+          .clone()
+          .ok_or(anyhow::anyhow!("gitlab oidc isn't configured"))?;
+        let provider_metadata = CoreProviderMetadata::discover_async(
+          IssuerUrl::new("https://gitlab.com".to_string())?,
+          &self.shared.http_client,
+        )
+        .await?;
+        let client = CoreClient::from_provider_metadata(
+          provider_metadata,
+          oidc_config.client_id,
+          Some(oidc_config.client_secret),
+        )
+        .set_redirect_uri(redirect_url.clone());
+        Ok(client)
+      }
+      #[cfg(feature = "test")]
+      message::AuthProvider::Test => anyhow::bail!("test provider can't be used"),
     }
   }
 
   async fn get_auth_url(&mut self, state: &State, provider: message::AuthProvider, remember_me: bool) -> Result<()> {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-    let (auth_url, csrf_state, nonce) = self
-      .oidc_clients
-      .oidc_client(provider)
-      .ok_or_else(|| anyhow::anyhow!("invalid auth provider"))?
+    let oidc_client = self.oidc_client(provider).await?;
+    let (auth_url, csrf_state, nonce) = oidc_client
       .authorize_url(
         CoreAuthenticationFlow::AuthorizationCode,
         CsrfToken::new_random,
@@ -139,14 +156,6 @@ impl<R: Rng> Session<R> {
       .set_pkce_challenge(pkce_challenge)
       .url();
 
-    self.auth_state = Some(AuthState {
-      provider,
-      pkce_verifier,
-      nonce,
-      csrf_state,
-      remember_me,
-    });
-
     state
       .send_to_connection(
         self.connection_id,
@@ -155,6 +164,15 @@ impl<R: Rng> Session<R> {
         },
       )
       .await?;
+
+    self.auth_state = Some(AuthState {
+      oidc_client,
+      provider,
+      pkce_verifier,
+      nonce,
+      csrf_state,
+      remember_me,
+    });
 
     Ok(())
   }
@@ -169,13 +187,11 @@ impl<R: Rng> Session<R> {
       anyhow::bail!("invalid csrf token for connection {}", self.connection_id);
     }
 
-    let token_response = self
-      .oidc_clients
-      .oidc_client(auth_state.provider)
-      .ok_or_else(|| anyhow::anyhow!("invalid auth provider"))?
+    let token_response = auth_state
+      .oidc_client
       .exchange_code(AuthorizationCode::new(oidc_code))?
       .set_pkce_verifier(auth_state.pkce_verifier)
-      .request_async(self.http_client.as_ref())
+      .request_async(&self.shared.http_client)
       .await?;
 
     let id_token = token_response.id_token().ok_or_else(|| {
@@ -184,11 +200,7 @@ impl<R: Rng> Session<R> {
         self.connection_id
       )
     })?;
-    let id_token_verifier = self
-      .oidc_clients
-      .oidc_client(auth_state.provider)
-      .ok_or_else(|| anyhow::anyhow!("invalid auth provider"))?
-      .id_token_verifier();
+    let id_token_verifier = auth_state.oidc_client.id_token_verifier();
     let claims = id_token.claims(&id_token_verifier, &auth_state.nonce)?;
 
     if let Some(expected_access_token_hash) = claims.access_token_hash() {
@@ -211,6 +223,7 @@ impl<R: Rng> Session<R> {
     };
 
     let player = self
+      .shared
       .db
       .get_or_create_player(
         db::OidcPlayer {
@@ -270,7 +283,7 @@ impl<R: Rng> Session<R> {
     .same_site(SameSite::Strict)
     .secure(true)
     .build();
-    jar.private_mut(&self.cookie_key).add(cookie);
+    jar.private_mut(&self.shared.cookie_key).add(cookie);
 
     state
       .send_to_connection(
@@ -331,9 +344,23 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
+  pub fn oidc_providers(&self) -> Vec<message::AuthProvider> {
+    let mut providers = Vec::with_capacity(3);
+    providers.push(message::AuthProvider::Portier);
+    if self.shared.google_oidc.is_some() {
+      providers.push(message::AuthProvider::Google);
+    }
+    if self.shared.gitlab_oidc.is_some() {
+      providers.push(message::AuthProvider::GitLab);
+    }
+    #[cfg(feature = "test")]
+    providers.push(message::AuthProvider::Test);
+    providers
+  }
+
   async fn init(&self, state: &State, tx: Sender<message::Response>) -> Result<()> {
     let player = if let Some(player_id) = self.player_id {
-      Some(self.db.get_player(player_id.0).await?)
+      Some(self.shared.db.get_player(player_id.0).await?)
     } else {
       None
     };
@@ -377,6 +404,7 @@ impl<R: Rng> Session<R> {
       .unique()
       .collect::<Vec<_>>();
     let mut players = self
+      .shared
       .db
       .get_players(&player_ids)
       .await?
@@ -471,7 +499,7 @@ impl<R: Rng> Session<R> {
       .collect();
 
     let init = message::Response::Init {
-      auth_providers: self.oidc_clients.providers(),
+      auth_providers: self.oidc_providers(),
       player_id: self.player_id,
       players,
       open_games,
@@ -551,7 +579,7 @@ impl<R: Rng> Session<R> {
 
     state.open_games.pin().insert(game_id, open_game);
 
-    let player = self.db.get_player(player_id.0).await?;
+    let player = self.shared.db.get_player(player_id.0).await?;
 
     state
       .send_to_all(message::Response::Create {
@@ -628,6 +656,7 @@ impl<R: Rng> Session<R> {
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
 
     self
+      .shared
       .db
       .create_game(db::Game {
         id: game_id.0,
@@ -655,6 +684,7 @@ impl<R: Rng> Session<R> {
     state.games.pin().insert(game_id, game);
 
     let [player_1, player_2] = self
+      .shared
       .db
       .get_players(&[open_game.player_id.0, player_id.0])
       .await?
@@ -756,6 +786,7 @@ impl<R: Rng> Session<R> {
     drop(game_state);
 
     let [player_1, player_2] = self
+      .shared
       .db
       .get_players(&[red_player_id.0, black_player_id.0])
       .await?
@@ -879,6 +910,7 @@ impl<R: Rng> Session<R> {
     game_state.last_move_time = now;
 
     self
+      .shared
       .db
       .create_move(db::Move {
         game_id: game_id.0,
@@ -957,6 +989,7 @@ impl<R: Rng> Session<R> {
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
 
     self
+      .shared
       .db
       .set_result(
         game_id.0,
@@ -1005,7 +1038,7 @@ impl<R: Rng> Session<R> {
         jar.add(cookie);
       }
       self.player_id = jar
-        .private(&self.cookie_key)
+        .private(&self.shared.cookie_key)
         .get("kropki")
         .and_then(|cookie| serde_json::from_str(cookie.value()).ok())
         .filter(|data: &CookieData| data.expires_at >= SystemTime::now())
@@ -1084,77 +1117,22 @@ async fn main() -> Result<()> {
   let options = PgConnectOptions::new_without_pgpass().socket(&config.postgres_socket);
   let pool = PgPoolOptions::new().connect_with(options).await?;
   sqlx::migrate!("./migrations").run(&pool).await?;
-  let db = Arc::new(db::SqlxDb::from(pool));
 
   let http_client = reqwest::ClientBuilder::new()
     .redirect(reqwest::redirect::Policy::none()) // Following redirects opens the client up to SSRF vulnerabilities.
     .build()?;
 
-  let redirect_url = RedirectUrl::new("https://kropki.org/".to_string())?;
-
-  let google_client = match config.google_oidc {
-    Some(oidc_config) => {
-      CoreProviderMetadata::discover_async(IssuerUrl::new("https://accounts.google.com".to_string())?, &http_client)
-        .await
-        .inspect_err(|e| log::error!("failed to fetch google metatdata: {}", e))
-        .ok()
-        .map(|provider_metadata| {
-          CoreClient::from_provider_metadata(
-            provider_metadata,
-            oidc_config.client_id,
-            Some(oidc_config.client_secret),
-          )
-          .set_redirect_uri(redirect_url.clone())
-        })
-    }
-    None => None,
-  };
-
-  let gitlab_client = match config.gitlab_oidc {
-    Some(oidc_config) => {
-      CoreProviderMetadata::discover_async(IssuerUrl::new("https://gitlab.com".to_string())?, &http_client)
-        .await
-        .inspect_err(|e| log::error!("failed to fetch gitlab metatdata: {}", e))
-        .ok()
-        .map(|provider_metadata| {
-          CoreClient::from_provider_metadata(
-            provider_metadata,
-            oidc_config.client_id,
-            Some(oidc_config.client_secret),
-          )
-          .set_redirect_uri(redirect_url.clone())
-        })
-    }
-    None => None,
-  };
-
-  let portier_client =
-    CoreProviderMetadata::discover_async(IssuerUrl::new("https://broker.portier.io".to_string())?, &http_client)
-      .await
-      .inspect_err(|e| log::error!("failed to fetch portier metatdata: {}", e))
-      .ok()
-      .map(|provider_metadata| {
-        CoreClient::from_provider_metadata(provider_metadata, ClientId::new("https://kropki.org".to_string()), None)
-          .set_redirect_uri(redirect_url)
-      });
-
-  let http_client = Arc::new(http_client);
-  let oidc_clients = OidcClients {
-    portier_client: portier_client.map(Arc::new),
-    google_client: google_client.map(Arc::new),
-    gitlab_client: gitlab_client.map(Arc::new),
-  };
-  let cookie_key = Arc::new(config.cookie_key);
+  let session_shared = Arc::new(SessionShared {
+    db: db::SqlxDb::from(pool),
+    http_client,
+    cookie_key: config.cookie_key,
+    google_oidc: config.google_oidc,
+    gitlab_oidc: config.gitlab_oidc,
+  });
 
   loop {
     let (stream, addr) = listener.accept().await?;
-    let session = Session::new(
-      StdRng::from_rng(&mut rng)?,
-      db.clone(),
-      http_client.clone(),
-      oidc_clients.clone(),
-      cookie_key.clone(),
-    );
+    let session = Session::new(session_shared.clone(), StdRng::from_rng(&mut rng)?);
     tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
       if let Err(error) = result {
         log::warn!("Closed a connection from {} with an error: {}", addr, error);

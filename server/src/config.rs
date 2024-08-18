@@ -2,11 +2,13 @@ use clap::{Arg, Command};
 use cookie::Key;
 use openidconnect::{ClientId, ClientSecret};
 
+#[derive(Clone, Debug)]
 pub struct OidcConfig {
   pub client_id: ClientId,
   pub client_secret: ClientSecret,
 }
 
+#[derive(Clone, Debug)]
 pub struct Config {
   pub google_oidc: Option<OidcConfig>,
   pub gitlab_oidc: Option<OidcConfig>,
