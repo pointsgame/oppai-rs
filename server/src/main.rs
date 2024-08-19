@@ -85,6 +85,12 @@ impl<R: Rng> Session<R> {
     }
   }
 
+  fn player_id(&self) -> Result<PlayerId> {
+    self
+      .player_id
+      .ok_or_else(|| anyhow::anyhow!("unauthorized connection {}", self.connection_id))
+  }
+
   async fn oidc_client(&self, provider: message::AuthProvider) -> Result<OidcClient> {
     let redirect_url = RedirectUrl::new("https://kropki.org/".to_string())?;
     match provider {
@@ -598,14 +604,7 @@ impl<R: Rng> Session<R> {
   }
 
   async fn close(&mut self, state: &State, game_id: GameId) -> Result<()> {
-    let player_id = if let Some(player_id) = self.player_id {
-      player_id
-    } else {
-      anyhow::bail!(
-        "attempt to close a game from an unauthorized connection {}",
-        self.connection_id
-      )
-    };
+    let player_id = self.player_id()?;
 
     if let Some(open_game) = state.open_games.pin().get(&game_id) {
       if player_id != open_game.player_id {
@@ -627,14 +626,7 @@ impl<R: Rng> Session<R> {
   }
 
   async fn join(&mut self, state: &State, game_id: GameId) -> Result<()> {
-    let player_id = if let Some(player_id) = self.player_id {
-      player_id
-    } else {
-      anyhow::bail!(
-        "attempt to join a game from an unauthorized connection {}",
-        self.connection_id
-      )
-    };
+    let player_id = self.player_id()?;
 
     let open_game = if let Some(open_game) = state.open_games.pin().remove(&game_id) {
       open_game.clone()
@@ -764,6 +756,8 @@ impl<R: Rng> Session<R> {
       })
       .collect();
 
+    let draw_offer = game_state.draw_offer;
+
     let now = SystemTime::now();
     let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
     let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
@@ -826,6 +820,7 @@ impl<R: Rng> Session<R> {
           moves,
           init_time: now_epoch,
           time_left,
+          draw_offer,
           result: None,
         },
       )
@@ -843,14 +838,7 @@ impl<R: Rng> Session<R> {
   }
 
   async fn put_point(&self, state: &State, game_id: GameId, coordinate: message::Coordinate) -> Result<()> {
-    let player_id = if let Some(player_id) = self.player_id {
-      player_id
-    } else {
-      anyhow::bail!(
-        "attempt to put a point from an unauthorized connection {}",
-        self.connection_id
-      )
-    };
+    let player_id = self.player_id()?;
 
     let (game_state, player, increment) = if let Some(game) = state.games.pin().get(&game_id) {
       let player = if let Some(player) = game.color(player_id) {
@@ -864,11 +852,13 @@ impl<R: Rng> Session<R> {
       };
       (game.state.clone(), player, game.config.time.increment)
     } else {
-      anyhow::bail!(
+      log::warn!(
         "player {} attempted to put point in a game {} that don't exist",
         player_id,
         game_id,
       );
+
+      return Ok(());
     };
 
     let mut game_state = game_state.write().await;
@@ -948,14 +938,7 @@ impl<R: Rng> Session<R> {
   }
 
   async fn resign(&self, state: &State, game_id: GameId) -> Result<()> {
-    let player_id = if let Some(player_id) = self.player_id {
-      player_id
-    } else {
-      anyhow::bail!(
-        "attempt to resign from an unauthorized connection {}",
-        self.connection_id
-      )
-    };
+    let player_id = self.player_id()?;
 
     let player = {
       let pin = state.games.pin();
@@ -969,11 +952,13 @@ impl<R: Rng> Session<R> {
           anyhow::bail!("player {} attempted to resign in a wrong game {}", player_id, game_id,)
         }
       } else {
-        anyhow::bail!(
+        log::warn!(
           "player {} attempted to resign in a game {} that don't exist",
           player_id,
           game_id,
-        )
+        );
+
+        return Ok(());
       };
 
       if pin.remove(&game_id).is_none() {
@@ -1018,6 +1003,67 @@ impl<R: Rng> Session<R> {
   }
 
   async fn draw(&self, state: &State, game_id: GameId) -> Result<()> {
+    let player_id = self.player_id()?;
+
+    let (game_state, player) = if let Some(game) = state.games.pin().get(&game_id) {
+      let player = if let Some(player) = game.color(player_id) {
+        player
+      } else {
+        anyhow::bail!("player {} attempted to draw in a wrong game {}", player_id, game_id,);
+      };
+      (game.state.clone(), player)
+    } else {
+      log::warn!(
+        "player {} attempted to draw in a game {} that don't exist",
+        player_id,
+        game_id,
+      );
+
+      return Ok(());
+    };
+
+    let mut game_state = game_state.write().await;
+
+    match game_state.draw_offer {
+      None => {
+        game_state.draw_offer = Some(player);
+        drop(game_state);
+        state
+          .send_to_watchers(game_id, message::Response::Draw { game_id, player })
+          .await;
+      }
+      Some(draw_offer) => {
+        if draw_offer == player.next() {
+          if state.games.pin().remove(&game_id).is_none() {
+            log::warn!("Game {} is already finished", game_id);
+            return Ok(());
+          };
+
+          let now = SystemTime::now();
+          let now_offset = OffsetDateTime::from(now);
+          let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
+
+          self
+            .shared
+            .db
+            .set_result(game_id.0, now_primitive, db::GameResult::DrawAgreement)
+            .await?;
+
+          state
+            .send_to_watchers(
+              game_id,
+              message::Response::GameResult {
+                game_id,
+                result: message::GameResult::Draw {
+                  reason: message::DrawReason::Agreement,
+                },
+              },
+            )
+            .await;
+        }
+      }
+    }
+
     Ok(())
   }
 

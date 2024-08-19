@@ -206,6 +206,7 @@ pub enum Response {
     #[serde_as(as = "DurationMilliSeconds")]
     init_time: Duration,
     time_left: TimeLeft,
+    draw_offer: Option<Color>,
     result: Option<GameResult>,
   },
   AuthUrl {
@@ -248,6 +249,7 @@ pub enum Response {
   /// Offer a draw.
   Draw {
     game_id: GameId,
+    player: Color,
   },
   GameResult {
     game_id: GameId,
