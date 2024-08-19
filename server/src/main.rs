@@ -306,7 +306,7 @@ impl<R: Rng> Session<R> {
 
   #[cfg(feature = "test")]
   async fn auth_test(&mut self, state: &State, name: String) -> Result<()> {
-    let player = self.db.get_or_create_test_player(name).await?;
+    let player = self.shared.db.get_or_create_test_player(name).await?;
     let player_id = PlayerId(player.id);
 
     self.player_id = Some(player_id);
@@ -335,7 +335,7 @@ impl<R: Rng> Session<R> {
     .same_site(SameSite::Strict)
     .secure(true)
     .build();
-    jar.private_mut(&self.cookie_key).add(cookie);
+    jar.private_mut(&self.shared.cookie_key).add(cookie);
 
     state
       .send_to_connection(
@@ -904,11 +904,11 @@ impl<R: Rng> Session<R> {
       .db
       .create_move(db::Move {
         game_id: game_id.0,
-        player_id: player_id.0,
+        player: player.into(),
         number: (game_state.field.moves_count() - 1) as i16,
         x: coordinate.x as i16,
         y: coordinate.y as i16,
-        putting_time: now_primitive,
+        timestamp: now_primitive,
       })
       .await
       .inspect_err(|_| {
@@ -1028,6 +1028,21 @@ impl<R: Rng> Session<R> {
       None => {
         game_state.draw_offer = Some(player);
         drop(game_state);
+
+        let now = SystemTime::now();
+        let now_offset = OffsetDateTime::from(now);
+        let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
+
+        self
+          .shared
+          .db
+          .create_draw_offer(db::DrawOffer {
+            game_id: game_id.0,
+            player: player.into(),
+            offer: true,
+            timestamp: now_primitive,
+          })
+          .await?;
         state
           .send_to_watchers(game_id, message::Response::Draw { game_id, player })
           .await;

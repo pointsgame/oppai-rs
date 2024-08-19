@@ -1,9 +1,27 @@
 use anyhow::Result;
 use derive_more::{From, Into};
+use oppai_field::player::Player as OppaiPlayer;
 use rand::{distributions::Alphanumeric, Rng};
 use sqlx::{Pool, Postgres};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "provider")]
+#[sqlx(rename_all = "lowercase")]
+pub enum Color {
+  Red,
+  Black,
+}
+
+impl From<OppaiPlayer> for Color {
+  fn from(player: OppaiPlayer) -> Self {
+    match player {
+      OppaiPlayer::Red => Color::Red,
+      OppaiPlayer::Black => Color::Black,
+    }
+  }
+}
 
 #[derive(sqlx::FromRow)]
 pub struct Player {
@@ -63,11 +81,18 @@ pub struct Game {
 
 pub struct Move {
   pub game_id: Uuid,
-  pub player_id: Uuid,
+  pub player: Color,
   pub number: i16,
   pub x: i16,
   pub y: i16,
-  pub putting_time: PrimitiveDateTime,
+  pub timestamp: PrimitiveDateTime,
+}
+
+pub struct DrawOffer {
+  pub game_id: Uuid,
+  pub player: Color,
+  pub offer: bool,
+  pub timestamp: PrimitiveDateTime,
 }
 
 pub trait Db {
@@ -78,6 +103,7 @@ pub trait Db {
   async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>>;
   async fn create_game(&self, game: Game) -> Result<()>;
   async fn create_move(&self, m: Move) -> Result<()>;
+  async fn create_draw_offer(&self, draw_offer: DrawOffer) -> Result<()>;
   async fn set_result(&self, game_id: Uuid, finish_time: PrimitiveDateTime, result: GameResult) -> Result<()>;
 }
 
@@ -258,16 +284,33 @@ VALUES ($1, $2, $3, $4)
   async fn create_move(&self, m: Move) -> Result<()> {
     sqlx::query(
       "
-INSERT INTO moves (game_id, player_id, \"number\", x, y, putting_time)
+INSERT INTO moves (game_id, player, \"number\", x, y, \"timestamp\")
 VALUES ($1, $2, $3, $4, $5, $6)
 ",
     )
     .bind(m.game_id)
-    .bind(m.player_id)
+    .bind(m.player)
     .bind(m.number)
     .bind(m.x)
     .bind(m.y)
-    .bind(m.putting_time)
+    .bind(m.timestamp)
+    .execute(&self.pool)
+    .await
+    .map_err(From::from)
+    .map(|_| ())
+  }
+
+  async fn create_draw_offer(&self, draw_offer: DrawOffer) -> Result<()> {
+    sqlx::query(
+      "
+INSERT INTO draw_offers (game_id, player, offer, \"timestamp\")
+VALUES ($1, $2, $3, $4)
+",
+    )
+    .bind(draw_offer.game_id)
+    .bind(draw_offer.player)
+    .bind(draw_offer.offer)
+    .bind(draw_offer.timestamp)
     .execute(&self.pool)
     .await
     .map_err(From::from)
