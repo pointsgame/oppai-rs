@@ -189,7 +189,7 @@ pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &[Pos]) -> bool {
 }
 
 #[inline]
-pub fn square(width: u32, pos1: Pos, pos2: Pos) -> i32 {
+pub fn skew_product(width: u32, pos1: Pos, pos2: Pos) -> i32 {
   (to_x(width, pos1) * to_y(width, pos2)) as i32 - (to_y(width, pos1) * to_x(width, pos2)) as i32
 }
 
@@ -504,8 +504,8 @@ impl Field {
   }
 
   #[inline]
-  fn square(&self, pos1: Pos, pos2: Pos) -> i32 {
-    square(self.width, pos1, pos2)
+  fn skew_product(&self, pos1: Pos, pos2: Pos) -> i32 {
+    skew_product(self.width, pos1, pos2)
   }
 
   //  * . .   x . *   . x x   . . .
@@ -560,7 +560,7 @@ impl Field {
     let mut chain = vec![start_pos];
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
-    let mut base_square = self.square(center_pos, pos);
+    let mut base_square = self.skew_product(center_pos, pos);
     loop {
       if self.points[pos].is_tagged() {
         while *chain.last().unwrap() != pos {
@@ -576,7 +576,7 @@ impl Field {
       while !self.points[pos].is_live_players_point(player) {
         pos = self.get_next_pos(center_pos, pos);
       }
-      base_square += self.square(center_pos, pos);
+      base_square += self.skew_product(center_pos, pos);
       if pos == start_pos {
         break;
       }
@@ -595,7 +595,7 @@ impl Field {
     let mut chain = vec![start_pos];
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
-    let mut base_square = self.square(center_pos, pos);
+    let mut base_square = self.skew_product(center_pos, pos);
     loop {
       chain.push(pos);
       mem::swap(&mut pos, &mut center_pos);
@@ -603,7 +603,7 @@ impl Field {
       while !(self.points[pos].is_live_players_point(player) && self.points[pos].is_bound()) {
         pos = self.get_next_pos(center_pos, pos);
       }
-      base_square += self.square(center_pos, pos);
+      base_square += self.skew_product(center_pos, pos);
       if pos == start_pos {
         break;
       }
