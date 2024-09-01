@@ -3982,6 +3982,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "oppai-bench"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "oppai-field",
+ "rand",
+]
+
+[[package]]
 name = "oppai-cli"
 version = "0.1.0"
 dependencies = [

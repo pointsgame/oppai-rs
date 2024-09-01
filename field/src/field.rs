@@ -1129,6 +1129,15 @@ impl Field {
   pub fn clear(&mut self) {
     while self.undo() {}
   }
+
+  pub fn winner(&self) -> Option<Player> {
+    use std::cmp::Ordering;
+    match self.score(Player::Red).cmp(&0) {
+      Ordering::Greater => Some(Player::Red),
+      Ordering::Less => Some(Player::Black),
+      Ordering::Equal => None,
+    }
+  }
 }
 
 impl fmt::Display for Field {

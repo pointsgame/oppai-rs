@@ -23,7 +23,8 @@ members = [
   "client",
   "term-render",
   "versus",
-  "server"
+  "server",
+  "bench"
 ]
 
 [workspace.dependencies]
