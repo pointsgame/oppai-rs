@@ -584,7 +584,7 @@ impl Field {
     for &pos in &chain {
       self.points[pos].clear_tag();
     }
-    if base_square < 0 && chain.len() > 2 {
+    if base_square < 0 {
       Some(chain)
     } else {
       None
