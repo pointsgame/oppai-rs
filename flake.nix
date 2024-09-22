@@ -42,10 +42,12 @@
                 "rustfmt"
               ])
               fenix.targets.wasm32-unknown-unknown.stable.rust-std
+              fenix.targets.wasm32-wasip1.stable.rust-std
             ])
             rust-analyzer
             wasm-bindgen-cli
             trunk
+            wasmtime
           ];
 
           buildInputs = with pkgs; [
