@@ -2,7 +2,7 @@ use num_traits::Float;
 use oppai_ai::{ai::AI, analysis::SimpleAnalysis};
 use oppai_field::{field::Field, player::Player};
 use oppai_zero::{model::Model, zero::Zero as InnerZero};
-use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
+use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
 use std::{
   any::TypeId,
   fmt::{Debug, Display},
@@ -25,7 +25,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S>,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     if let Ok((moves, confidence, estimation)) =

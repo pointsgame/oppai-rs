@@ -81,7 +81,7 @@ impl Minimax {
     let enemy = player.next();
     if let Some(last_pos) = last_pos {
       if common::is_last_move_stupid(field, last_pos.get(), enemy) {
-        return i32::max_value();
+        return i32::MAX;
       }
     }
     if depth == 0 {
@@ -138,7 +138,7 @@ impl Minimax {
       field.put_point(hash_pos, player);
       if common::is_penult_move_stupid(field) {
         field.undo();
-        return i32::max_value();
+        return i32::MAX;
       }
       let next_trajectories_pruning =
         trajectories_pruning.next(field, enemy, depth - 1, empty_board, hash_pos, should_stop);
@@ -181,7 +181,7 @@ impl Minimax {
       field.put_point(pos, player);
       if common::is_penult_move_stupid(field) {
         field.undo();
-        return i32::max_value();
+        return i32::MAX;
       }
       let next_trajectories_pruning = trajectories_pruning.next(field, enemy, depth - 1, empty_board, pos, should_stop);
       let mut cur_estimation = -Minimax::alpha_beta(

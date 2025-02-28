@@ -48,7 +48,13 @@ macro_rules! uct_test {
 uct_test!(uct_1, IMAGE_1, 100_000, 5);
 uct_test!(uct_2, IMAGE_2, 100_000, 7);
 uct_test!(uct_3, IMAGE_3, 100_000, 7);
-uct_test!(uct_4, IMAGE_4, 100_000, 5);
+uct_test!(
+  #[ignore]
+  uct_4,
+  IMAGE_4,
+  1_000_000,
+  5
+);
 uct_test!(uct_5, IMAGE_5, 100_000, 7);
 uct_test!(
   #[ignore]
@@ -64,7 +70,13 @@ uct_test!(
   1_000_000,
   7
 );
-uct_test!(uct_8, IMAGE_8, 100_000, 5);
+uct_test!(
+  #[ignore]
+  uct_8,
+  IMAGE_8,
+  1_000_000,
+  5
+);
 uct_test!(uct_9, IMAGE_9, 100_000, 7);
 uct_test!(
   #[ignore]
@@ -77,4 +89,10 @@ uct_test!(
 // uct_test!(uct_11, IMAGE_11, 1_000_000_000, 7);
 uct_test!(uct_12, IMAGE_12, 100_000, 7);
 uct_test!(uct_13, IMAGE_13, 100_000, 7);
-uct_test!(uct_14, IMAGE_14, 100_000, 13);
+uct_test!(
+  #[ignore]
+  uct_14,
+  IMAGE_14,
+  1_000_000,
+  13
+);

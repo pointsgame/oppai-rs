@@ -1,7 +1,7 @@
 use anyhow::Result;
 use derive_more::{From, Into};
 use oppai_field::player::Player as OppaiPlayer;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use sqlx::{Pool, Postgres};
 use time::PrimitiveDateTime;
 use uuid::Uuid;

@@ -27,7 +27,7 @@ pub struct Patterns {
 impl Default for Patterns {
   fn default() -> Self {
     Self {
-      min_size: u32::max_value(),
+      min_size: u32::MAX,
       dfa: Dfa::default(),
     }
   }

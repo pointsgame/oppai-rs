@@ -30,7 +30,7 @@ use oppai_zero::{
   pit,
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
-use rand::{distributions::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
+use rand::{distr::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use sgf_parse::{serialize, unknown_game::Prop, GameTree, SimpleText};
 use std::{
@@ -80,7 +80,7 @@ where
 
   let player = Player::Red;
 
-  let mut rng = SmallRng::from_entropy();
+  let mut rng = SmallRng::from_os_rng();
   let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
   let mut field = Field::new(config.width, config.height, zobrist);
 
@@ -139,7 +139,7 @@ where
   let predictor = Predictor { model, device };
   let mut learner = Learner { predictor, optimizer };
 
-  let mut rng = SmallRng::from_entropy();
+  let mut rng = SmallRng::from_os_rng();
   let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
   for path in games_paths {
     let sgf = fs::read_to_string(path)?;
@@ -164,7 +164,7 @@ where
       );
   }
 
-  let mut rng = SmallRng::from_entropy();
+  let mut rng = SmallRng::from_os_rng();
 
   for epoch in 0..epochs {
     log::info!("Training {} epoch", epoch);
@@ -219,7 +219,7 @@ where
 
   let player = Player::Red;
 
-  let mut rng = SmallRng::from_entropy();
+  let mut rng = SmallRng::from_os_rng();
   let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
   let field = Field::new(config.width, config.height, zobrist);
 
@@ -274,6 +274,6 @@ fn main() -> Result<ExitCode> {
 
   match config.backend {
     ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu),
-    ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::BestAvailable),
+    ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::DefaultDevice),
   }
 }

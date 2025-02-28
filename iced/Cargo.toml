@@ -8,13 +8,13 @@ edition = "2021"
 default-run = "main"
 
 [dependencies]
-iced = { version = "0.12", features = ["canvas", "image"] }
+iced = { version = "0.13", features = ["canvas", "image"] }
 rand = { workspace = true, features = ["small_rng"] }
 log.workspace = true
 strum.workspace = true
 clap = { workspace = true, features = ["cargo"] }
 humantime.workspace = true
-rfd = { version = "0.14", default-features = false, features = ["async-std", "xdg-portal"] }
+rfd = { version = "0.15", default-features = false, features = ["async-std", "xdg-portal"] }
 sgf-parse.workspace = true
 postcard = { workspace = true, features = [ "use-std" ] }
 oppai-field = { path = "../field" }
@@ -45,8 +45,8 @@ console_error_panic_hook = "0.1"
 serde = { workspace = true, features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 oppai-field = { path = "../field", features = ["serde"] }
-# for js feature
-getrandom = { version = "0.2", features = ["js"] }
+# for wasm_js feature
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
 default = ["dsu"]

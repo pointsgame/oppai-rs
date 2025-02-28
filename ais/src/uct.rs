@@ -3,7 +3,7 @@ use std::any::TypeId;
 use oppai_ai::{ai::AI, analysis::SimpleAnalysis};
 use oppai_field::{field::Field, player::Player};
 use oppai_uct::uct::UctRoot;
-use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
+use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
 
 pub struct Uct(pub UctRoot);
 
@@ -21,7 +21,7 @@ impl AI for Uct {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     let (moves, confidence, estimation) =

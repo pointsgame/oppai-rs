@@ -16,7 +16,7 @@ use oppai_minimax::minimax::{Minimax as InnerMinimax, MinimaxConfig};
 use oppai_patterns::patterns::Patterns as InnerPatterns;
 use oppai_uct::uct::{UctConfig, UctRoot};
 use oppai_zero::{model::Model, zero::Zero as InnerZero};
-use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
+use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
 use std::{
   convert::identity,
   fmt::{Debug, Display},
@@ -183,7 +183,7 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     let ai = match self.config.solver {

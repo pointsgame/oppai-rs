@@ -44,7 +44,7 @@ fn main() {
     let request: Request = serde_wasm_bindgen::from_value(event.data()).unwrap();
 
     if let Request::New(width, height) = request {
-      let mut rng = SmallRng::from_seed([1; 16]);
+      let mut rng = SmallRng::from_seed([1; 32]);
       let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, &mut rng));
       state = Some(State {
         field: Field::new(width, height, zobrist),

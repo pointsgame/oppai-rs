@@ -10,7 +10,7 @@ pub struct Zobrist {
 impl Zobrist {
   pub fn new<R: Rng>(length: Pos, rng: &mut R) -> Zobrist {
     Zobrist {
-      hashes: iter::repeat_with(|| rng.gen()).take(length).collect(),
+      hashes: iter::repeat_with(|| rng.random()).take(length).collect(),
     }
   }
 

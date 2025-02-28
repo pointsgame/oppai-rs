@@ -142,7 +142,7 @@ impl ExtendedField {
       while self
         .captures
         .last()
-        .map_or(false, |&(_, _, c)| c > self.field.moves_count())
+        .is_some_and(|&(_, _, c)| c > self.field.moves_count())
       {
         self.captures.pop();
       }

@@ -4,7 +4,7 @@ use oppai_field::{
   player::Player,
 };
 use rand::{
-  distributions::{Distribution, Standard},
+  distr::{Distribution, StandardUniform},
   Rng, SeedableRng,
 };
 use std::{any::TypeId, cmp};
@@ -70,7 +70,7 @@ impl AI for Initial {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     SingleAnalysis {

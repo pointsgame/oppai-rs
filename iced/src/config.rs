@@ -39,7 +39,7 @@ pub fn cli_parse() -> Config {
     .author(crate_authors!("\n"))
     .about(crate_description!())
     .groups(groups())
-    .args(&args())
+    .args(args())
     .arg(
       Arg::new("width")
         .long("width")

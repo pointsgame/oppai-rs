@@ -1,6 +1,6 @@
 use oppai_ai::ai::AI;
 use oppai_field::{field::Field, player::Player};
-use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
+use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
 use web_time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
@@ -22,7 +22,7 @@ impl<I: AI> AI for TimeLimitedAI<I> {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     let atomic_should_stop = std::sync::atomic::AtomicBool::new(false);
@@ -58,7 +58,7 @@ impl<I: AI> AI for TimeLimitedAI<I> {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     let duration = self.0;

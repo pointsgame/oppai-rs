@@ -11,7 +11,7 @@ use oppai_field::{
   player::Player,
 };
 use oppai_rotate::rotate::{rotate, rotate_sizes, MIRRORS, ROTATIONS};
-use rand::distributions::uniform::SampleUniform;
+use rand::distr::uniform::SampleUniform;
 use rand::Rng;
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use std::fmt::{Debug, Display};
@@ -50,7 +50,7 @@ impl Visits {
 }
 
 fn select<N: Float + Sum + SampleUniform, R: Rng>(mut nodes: Vec<MctsNode<N>>, rng: &mut R) -> MctsNode<N> {
-  let r = rng.gen_range(0..nodes.iter().map(|child| child.visits).sum::<u64>());
+  let r = rng.random_range(0..nodes.iter().map(|child| child.visits).sum::<u64>());
   let mut sum = 0;
   while let Some(node) = nodes.pop() {
     sum += node.visits;

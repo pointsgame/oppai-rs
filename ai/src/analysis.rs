@@ -31,7 +31,7 @@ pub trait Analysis {
           Ordering::Greater => (pos1, value1),
           Ordering::Less => (pos2, value2),
           Ordering::Equal => {
-            if rng.gen() {
+            if rng.random() {
               (pos1, value1)
             } else {
               (pos2, value2)

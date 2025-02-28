@@ -13,21 +13,21 @@ anyhow.workspace = true
 log.workspace = true
 env_logger.workspace = true
 clap = { workspace = true, features = ["env", "cargo"] }
-derive_more = "0.99"
+derive_more = { workspace = true, features = ["from", "into", "display"] }
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 serde_with.workspace = true
-tokio = { version = "1.0", features = ["full"] }
-tokio-tungstenite = "0.21"
-papaya = "0.1"
-imbl = "3.0"
-uuid = { version = "1.10", features = ["serde"] }
+tokio = { version = "1.43", features = ["full"] }
+tokio-tungstenite = "0.26"
+papaya = "0.2"
+imbl = "5.0"
+uuid = { version = "1.15", features = ["serde"] }
 time = "0.3"
 sqlx = { version = "0.8", features = [ "runtime-tokio", "postgres", "uuid", "time" ] }
 reqwest = { version = "0.12", default-features = false, features = [ "rustls-tls", "rustls-tls-native-roots", "charset" ] }
-openidconnect = "4.0.0-alpha.2"
+openidconnect = "4.0"
 cookie = { version = "0.18", features = [ "private" ] }
 hex = "0.4"
 oppai-field = { path = "../field", features = ["serde"] }

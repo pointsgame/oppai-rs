@@ -8,15 +8,17 @@ use burn::{
   tensor::{
     activation::log_softmax,
     backend::{AutodiffBackend, Backend},
-    Data, Tensor,
+    DataError, Tensor, TensorData,
   },
 };
-use ndarray::{Array1, Array3, Array4, ShapeError};
+use derive_more::From;
+use ndarray::{Array, Array1, Array3, Array4, Dimension, ShapeError};
 use num_traits::{Float, NumCast};
 use oppai_zero::{
   field_features::CHANNELS,
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
 };
+use thiserror::Error;
 
 const INPUT_CHANNELS: usize = CHANNELS;
 const INNER_CHANNELS: usize = 32; // AlphaGo uses 256
@@ -140,12 +142,32 @@ pub struct Learner<B: AutodiffBackend, O> {
   pub optimizer: O,
 }
 
+#[derive(Error, Debug, From)]
+pub enum ModelError {
+  #[error("shape error")]
+  ShapeError(ShapeError),
+  #[error("data error")]
+  DataError(DataError),
+}
+
+fn into_data_vec<A: Clone, D: Dimension>(array: Array<A, D>) -> Vec<A> {
+  let (mut vec, offset) = if array.is_standard_layout() {
+    array.into_raw_vec_and_offset()
+  } else {
+    array.as_standard_layout().to_owned().into_raw_vec_and_offset()
+  };
+  if let Some(offset) = offset {
+    vec.drain(0..offset);
+  }
+  vec
+}
+
 impl<B> OppaiModel<<B as Backend>::FloatElem> for Predictor<B>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float,
 {
-  type E = ShapeError;
+  type E = ModelError;
 
   fn predict(
     &self,
@@ -153,19 +175,12 @@ where
   ) -> Result<(Array3<<B as Backend>::FloatElem>, Array1<<B as Backend>::FloatElem>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
-      Data::new(
-        if inputs.is_standard_layout() {
-          inputs.into_raw_vec()
-        } else {
-          inputs.as_standard_layout().to_owned().into_raw_vec()
-        },
-        [batch, channels, height, width].into(),
-      ),
+      TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
     );
     let (policies, values) = self.model.forward(inputs);
-    let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().value)?;
-    let values = Array1::from_vec(values.into_data().value);
+    let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
+    let values = Array1::from_vec(values.into_data().into_vec()?);
     Ok((policies, values))
   }
 }
@@ -175,7 +190,7 @@ where
   B: Backend + AutodiffBackend,
   <B as Backend>::FloatElem: Float,
 {
-  type E = ShapeError;
+  type E = ModelError;
 
   fn predict(
     &self,
@@ -191,7 +206,7 @@ where
   <B as Backend>::FloatElem: Float,
   O: Optimizer<Model<B>, B>,
 {
-  type TE = ShapeError;
+  type TE = ModelError;
 
   fn train(
     mut self,
@@ -201,28 +216,14 @@ where
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
-      Data::new(
-        if inputs.is_standard_layout() {
-          inputs.into_raw_vec()
-        } else {
-          inputs.as_standard_layout().to_owned().into_raw_vec()
-        },
-        [batch, channels, height, width].into(),
-      ),
+      TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.predictor.device,
     );
     let policies = Tensor::from_data(
-      Data::new(
-        if policies.is_standard_layout() {
-          policies.into_raw_vec()
-        } else {
-          policies.as_standard_layout().to_owned().into_raw_vec()
-        },
-        [batch, height, width].into(),
-      ),
+      TensorData::new(into_data_vec(policies), [batch, height, width]),
       &self.predictor.device,
     );
-    let values = Tensor::from_data(Data::new(values.into_raw_vec(), [batch].into()), &self.predictor.device);
+    let values = Tensor::from_data(TensorData::new(into_data_vec(values), [batch]), &self.predictor.device);
     let (out_policies, out_values) = self.predictor.model.forward(inputs);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
@@ -253,7 +254,7 @@ mod tests {
     optim::SgdConfig,
     tensor::Tensor,
   };
-  use ndarray::{Array, Array3, Array4, Axis};
+  use ndarray::{Array, Array3, Array4};
   use oppai_zero::{
     field_features::CHANNELS,
     model::{Model as OppaiModel, TrainableModel},
@@ -263,11 +264,21 @@ mod tests {
   fn forward() {
     let model = Model::<NdArray>::new(4, 8, &NdArrayDevice::Cpu);
     let (policies, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
-    let policies = policies.exp().into_primitive().array;
-    let values = values.into_primitive().array;
-    assert!(policies.iter().all(|p| (0.0..=1.0).contains(p)));
-    assert!(policies.axis_iter(Axis(0)).all(|p| (p.sum() - 1.0) < 0.001));
-    assert!(values.iter().all(|v| (-1.0..=1.0).contains(v)));
+    let policies = policies.exp();
+    assert!(policies
+      .clone()
+      .into_data()
+      .to_vec::<f32>()
+      .unwrap()
+      .iter()
+      .all(|p| (0.0..=1.0).contains(p)));
+    assert!(policies.iter_dim(0).all(|p| (p.sum().into_scalar() - 1.0) < 0.001));
+    assert!(values
+      .into_data()
+      .to_vec::<f32>()
+      .unwrap()
+      .iter()
+      .all(|v| (-1.0..=1.0).contains(v)));
   }
 
   macro_rules! predict_test {
@@ -287,7 +298,7 @@ mod tests {
   }
 
   predict_test!(predict_ndarray, NdArray, NdArrayDevice::Cpu);
-  predict_test!(predict_wgpu, Wgpu, WgpuDevice::BestAvailable);
+  predict_test!(predict_wgpu, Wgpu, WgpuDevice::DefaultDevice);
 
   macro_rules! train_test {
     ($name:ident, $backend:ty, $device:expr) => {
@@ -316,5 +327,5 @@ mod tests {
   }
 
   train_test!(train_ndarray, NdArray, NdArrayDevice::Cpu);
-  train_test!(train_wgpu, Wgpu, WgpuDevice::BestAvailable);
+  train_test!(train_wgpu, Wgpu, WgpuDevice::DefaultDevice);
 }

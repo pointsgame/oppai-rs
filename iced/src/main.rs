@@ -8,13 +8,9 @@ use crate::config::{cli_parse, Config};
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
 use canvas_field::{CanvasField, CanvasMessage, Label};
-#[cfg(target_arch = "wasm32")]
-use iced::subscription;
 use iced::theme::Palette;
 use iced::widget::{Canvas, Column, Container, Row, Text};
-use iced::{
-  event, executor, keyboard, window, Application, Color, Command, Element, Event, Length, Settings, Subscription, Theme,
-};
+use iced::{event, keyboard, window, Color, Element, Event, Length, Subscription, Task, Theme};
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_ai::ai::AI;
 #[cfg(not(target_arch = "wasm32"))]
@@ -37,10 +33,12 @@ use rfd::AsyncFileDialog;
 #[cfg(not(target_arch = "wasm32"))]
 use rfd::FileHandle;
 use sgf_parse::GameTree;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
 use std::iter;
 #[cfg(not(target_arch = "wasm32"))]
 use std::ops::DerefMut;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
@@ -63,15 +61,106 @@ pub fn main() -> iced::Result {
 
   let config = cli_parse();
 
-  Game::run(Settings {
-    antialiasing: true,
-    flags: config,
-    window: window::Settings {
+  iced::application("OpPAI", Game::update, Game::view)
+    .subscription(Game::subscription)
+    .theme(Game::theme)
+    .antialiasing(true)
+    .window(window::Settings {
       icon: Some(window::icon::from_file_data(include_bytes!("../../resources/Logo.png"), None).unwrap()),
       ..Default::default()
-    },
-    ..Settings::default()
-  })
+    })
+    .run_with(move || {
+      let mut rng = SmallRng::from_os_rng();
+      let mut extended_field = ExtendedField::new_from_rng(config.width, config.height, &mut rng);
+      // TODO: store patterns to use them when new Oppai is created
+      #[cfg(not(target_arch = "wasm32"))]
+      let patterns = config
+        .patterns_cache
+        .as_ref()
+        .filter(|patterns_cache| Path::new(patterns_cache).exists())
+        .map(|patterns_cache| {
+          let mut file = File::open(patterns_cache).expect("Failed to open patterns cache file.");
+          let mut buffer = Vec::new();
+          file
+            .read_to_end(&mut buffer)
+            .expect("Failed to read patterns cache file.");
+          postcard::from_bytes(&buffer).expect("Failed to deserialize patterns cache file.")
+        })
+        .unwrap_or_else(|| {
+          if config.patterns.is_empty() {
+            Patterns::default()
+          } else {
+            Patterns::from_files(
+              config
+                .patterns
+                .iter()
+                .map(|path| File::open(path).expect("Failed to open patterns file.")),
+            )
+            .expect("Failed to read patterns file.")
+          }
+        });
+      #[cfg(not(target_arch = "wasm32"))]
+      if let Some(patterns_cache) = config.patterns_cache.as_ref() {
+        if !Path::new(patterns_cache).exists() {
+          let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
+          std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
+        }
+      }
+      #[cfg(not(target_arch = "wasm32"))]
+      let oppai = Oppai::new(
+        config.width,
+        config.height,
+        config.ai_config.clone(),
+        Arc::new(patterns),
+        (),
+      );
+      let moves = config.initial_position.points(
+        extended_field.field.width(),
+        extended_field.field.height(),
+        extended_field.player,
+      );
+      extended_field.put_points(moves.clone());
+      let game = Game {
+        config: config.clone(),
+        rng,
+        moves: moves.map(|(pos, player)| (pos, player, Default::default())).collect(),
+        canvas_field: CanvasField {
+          extended_field,
+          field_cache: Default::default(),
+          edit_mode: false,
+          // TODO: split configs
+          config: config.canvas_config,
+          extra: Vec::new(),
+        },
+        #[cfg(not(target_arch = "wasm32"))]
+        oppai: Arc::new(Mutex::new(oppai)),
+        #[cfg(target_arch = "wasm32")]
+        worker: {
+          const NAME: &'static str = "worker";
+          let origin = web_sys::window().unwrap().location().origin().unwrap();
+          let script = js_sys::Array::new();
+          script
+            .push(&format!(r#"importScripts("{origin}/{NAME}.js");wasm_bindgen("{origin}/{NAME}_bg.wasm");"#).into());
+          let blob = web_sys::Blob::new_with_str_sequence_and_options(&script, &{
+            let options = web_sys::BlobPropertyBag::new();
+            options.set_type("text/javascript");
+            options
+          })
+          .unwrap();
+
+          let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
+          web_sys::Worker::new(&url).unwrap()
+        },
+        ai: true,
+        thinking: false,
+        coordinates: None,
+        #[cfg(not(target_arch = "wasm32"))]
+        should_stop: Arc::new(AtomicBool::new(false)),
+      };
+      game.put_all_bot_points();
+
+      (game, Task::none())
+    })
 }
 
 struct Game {
@@ -134,7 +223,7 @@ impl Game {
       if self
         .moves
         .get(moves_count - 1)
-        .map_or(true, |&(cur_pos, cur_player, _)| (cur_pos, cur_player) != (pos, player))
+        .is_none_or(|&(cur_pos, cur_player, _)| (cur_pos, cur_player) != (pos, player))
       {
         self.moves.truncate(moves_count - 1);
         self.moves.push((pos, player, Default::default()));
@@ -210,240 +299,12 @@ impl Game {
   pub fn is_locked(&self) -> bool {
     self.thinking
   }
-}
 
-#[derive(Debug)]
-enum Message {
-  Canvas(CanvasMessage),
-  Undo,
-  UndoAll,
-  Redo,
-  RedoAll,
-  New,
-  Open,
-  Save,
-  ToggleEditMode,
-  ToggleAI,
-  Interrupt,
-  BotMove(Option<NonZeroPos>),
-  #[cfg(not(target_arch = "wasm32"))]
-  OpenFile(Option<FileHandle>),
-  #[cfg(target_arch = "wasm32")]
-  OpenFile(Option<Vec<u8>>),
-  #[cfg(not(target_arch = "wasm32"))]
-  SaveFile(Option<FileHandle>),
-  #[cfg(target_arch = "wasm32")]
-  SetWorkerListener(iced::futures::channel::mpsc::UnboundedSender<Message>),
-  #[cfg(target_arch = "wasm32")]
-  InitWorker,
-}
-
-impl Application for Game {
-  type Executor = executor::Default;
-  type Message = Message;
-  type Flags = Config;
-  type Theme = Theme;
-
-  fn new(flags: Config) -> (Self, Command<Self::Message>) {
-    let mut rng = SmallRng::from_entropy();
-    let mut extended_field = ExtendedField::new_from_rng(flags.width, flags.height, &mut rng);
-    // TODO: store patterns to use them when new Oppai is created
-    #[cfg(not(target_arch = "wasm32"))]
-    let patterns = flags
-      .patterns_cache
-      .as_ref()
-      .filter(|patterns_cache| Path::new(patterns_cache).exists())
-      .map(|patterns_cache| {
-        let mut file = File::open(patterns_cache).expect("Failed to open patterns cache file.");
-        let mut buffer = Vec::new();
-        file
-          .read_to_end(&mut buffer)
-          .expect("Failed to read patterns cache file.");
-        postcard::from_bytes(&buffer).expect("Failed to deserialize patterns cache file.")
-      })
-      .unwrap_or_else(|| {
-        if flags.patterns.is_empty() {
-          Patterns::default()
-        } else {
-          Patterns::from_files(
-            flags
-              .patterns
-              .iter()
-              .map(|path| File::open(path).expect("Failed to open patterns file.")),
-          )
-          .expect("Failed to read patterns file.")
-        }
-      });
-    #[cfg(not(target_arch = "wasm32"))]
-    if let Some(patterns_cache) = flags.patterns_cache.as_ref() {
-      if !Path::new(patterns_cache).exists() {
-        let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
-        std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
-      }
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    let oppai = Oppai::new(
-      flags.width,
-      flags.height,
-      flags.ai_config.clone(),
-      Arc::new(patterns),
-      (),
-    );
-    let moves = flags.initial_position.points(
-      extended_field.field.width(),
-      extended_field.field.height(),
-      extended_field.player,
-    );
-    extended_field.put_points(moves.clone());
-    let game = Game {
-      config: flags.clone(),
-      rng,
-      moves: moves.map(|(pos, player)| (pos, player, Default::default())).collect(),
-      canvas_field: CanvasField {
-        extended_field,
-        field_cache: Default::default(),
-        edit_mode: false,
-        // TODO: split configs
-        config: flags.canvas_config,
-        extra: Vec::new(),
-      },
-      #[cfg(not(target_arch = "wasm32"))]
-      oppai: Arc::new(Mutex::new(oppai)),
-      #[cfg(target_arch = "wasm32")]
-      worker: {
-        const NAME: &'static str = "worker";
-        let origin = web_sys::window().unwrap().location().origin().unwrap();
-        let script = js_sys::Array::new();
-        script.push(&format!(r#"importScripts("{origin}/{NAME}.js");wasm_bindgen("{origin}/{NAME}_bg.wasm");"#).into());
-        let blob = web_sys::Blob::new_with_str_sequence_and_options(
-          &script,
-          web_sys::BlobPropertyBag::new().type_("text/javascript"),
-        )
-        .unwrap();
-
-        let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
-        web_sys::Worker::new(&url).unwrap()
-      },
-      ai: true,
-      thinking: false,
-      coordinates: None,
-      #[cfg(not(target_arch = "wasm32"))]
-      should_stop: Arc::new(AtomicBool::new(false)),
-    };
-    game.put_all_bot_points();
-
-    (game, Command::none())
-  }
-
-  fn title(&self) -> String {
-    "OpPAI".into()
-  }
-
-  fn subscription(&self) -> Subscription<Message> {
-    #[cfg(target_arch = "wasm32")]
-    let worker_subscription = {
-      struct WorkerListener;
-      enum State {
-        Starting,
-        Ready(iced::futures::channel::mpsc::UnboundedReceiver<Message>),
-      }
-      subscription::channel(std::any::TypeId::of::<WorkerListener>(), 16, |mut output| async move {
-        use iced::futures::{sink::SinkExt, StreamExt};
-        let mut state = State::Starting;
-        loop {
-          match &mut state {
-            State::Starting => {
-              let (tx, rx) = iced::futures::channel::mpsc::unbounded();
-              output.send(Message::SetWorkerListener(tx)).await.unwrap();
-              state = State::Ready(rx);
-            }
-            State::Ready(rx) => {
-              let message = rx.select_next_some().await;
-              output.send(message).await.unwrap();
-            }
-          }
-        }
-      })
-    };
-
-    let keys_subscription = event::listen_with(|event, _| match event {
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Named(keyboard::key::Named::ArrowLeft),
-        ..
-      }) => Some(Message::Undo),
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Named(keyboard::key::Named::ArrowDown),
-        ..
-      }) => Some(Message::UndoAll),
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Named(keyboard::key::Named::ArrowRight),
-        ..
-      }) => Some(Message::Redo),
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Named(keyboard::key::Named::ArrowUp),
-        ..
-      }) => Some(Message::RedoAll),
-      #[cfg(not(target_arch = "wasm32"))]
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        modifiers,
-        ..
-      }) if modifiers.control() && c.as_str() == "n" => Some(Message::New),
-      #[cfg(not(target_arch = "wasm32"))]
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        modifiers,
-        ..
-      }) if modifiers.control() && c.as_str() == "o" => Some(Message::Open),
-      #[cfg(not(target_arch = "wasm32"))]
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        modifiers,
-        ..
-      }) if modifiers.control() && c.as_str() == "s" => Some(Message::Save),
-      #[cfg(target_arch = "wasm32")]
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        ..
-      }) if c.as_str() == "n" => Some(Message::New),
-      #[cfg(target_arch = "wasm32")]
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        ..
-      }) if c.as_str() == "s" => Some(Message::Save),
-      #[cfg(target_arch = "wasm32")]
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        ..
-      }) if c.as_str() == "o" => Some(Message::Open),
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        ..
-      }) if c.as_str() == "e" => Some(Message::ToggleEditMode),
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Character(c),
-        ..
-      }) if c.as_str() == "a" => Some(Message::ToggleAI),
-      Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Named(keyboard::key::Named::Escape),
-        ..
-      }) => Some(Message::Interrupt),
-      _ => None,
-    });
-
-    #[cfg(target_arch = "wasm32")]
-    let subscription = Subscription::batch([keys_subscription, worker_subscription]);
-    #[cfg(not(target_arch = "wasm32"))]
-    let subscription = keys_subscription;
-
-    subscription
-  }
-
-  fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+  pub fn update(&mut self, message: Message) -> Task<Message> {
     match message {
       Message::Canvas(CanvasMessage::PutPoint(pos)) => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         if self.put_point(pos) && self.ai {
           self.thinking = true;
@@ -453,11 +314,11 @@ impl Application for Game {
           #[cfg(not(target_arch = "wasm32"))]
           {
             let oppai = self.oppai.clone();
-            let mut rng = SmallRng::from_seed(self.rng.gen());
+            let mut rng = SmallRng::from_seed(self.rng.random());
             let mut field = self.canvas_field.extended_field.field.clone();
             let time = self.config.time;
             let should_stop = self.should_stop.clone();
-            return Command::perform(
+            return Task::perform(
               async move {
                 let mut oppai = oppai.lock().unwrap();
                 let mut oppai = TimeLimitedAI(time, oppai.deref_mut());
@@ -477,7 +338,7 @@ impl Application for Game {
       }
       Message::Canvas(CanvasMessage::PutPlayersPoint(pos, player)) => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         self.put_players_point(pos, player);
       }
@@ -489,31 +350,31 @@ impl Application for Game {
       }
       Message::Undo => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         self.undo();
       }
       Message::UndoAll => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         self.undo_all();
       }
       Message::Redo => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         self.redo();
       }
       Message::RedoAll => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         self.redo_all();
       }
       Message::New => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         self.canvas_field.extended_field =
           ExtendedField::new_from_rng(self.config.width, self.config.height, &mut self.rng);
@@ -545,18 +406,18 @@ impl Application for Game {
       }
       Message::Open => {
         if self.is_locked() {
-          return Command::none();
+          return Task::none();
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-          return Command::perform(
+          return Task::perform(
             AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file(),
             Message::OpenFile,
           );
         }
         #[cfg(target_arch = "wasm32")]
         {
-          return Command::perform(
+          return Task::perform(
             async {
               let maybe_file = AsyncFileDialog::new().add_filter("SGF", &["sgf"]).pick_file().await;
               if let Some(file) = maybe_file {
@@ -571,7 +432,7 @@ impl Application for Game {
       }
       #[cfg(not(target_arch = "wasm32"))]
       Message::Save => {
-        return Command::perform(
+        return Task::perform(
           AsyncFileDialog::new().add_filter("SGF", &["sgf"]).save_file(),
           Message::SaveFile,
         );
@@ -732,10 +593,113 @@ impl Application for Game {
       }
     }
 
-    Command::none()
+    Task::none()
   }
 
-  fn view(&self) -> iced::Element<'_, Self::Message> {
+  fn subscription(&self) -> Subscription<Message> {
+    #[cfg(target_arch = "wasm32")]
+    let worker_subscription = {
+      struct WorkerListener;
+      enum State {
+        Starting,
+        Ready(iced::futures::channel::mpsc::UnboundedReceiver<Message>),
+      }
+      Subscription::run_with_id(
+        std::any::TypeId::of::<WorkerListener>(),
+        iced::stream::channel(16, |mut output| async move {
+          use iced::futures::{sink::SinkExt, StreamExt};
+          let mut state = State::Starting;
+          loop {
+            match &mut state {
+              State::Starting => {
+                let (tx, rx) = iced::futures::channel::mpsc::unbounded();
+                output.send(Message::SetWorkerListener(tx)).await.unwrap();
+                state = State::Ready(rx);
+              }
+              State::Ready(rx) => {
+                let message = rx.select_next_some().await;
+                output.send(message).await.unwrap();
+              }
+            }
+          }
+        }),
+      )
+    };
+
+    let keys_subscription = event::listen_with(|event, _, _| match event {
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowLeft),
+        ..
+      }) => Some(Message::Undo),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowDown),
+        ..
+      }) => Some(Message::UndoAll),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowRight),
+        ..
+      }) => Some(Message::Redo),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Named(keyboard::key::Named::ArrowUp),
+        ..
+      }) => Some(Message::RedoAll),
+      #[cfg(not(target_arch = "wasm32"))]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        modifiers,
+        ..
+      }) if modifiers.control() && c.as_str() == "n" => Some(Message::New),
+      #[cfg(not(target_arch = "wasm32"))]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        modifiers,
+        ..
+      }) if modifiers.control() && c.as_str() == "o" => Some(Message::Open),
+      #[cfg(not(target_arch = "wasm32"))]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        modifiers,
+        ..
+      }) if modifiers.control() && c.as_str() == "s" => Some(Message::Save),
+      #[cfg(target_arch = "wasm32")]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        ..
+      }) if c.as_str() == "n" => Some(Message::New),
+      #[cfg(target_arch = "wasm32")]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        ..
+      }) if c.as_str() == "s" => Some(Message::Save),
+      #[cfg(target_arch = "wasm32")]
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        ..
+      }) if c.as_str() == "o" => Some(Message::Open),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        ..
+      }) if c.as_str() == "e" => Some(Message::ToggleEditMode),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character(c),
+        ..
+      }) if c.as_str() == "a" => Some(Message::ToggleAI),
+      Event::Keyboard(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Named(keyboard::key::Named::Escape),
+        ..
+      }) => Some(Message::Interrupt),
+      _ => None,
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    let subscription = Subscription::batch([keys_subscription, worker_subscription]);
+    #[cfg(not(target_arch = "wasm32"))]
+    let subscription = keys_subscription;
+
+    subscription
+  }
+
+  fn view(&self) -> Element<Message> {
     let mode = Text::new(if self.canvas_field.edit_mode {
       "Mode: Editing"
     } else {
@@ -761,7 +725,9 @@ impl Application for Game {
             .captured_count(Player::Red)
             .to_string(),
         )
-        .style(Color::from(self.config.canvas_config.red_color)),
+        .style(|_| iced::widget::text::Style {
+          color: Some(Color::from(self.config.canvas_config.red_color)),
+        }),
       )
       .push(Text::new(":"))
       .push(
@@ -773,7 +739,9 @@ impl Application for Game {
             .captured_count(Player::Black)
             .to_string(),
         )
-        .style(Color::from(self.config.canvas_config.black_color)),
+        .style(|_| iced::widget::text::Style {
+          color: Some(Color::from(self.config.canvas_config.black_color)),
+        }),
       );
 
     let moves_count = Text::new(format!(
@@ -814,4 +782,30 @@ impl Application for Game {
       },
     )
   }
+}
+
+#[derive(Debug)]
+enum Message {
+  Canvas(CanvasMessage),
+  Undo,
+  UndoAll,
+  Redo,
+  RedoAll,
+  New,
+  Open,
+  Save,
+  ToggleEditMode,
+  ToggleAI,
+  Interrupt,
+  BotMove(Option<NonZeroPos>),
+  #[cfg(not(target_arch = "wasm32"))]
+  OpenFile(Option<FileHandle>),
+  #[cfg(target_arch = "wasm32")]
+  OpenFile(Option<Vec<u8>>),
+  #[cfg(not(target_arch = "wasm32"))]
+  SaveFile(Option<FileHandle>),
+  #[cfg(target_arch = "wasm32")]
+  SetWorkerListener(iced::futures::channel::mpsc::UnboundedSender<Message>),
+  #[cfg(target_arch = "wasm32")]
+  InitWorker,
 }

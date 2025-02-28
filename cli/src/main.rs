@@ -16,8 +16,7 @@ use oppai_field::{
 };
 use oppai_patterns::patterns::Patterns;
 use oppai_protocol::{Constraint, Coords, Move, Request, Response};
-use rand::rngs::SmallRng;
-use rand::SeedableRng;
+use rand::{rngs::SmallRng, SeedableRng};
 use std::{
   default::Default,
   fs::File,
@@ -79,7 +78,7 @@ fn main() -> Result<()> {
 
     let response = match request {
       Request::Init { width, height } => {
-        let mut rng = SmallRng::from_entropy();
+        let mut rng = SmallRng::from_os_rng();
         let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, &mut rng));
         state_option = Some(State {
           field: Field::new(width, height, zobrist),

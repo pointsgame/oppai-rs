@@ -74,7 +74,7 @@ struct Session<R: Rng> {
 
 impl<R: Rng> Session<R> {
   fn new(shared: Arc<SessionShared>, mut rng: R) -> Self {
-    let connection_id = ConnectionId(Builder::from_random_bytes(rng.gen()).into_uuid());
+    let connection_id = ConnectionId(Builder::from_random_bytes(rng.random()).into_uuid());
     Session {
       shared,
       rng,
@@ -568,7 +568,7 @@ impl<R: Rng> Session<R> {
       anyhow::bail!("too many open games for player {}", player_id);
     }
 
-    let game_id = GameId(Builder::from_random_bytes(self.rng.gen()).into_uuid());
+    let game_id = GameId(Builder::from_random_bytes(self.rng.random()).into_uuid());
     let open_game = OpenGame {
       player_id,
       config: GameConfig {
@@ -1116,7 +1116,9 @@ impl<R: Rng> Session<R> {
 
     let future1 = async {
       while let Some(message) = rx.next().await {
-        tx_ws.send(Message::Text(serde_json::to_string(&message)?)).await?;
+        tx_ws
+          .send(Message::Text(serde_json::to_string(&message)?.into()))
+          .await?;
       }
 
       Ok::<(), Error>(())
@@ -1173,7 +1175,7 @@ async fn main() -> Result<()> {
   let listener = TcpListener::bind("127.0.0.1:8080").await?;
   let state = Arc::new(State::default());
 
-  let mut rng = StdRng::from_entropy();
+  let mut rng = StdRng::from_os_rng();
 
   let options = PgConnectOptions::new_without_pgpass().socket(&config.postgres_socket);
   let pool = PgPoolOptions::new().connect_with(options).await?;
@@ -1193,7 +1195,7 @@ async fn main() -> Result<()> {
 
   loop {
     let (stream, addr) = listener.accept().await?;
-    let session = Session::new(session_shared.clone(), StdRng::from_rng(&mut rng)?);
+    let session = Session::new(session_shared.clone(), StdRng::from_rng(&mut rng));
     tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
       if let Err(error) = result {
         log::warn!("Closed a connection from {} with an error: {}", addr, error);

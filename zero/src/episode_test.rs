@@ -70,7 +70,7 @@ fn episode_simple_surrounding() {
   assert_eq!(
     model_inputs.borrow()[0],
     field_features(&field, Player::Red, 0)
-      .into_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
+      .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
       .unwrap()
   );
 
@@ -157,8 +157,9 @@ fn episode_trap() {
 
   assert_eq!(model_inputs.borrow().len(), 2);
 
-  let features = field_features(&field, Player::Red, 0)
-    .into_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
+  let features = field_features(&field, Player::Red, 0);
+  let features = features
+    .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
     .unwrap();
   assert_eq!(model_inputs.borrow()[0], features);
 

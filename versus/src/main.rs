@@ -209,7 +209,7 @@ fn main() -> Result<()> {
 
   let config = cli_parse();
 
-  let mut rng = SmallRng::from_entropy();
+  let mut rng = SmallRng::from_os_rng();
   let mut game = Game {
     field: ExtendedField::new_from_rng(WIDTH, HEIGHT, &mut rng),
     client1: Client::spawn(config.ai1, config.ai1_args)?,

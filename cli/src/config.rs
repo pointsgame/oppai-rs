@@ -19,7 +19,7 @@ pub fn cli_parse() -> Config {
     .author(clap::crate_authors!("\n"))
     .about(clap::crate_description!())
     .groups(groups())
-    .args(&args())
+    .args(args())
     .arg(
       Arg::new("patterns-file")
         .short('p')

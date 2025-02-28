@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::analysis::Analysis;
 use either::Either;
 use oppai_field::{field::Field, player::Player};
-use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
+use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
 
 pub trait AI {
   /// Analysis result of this AI.
@@ -22,7 +22,7 @@ pub trait AI {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync;
 
   fn map<A: Analysis, C: Clone + 'static, AF: Fn(Self::Analysis) -> A, CF: Fn(C) -> Self::Confidence>(
@@ -71,7 +71,7 @@ impl<T: AI> AI for &mut T {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     (*self).analyze(rng, field, player, confidence, should_stop)
@@ -92,7 +92,7 @@ impl<A: AI, B: AI> AI for (A, B) {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     let analysis = self.0.analyze(
@@ -124,7 +124,7 @@ impl<A: AI, B: AI> AI for Either<A, B> {
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     match self {
@@ -172,7 +172,7 @@ impl<
   ) -> Self::Analysis
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     let c = match confidence {

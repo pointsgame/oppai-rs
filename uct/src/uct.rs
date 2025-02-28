@@ -2,7 +2,7 @@ use crate::wave_pruning::WavePruning;
 use oppai_common::common;
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
-use rand::distributions::{Distribution, Standard};
+use rand::distr::{Distribution, StandardUniform};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use std::{
@@ -208,7 +208,7 @@ impl UctNode {
   pub fn lose_node(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
-    self.visits.store(usize::max_value(), Ordering::Relaxed);
+    self.visits.store(usize::MAX, Ordering::Relaxed);
   }
 
   pub fn clear_stats(&self) {
@@ -275,7 +275,7 @@ impl UctRoot {
 
   fn expand_node<R: Rng>(node: &mut UctNode, moves: &mut Vec<Pos>, rng: &mut R) {
     if node.get_child_ref().is_none() {
-      if node.get_visits() == usize::max_value() {
+      if node.get_visits() == usize::MAX {
         node.clear_stats();
       }
     } else {
@@ -397,7 +397,7 @@ impl UctRoot {
     field: &mut Field,
     player: Player,
     rng: &mut R,
-    possible_moves: &mut Vec<Pos>,
+    possible_moves: &mut [Pos],
     komi: i32,
   ) -> Option<Player> {
     possible_moves.shuffle(rng);
@@ -429,7 +429,7 @@ impl UctRoot {
     win_rate + uct
   }
 
-  fn create_children<R: Rng>(field: &Field, possible_moves: &mut Vec<Pos>, node: &UctNode, rng: &mut R) {
+  fn create_children<R: Rng>(field: &Field, possible_moves: &mut [Pos], node: &UctNode, rng: &mut R) {
     possible_moves.shuffle(rng);
     let mut children = None;
     for &pos in possible_moves.iter() {
@@ -452,8 +452,8 @@ impl UctRoot {
     while let Some(next_node) = next {
       let visits = next_node.get_visits();
       let wins = next_node.get_wins();
-      let uct_value = if visits == usize::max_value() {
-        if wins == usize::max_value() {
+      let uct_value = if visits == usize::MAX {
+        if wins == usize::MAX {
           return Some(next_node);
         }
         -1f64
@@ -595,7 +595,7 @@ impl UctRoot {
   ) -> (Vec<(Pos, f64)>, usize, f64)
   where
     R: Rng + SeedableRng<Seed = S> + Send,
-    Standard: Distribution<S>,
+    StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
     info!("Generating best move for player {}.", player);
@@ -607,20 +607,20 @@ impl UctRoot {
         .map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player()))
         .collect::<Vec<(u32, u32, Player)>>()
     );
-    debug!("Next random u64: {}.", rng.gen::<u64>());
+    debug!("Next random u64: {}.", rng.random::<u64>());
     self.update(field, player, rng);
     info!(
       "Komi is {}, type is {:?}.",
       self.komi.load(Ordering::Relaxed),
       self.config.komi_type
     );
-    let ratched = AtomicIsize::new(isize::max_value());
+    let ratched = AtomicIsize::new(isize::MAX);
     #[cfg(not(target_arch = "wasm32"))]
     let iterations = {
       let iterations = AtomicUsize::new(0);
       crossbeam::scope(|scope| {
         for _ in 0..self.config.threads_count {
-          let new_rng = R::from_seed(rng.gen());
+          let new_rng = R::from_seed(rng.random());
           scope.spawn(|_| {
             let mut local_field = field.clone();
             let mut local_rng = new_rng;
