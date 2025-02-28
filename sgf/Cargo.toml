@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
 license = "AGPL-3.0+"
 description = "Open Points Artificial Intelligence"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 sgf-parse.workspace = true

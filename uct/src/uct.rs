@@ -146,11 +146,7 @@ impl UctNode {
 
   pub fn get_child_ref(&self) -> Option<&UctNode> {
     let ptr = self.child.load(Ordering::Relaxed);
-    if ptr.is_null() {
-      None
-    } else {
-      Some(unsafe { &*ptr })
-    }
+    if ptr.is_null() { None } else { Some(unsafe { &*ptr }) }
   }
 
   pub fn get_child_mut(&mut self) -> Option<&mut UctNode> {
@@ -165,7 +161,7 @@ impl UctNode {
   unsafe fn clear_child(&self) {
     let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
     if !ptr.is_null() {
-      drop::<Box<UctNode>>(Box::from_raw(ptr));
+      drop::<Box<UctNode>>(unsafe { Box::from_raw(ptr) });
     }
   }
 
