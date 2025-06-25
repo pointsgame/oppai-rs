@@ -498,10 +498,12 @@ impl Game {
                     .field
                     .colored_moves()
                     .zip(
-                      iter::repeat(Default::default())
-                        .take(extended_field.field.moves_count() - visits.len() - 1)
-                        .chain(visits)
-                        .chain(iter::repeat(Default::default())),
+                      iter::repeat_n(
+                        Default::default(),
+                        extended_field.field.moves_count() - visits.len() - 1,
+                      )
+                      .chain(visits)
+                      .chain(iter::repeat(Default::default())),
                     )
                     .map(|((pos, player), visits)| (pos, player, visits))
                     .collect();

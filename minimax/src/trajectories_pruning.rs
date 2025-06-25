@@ -102,7 +102,7 @@ impl TrajectoriesPruning {
     if depth == 0 {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
-    let mut cur_trajectories = build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop);
+    let mut cur_trajectories = build_trajectories(field, player, depth.div_ceil(2), empty_board, should_stop);
     if should_stop() {
       return TrajectoriesPruning::empty(rebuild_trajectories);
     }
@@ -138,7 +138,7 @@ impl TrajectoriesPruning {
         return None;
       }
     }
-    if points.len() as u32 <= (depth + 1) / 2 {
+    if points.len() as u32 <= depth.div_ceil(2) {
       Some(Trajectory::new(points, hash, field.score(player) + 1))
     } else {
       None
@@ -158,7 +158,7 @@ impl TrajectoriesPruning {
       return TrajectoriesPruning::empty(self.rebuild_trajectories);
     }
     let mut cur_trajectories = if self.rebuild_trajectories {
-      build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop)
+      build_trajectories(field, player, depth.div_ceil(2), empty_board, should_stop)
     } else {
       self
         .enemy_trajectories
@@ -268,7 +268,7 @@ impl TrajectoriesPruning {
       }
       (self.cur_trajectories.clone(), enemy_trajectories)
     } else {
-      let cur_trajectories = build_trajectories(field, player, (depth + 1) / 2, empty_board, should_stop);
+      let cur_trajectories = build_trajectories(field, player, depth.div_ceil(2), empty_board, should_stop);
       if should_stop() {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);
       }

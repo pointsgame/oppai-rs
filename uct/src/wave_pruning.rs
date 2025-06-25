@@ -11,7 +11,7 @@ impl WavePruning {
   pub fn new(length: Pos) -> WavePruning {
     WavePruning {
       moves: Vec::with_capacity(length),
-      moves_field: iter::repeat(0).take(length).collect(),
+      moves_field: iter::repeat_n(0, length).collect(),
     }
   }
 

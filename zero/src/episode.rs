@@ -154,7 +154,7 @@ pub fn examples<N: Float + Zero + One>(
       Player::Red => value,
       Player::Black => -value,
     };
-    examples.values.extend(iter::repeat(value).take(rotations as usize));
+    examples.values.extend(iter::repeat_n(value, rotations as usize));
   }
 
   examples
