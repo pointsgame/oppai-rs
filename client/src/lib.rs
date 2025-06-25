@@ -2,8 +2,8 @@ use std::io::{Error, Result};
 
 use async_process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use futures::{
-  io::{AsyncWriteExt, BufReader},
   AsyncBufReadExt,
+  io::{AsyncWriteExt, BufReader},
 };
 use log::debug;
 use oppai_field::player::Player;

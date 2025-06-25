@@ -1,7 +1,7 @@
 use crate::{from_coordinate, to_coordinate};
 use oppai_field::field::{to_pos, to_x, to_y};
 use oppai_zero::episode::Visits;
-use sgf_parse::{unknown_game::Prop, SgfNode};
+use sgf_parse::{SgfNode, unknown_game::Prop};
 
 pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], width: u32, moves_count: usize) {
   for _ in 0..moves_count - visits.len() {

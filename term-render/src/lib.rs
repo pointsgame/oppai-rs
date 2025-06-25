@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use oppai_field::extended_field::ExtendedField;
 use oppai_svg::Config;
 use resvg::tiny_skia::Pixmap;

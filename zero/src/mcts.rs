@@ -1,12 +1,12 @@
-use crate::field_features::{field_features_len, field_features_to_vec, CHANNELS};
+use crate::field_features::{CHANNELS, field_features_len, field_features_to_vec};
 use crate::mcts_node::MctsNode;
 use crate::model::Model;
-use ndarray::{s, Array, ArrayView2};
+use ndarray::{Array, ArrayView2, s};
 use num_traits::Float;
-use oppai_field::field::{to_x, to_y, Field, Pos};
+use oppai_field::field::{Field, Pos, to_x, to_y};
 use oppai_field::player::Player;
-use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::seq::SliceRandom;
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
 

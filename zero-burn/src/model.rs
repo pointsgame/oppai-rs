@@ -1,14 +1,14 @@
 use burn::{
   module::Module,
   nn::{
-    conv::{Conv2d, Conv2dConfig},
     BatchNorm, BatchNormConfig, Linear, LinearConfig, PaddingConfig2d, Relu,
+    conv::{Conv2d, Conv2dConfig},
   },
   optim::{GradientsParams, Optimizer},
   tensor::{
+    DataError, Tensor, TensorData,
     activation::log_softmax,
     backend::{AutodiffBackend, Backend},
-    DataError, Tensor, TensorData,
   },
 };
 use derive_more::From;
@@ -250,7 +250,7 @@ where
 mod tests {
   use super::{Learner, Model, Predictor};
   use burn::{
-    backend::{ndarray::NdArrayDevice, wgpu::WgpuDevice, Autodiff, NdArray, Wgpu},
+    backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
     optim::SgdConfig,
     tensor::Tensor,
   };
@@ -265,20 +265,24 @@ mod tests {
     let model = Model::<NdArray>::new(4, 8, &NdArrayDevice::Cpu);
     let (policies, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
     let policies = policies.exp();
-    assert!(policies
-      .clone()
-      .into_data()
-      .to_vec::<f32>()
-      .unwrap()
-      .iter()
-      .all(|p| (0.0..=1.0).contains(p)));
+    assert!(
+      policies
+        .clone()
+        .into_data()
+        .to_vec::<f32>()
+        .unwrap()
+        .iter()
+        .all(|p| (0.0..=1.0).contains(p))
+    );
     assert!(policies.iter_dim(0).all(|p| (p.sum().into_scalar() - 1.0) < 0.001));
-    assert!(values
-      .into_data()
-      .to_vec::<f32>()
-      .unwrap()
-      .iter()
-      .all(|v| (-1.0..=1.0).contains(v)));
+    assert!(
+      values
+        .into_data()
+        .to_vec::<f32>()
+        .unwrap()
+        .iter()
+        .all(|v| (-1.0..=1.0).contains(v))
+    );
   }
 
   macro_rules! predict_test {

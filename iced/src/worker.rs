@@ -14,12 +14,12 @@ fn main() {
     time_limited_ai::TimeLimitedAI,
   };
   use oppai_field::{
-    field::{length, Field},
+    field::{Field, length},
     zobrist::Zobrist,
   };
   use oppai_patterns::patterns::Patterns;
-  use rand::rngs::SmallRng;
   use rand::SeedableRng;
+  use rand::rngs::SmallRng;
   use std::sync::Arc;
   use std::time::Duration;
   use wasm_bindgen::prelude::*;

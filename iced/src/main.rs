@@ -4,13 +4,13 @@ mod config;
 #[cfg(target_arch = "wasm32")]
 mod worker_message;
 
-use crate::config::{cli_parse, Config};
+use crate::config::{Config, cli_parse};
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
 use canvas_field::{CanvasField, CanvasMessage, Label};
 use iced::theme::Palette;
 use iced::widget::{Canvas, Column, Container, Row, Text};
-use iced::{event, keyboard, window, Color, Element, Event, Length, Subscription, Task, Theme};
+use iced::{Color, Element, Event, Length, Subscription, Task, Theme, event, keyboard, window};
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_ai::ai::AI;
 #[cfg(not(target_arch = "wasm32"))]
@@ -25,10 +25,10 @@ use oppai_patterns::patterns::Patterns;
 use oppai_sgf::visits::sgf_to_visits;
 use oppai_sgf::{from_sgf, to_sgf_str};
 use oppai_zero::episode::Visits;
-use rand::rngs::SmallRng;
 #[cfg(not(target_arch = "wasm32"))]
 use rand::Rng;
 use rand::SeedableRng;
+use rand::rngs::SmallRng;
 use rfd::AsyncFileDialog;
 #[cfg(not(target_arch = "wasm32"))]
 use rfd::FileHandle;
@@ -42,8 +42,8 @@ use std::ops::DerefMut;
 use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
-  atomic::{AtomicBool, Ordering},
   Arc,
+  atomic::{AtomicBool, Ordering},
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs, fs::File, sync::Mutex};
@@ -607,7 +607,7 @@ impl Game {
       Subscription::run_with_id(
         std::any::TypeId::of::<WorkerListener>(),
         iced::stream::channel(16, |mut output| async move {
-          use iced::futures::{sink::SinkExt, StreamExt};
+          use iced::futures::{StreamExt, sink::SinkExt};
           let mut state = State::Starting;
           loop {
             match &mut state {

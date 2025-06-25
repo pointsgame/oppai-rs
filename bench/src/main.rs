@@ -1,9 +1,9 @@
-use clap::{value_parser, Arg, Command};
+use clap::{Arg, Command, value_parser};
 use oppai_field::{
-  field::{to_pos, Field, Pos},
+  field::{Field, Pos, to_pos},
   player::Player,
 };
-use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
+use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 
 struct Args {
   width: u32,

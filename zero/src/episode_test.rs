@@ -1,10 +1,10 @@
-use crate::episode::{episode, examples, Visits};
-use crate::field_features::{field_features, CHANNELS};
+use crate::episode::{Visits, episode, examples};
+use crate::field_features::{CHANNELS, field_features};
 use crate::mcts_test::{const_value, uniform_policies};
-use ndarray::{array, Array, Array4, Axis};
+use ndarray::{Array, Array4, Axis, array};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use oppai_rotate::rotate::{rotate, ROTATIONS};
+use oppai_rotate::rotate::{ROTATIONS, rotate};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::cell::RefCell;

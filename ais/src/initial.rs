@@ -4,8 +4,8 @@ use oppai_field::{
   player::Player,
 };
 use rand::{
-  distr::{Distribution, StandardUniform},
   Rng, SeedableRng,
+  distr::{Distribution, StandardUniform},
 };
 use std::{any::TypeId, cmp};
 
@@ -36,11 +36,7 @@ pub fn initial_move(field: &Field) -> Option<NonZeroPos> {
         let dx = x as i32 - (width / 2) as i32;
         let dy = y as i32 - (height / 2) as i32;
         if dx.abs() > dy.abs() {
-          if dx < 0 {
-            Some((x + 1, y))
-          } else {
-            Some((x - 1, y))
-          }
+          if dx < 0 { Some((x + 1, y)) } else { Some((x - 1, y)) }
         } else if dy < 0 {
           Some((x, y + 1))
         } else {

@@ -2,8 +2,8 @@ use crate::construct_field::construct_field;
 use crate::field::{self, Field, Pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::Arc;
 

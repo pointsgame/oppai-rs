@@ -1,13 +1,13 @@
 #[macro_use]
 extern crate criterion;
 
-use criterion::{black_box, Bencher, Criterion};
+use criterion::{Bencher, Criterion, black_box};
 use oppai_field::construct_field::construct_moves;
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;
 use oppai_field::zobrist::Zobrist;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::Arc;
 

@@ -2,7 +2,7 @@ use crate::canvas_config::{CanvasConfig, Rgb};
 use iced::alignment::{Horizontal, Vertical};
 use iced::mouse::Cursor;
 use iced::widget::canvas::{self, Frame, Text};
-use iced::{mouse, Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector};
+use iced::{Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector, mouse};
 use oppai_field::extended_field::ExtendedField;
 use oppai_field::field::Pos;
 use oppai_field::player::Player;

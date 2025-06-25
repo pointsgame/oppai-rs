@@ -17,11 +17,7 @@ impl Player {
   }
 
   pub fn from_bool(b: bool) -> Player {
-    if b {
-      Player::Black
-    } else {
-      Player::Red
-    }
+    if b { Player::Black } else { Player::Red }
   }
 
   pub fn to_bool(self) -> bool {

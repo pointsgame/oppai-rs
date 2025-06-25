@@ -9,14 +9,14 @@ use oppai_ai::{
   analysis::{Analysis, FlatAnalysis, SimpleAnalysis, SingleAnalysis},
 };
 use oppai_field::{
-  field::{length, Field},
+  field::{Field, length},
   player::Player,
 };
 use oppai_minimax::minimax::{Minimax as InnerMinimax, MinimaxConfig};
 use oppai_patterns::patterns::Patterns as InnerPatterns;
 use oppai_uct::uct::{UctConfig, UctRoot};
 use oppai_zero::{model::Model, zero::Zero as InnerZero};
-use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 use std::{
   convert::identity,
   fmt::{Debug, Display},

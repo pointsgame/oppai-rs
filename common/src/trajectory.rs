@@ -1,4 +1,4 @@
-use oppai_field::field::{euclidean, wave_diag, Field, Pos};
+use oppai_field::field::{Field, Pos, euclidean, wave_diag};
 use oppai_field::player::Player;
 use std::ops::Index;
 

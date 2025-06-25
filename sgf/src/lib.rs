@@ -5,7 +5,7 @@ pub mod visits;
 
 use oppai_field::{any_field::AnyField, extended_field::ExtendedField, player::Player};
 use rand::Rng;
-use sgf_parse::{serialize, unknown_game::Prop, GameTree, SgfNode};
+use sgf_parse::{GameTree, SgfNode, serialize, unknown_game::Prop};
 use std::{fmt::Display, iter};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -62,19 +62,11 @@ impl Move {
 }
 
 pub fn to_coordinate(c: u8) -> u8 {
-  if c > 96 {
-    c - 97
-  } else {
-    c - 39
-  }
+  if c > 96 { c - 97 } else { c - 39 }
 }
 
 pub fn from_coordinate(c: u8) -> u8 {
-  if c > 26 {
-    c + 39
-  } else {
-    c + 97
-  }
+  if c > 26 { c + 39 } else { c + 97 }
 }
 
 pub fn from_sgf<F: AnyField, R: Rng>(node: &SgfNode<Prop>, rng: &mut R) -> Option<F> {

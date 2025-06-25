@@ -1,5 +1,5 @@
 use crate::oppai::{Config, Solver};
-use clap::{value_parser, Arg, ArgAction, ArgGroup, ArgMatches};
+use clap::{Arg, ArgAction, ArgGroup, ArgMatches, value_parser};
 use oppai_minimax::minimax::{MinimaxConfig, MinimaxType};
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType};
 

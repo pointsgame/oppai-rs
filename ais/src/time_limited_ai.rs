@@ -1,6 +1,6 @@
 use oppai_ai::ai::AI;
 use oppai_field::{field::Field, player::Player};
-use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 use web_time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;

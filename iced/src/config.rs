@@ -1,4 +1,4 @@
-use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, crate_authors, crate_description, crate_name, crate_version, value_parser};
 use oppai_ais::cli::*;
 use oppai_ais::oppai::Config as AIConfig;
 use oppai_initial::initial::InitialPosition;

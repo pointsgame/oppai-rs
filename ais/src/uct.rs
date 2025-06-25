@@ -3,7 +3,7 @@ use std::any::TypeId;
 use oppai_ai::{ai::AI, analysis::SimpleAnalysis};
 use oppai_field::{field::Field, player::Player};
 use oppai_uct::uct::UctRoot;
-use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 
 pub struct Uct(pub UctRoot);
 

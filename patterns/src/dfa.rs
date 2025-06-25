@@ -1,7 +1,7 @@
 use oppai_field::cell::Cell;
 use oppai_field::player::Player;
 use serde::{Deserialize, Serialize};
-use std::collections::{vec_deque::VecDeque, HashMap};
+use std::collections::{HashMap, vec_deque::VecDeque};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DfaState<P: Clone> {

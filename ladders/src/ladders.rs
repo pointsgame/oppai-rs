@@ -1,5 +1,5 @@
 use oppai_common::common::is_last_move_stupid;
-use oppai_common::trajectory::{build_trajectories, build_trajectories_from, Trajectory};
+use oppai_common::trajectory::{Trajectory, build_trajectories, build_trajectories_from};
 use oppai_field::field::wave_diag;
 use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;

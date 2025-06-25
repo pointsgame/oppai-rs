@@ -1,4 +1,4 @@
-use crate::field::{self, to_pos, Field, Pos};
+use crate::field::{self, Field, Pos, to_pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
 use rand::Rng;

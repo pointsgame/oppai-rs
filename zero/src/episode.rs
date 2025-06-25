@@ -10,9 +10,9 @@ use oppai_field::{
   field::{Field, Pos},
   player::Player,
 };
-use oppai_rotate::rotate::{rotate, rotate_sizes, MIRRORS, ROTATIONS};
-use rand::distr::uniform::SampleUniform;
+use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate, rotate_sizes};
 use rand::Rng;
+use rand::distr::uniform::SampleUniform;
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};

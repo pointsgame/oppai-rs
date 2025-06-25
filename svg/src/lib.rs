@@ -4,9 +4,9 @@ mod test;
 use oppai_field::extended_field::ExtendedField;
 use oppai_field::field::Pos;
 use oppai_field::player::Player;
+use svg::Document;
 use svg::node::element::path::Data;
 use svg::node::element::{Animate, Circle, Definitions, Group, Path, Rectangle, Use};
-use svg::Document;
 
 /// The configuration options for a drawing.
 pub struct Config {

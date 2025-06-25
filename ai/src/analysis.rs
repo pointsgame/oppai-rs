@@ -288,17 +288,17 @@ pub struct MapAnalysis<
 }
 
 impl<
-    W1: PartialOrd + Clone + 'static,
-    W2: PartialOrd + Clone + 'static,
-    E1: PartialOrd + Clone + 'static,
-    E2: PartialOrd + Clone + 'static,
-    C1: PartialOrd + Clone + 'static,
-    C2: PartialOrd + Clone + 'static,
-    WF: Fn(W1) -> W2,
-    EF: Fn(E1) -> E2,
-    CF: Fn(C1) -> C2,
-    A: Analysis<Weight = W1, Estimation = E1, Confidence = C1>,
-  > Analysis for MapAnalysis<W1, W2, E1, E2, C1, C2, WF, EF, CF, A>
+  W1: PartialOrd + Clone + 'static,
+  W2: PartialOrd + Clone + 'static,
+  E1: PartialOrd + Clone + 'static,
+  E2: PartialOrd + Clone + 'static,
+  C1: PartialOrd + Clone + 'static,
+  C2: PartialOrd + Clone + 'static,
+  WF: Fn(W1) -> W2,
+  EF: Fn(E1) -> E2,
+  CF: Fn(C1) -> C2,
+  A: Analysis<Weight = W1, Estimation = E1, Confidence = C1>,
+> Analysis for MapAnalysis<W1, W2, E1, E2, C1, C2, WF, EF, CF, A>
 {
   type Weight = W2;
   type Estimation = E2;

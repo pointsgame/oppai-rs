@@ -5,15 +5,15 @@ use std::fmt;
 #[cfg(feature = "term-render")]
 use std::io::Error;
 use std::io::Write;
-use std::io::{stdout, Result};
+use std::io::{Result, stdout};
 use std::ops::Add;
 use std::time::Duration;
 
 use config::cli_parse;
 use crossterm::{
+  QueueableCommand,
   cursor::MoveTo,
   terminal::{Clear, ClearType},
-  QueueableCommand,
 };
 use oppai_client::{Client, Constraint};
 use oppai_field::extended_field::ExtendedField;
@@ -22,8 +22,8 @@ use oppai_field::player::Player;
 use oppai_initial::initial::InitialPosition;
 #[cfg(feature = "term-render")]
 use oppai_term_render::render;
-use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use rand::rngs::SmallRng;
 
 const WIDTH: u32 = 10;
 const HEIGHT: u32 = 10;

@@ -1,4 +1,4 @@
-use clap::{value_parser, Arg, Command};
+use clap::{Arg, Command, value_parser};
 use oppai_ais::cli::*;
 use oppai_ais::oppai::Config as AIConfig;
 use std::time::Duration;

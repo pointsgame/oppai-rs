@@ -4,17 +4,17 @@ mod config;
 
 use anyhow::Result;
 use burn::{
-  backend::{ndarray::NdArrayDevice, wgpu::WgpuDevice, Autodiff, NdArray, Wgpu},
+  backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
   module::Module,
   optim::{AdamWConfig, Optimizer},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
   tensor::backend::{AutodiffBackend, Backend},
 };
-use config::{cli_parse, Action, Backend as ConfigBackend, Config};
+use config::{Action, Backend as ConfigBackend, Config, cli_parse};
 use num_traits::Float;
 use oppai_field::{
   any_field::AnyField,
-  field::{length, Field},
+  field::{Field, length},
   player::Player,
   zobrist::Zobrist,
 };
@@ -30,9 +30,9 @@ use oppai_zero::{
   pit,
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
-use rand::{distr::uniform::SampleUniform, rngs::SmallRng, SeedableRng};
+use rand::{SeedableRng, distr::uniform::SampleUniform, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
-use sgf_parse::{serialize, unknown_game::Prop, GameTree, SimpleText};
+use sgf_parse::{GameTree, SimpleText, serialize, unknown_game::Prop};
 use std::{
   cmp::Ordering,
   fmt::{Debug, Display},

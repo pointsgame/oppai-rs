@@ -3,17 +3,17 @@ use anyhow::{Error, Result};
 use cookie::time::{Duration as CookieDuration, OffsetDateTime};
 use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 use futures::channel::mpsc::{self, Sender};
-use futures_util::{select, FutureExt, SinkExt, StreamExt};
+use futures_util::{FutureExt, SinkExt, StreamExt, select};
 use ids::*;
 use itertools::Itertools;
 use openidconnect::ClientId;
 use openidconnect::{
-  core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
   AccessTokenHash, AuthorizationCode, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce,
   OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
+  core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
 };
 use oppai_field::{field::Field, player::Player};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use state::{FieldSize, Game, GameConfig, GameState, GameTime, OpenGame, State};
@@ -26,8 +26,8 @@ use tokio::{
   net::{TcpListener, TcpStream},
   sync::RwLock,
 };
-use tokio_tungstenite::tungstenite::handshake::server::Request;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::handshake::server::Request;
 use uuid::Builder;
 
 mod config;

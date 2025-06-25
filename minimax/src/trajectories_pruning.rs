@@ -1,4 +1,4 @@
-use oppai_common::trajectory::{build_trajectories, Trajectory};
+use oppai_common::trajectory::{Trajectory, build_trajectories};
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
 use std::collections::HashSet;

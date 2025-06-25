@@ -1,4 +1,4 @@
-use oppai_field::field::{to_pos, Pos};
+use oppai_field::field::{Pos, to_pos};
 use oppai_field::player::Player;
 use strum::{EnumString, VariantNames};
 

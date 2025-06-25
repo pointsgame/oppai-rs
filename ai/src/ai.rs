@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::analysis::Analysis;
 use either::Either;
 use oppai_field::{field::Field, player::Player};
-use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 
 pub trait AI {
   /// Analysis result of this AI.
@@ -150,14 +150,14 @@ struct MapAI<
 }
 
 impl<
-    A1: Analysis,
-    A2: Analysis,
-    C1: Clone + 'static,
-    C2: Clone + 'static,
-    AF: Fn(A1) -> A2,
-    CF: Fn(C2) -> C1,
-    AI_: AI<Analysis = A1, Confidence = C1>,
-  > AI for MapAI<A1, A2, C1, C2, AF, CF, AI_>
+  A1: Analysis,
+  A2: Analysis,
+  C1: Clone + 'static,
+  C2: Clone + 'static,
+  AF: Fn(A1) -> A2,
+  CF: Fn(C2) -> C1,
+  AI_: AI<Analysis = A1, Confidence = C1>,
+> AI for MapAI<A1, A2, C1, C2, AF, CF, AI_>
 {
   type Analysis = A2;
   type Confidence = C2;

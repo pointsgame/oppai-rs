@@ -1,4 +1,4 @@
-use clap::{crate_authors, crate_description, crate_name, crate_version, value_parser, Arg, Command};
+use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version, value_parser};
 use std::path::PathBuf;
 use strum::{EnumString, VariantNames};
 

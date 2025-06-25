@@ -2,7 +2,7 @@ use num_traits::Float;
 use oppai_ai::{ai::AI, analysis::SimpleAnalysis};
 use oppai_field::{field::Field, player::Player};
 use oppai_zero::{model::Model, zero::Zero as InnerZero};
-use rand::{distr::StandardUniform, prelude::Distribution, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 use std::{
   any::TypeId,
   fmt::{Debug, Display},

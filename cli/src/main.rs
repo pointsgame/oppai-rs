@@ -11,12 +11,12 @@ use oppai_ais::{
   time_limited_ai::TimeLimitedAI,
 };
 use oppai_field::{
-  field::{length, Field},
+  field::{Field, length},
   zobrist::Zobrist,
 };
 use oppai_patterns::patterns::Patterns;
 use oppai_protocol::{Constraint, Coords, Move, Request, Response};
-use rand::{rngs::SmallRng, SeedableRng};
+use rand::{SeedableRng, rngs::SmallRng};
 use std::{
   default::Default,
   fs::File,

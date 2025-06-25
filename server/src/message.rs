@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use oppai_field::player::Player as Color;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationMilliSeconds, DurationSeconds};
+use serde_with::{DurationMilliSeconds, DurationSeconds, serde_as};
 
 use crate::ids::*;
 
