@@ -557,11 +557,11 @@ impl Field {
     }
   }
 
-  fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
-    let mut chain = vec![start_pos];
+  fn build_chain(&mut self, chain: &mut Vec<Pos>, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
     let mut base_square = self.skew_product(center_pos, pos);
+    chain.push(start_pos);
     loop {
       if self.points[pos].is_tagged() {
         while *chain.last().unwrap() != pos {
@@ -582,10 +582,10 @@ impl Field {
         break;
       }
     }
-    for &pos in &chain {
-      self.points[pos].clear_tag();
+    for pos in chain {
+      self.points[*pos].clear_tag();
     }
-    if base_square < 0 { Some(chain) } else { None }
+    base_square < 0
   }
 
   fn find_chain(&self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
@@ -763,8 +763,10 @@ impl Field {
         let group_points_count = group.len() as u32;
         if group_points_count > 1 {
           let mut chains_count = 0u32;
+          let mut chain = Vec::new();
           for &(chain_pos, captured_pos) in &group {
-            if let Some(chain) = self.build_chain(pos, player, chain_pos) {
+            chain.clear();
+            if self.build_chain(&mut chain, pos, player, chain_pos) {
               self.capture(&chain, captured_pos, player);
               chains_count += 1;
               if chains_count == group_points_count - 1 {
@@ -803,8 +805,10 @@ impl Field {
     let input_points_count = input_points.len();
     if input_points_count > 1 {
       let mut chains_count = 0;
+      let mut chain = Vec::new();
       for (chain_pos, captured_pos) in input_points {
-        if let Some(chain) = self.build_chain(pos, player, chain_pos) {
+        chain.clear();
+        if self.build_chain(&mut chain, pos, player, chain_pos) {
           self.capture(&chain, captured_pos, player);
           chains_count += 1;
           if chains_count == input_points_count - 1 {
@@ -868,12 +872,14 @@ impl Field {
                 bound_pos = self.w(bound_pos);
               }
               let input_points = self.get_input_points(bound_pos, next_player);
+              let mut chain = Vec::new();
               for (chain_pos, captured_pos) in input_points {
-                if let Some(chain) = self.build_chain(bound_pos, next_player, chain_pos) {
-                  if self.is_point_inside_ring(pos, &chain) {
-                    self.capture(&chain, captured_pos, next_player);
-                    break 'outer;
-                  }
+                chain.clear();
+                if self.build_chain(&mut chain, bound_pos, next_player, chain_pos)
+                  && self.is_point_inside_ring(pos, &chain)
+                {
+                  self.capture(&chain, captured_pos, next_player);
+                  break 'outer;
                 }
               }
             }
