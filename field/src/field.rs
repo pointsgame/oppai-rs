@@ -471,8 +471,8 @@ impl Field {
     self.changes.last_mut().unwrap().dsu_size_change = Some((pos, self.dsu_size[pos]));
   }
 
-  fn get_input_points(&self, center_pos: Pos, player: Player) -> Vec<(Pos, Pos)> {
-    let mut inp_points = Vec::with_capacity(4);
+  fn get_input_points(&self, center_pos: Pos, player: Player) -> SmallVec<[(Pos, Pos); 4]> {
+    let mut inp_points = SmallVec::new();
     if !self.points[self.w(center_pos)].is_live_players_point(player) {
       if self.points[self.nw(center_pos)].is_live_players_point(player) {
         inp_points.push((self.nw(center_pos), self.w(center_pos)));
@@ -747,11 +747,11 @@ impl Field {
     let input_points = self.get_input_points(pos, player);
     let input_points_count = input_points.len();
     if input_points_count > 1 {
-      let mut sets = Vec::with_capacity(input_points_count);
+      let mut sets: SmallVec<[_; 4]> = SmallVec::new();
       for &(chain_pos, _) in &input_points {
         sets.push(self.find_dsu_set(chain_pos));
       }
-      let mut group = Vec::with_capacity(4);
+      let mut group: SmallVec<[_; 4]> = SmallVec::new();
       let mut result = false;
       for (i, &set) in sets.iter().enumerate() {
         group.clear();
