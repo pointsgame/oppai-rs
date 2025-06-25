@@ -847,7 +847,7 @@ impl Field {
         score_red: self.score_red,
         score_black: self.score_black,
         hash: self.hash,
-        points_changes: Vec::new(),
+        points_changes: SmallVec::new(),
       };
       self.changes.push(change);
       self.save_pos_value(pos);
