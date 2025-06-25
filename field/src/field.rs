@@ -1,4 +1,5 @@
 use rand::Rng;
+use smallvec::SmallVec;
 
 use crate::cell::Cell;
 use crate::player::Player;
@@ -13,9 +14,9 @@ struct FieldChange {
   score_red: i32,
   score_black: i32,
   hash: u64,
-  points_changes: Vec<(Pos, Cell)>,
+  points_changes: SmallVec<[(Pos, Cell); 4]>,
   #[cfg(feature = "dsu")]
-  dsu_changes: Vec<(Pos, Pos)>,
+  dsu_changes: SmallVec<[(Pos, Pos); 4]>,
   #[cfg(feature = "dsu")]
   dsu_size_change: Option<(Pos, u32)>,
 }
@@ -584,11 +585,7 @@ impl Field {
     for &pos in &chain {
       self.points[pos].clear_tag();
     }
-    if base_square < 0 {
-      Some(chain)
-    } else {
-      None
-    }
+    if base_square < 0 { Some(chain) } else { None }
   }
 
   fn find_chain(&self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
@@ -841,8 +838,8 @@ impl Field {
         score_red: self.score_red,
         score_black: self.score_black,
         hash: self.hash,
-        points_changes: Vec::new(),
-        dsu_changes: Vec::new(),
+        points_changes: SmallVec::new(),
+        dsu_changes: SmallVec::new(),
         dsu_size_change: None,
       };
       #[cfg(not(feature = "dsu"))]

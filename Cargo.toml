@@ -31,6 +31,7 @@ members = [
 rand = "0.9"
 rand_xoshiro = "0.7"
 rand_distr = "0.5"
+smallvec = "1.15"
 either = "1.14"
 itertools = "0.14"
 num-traits = "0.2"
