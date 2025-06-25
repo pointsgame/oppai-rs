@@ -29,7 +29,7 @@ enum IntersectionState {
   Down,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct Field {
   width: u32,
   height: u32,
@@ -45,6 +45,13 @@ pub struct Field {
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   hash: u64,
+  chain: Vec<Pos>,
+}
+
+impl PartialEq for Field {
+  fn eq(&self, other: &Self) -> bool {
+    self.hash == other.hash && self.width == other.width && self.height == other.height && self.moves == other.moves
+  }
 }
 
 #[inline]
@@ -417,6 +424,7 @@ impl Field {
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
+      chain: Vec::with_capacity(length),
     };
     #[cfg(not(feature = "dsu"))]
     let mut field = Field {
@@ -430,6 +438,7 @@ impl Field {
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
+      chain: Vec::with_capacity(length),
     };
     let max_pos = field.max_pos();
     for x in 0..width as Pos + 2 {
@@ -557,20 +566,21 @@ impl Field {
     }
   }
 
-  fn build_chain(&mut self, chain: &mut Vec<Pos>, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
+  fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
     let mut base_square = self.skew_product(center_pos, pos);
-    chain.push(start_pos);
+    self.chain.clear();
+    self.chain.push(start_pos);
     loop {
       if self.points[pos].is_tagged() {
-        while *chain.last().unwrap() != pos {
-          self.points[*chain.last().unwrap()].clear_tag();
-          chain.pop();
+        while *self.chain.last().unwrap() != pos {
+          self.points[*self.chain.last().unwrap()].clear_tag();
+          self.chain.pop();
         }
       } else {
         self.points[pos].set_tag();
-        chain.push(pos);
+        self.chain.push(pos);
       }
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
@@ -582,19 +592,20 @@ impl Field {
         break;
       }
     }
-    for pos in chain {
-      self.points[*pos].clear_tag();
+    for &pos in &self.chain {
+      self.points[pos].clear_tag();
     }
     base_square < 0
   }
 
-  fn find_chain(&self, start_pos: Pos, player: Player, direction_pos: Pos) -> Option<Vec<Pos>> {
-    let mut chain = vec![start_pos];
+  fn find_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
     let mut base_square = self.skew_product(center_pos, pos);
+    self.chain.clear();
+    self.chain.push(start_pos);
     loop {
-      chain.push(pos);
+      self.chain.push(pos);
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
       while !(self.points[pos].is_live_players_point(player) && self.points[pos].is_bound()) {
@@ -605,16 +616,12 @@ impl Field {
         break;
       }
     }
-    if base_square < 0 && chain.len() > 2 {
-      Some(chain)
-    } else {
-      None
-    }
+    base_square < 0 && self.chain.len() > 2
   }
 
   #[inline]
-  pub fn is_point_inside_ring(&self, pos: Pos, ring: &[Pos]) -> bool {
-    is_point_inside_ring(self.width, pos, ring)
+  fn is_point_inside_chain(&self, pos: Pos) -> bool {
+    is_point_inside_ring(self.width, pos, &self.chain)
   }
 
   #[inline]
@@ -626,11 +633,11 @@ impl Field {
     };
   }
 
-  fn capture(&mut self, chain: &[Pos], inside_pos: Pos, player: Player) -> bool {
+  fn capture(&mut self, inside_pos: Pos, player: Player) -> bool {
     let mut captured_count = 0i32;
     let mut freed_count = 0i32;
     let mut captured_points = Vec::new();
-    for &pos in chain {
+    for &pos in &self.chain {
       self.points[pos].set_tag();
     }
     wave(self.width, inside_pos, |pos| {
@@ -661,9 +668,14 @@ impl Field {
           self.score_red -= freed_count;
         }
       }
-      for &pos in chain.iter() {
+      for &pos in self.chain.iter() {
         self.points[pos].clear_tag();
-        self.save_pos_value(pos);
+        self
+          .changes
+          .last_mut()
+          .unwrap()
+          .points_changes
+          .push((pos, self.points[pos]));
         self.points[pos].set_bound();
       }
       for &pos in &captured_points {
@@ -692,7 +704,7 @@ impl Field {
       }
       true
     } else {
-      for &pos in chain.iter() {
+      for &pos in self.chain.iter() {
         self.points[pos].clear_tag();
       }
       for &pos in &captured_points {
@@ -763,11 +775,9 @@ impl Field {
         let group_points_count = group.len() as u32;
         if group_points_count > 1 {
           let mut chains_count = 0u32;
-          let mut chain = Vec::new();
           for &(chain_pos, captured_pos) in &group {
-            chain.clear();
-            if self.build_chain(&mut chain, pos, player, chain_pos) {
-              self.capture(&chain, captured_pos, player);
+            if self.build_chain(pos, player, chain_pos) {
+              self.capture(captured_pos, player);
               chains_count += 1;
               if chains_count == group_points_count - 1 {
                 break;
@@ -805,11 +815,9 @@ impl Field {
     let input_points_count = input_points.len();
     if input_points_count > 1 {
       let mut chains_count = 0;
-      let mut chain = Vec::new();
       for (chain_pos, captured_pos) in input_points {
-        chain.clear();
-        if self.build_chain(&mut chain, pos, player, chain_pos) {
-          self.capture(&chain, captured_pos, player);
+        if self.build_chain(pos, player, chain_pos) {
+          self.capture(captured_pos, player);
           chains_count += 1;
           if chains_count == input_points_count - 1 {
             break;
@@ -872,13 +880,9 @@ impl Field {
                 bound_pos = self.w(bound_pos);
               }
               let input_points = self.get_input_points(bound_pos, next_player);
-              let mut chain = Vec::new();
               for (chain_pos, captured_pos) in input_points {
-                chain.clear();
-                if self.build_chain(&mut chain, bound_pos, next_player, chain_pos)
-                  && self.is_point_inside_ring(pos, &chain)
-                {
-                  self.capture(&chain, captured_pos, next_player);
+                if self.build_chain(bound_pos, next_player, chain_pos) && self.is_point_inside_chain(pos) {
+                  self.capture(captured_pos, next_player);
                   break 'outer;
                 }
               }
@@ -925,7 +929,7 @@ impl Field {
     while self.undo() {}
   }
 
-  pub fn get_last_chain(&self) -> Vec<Pos> {
+  pub fn get_last_chain(&mut self) -> Vec<Pos> {
     use std::cmp::Ordering;
     let pos = if let Some(&pos) = self.moves.last() {
       pos
@@ -944,8 +948,8 @@ impl Field {
           if !(self.points[captured_pos].is_captured() && self.points[chain_pos].is_bound()) {
             continue;
           }
-          if let Some(mut chain) = self.find_chain(pos, player, chain_pos) {
-            result.append(&mut chain);
+          if self.find_chain(pos, player, chain_pos) {
+            result.append(&mut self.chain);
             chains_count += 1;
             if chains_count == input_points_count - 1 {
               break;
@@ -964,10 +968,8 @@ impl Field {
           }
           let input_points = self.get_input_points(bound_pos, next_player);
           for (chain_pos, _) in input_points {
-            if let Some(chain) = self.find_chain(bound_pos, next_player, chain_pos) {
-              if self.is_point_inside_ring(pos, &chain) {
-                return chain;
-              }
+            if self.find_chain(bound_pos, next_player, chain_pos) && self.is_point_inside_chain(pos) {
+              return self.chain.clone();
             }
           }
         }

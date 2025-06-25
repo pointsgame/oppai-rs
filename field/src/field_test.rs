@@ -11,7 +11,7 @@ const SEED: u64 = 7;
 
 #[test]
 fn simple_surround() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.
@@ -31,7 +31,7 @@ fn simple_surround() {
 
 #[test]
 fn surround_empty_territory() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.
@@ -56,7 +56,7 @@ fn surround_empty_territory() {
 
 #[test]
 fn move_priority() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .aB.
@@ -71,7 +71,7 @@ fn move_priority() {
 
 #[test]
 fn move_priority_big() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .B..
@@ -87,7 +87,7 @@ fn move_priority_big() {
 
 #[test]
 fn onion_surroundings() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ..c..
@@ -104,7 +104,7 @@ fn onion_surroundings() {
 
 #[test]
 fn deep_onion_surroundings() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ...D...
@@ -123,7 +123,7 @@ fn deep_onion_surroundings() {
 
 #[test]
 fn apply_control_surrounding_in_same_turn() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.
@@ -138,7 +138,7 @@ fn apply_control_surrounding_in_same_turn() {
 
 #[test]
 fn double_surround() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.a.
@@ -153,7 +153,7 @@ fn double_surround() {
 
 #[test]
 fn double_surround_with_empty_part() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .b.b..
@@ -170,7 +170,7 @@ fn double_surround_with_empty_part() {
 
 #[test]
 fn should_not_leave_empty_inside() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .aaaa..
@@ -195,7 +195,7 @@ fn should_not_leave_empty_inside() {
 
 #[test]
 fn a_hole_inside_a_surrounding() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ....c....
@@ -218,7 +218,7 @@ fn a_hole_inside_a_surrounding() {
 
 #[test]
 fn a_hole_inside_a_surrounding_after_control_surrounding() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ....b....
@@ -241,7 +241,7 @@ fn a_hole_inside_a_surrounding_after_control_surrounding() {
 
 #[test]
 fn surrounding_does_not_expand() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ....a....
@@ -267,7 +267,7 @@ fn surrounding_does_not_expand() {
 
 #[test]
 fn two_surroundings_with_common_border() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a..
@@ -283,7 +283,7 @@ fn two_surroundings_with_common_border() {
 
 #[test]
 fn three_surroundings_with_common_borders() {
-  let field = construct_field(
+  let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ..a..
