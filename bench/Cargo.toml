@@ -12,5 +12,6 @@ clap = { workspace = true, features = [ "cargo" ] }
 oppai-field = { path = "../field" }
 
 [features]
-default = ["dsu"]
+default = ["dsu", "unsafe"]
 dsu = ["oppai-field/dsu"]
+unsafe = ["oppai-field/unsafe"]
