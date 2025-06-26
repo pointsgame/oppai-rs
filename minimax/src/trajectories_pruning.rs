@@ -133,7 +133,7 @@ impl TrajectoriesPruning {
         }
         if neighbors_count < 3 {
           points.push(pos);
-          hash ^= field.zobrist().get_hash(pos);
+          hash ^= field.zobrist().hashes[pos];
         }
       } else if !field.cell(pos).is_players_point(player) {
         return None;
@@ -202,7 +202,7 @@ impl TrajectoriesPruning {
                   .cloned()
                   .filter(|&pos| pos != last_pos)
                   .collect(),
-                trajectory.hash ^ field.zobrist().get_hash(last_pos),
+                trajectory.hash ^ field.zobrist().hashes[last_pos],
                 trajectory.score,
               )
             } else {

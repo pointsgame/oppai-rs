@@ -34,7 +34,7 @@ where
   let zobrist = field.zobrist();
   let mut hash = 0u64;
   for &pos in points {
-    hash ^= zobrist.get_hash(pos);
+    hash ^= zobrist.hashes[pos];
   }
   for trajectory in trajectories.iter() {
     if trajectory.hash == hash {

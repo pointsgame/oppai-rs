@@ -8,4 +8,5 @@ pub mod field;
 #[cfg(test)]
 mod field_test;
 pub mod player;
+pub mod points_vec;
 pub mod zobrist;

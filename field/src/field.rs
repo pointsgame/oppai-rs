@@ -3,6 +3,7 @@ use smallvec::SmallVec;
 
 use crate::cell::Cell;
 use crate::player::Player;
+use crate::points_vec::PointsVec;
 use crate::zobrist::Zobrist;
 use std::{collections::VecDeque, fmt, mem, num::NonZeroUsize, sync::Arc};
 
@@ -37,7 +38,7 @@ pub struct Field {
   pub score_red: i32,
   pub score_black: i32,
   pub moves: Vec<Pos>,
-  pub points: Vec<Cell>,
+  pub points: PointsVec<Cell>,
   #[cfg(feature = "dsu")]
   dsu: Vec<Pos>,
   #[cfg(feature = "dsu")]
@@ -335,16 +336,8 @@ impl Field {
     is_near(self.width, pos1, pos2)
   }
 
-  #[inline]
-  #[cfg(not(feature = "unsafe"))]
   pub fn cell(&self, pos: Pos) -> Cell {
     self.points[pos]
-  }
-
-  #[inline]
-  #[cfg(feature = "unsafe")]
-  pub fn cell(&self, pos: Pos) -> Cell {
-    unsafe { *self.points.get_unchecked(pos) }
   }
 
   #[inline]
@@ -413,7 +406,7 @@ impl Field {
 
   pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Field {
     let length = length(width, height);
-    assert!(zobrist.len() >= 2 * length);
+    assert!(zobrist.hashes.0.len() >= 2 * length);
     #[cfg(feature = "dsu")]
     let mut field = Field {
       width,
@@ -422,7 +415,7 @@ impl Field {
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
-      points: vec![Cell::new(false); length],
+      points: vec![Cell::new(false); length].into(),
       dsu: (0..length).collect(),
       dsu_size: vec![1; length],
       changes: Vec::with_capacity(length),
@@ -439,7 +432,7 @@ impl Field {
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
-      points: vec![Cell::new(false); length],
+      points: vec![Cell::new(false); length].into(),
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
@@ -629,9 +622,9 @@ impl Field {
   #[inline]
   fn update_hash(&mut self, pos: Pos, player: Player) {
     self.hash ^= if player == Player::Red {
-      self.zobrist.get_hash(pos)
+      self.zobrist.hashes[pos]
     } else {
-      self.zobrist.get_hash(self.length + pos)
+      self.zobrist.hashes[self.length + pos]
     };
   }
 
@@ -1113,6 +1106,7 @@ impl Field {
       || score < -(non_grounded_points.1 as i32)
       || self
         .points
+        .0
         .iter()
         .enumerate()
         .all(|(pos, cell)| !cell.is_putting_allowed() || cell.is_empty_base() || self.is_corner(pos))
