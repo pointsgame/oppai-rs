@@ -332,6 +332,20 @@ impl Field {
   }
 
   #[inline]
+  pub fn min_to_max(&self) -> &[Cell] {
+    let min_pos = self.min_pos();
+    let max_pos = self.max_pos();
+    &self.points.0[min_pos..=max_pos]
+  }
+
+  #[inline]
+  pub fn min_to_max_mut(&mut self) -> &mut [Cell] {
+    let min_pos = self.min_pos();
+    let max_pos = self.max_pos();
+    &mut self.points.0[min_pos..=max_pos]
+  }
+
+  #[inline]
   pub fn is_near(&self, pos1: Pos, pos2: Pos) -> bool {
     is_near(self.width, pos1, pos2)
   }
@@ -404,6 +418,18 @@ impl Field {
     result
   }
 
+  fn set_padding(&mut self) {
+    let max_pos = self.max_pos();
+    for x in 0..self.width as Pos + 2 {
+      self.points[x].set_bad();
+      self.points[max_pos + 2 + x].set_bad();
+    }
+    for y in 1..=self.height as Pos {
+      self.points[y * (self.width as Pos + 2)].set_bad();
+      self.points[(y + 1) * (self.width as Pos + 2) - 1].set_bad();
+    }
+  }
+
   pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Field {
     let length = length(width, height);
     assert!(zobrist.hashes.0.len() >= 2 * length);
@@ -439,15 +465,7 @@ impl Field {
       chain: Vec::with_capacity(length),
       q: VecDeque::with_capacity(length),
     };
-    let max_pos = field.max_pos();
-    for x in 0..width as Pos + 2 {
-      field.points[x].set_bad();
-      field.points[max_pos + 2 + x].set_bad();
-    }
-    for y in 1..=height as Pos {
-      field.points[y * (width as Pos + 2)].set_bad();
-      field.points[(y + 1) * (width as Pos + 2) - 1].set_bad();
-    }
+    field.set_padding();
     field
   }
 
@@ -1093,8 +1111,8 @@ impl Field {
         }
       }
     }
-    for pos in self.min_pos()..=self.max_pos() {
-      self.points[pos].clear_tag();
+    for cell in self.min_to_max_mut() {
+      cell.clear_tag();
     }
     result
   }
@@ -1113,7 +1131,24 @@ impl Field {
   }
 
   pub fn clear(&mut self) {
-    while self.undo() {}
+    for cell in self.min_to_max_mut() {
+      *cell = Cell::new(false);
+    }
+    self.set_padding();
+    self.changes.clear();
+    self.moves.clear();
+    self.score_red = 0;
+    self.score_black = 0;
+    self.hash = 0;
+    #[cfg(feature = "dsu")]
+    {
+      for (i, dsu) in self.dsu.iter_mut().enumerate() {
+        *dsu = i;
+      }
+      for dsu in self.dsu_size.iter_mut() {
+        *dsu = 1;
+      }
+    }
   }
 
   pub fn winner(&self) -> Option<Player> {
