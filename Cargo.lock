@@ -5010,6 +5010,7 @@ dependencies = [
  "oppai-field",
  "rand 0.9.1",
  "rand_xoshiro",
+ "smallvec",
 ]
 
 [[package]]
@@ -5087,6 +5088,7 @@ dependencies = [
  "oppai-test-images",
  "rand 0.9.1",
  "rand_xoshiro",
+ "smallvec",
  "strum",
 ]
 

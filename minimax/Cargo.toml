@@ -9,6 +9,7 @@ edition = "2024"
 [dependencies]
 log.workspace = true
 strum.workspace = true
+smallvec.workspace = true
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 

@@ -1,26 +1,27 @@
 use oppai_common::trajectory::{Trajectory, build_trajectories};
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
+use smallvec::SmallVec;
 use std::collections::HashSet;
 
 pub struct TrajectoriesPruning {
   rebuild_trajectories: bool,
-  cur_trajectories: Vec<Trajectory>,
-  enemy_trajectories: Vec<Trajectory>,
+  cur_trajectories: Vec<Trajectory<8>>,
+  enemy_trajectories: Vec<Trajectory<8>>,
   moves: Vec<Pos>,
 }
 
 impl TrajectoriesPruning {
-  fn project(trajectories: &[Trajectory], empty_board: &mut [u32]) {
-    for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points().iter()) {
+  fn project(trajectories: &[Trajectory<8>], empty_board: &mut [u32]) {
+    for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points.iter()) {
       empty_board[pos] += 1;
     }
   }
 
-  fn project_length(trajectories: &[Trajectory], empty_board: &mut [u32]) {
+  fn project_length(trajectories: &[Trajectory<8>], empty_board: &mut [u32]) {
     for trajectory in trajectories {
-      let len = trajectory.len() as u32;
-      for &pos in trajectory.points() {
+      let len = trajectory.points.len() as u32;
+      for &pos in &trajectory.points {
         if empty_board[pos] == 0 || empty_board[pos] > len {
           empty_board[pos] = len;
         }
@@ -28,18 +29,18 @@ impl TrajectoriesPruning {
     }
   }
 
-  fn deproject(trajectories: &[Trajectory], empty_board: &mut [u32]) {
-    for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points().iter()) {
+  fn deproject(trajectories: &[Trajectory<8>], empty_board: &mut [u32]) {
+    for &pos in trajectories.iter().flat_map(|trajectory| trajectory.points.iter()) {
       empty_board[pos] = 0;
     }
   }
 
-  fn exclude_unnecessary_trajectories(trajectories: &mut Vec<Trajectory>, empty_board: &mut [u32]) -> bool {
+  fn exclude_unnecessary_trajectories(trajectories: &mut Vec<Trajectory<8>>, empty_board: &mut [u32]) -> bool {
     let mut need_exclude = false;
     trajectories.retain(|trajectory| {
-      let single_count = trajectory.points().iter().filter(|&&pos| empty_board[pos] == 1).count();
+      let single_count = trajectory.points.iter().filter(|&&pos| empty_board[pos] == 1).count();
       if single_count > 1 {
-        for &pos in trajectory.points() {
+        for &pos in &trajectory.points {
           empty_board[pos] -= 1;
         }
         need_exclude = true;
@@ -52,8 +53,8 @@ impl TrajectoriesPruning {
   }
 
   fn calculate_moves(
-    trajectories1: &mut Vec<Trajectory>,
-    trajectories2: &mut Vec<Trajectory>,
+    trajectories1: &mut Vec<Trajectory<8>>,
+    trajectories2: &mut Vec<Trajectory<8>>,
     empty_board: &mut [u32],
   ) -> Vec<Pos> {
     TrajectoriesPruning::project(trajectories1, empty_board);
@@ -65,7 +66,7 @@ impl TrajectoriesPruning {
     for &pos in trajectories1
       .iter()
       .chain(trajectories2.iter())
-      .flat_map(|trajectory| trajectory.points().iter())
+      .flat_map(|trajectory| trajectory.points.iter())
     {
       result_set.insert(pos);
     }
@@ -119,8 +120,8 @@ impl TrajectoriesPruning {
     }
   }
 
-  fn last_pos_trajectory(field: &Field, player: Player, depth: u32, last_pos: Pos) -> Option<Trajectory> {
-    let mut points = Vec::with_capacity(4);
+  fn last_pos_trajectory(field: &Field, player: Player, depth: u32, last_pos: Pos) -> Option<Trajectory<8>> {
+    let mut points = SmallVec::new();
     let mut hash = 0;
     for &pos in &field.directions(last_pos) {
       if field.cell(pos).is_putting_allowed() {
@@ -165,7 +166,7 @@ impl TrajectoriesPruning {
         .iter()
         .filter(|trajectory| {
           trajectory
-            .points()
+            .points
             .iter()
             .all(|&pos| field.cell(pos).is_putting_allowed())
         })
@@ -182,11 +183,11 @@ impl TrajectoriesPruning {
         .cur_trajectories
         .iter()
         .filter_map(|trajectory| {
-          let len = trajectory.len() as u32;
-          let contains_pos = trajectory.points().contains(&last_pos);
+          let len = trajectory.points.len() as u32;
+          let contains_pos = trajectory.points.contains(&last_pos);
           if (len <= enemy_depth || len == enemy_depth + 1 && contains_pos)
             && trajectory
-              .points()
+              .points
               .iter()
               .all(|&pos| field.cell(pos).is_putting_allowed() || pos == last_pos)
           {
@@ -196,13 +197,13 @@ impl TrajectoriesPruning {
               }
               Trajectory::new(
                 trajectory
-                  .points()
+                  .points
                   .iter()
                   .cloned()
                   .filter(|&pos| pos != last_pos)
                   .collect(),
-                trajectory.hash() ^ field.zobrist().get_hash(last_pos),
-                trajectory.score(),
+                trajectory.hash ^ field.zobrist().get_hash(last_pos),
+                trajectory.score,
               )
             } else {
               trajectory.clone()
@@ -238,7 +239,7 @@ impl TrajectoriesPruning {
       self
         .cur_trajectories
         .iter()
-        .filter(|trajectory| trajectory.len() as u32 <= enemy_depth)
+        .filter(|trajectory| trajectory.points.len() as u32 <= enemy_depth)
         .cloned()
         .collect()
     } else {
@@ -286,8 +287,8 @@ impl TrajectoriesPruning {
     }
   }
 
-  fn trajectories_score(trajectories: &[Trajectory]) -> Option<i32> {
-    trajectories.iter().map(Trajectory::score).max()
+  fn trajectories_score(trajectories: &[Trajectory<8>]) -> Option<i32> {
+    trajectories.iter().map(|trajectory| trajectory.score).max()
   }
 
   pub fn alpha(&self) -> Option<i32> {

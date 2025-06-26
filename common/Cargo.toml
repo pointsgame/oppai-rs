@@ -8,6 +8,7 @@ edition = "2024"
 
 [dependencies]
 oppai-field = { path = "../field" }
+smallvec.workspace = true
 
 [dev-dependencies]
 rand.workspace = true

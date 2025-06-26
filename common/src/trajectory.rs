@@ -1,41 +1,31 @@
 use oppai_field::field::{Field, Pos, euclidean, wave_diag};
 use oppai_field::player::Player;
+use smallvec::{Array, SmallVec};
 use std::ops::Index;
 
 #[derive(Debug, Clone)]
-pub struct Trajectory {
-  points: Vec<Pos>,
-  hash: u64,
-  score: i32,
+pub struct Trajectory<const N: usize>
+where
+  [Pos; N]: Array<Item = Pos>,
+{
+  pub points: SmallVec<[Pos; N]>,
+  pub hash: u64,
+  pub score: i32,
 }
 
-impl Trajectory {
-  pub fn new(points: Vec<Pos>, hash: u64, score: i32) -> Trajectory {
+impl<const N: usize> Trajectory<N>
+where
+  [Pos; N]: Array<Item = Pos>,
+{
+  pub fn new(points: SmallVec<[Pos; N]>, hash: u64, score: i32) -> Trajectory<N> {
     Trajectory { points, hash, score }
   }
-
-  pub fn points(&self) -> &Vec<Pos> {
-    &self.points
-  }
-
-  pub fn hash(&self) -> u64 {
-    self.hash
-  }
-
-  pub fn score(&self) -> i32 {
-    self.score
-  }
-
-  pub fn len(&self) -> usize {
-    self.points.len()
-  }
-
-  pub fn is_empty(&self) -> bool {
-    self.points.is_empty()
-  }
 }
 
-fn add_trajectory(field: &Field, trajectories: &mut Vec<Trajectory>, points: &[Pos], player: Player) {
+fn add_trajectory<const N: usize>(field: &Field, trajectories: &mut Vec<Trajectory<N>>, points: &[Pos], player: Player)
+where
+  [Pos; N]: Array<Item = Pos>,
+{
   for &pos in points {
     if !field.cell(pos).is_bound() || field.number_near_groups(pos, player) < 2 {
       return;
@@ -47,11 +37,11 @@ fn add_trajectory(field: &Field, trajectories: &mut Vec<Trajectory>, points: &[P
     hash ^= zobrist.get_hash(pos);
   }
   for trajectory in trajectories.iter() {
-    if trajectory.hash() == hash {
+    if trajectory.hash == hash {
       return;
     }
   }
-  let trajectory = Trajectory::new(points.to_vec(), hash, field.score(player));
+  let trajectory = Trajectory::new(SmallVec::from_slice(points), hash, field.score(player));
   trajectories.push(trajectory);
 }
 
@@ -86,9 +76,9 @@ fn next_moves(
   moves
 }
 
-fn build_trajectories_rec<SS: Fn() -> bool>(
+fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
   field: &mut Field,
-  trajectories: &mut Vec<Trajectory>,
+  trajectories: &mut Vec<Trajectory<N>>,
   player: Player,
   cur_depth: u32,
   depth: u32,
@@ -97,7 +87,9 @@ fn build_trajectories_rec<SS: Fn() -> bool>(
   moves: Vec<Pos>,
   ensure_pos: Pos,
   should_stop: &SS,
-) {
+) where
+  [Pos; N]: Array<Item = Pos>,
+{
   for pos in moves {
     if should_stop() {
       break;
@@ -153,13 +145,16 @@ fn build_trajectories_rec<SS: Fn() -> bool>(
   }
 }
 
-pub fn build_trajectories<SS: Fn() -> bool>(
+pub fn build_trajectories<const N: usize, SS: Fn() -> bool>(
   field: &mut Field,
   player: Player,
   depth: u32,
   empty_board: &mut [u32],
   should_stop: &SS,
-) -> Vec<Trajectory> {
+) -> Vec<Trajectory<N>>
+where
+  [Pos; N]: Array<Item = Pos>,
+{
   let mut trajectories = Vec::new();
 
   if depth == 0 {
@@ -199,14 +194,17 @@ pub fn build_trajectories<SS: Fn() -> bool>(
   trajectories
 }
 
-pub fn build_trajectories_from<SS: Fn() -> bool>(
+pub fn build_trajectories_from<const N: usize, SS: Fn() -> bool>(
   field: &mut Field,
   pos: Pos,
   player: Player,
   depth: u32,
   empty_board: &mut [u32],
   should_stop: &SS,
-) -> Vec<Trajectory> {
+) -> Vec<Trajectory<N>>
+where
+  [Pos; N]: Array<Item = Pos>,
+{
   let mut trajectories = Vec::new();
 
   if depth == 0 {

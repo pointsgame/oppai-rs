@@ -43,12 +43,12 @@ fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) ->
   moves
 }
 
-fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Player, empty_board: &mut [u32]) -> bool {
-  if trajectory.points().iter().any(|&pos| !field.is_putting_allowed(pos)) {
+fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Player, empty_board: &mut [u32]) -> bool {
+  if trajectory.points.iter().any(|&pos| !field.is_putting_allowed(pos)) {
     return false;
   }
 
-  for &pos in trajectory.points() {
+  for &pos in &trajectory.points {
     field.put_point(pos, player);
   }
 
@@ -59,7 +59,7 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Playe
       field.put_point(pos, player);
       let result = field.get_delta_score(player) > 0
         && trajectory
-          .points()
+          .points
           .iter()
           .all(|&trajectory_pos| field.cell(trajectory_pos).is_bound());
       field.undo();
@@ -79,14 +79,19 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory, player: Playe
     })
   };
 
-  for _ in 0..trajectory.len() {
+  for _ in 0..trajectory.points.len() {
     field.undo();
   }
 
   result
 }
 
-fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Player, empty_board: &mut [u32]) -> bool {
+fn is_trajectoty_viable(
+  field: &mut Field,
+  trajectory: &Trajectory<2>,
+  player: Player,
+  empty_board: &mut [u32],
+) -> bool {
   let moves = collect_near_moves(field, player, empty_board);
   let enemy = player.next();
   moves.into_iter().all(|enemy_pos| {
@@ -108,14 +113,14 @@ fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory, player: Play
 fn ladders_rec<SS: Fn() -> bool>(
   field: &mut Field,
   player: Player,
-  trajectory: &Trajectory,
+  trajectory: &Trajectory<2>,
   mut alpha: i32,
   beta: i32,
   empty_board: &mut Vec<u32>,
   should_stop: &SS,
   depth: u32,
 ) -> (Option<NonZeroPos>, i32, u32) {
-  match *trajectory.points().as_slice() {
+  match *trajectory.points.as_slice() {
     [pos] => {
       field.put_point(pos, player);
       let cur_score = field.score(player);
@@ -127,7 +132,7 @@ fn ladders_rec<SS: Fn() -> bool>(
       let mut capture_depth = 0;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
-        if trajectory.score() <= alpha || alpha >= beta || should_stop() {
+        if trajectory.score <= alpha || alpha >= beta || should_stop() {
           break;
         }
 
@@ -184,7 +189,7 @@ fn ladders_rec<SS: Fn() -> bool>(
             break;
           }
 
-          if trajectory.score() <= alpha {
+          if trajectory.score <= alpha {
             continue;
           }
 
@@ -193,12 +198,12 @@ fn ladders_rec<SS: Fn() -> bool>(
             player,
             &trajectory,
             alpha,
-            beta.min(trajectory.score()),
+            beta.min(trajectory.score),
             empty_board,
             should_stop,
             depth + 1,
           );
-          let cur_score = cur_score.min(trajectory.score());
+          let cur_score = cur_score.min(trajectory.score);
 
           if cur_score > alpha && is_trajectoty_viable(field, &trajectory, player, empty_board) {
             alpha = cur_score;
@@ -217,7 +222,7 @@ fn ladders_rec<SS: Fn() -> bool>(
 
       (best_move, alpha, capture_depth)
     }
-    _ => unreachable!("Trajectory with {} points", trajectory.len()),
+    _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
   }
 }
 
@@ -229,7 +234,7 @@ pub fn ladders<SS: Fn() -> bool>(
   let mut empty_board = iter::repeat_n(0u32, field.length).collect::<Vec<_>>();
 
   let mut trajectories = build_trajectories(field, player, 2, &mut empty_board, should_stop);
-  trajectories.sort_unstable_by_key(|trajectory| -trajectory.score());
+  trajectories.sort_unstable_by_key(|trajectory| -trajectory.score);
 
   info!("Solving ladders for {} trajectories.", trajectories.len());
 
@@ -242,11 +247,11 @@ pub fn ladders<SS: Fn() -> bool>(
       break;
     }
 
-    if trajectory.score() <= alpha {
+    if trajectory.score <= alpha {
       continue;
     }
 
-    let marks = if let [pos1, _] = *trajectory.points().as_slice() {
+    let marks = if let [pos1, _] = *trajectory.points.as_slice() {
       if let Some(&pos) = field
         .directions_diag(pos1)
         .iter()
@@ -266,12 +271,12 @@ pub fn ladders<SS: Fn() -> bool>(
       player,
       &trajectory,
       alpha,
-      trajectory.score(),
+      trajectory.score,
       &mut empty_board,
       should_stop,
       0,
     );
-    let cur_score = cur_score.min(trajectory.score());
+    let cur_score = cur_score.min(trajectory.score);
     if cur_score > alpha && is_trajectoty_viable(field, &trajectory, player, &mut empty_board) {
       alpha = cur_score;
       capture_depth = cur_capture_depth;
