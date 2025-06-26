@@ -156,7 +156,7 @@ impl Cell {
 
   #[inline]
   pub fn is_players_point(self, player: Player) -> bool {
-    self.is_put() && self.get_player() == player
+    self.value & (PUT_BIT | PLAYER_BIT) == PUT_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
@@ -170,12 +170,12 @@ impl Cell {
 
   #[inline]
   pub fn is_live_players_point(self, player: Player) -> bool {
-    self.is_put() && !self.is_captured() && self.get_player() == player
+    self.value & (PUT_BIT | CAPTURED_BIT | PLAYER_BIT) == PUT_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
   pub fn is_players_empty_base(self, player: Player) -> bool {
-    self.is_empty_base() && self.get_player() == player
+    self.value & (EMPTY_BASE_BIT | PLAYER_BIT) == EMPTY_BASE_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
@@ -189,8 +189,7 @@ impl Cell {
 
   #[inline]
   pub fn put_point(&mut self, player: Player) {
-    self.set_player(player);
-    self.value |= PUT_BIT
+    self.value = self.value & !PLAYER_BIT | player.to_bool() as CellValue | PUT_BIT
   }
 
   #[inline]
@@ -200,11 +199,11 @@ impl Cell {
 
   #[inline]
   pub fn is_bound_player(self, player: Player) -> bool {
-    self.is_bound() && self.is_players_point(player)
+    self.value & (PUT_BIT | PLAYER_BIT | BOUND_BIT) == PUT_BIT | BOUND_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
   pub fn is_putting_allowed(self) -> bool {
-    !self.is_put() && !self.is_captured() && !self.is_bad()
+    self.value & (PUT_BIT | CAPTURED_BIT | BAD_BIT) == 0
   }
 }
