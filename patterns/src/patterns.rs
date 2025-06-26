@@ -231,20 +231,20 @@ impl Patterns {
   }
 
   pub fn find(&self, field: &Field, player: Player, first_match: bool) -> Vec<Pos> {
-    if self.dfa.is_empty() || field.width() < self.min_size - 2 || field.height() < self.min_size - 2 {
+    if self.dfa.is_empty() || field.width < self.min_size - 2 || field.height < self.min_size - 2 {
       return Vec::new();
     }
     let mut matched = Vec::new();
     let left_border = (self.min_size as i32 - 1) / 2 - 1;
     let right_border = self.min_size as i32 / 2 - 1;
     let inv_color = player == Player::Black;
-    for y in left_border..field.height() as i32 - right_border {
-      for x in left_border..field.width() as i32 - right_border {
+    for y in left_border..field.height as i32 - right_border {
+      for x in left_border..field.width as i32 - right_border {
         let moves = self.dfa.run(
           &mut Spiral::default().map(|(shift_x, shift_y)| {
             let cur_x = x + shift_x;
             let cur_y = y + shift_y;
-            if cur_x >= 0 && cur_x < field.width() as i32 && cur_y >= 0 && cur_y < field.height() as i32 {
+            if cur_x >= 0 && cur_x < field.width as i32 && cur_y >= 0 && cur_y < field.height as i32 {
               let pos = field.to_pos(cur_x as u32, cur_y as u32);
               field.cell(pos)
             } else {

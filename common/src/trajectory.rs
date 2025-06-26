@@ -56,18 +56,18 @@ fn add_trajectory(field: &Field, trajectories: &mut Vec<Trajectory>, points: &[P
 }
 
 fn next_moves(
-  field: &Field,
+  field: &mut Field,
   start_pos: Pos,
   player: Player,
   empty_board: &mut [u32],
   marks: &mut Vec<Pos>,
 ) -> Vec<Pos> {
   let mut moves = Vec::new();
-  wave_diag(field.width(), start_pos, |pos| {
+  wave_diag(&mut field.q, field.width, start_pos, |pos| {
     if empty_board[pos] != 0 {
       return false;
     }
-    let cell = field.cell(pos);
+    let cell = field.points[pos];
     if cell.is_players_point(player) {
       empty_board[pos] = 1;
       marks.push(pos);
@@ -113,7 +113,7 @@ fn build_trajectories_rec<SS: Fn() -> bool>(
           field,
           trajectories,
           field
-            .moves()
+            .moves
             .index(field.moves_count() - cur_depth as usize..field.moves_count()),
           player,
         );
@@ -123,7 +123,7 @@ fn build_trajectories_rec<SS: Fn() -> bool>(
         field,
         trajectories,
         field
-          .moves()
+          .moves
           .index(field.moves_count() - cur_depth as usize..field.moves_count()),
         player,
       );
@@ -131,7 +131,7 @@ fn build_trajectories_rec<SS: Fn() -> bool>(
       let mut marks = Vec::new();
       let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
       if last_pos != 0 {
-        next_moves.retain(|&next_pos| euclidean(field.width(), last_pos, next_pos) > 2);
+        next_moves.retain(|&next_pos| euclidean(field.width, last_pos, next_pos) > 2);
       }
       build_trajectories_rec(
         field,
@@ -167,7 +167,7 @@ pub fn build_trajectories<SS: Fn() -> bool>(
   }
 
   let mut marks = Vec::new();
-  for pos in field.moves().clone() {
+  for pos in field.moves.clone() {
     if field.cell(pos).get_player() != player {
       continue;
     }

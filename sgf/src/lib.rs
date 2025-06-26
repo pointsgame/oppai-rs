@@ -144,13 +144,13 @@ pub fn from_sgf_str<F: AnyField, R: Rng>(sgf: &str, rng: &mut R) -> Option<F> {
 }
 
 pub fn to_sgf(field: &ExtendedField) -> Option<SgfNode<Prop>> {
-  if field.field().width() > 52 || field.field().height() > 52 {
+  if field.field().width > 52 || field.field().height > 52 {
     return None;
   }
 
   let mut node = SgfNode::new(Vec::new(), Vec::new(), false);
   let mut i = field.captures.len();
-  for (n, &pos) in field.field().moves().iter().enumerate().rev() {
+  for (n, &pos) in field.field().moves.iter().enumerate().rev() {
     let x = field.field().to_x(pos) as u8;
     let y = field.field().to_y(pos) as u8;
     let player = field.field().cell(pos).get_player();
@@ -171,7 +171,7 @@ pub fn to_sgf(field: &ExtendedField) -> Option<SgfNode<Prop>> {
           .collect(),
       )
     }
-    if n > 0 && field.field().cell(field.field().moves()[n - 1]).get_player() == player.next() {
+    if n > 0 && field.field().cell(field.field().moves[n - 1]).get_player() == player.next() {
       for j in 0..2 {
         if i > j
           && field.captures[i - j - 1].0.len() > 3
@@ -199,7 +199,7 @@ pub fn to_sgf(field: &ExtendedField) -> Option<SgfNode<Prop>> {
   node.properties.push(Prop::GM(40));
   node
     .properties
-    .push(Prop::SZ((field.field().width() as u8, field.field().height() as u8)));
+    .push(Prop::SZ((field.field().width as u8, field.field().height as u8)));
   node.properties.push(Prop::RU("russian".into()));
   node.is_root = true;
 

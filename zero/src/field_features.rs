@@ -13,9 +13,9 @@ pub fn field_features_len(width: u32, height: u32) -> usize {
 }
 
 fn push_features<N, F: Fn(Cell) -> N + Copy>(field: &Field, f: F, features: &mut Vec<N>, rotation: u8) {
-  features.extend((0..field.height()).flat_map(|y| {
-    (0..field.width()).map(move |x| {
-      let (x, y) = rotate_back(field.width(), field.height(), x, y, rotation);
+  features.extend((0..field.height).flat_map(|y| {
+    (0..field.width).map(move |x| {
+      let (x, y) = rotate_back(field.width, field.height, x, y, rotation);
       let pos = field.to_pos(x, y);
       f(field.cell(pos))
     })
@@ -63,9 +63,9 @@ pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotat
 }
 
 pub fn field_features<N: Zero + One>(field: &Field, player: Player, rotation: u8) -> Array3<N> {
-  let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()));
+  let mut features = Vec::with_capacity(field_features_len(field.width, field.height));
   field_features_to_vec::<N>(field, player, rotation, &mut features);
   Array::from(features)
-    .into_shape_with_order((CHANNELS, field.height() as usize, field.width() as usize))
+    .into_shape_with_order((CHANNELS, field.height as usize, field.width as usize))
     .unwrap()
 }

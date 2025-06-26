@@ -26,15 +26,15 @@ impl WavePruning {
     }
   }
 
-  pub fn init(&mut self, field: &Field, radius: u32) {
-    let width = field.width();
-    for &start_pos in field.moves() {
-      field::wave(width, start_pos, |pos| {
+  pub fn init(&mut self, field: &mut Field, radius: u32) {
+    let width = field.width;
+    for &start_pos in &field.moves {
+      field::wave(&mut field.q, width, start_pos, |pos| {
         if pos == start_pos && self.moves_field[pos] == 0 {
           self.moves_field[pos] = 1;
           true
         } else if self.moves_field[pos] != start_pos
-          && field.cell(pos).is_putting_allowed()
+          && field.points[pos].is_putting_allowed()
           && field::manhattan(width, start_pos, pos) <= radius
         {
           if self.moves_field[pos] == 0 {
@@ -50,7 +50,7 @@ impl WavePruning {
     }
   }
 
-  pub fn update(&mut self, field: &Field, last_moves_count: usize, radius: u32) -> Vec<Pos> {
+  pub fn update(&mut self, field: &mut Field, last_moves_count: usize, radius: u32) -> Vec<Pos> {
     let moves_field = &mut self.moves_field;
     let moves = &mut self.moves;
     moves.retain(|&pos| {
@@ -61,15 +61,15 @@ impl WavePruning {
         false
       }
     });
-    let width = field.width();
+    let width = field.width;
     let mut added_moves = Vec::new();
-    for &next_pos in field.moves().iter().skip(last_moves_count) {
-      field::wave(width, next_pos, |pos| {
+    for &next_pos in field.moves.iter().skip(last_moves_count) {
+      field::wave(&mut field.q, width, next_pos, |pos| {
         if pos == next_pos && moves_field[pos] == 0 {
           moves_field[pos] = 1;
           true
         } else if moves_field[pos] != next_pos
-          && field.cell(pos).is_putting_allowed()
+          && field.points[pos].is_putting_allowed()
           && field::manhattan(width, next_pos, pos) <= radius
         {
           if moves_field[pos] == 0 && pos != next_pos {

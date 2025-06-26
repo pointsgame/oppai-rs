@@ -108,7 +108,7 @@ impl Game {
   }
 
   async fn place_initial_position(&mut self, player: Player, initial_position: InitialPosition) -> Result<()> {
-    for (pos, player) in initial_position.points(self.field.field.width(), self.field.field.height(), player) {
+    for (pos, player) in initial_position.points(self.field.field.width, self.field.field.height, player) {
       self.put_point(pos, player).await?;
     }
     Ok(())
@@ -193,11 +193,11 @@ impl Game {
     self.field.clear();
     self
       .client1
-      .init(self.field.field.width(), self.field.field.height())
+      .init(self.field.field.width, self.field.field.height)
       .await?;
     self
       .client2
-      .init(self.field.field.width(), self.field.field.height())
+      .init(self.field.field.width, self.field.field.height)
       .await?;
     Ok(())
   }

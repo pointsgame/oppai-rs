@@ -115,8 +115,8 @@ pub fn main() -> iced::Result {
         (),
       );
       let moves = config.initial_position.points(
-        extended_field.field.width(),
-        extended_field.field.height(),
+        extended_field.field.width,
+        extended_field.field.height,
         extended_field.player,
       );
       extended_field.put_points(moves.clone());
@@ -390,15 +390,15 @@ impl Game {
         }
         #[cfg(target_arch = "wasm32")]
         self.send_worker_message(Request::New(
-          self.canvas_field.extended_field.field.width(),
-          self.canvas_field.extended_field.field.height(),
+          self.canvas_field.extended_field.field.width,
+          self.canvas_field.extended_field.field.height,
         ));
         self
           .canvas_field
           .extended_field
           .put_points(self.config.initial_position.points(
-            self.canvas_field.extended_field.field.width(),
-            self.canvas_field.extended_field.field.height(),
+            self.canvas_field.extended_field.field.width,
+            self.canvas_field.extended_field.field.height,
             self.canvas_field.extended_field.player,
           ));
         self.put_all_bot_points();
@@ -493,7 +493,7 @@ impl Game {
                 GameTree::GoGame(_) => None,
               }) {
                 if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
-                  let visits = sgf_to_visits(node, extended_field.field.width());
+                  let visits = sgf_to_visits(node, extended_field.field.width);
                   self.moves = extended_field
                     .field
                     .colored_moves()
@@ -533,7 +533,7 @@ impl Game {
                 GameTree::GoGame(_) => None,
               }) {
                 if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
-                  let visits = sgf_to_visits(node, extended_field.field.width());
+                  let visits = sgf_to_visits(node, extended_field.field.width);
                   self.moves = extended_field
                     .field
                     .colored_moves()
@@ -547,8 +547,8 @@ impl Game {
                     .collect();
                   self.canvas_field.extended_field = extended_field;
                   self.send_worker_message(Request::New(
-                    self.canvas_field.extended_field.field.width(),
-                    self.canvas_field.extended_field.field.height(),
+                    self.canvas_field.extended_field.field.width,
+                    self.canvas_field.extended_field.field.height,
                   ));
                   self.put_all_bot_points();
                   self.refresh();
@@ -585,8 +585,8 @@ impl Game {
       #[cfg(target_arch = "wasm32")]
       Message::InitWorker => {
         self.send_worker_message(Request::New(
-          self.canvas_field.extended_field.field.width(),
-          self.canvas_field.extended_field.field.height(),
+          self.canvas_field.extended_field.field.width,
+          self.canvas_field.extended_field.field.height,
         ));
         self.put_all_bot_points();
         if self.thinking {

@@ -257,12 +257,12 @@ impl UctRoot {
     self.komi_draws = AtomicUsize::new(0);
   }
 
-  fn init(&mut self, field: &Field, player: Player) {
+  fn init(&mut self, field: &mut Field, player: Player) {
     debug!("Initialization.");
     self.node = Some(Box::new(UctNode::new(0)));
     self.player = player;
     self.moves_count = field.moves_count();
-    self.hash = field.hash();
+    self.hash = field.hash;
     if self.config.komi_type != UctKomiType::None {
       self.komi = AtomicIsize::new(field.score(player) as isize);
     }
@@ -289,7 +289,7 @@ impl UctRoot {
     }
   }
 
-  fn update<R: Rng>(&mut self, field: &Field, player: Player, rng: &mut R) {
+  fn update<R: Rng>(&mut self, field: &mut Field, player: Player, rng: &mut R) {
     if self.node.is_some() && field.hash_at(self.moves_count) != Some(self.hash) {
       self.clear();
     }
@@ -297,7 +297,7 @@ impl UctRoot {
       self.init(field, player);
     } else {
       debug!("Updation.");
-      let moves = field.moves();
+      let moves = &field.moves;
       let moves_count = field.moves_count();
       let last_moves_count = self.moves_count;
       loop {
@@ -355,7 +355,7 @@ impl UctRoot {
         self.node = next;
         self.moves_count += 1;
         self.player = self.player.next();
-        self.hash = field.hash();
+        self.hash = field.hash;
         if self.config.komi_type == UctKomiType::Dynamic {
           self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
         }
@@ -583,7 +583,7 @@ impl UctRoot {
 
   pub fn best_moves<S, R, SS>(
     &mut self,
-    field: &Field,
+    field: &mut Field,
     player: Player,
     rng: &mut R,
     should_stop: &SS,
@@ -598,7 +598,7 @@ impl UctRoot {
     debug!(
       "Moves history: {:?}.",
       field
-        .moves()
+        .moves
         .iter()
         .map(|&pos| (field.to_x(pos), field.to_y(pos), field.cell(pos).get_player()))
         .collect::<Vec<(u32, u32, Player)>>()

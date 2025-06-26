@@ -5,13 +5,13 @@ use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use std::iter;
 
-fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
+fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut marks = Vec::new();
-  wave_diag(field.width(), start_pos, |pos| {
+  wave_diag(&mut field.q, field.width, start_pos, |pos| {
     if empty_board[pos] != 0 {
       return false;
     }
-    let cell = field.cell(pos);
+    let cell = field.points[pos];
     if cell.is_players_point(player) {
       empty_board[pos] = 1;
       marks.push(pos);
@@ -26,7 +26,7 @@ fn mark_group(field: &Field, start_pos: Pos, player: Player, empty_board: &mut [
 fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut moves = Vec::new();
   for &pos in field
-    .moves()
+    .moves
     .iter()
     .filter(|&&pos| field.cell(pos).is_players_point(player))
   {
@@ -226,7 +226,7 @@ pub fn ladders<SS: Fn() -> bool>(
   player: Player,
   should_stop: &SS,
 ) -> (Option<NonZeroPos>, i32, u32) {
-  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+  let mut empty_board = iter::repeat_n(0u32, field.length).collect::<Vec<_>>();
 
   let mut trajectories = build_trajectories(field, player, 2, &mut empty_board, should_stop);
   trajectories.sort_unstable_by_key(|trajectory| -trajectory.score());

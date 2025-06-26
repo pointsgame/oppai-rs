@@ -81,8 +81,8 @@ mod tests {
       (field.field().to_pos(2, 0), 3),
     ])];
     let mut node = to_sgf(&field).unwrap();
-    visits_to_sgf(&mut node, &visits, field.field().width(), field.field().moves_count());
-    let sgf_visits = sgf_to_visits(&node, field.field().width());
+    visits_to_sgf(&mut node, &visits, field.field().width, field.field().moves_count());
+    let sgf_visits = sgf_to_visits(&node, field.field().width);
     assert_eq!(sgf_visits, visits);
   }
 }

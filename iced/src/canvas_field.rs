@@ -66,7 +66,7 @@ impl Extra for Label {
     let mut text: Text = self.text.as_str().into();
     text.horizontal_alignment = Horizontal::Center;
     text.vertical_alignment = Vertical::Center;
-    text.size = Pixels(self.scale * bounds.width / field.field.width() as f32);
+    text.size = Pixels(self.scale * bounds.width / field.field.width as f32);
     text.color = self.color;
     text.position = pos_to_point(self.pos);
     frame.fill_text(text);
@@ -118,8 +118,8 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
           return (canvas::event::Status::Ignored, None);
         };
 
-        let field_width = self.extended_field.field.width();
-        let field_height = self.extended_field.field.height();
+        let field_width = self.extended_field.field.width;
+        let field_height = self.extended_field.field.height;
         let width = bounds
           .width
           .min(bounds.height / field_height as f32 * field_width as f32);
@@ -202,8 +202,8 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
       .into()
     }
 
-    let field_width = self.extended_field.field.width();
-    let field_height = self.extended_field.field.height();
+    let field_width = self.extended_field.field.width;
+    let field_height = self.extended_field.field.height;
     let width = bounds
       .width
       .min(bounds.height / field_height as f32 * field_width as f32);
@@ -263,7 +263,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
           for &pos in self
             .extended_field
             .field
-            .moves()
+            .moves
             .iter()
             .filter(|&&pos| self.extended_field.field.cell(pos).is_players_point(player))
           {
@@ -277,7 +277,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
       // fill extended area to display connecting lines
 
       if self.config.extended_filling {
-        for &pos in self.extended_field.field.moves() {
+        for &pos in &self.extended_field.field.moves {
           let player = self.extended_field.field.cell(pos).get_player();
           let mut color = color(&self.config, player);
           color.a = self.config.filling_alpha;
@@ -416,7 +416,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
       // mark last point
 
       if self.config.last_point_mark {
-        if let Some(&pos) = self.extended_field.field.moves().last() {
+        if let Some(&pos) = self.extended_field.field.moves.last() {
           let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), point_radius * 1.5));
 
           let color = color(&self.config, self.extended_field.field.cell(pos).get_player());

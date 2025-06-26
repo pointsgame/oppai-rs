@@ -33,7 +33,7 @@ fn create_children<N: Float + Sum, R: Rng>(
   value: N,
   rng: &mut R,
 ) -> Vec<MctsNode<N>> {
-  let width = field.width();
+  let width = field.width;
   let mut children = (field.min_pos()..=field.max_pos())
     .filter(|&pos| field.is_putting_allowed(pos) && !field.is_corner(pos))
     .map(|pos| {
@@ -82,7 +82,7 @@ where
   fields.retain_mut(|cur_field| {
     if cur_field.is_game_over() {
       node.add_result(
-        &cur_field.moves()[field.moves_count()..],
+        &cur_field.moves[field.moves_count()..],
         game_result(cur_field, player),
         Vec::new(),
       );
@@ -96,7 +96,7 @@ where
     return Ok(());
   }
 
-  let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()) * fields.len());
+  let mut features = Vec::with_capacity(field_features_len(field.width, field.height) * fields.len());
   for cur_field in &fields {
     field_features_to_vec::<N>(
       cur_field,
@@ -110,7 +110,7 @@ where
     )
   }
   let features = Array::from_shape_vec(
-    (fields.len(), CHANNELS, field.height() as usize, field.width() as usize),
+    (fields.len(), CHANNELS, field.height as usize, field.width as usize),
     features,
   )
   .unwrap();
@@ -126,7 +126,7 @@ where
     } else {
       -value
     };
-    node.add_result(&cur_field.moves()[field.moves_count()..], value, children);
+    node.add_result(&cur_field.moves[field.moves_count()..], value, children);
   }
 
   Ok(())

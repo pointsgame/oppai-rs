@@ -23,11 +23,11 @@ pub struct ExtendedField {
 impl From<Field> for ExtendedField {
   fn from(mut field: Field) -> Self {
     let points = field
-      .moves()
+      .moves
       .iter()
       .map(|&pos| (pos, field.cell(pos).get_player()))
       .collect::<Vec<_>>();
-    let captured = vec![0; field.length()];
+    let captured = vec![0; field.length];
     field.undo_all();
     let mut result = ExtendedField {
       player: Player::Red,
@@ -43,7 +43,7 @@ impl From<Field> for ExtendedField {
 impl ExtendedField {
   pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Self {
     let field = Field::new(width, height, zobrist);
-    let length = field.length();
+    let length = field.length;
     Self {
       player: Player::Red,
       field,
@@ -54,7 +54,7 @@ impl ExtendedField {
 
   pub fn new_from_rng<R: Rng>(width: u32, height: u32, rng: &mut R) -> Self {
     let field = Field::new_from_rng(width, height, rng);
-    let length = field.length();
+    let length = field.length;
     Self {
       player: Player::Red,
       field,

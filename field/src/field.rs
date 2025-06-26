@@ -14,9 +14,9 @@ struct FieldChange {
   score_red: i32,
   score_black: i32,
   hash: u64,
-  points_changes: SmallVec<[(Pos, Cell); 4]>,
+  points_changes: SmallVec<[(Pos, Cell); 5]>,
   #[cfg(feature = "dsu")]
-  dsu_changes: SmallVec<[(Pos, Pos); 4]>,
+  dsu_changes: SmallVec<[(Pos, Pos); 5]>,
   #[cfg(feature = "dsu")]
   dsu_size_change: Option<(Pos, u32)>,
 }
@@ -31,21 +31,22 @@ enum IntersectionState {
 
 #[derive(Clone)]
 pub struct Field {
-  width: u32,
-  height: u32,
-  length: Pos,
-  score_red: i32,
-  score_black: i32,
-  moves: Vec<Pos>,
-  points: Vec<Cell>,
+  pub width: u32,
+  pub height: u32,
+  pub length: Pos,
+  pub score_red: i32,
+  pub score_black: i32,
+  pub moves: Vec<Pos>,
+  pub points: Vec<Cell>,
   #[cfg(feature = "dsu")]
   dsu: Vec<Pos>,
   #[cfg(feature = "dsu")]
   dsu_size: Vec<u32>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
-  hash: u64,
+  pub hash: u64,
   chain: Vec<Pos>,
+  pub q: VecDeque<Pos>,
 }
 
 impl PartialEq for Field {
@@ -218,26 +219,26 @@ pub fn directions_diag(width: u32, pos: Pos) -> [Pos; 8] {
   ]
 }
 
-pub fn wave<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
+pub fn wave<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, width: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
-  let mut q = VecDeque::new();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
     q.extend(directions(width, pos).iter().filter(|&&pos| cond(pos)))
   }
+  q.clear();
 }
 
-pub fn wave_diag<F: FnMut(Pos) -> bool>(width: u32, start_pos: Pos, mut cond: F) {
+pub fn wave_diag<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, width: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
-  let mut q = VecDeque::new();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
     q.extend(directions_diag(width, pos).iter().filter(|&&pos| cond(pos)))
   }
+  q.clear();
 }
 
 #[inline]
@@ -254,11 +255,6 @@ pub fn euclidean(width: u32, pos1: Pos, pos2: Pos) -> u32 {
 }
 
 impl Field {
-  #[inline]
-  pub fn length(&self) -> Pos {
-    self.length
-  }
-
   #[inline]
   pub fn to_pos(&self, x: u32, y: u32) -> Pos {
     to_pos(self.width, x, y)
@@ -425,6 +421,7 @@ impl Field {
       zobrist,
       hash: 0,
       chain: Vec::with_capacity(length),
+      q: VecDeque::with_capacity(length),
     };
     #[cfg(not(feature = "dsu"))]
     let mut field = Field {
@@ -439,6 +436,7 @@ impl Field {
       zobrist,
       hash: 0,
       chain: Vec::with_capacity(length),
+      q: VecDeque::with_capacity(length),
     };
     let max_pos = field.max_pos();
     for x in 0..width as Pos + 2 {
@@ -640,7 +638,7 @@ impl Field {
     for &pos in &self.chain {
       self.points[pos].set_tag();
     }
-    wave(self.width, inside_pos, |pos| {
+    wave(&mut self.q, self.width, inside_pos, |pos| {
       let cell = self.points[pos];
       if !cell.is_tagged() && !cell.is_bound_player(player) {
         self.points[pos].set_tag();
@@ -832,9 +830,14 @@ impl Field {
 
   #[inline]
   fn remove_empty_base(&mut self, start_pos: Pos) {
-    wave(self.width, start_pos, |pos| {
+    wave(&mut self.q, self.width, start_pos, |pos| {
       if self.points[pos].is_empty_base() {
-        self.save_pos_value(pos);
+        self
+          .changes
+          .last_mut()
+          .unwrap()
+          .points_changes
+          .push((pos, self.points[pos]));
         self.points[pos].clear_empty_base();
         true
       } else {
@@ -989,18 +992,8 @@ impl Field {
   }
 
   #[inline]
-  pub fn moves(&self) -> &Vec<Pos> {
-    &self.moves
-  }
-
-  #[inline]
   pub fn colored_moves(&self) -> impl ExactSizeIterator<Item = (Pos, Player)> + '_ {
     self.moves.iter().map(|&pos| (pos, self.points[pos].get_player()))
-  }
-
-  #[inline]
-  pub fn hash(&self) -> u64 {
-    self.hash
   }
 
   #[inline]
@@ -1022,16 +1015,6 @@ impl Field {
   #[inline]
   pub fn last_player(&self) -> Option<Player> {
     self.moves.last().map(|&pos| self.points[pos].get_player())
-  }
-
-  #[inline]
-  pub fn width(&self) -> u32 {
-    self.width
-  }
-
-  #[inline]
-  pub fn height(&self) -> u32 {
-    self.height
   }
 
   #[inline]
@@ -1093,7 +1076,7 @@ impl Field {
       let player = self.points[pos].get_owner().unwrap();
       let mut points = 0;
       let mut grounded = false;
-      wave(self.width, pos, |pos| {
+      wave(&mut self.q, self.width, pos, |pos| {
         let cell = self.points[pos];
         grounded |= cell.is_bad();
         if !cell.is_tagged() && cell.is_owner(player) {
@@ -1147,8 +1130,8 @@ impl Field {
 
 impl fmt::Display for Field {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    for y in 0..self.height() {
-      for x in 0..self.width() {
+    for y in 0..self.height {
+      for x in 0..self.width {
         let pos = self.to_pos(x, y);
         let cell = self.cell(pos);
         match cell.get_players_point() {

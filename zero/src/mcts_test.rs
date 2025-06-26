@@ -48,7 +48,7 @@ fn mcts_first_iterations() {
   assert_eq!(node.visits, 1);
   assert_eq!(node.wins, -1.0);
   // corner moves are not considered
-  assert_eq!(node.children.len(), (field.width() * field.height()) as usize - 6);
+  assert_eq!(node.children.len(), (field.width * field.height) as usize - 6);
   assert!(node.children.iter().all(|child| child.wins == 1.0));
   assert!(node.children.iter().all(|child| child.children.is_empty()));
 
@@ -70,7 +70,7 @@ fn mcts_first_iterations() {
     node
       .children
       .iter()
-      .filter(|child| child.children.len() == (field.width() * field.height()) as usize - 7)
+      .filter(|child| child.children.len() == (field.width * field.height) as usize - 7)
       .count(),
     8
   );
