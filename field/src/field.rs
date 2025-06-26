@@ -1131,23 +1131,27 @@ impl Field {
   }
 
   pub fn clear(&mut self) {
-    for cell in self.min_to_max_mut() {
-      *cell = Cell::new(false);
-    }
-    self.set_padding();
-    self.changes.clear();
-    self.moves.clear();
-    self.score_red = 0;
-    self.score_black = 0;
-    self.hash = 0;
-    #[cfg(feature = "dsu")]
-    {
-      for (i, dsu) in self.dsu.0.iter_mut().enumerate() {
-        *dsu = i;
+    if self.moves_count() > self.width as usize * self.height as usize / 8 {
+      for cell in self.min_to_max_mut() {
+        *cell = Cell::new(false);
       }
-      for dsu in self.dsu_size.0.iter_mut() {
-        *dsu = 1;
+      self.set_padding();
+      self.changes.clear();
+      self.moves.clear();
+      self.score_red = 0;
+      self.score_black = 0;
+      self.hash = 0;
+      #[cfg(feature = "dsu")]
+      {
+        for (i, dsu) in self.dsu.0.iter_mut().enumerate() {
+          *dsu = i;
+        }
+        for dsu in self.dsu_size.0.iter_mut() {
+          *dsu = 1;
+        }
       }
+    } else {
+      while self.undo() {}
     }
   }
 
