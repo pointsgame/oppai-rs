@@ -14,7 +14,23 @@ impl Zobrist {
     }
   }
 
+  #[inline]
+  #[cfg(not(feature = "unsafe"))]
   pub fn get_hash(&self, pos: Pos) -> u64 {
     self.hashes[pos]
+  }
+
+  #[inline]
+  #[cfg(feature = "unsafe")]
+  pub fn get_hash(&self, pos: Pos) -> u64 {
+    unsafe { *self.hashes.get_unchecked(pos) }
+  }
+
+  pub fn len(&self) -> usize {
+    self.hashes.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.hashes.is_empty()
   }
 }

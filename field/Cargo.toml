@@ -17,6 +17,7 @@ rand_xoshiro.workspace = true
 
 [features]
 dsu = []
+unsafe = []
 serde = [ "dep:serde" ]
 
 [[bench]]

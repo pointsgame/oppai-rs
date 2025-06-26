@@ -223,22 +223,22 @@ pub fn wave<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, width: u32, start_pos:
   if !cond(start_pos) {
     return;
   }
+  q.clear();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
     q.extend(directions(width, pos).iter().filter(|&&pos| cond(pos)))
   }
-  q.clear();
 }
 
 pub fn wave_diag<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, width: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
+  q.clear();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
     q.extend(directions_diag(width, pos).iter().filter(|&&pos| cond(pos)))
   }
-  q.clear();
 }
 
 #[inline]
@@ -336,34 +336,41 @@ impl Field {
   }
 
   #[inline]
+  #[cfg(not(feature = "unsafe"))]
   pub fn cell(&self, pos: Pos) -> Cell {
     self.points[pos]
   }
 
   #[inline]
+  #[cfg(feature = "unsafe")]
+  pub fn cell(&self, pos: Pos) -> Cell {
+    unsafe { *self.points.get_unchecked(pos) }
+  }
+
+  #[inline]
   pub fn is_putting_allowed(&self, pos: Pos) -> bool {
-    pos < self.length && self.points[pos].is_putting_allowed()
+    pos < self.length && self.cell(pos).is_putting_allowed()
   }
 
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
     self
       .directions(center_pos)
       .iter()
-      .any(|&pos| self.points[pos].is_live_players_point(player))
+      .any(|&pos| self.cell(pos).is_live_players_point(player))
   }
 
   pub fn has_near_points_diag(&self, center_pos: Pos, player: Player) -> bool {
     self
       .directions_diag(center_pos)
       .iter()
-      .any(|&pos| self.points[pos].is_live_players_point(player))
+      .any(|&pos| self.cell(pos).is_live_players_point(player))
   }
 
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
     self
       .directions(center_pos)
       .iter()
-      .filter(|&&pos| self.points[pos].is_live_players_point(player))
+      .filter(|&&pos| self.cell(pos).is_live_players_point(player))
       .count() as u32
   }
 
@@ -371,33 +378,33 @@ impl Field {
     self
       .directions_diag(center_pos)
       .iter()
-      .filter(|&&pos| self.points[pos].is_live_players_point(player))
+      .filter(|&&pos| self.cell(pos).is_live_players_point(player))
       .count() as u32
   }
 
   pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u32 {
     let mut result = 0u32;
-    if !self.points[self.w(center_pos)].is_live_players_point(player)
-      && (self.points[self.nw(center_pos)].is_live_players_point(player)
-        || self.points[self.n(center_pos)].is_live_players_point(player))
+    if !self.cell(self.w(center_pos)).is_live_players_point(player)
+      && (self.cell(self.nw(center_pos)).is_live_players_point(player)
+        || self.cell(self.n(center_pos)).is_live_players_point(player))
     {
       result += 1;
     }
-    if !self.points[self.s(center_pos)].is_live_players_point(player)
-      && (self.points[self.sw(center_pos)].is_live_players_point(player)
-        || self.points[self.w(center_pos)].is_live_players_point(player))
+    if !self.cell(self.s(center_pos)).is_live_players_point(player)
+      && (self.cell(self.sw(center_pos)).is_live_players_point(player)
+        || self.cell(self.w(center_pos)).is_live_players_point(player))
     {
       result += 1;
     }
-    if !self.points[self.e(center_pos)].is_live_players_point(player)
-      && (self.points[self.se(center_pos)].is_live_players_point(player)
-        || self.points[self.s(center_pos)].is_live_players_point(player))
+    if !self.cell(self.e(center_pos)).is_live_players_point(player)
+      && (self.cell(self.se(center_pos)).is_live_players_point(player)
+        || self.cell(self.s(center_pos)).is_live_players_point(player))
     {
       result += 1;
     }
-    if !self.points[self.n(center_pos)].is_live_players_point(player)
-      && (self.points[self.ne(center_pos)].is_live_players_point(player)
-        || self.points[self.e(center_pos)].is_live_players_point(player))
+    if !self.cell(self.n(center_pos)).is_live_players_point(player)
+      && (self.cell(self.ne(center_pos)).is_live_players_point(player)
+        || self.cell(self.e(center_pos)).is_live_players_point(player))
     {
       result += 1;
     }
@@ -406,6 +413,7 @@ impl Field {
 
   pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Field {
     let length = length(width, height);
+    assert!(zobrist.len() >= 2 * length);
     #[cfg(feature = "dsu")]
     let mut field = Field {
       width,
@@ -458,12 +466,8 @@ impl Field {
 
   #[inline]
   fn save_pos_value(&mut self, pos: Pos) {
-    self
-      .changes
-      .last_mut()
-      .unwrap()
-      .points_changes
-      .push((pos, self.points[pos]));
+    let cell = self.cell(pos);
+    self.changes.last_mut().unwrap().points_changes.push((pos, cell));
   }
 
   #[cfg(feature = "dsu")]
@@ -480,31 +484,31 @@ impl Field {
 
   fn get_input_points(&self, center_pos: Pos, player: Player) -> SmallVec<[(Pos, Pos); 4]> {
     let mut inp_points = SmallVec::new();
-    if !self.points[self.w(center_pos)].is_live_players_point(player) {
-      if self.points[self.nw(center_pos)].is_live_players_point(player) {
+    if !self.cell(self.w(center_pos)).is_live_players_point(player) {
+      if self.cell(self.nw(center_pos)).is_live_players_point(player) {
         inp_points.push((self.nw(center_pos), self.w(center_pos)));
-      } else if self.points[self.n(center_pos)].is_live_players_point(player) {
+      } else if self.cell(self.n(center_pos)).is_live_players_point(player) {
         inp_points.push((self.n(center_pos), self.w(center_pos)));
       }
     }
-    if !self.points[self.s(center_pos)].is_live_players_point(player) {
-      if self.points[self.sw(center_pos)].is_live_players_point(player) {
+    if !self.cell(self.s(center_pos)).is_live_players_point(player) {
+      if self.cell(self.sw(center_pos)).is_live_players_point(player) {
         inp_points.push((self.sw(center_pos), self.s(center_pos)));
-      } else if self.points[self.w(center_pos)].is_live_players_point(player) {
+      } else if self.cell(self.w(center_pos)).is_live_players_point(player) {
         inp_points.push((self.w(center_pos), self.s(center_pos)));
       }
     }
-    if !self.points[self.e(center_pos)].is_live_players_point(player) {
-      if self.points[self.se(center_pos)].is_live_players_point(player) {
+    if !self.cell(self.e(center_pos)).is_live_players_point(player) {
+      if self.cell(self.se(center_pos)).is_live_players_point(player) {
         inp_points.push((self.se(center_pos), self.e(center_pos)));
-      } else if self.points[self.s(center_pos)].is_live_players_point(player) {
+      } else if self.cell(self.s(center_pos)).is_live_players_point(player) {
         inp_points.push((self.s(center_pos), self.e(center_pos)));
       }
     }
-    if !self.points[self.n(center_pos)].is_live_players_point(player) {
-      if self.points[self.ne(center_pos)].is_live_players_point(player) {
+    if !self.cell(self.n(center_pos)).is_live_players_point(player) {
+      if self.cell(self.ne(center_pos)).is_live_players_point(player) {
         inp_points.push((self.ne(center_pos), self.n(center_pos)));
-      } else if self.points[self.e(center_pos)].is_live_players_point(player) {
+      } else if self.cell(self.e(center_pos)).is_live_players_point(player) {
         inp_points.push((self.e(center_pos), self.n(center_pos)));
       }
     }
@@ -571,7 +575,7 @@ impl Field {
     self.chain.clear();
     self.chain.push(start_pos);
     loop {
-      if self.points[pos].is_tagged() {
+      if self.cell(pos).is_tagged() {
         while *self.chain.last().unwrap() != pos {
           self.points[*self.chain.last().unwrap()].clear_tag();
           self.chain.pop();
@@ -582,7 +586,7 @@ impl Field {
       }
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
-      while !self.points[pos].is_live_players_point(player) {
+      while !self.cell(pos).is_live_players_point(player) {
         pos = self.get_next_pos(center_pos, pos);
       }
       base_square += self.skew_product(center_pos, pos);
@@ -606,7 +610,7 @@ impl Field {
       self.chain.push(pos);
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
-      while !(self.points[pos].is_live_players_point(player) && self.points[pos].is_bound()) {
+      while !(self.cell(pos).is_live_players_point(player) && self.cell(pos).is_bound()) {
         pos = self.get_next_pos(center_pos, pos);
       }
       base_square += self.skew_product(center_pos, pos);
@@ -679,7 +683,7 @@ impl Field {
       for &pos in &captured_points {
         self.points[pos].clear_tag();
         self.save_pos_value(pos);
-        let cell = self.points[pos];
+        let cell = self.cell(pos);
         if !cell.is_put() {
           if cell.is_captured() {
             self.update_hash(pos, player.next());
@@ -867,7 +871,7 @@ impl Field {
       self.changes.push(change);
       self.save_pos_value(pos);
       self.update_hash(pos, player);
-      match self.points[pos].get_empty_base_player() {
+      match self.cell(pos).get_empty_base_player() {
         Some(empty_base_player) => {
           self.points[pos].put_point(player);
           if empty_base_player == player {
@@ -879,7 +883,7 @@ impl Field {
             let mut bound_pos = pos;
             'outer: loop {
               bound_pos = self.w(bound_pos);
-              while !self.points[bound_pos].is_players_point(next_player) {
+              while !self.cell(bound_pos).is_players_point(next_player) {
                 bound_pos = self.w(bound_pos);
               }
               let input_points = self.get_input_points(bound_pos, next_player);
@@ -939,7 +943,7 @@ impl Field {
     } else {
       return Vec::new();
     };
-    let player = self.points[pos].get_player();
+    let player = self.cell(pos).get_player();
     let delta_score = self.get_delta_score(player);
     match delta_score.cmp(&0) {
       Ordering::Greater => {
@@ -948,7 +952,7 @@ impl Field {
         let input_points_count = input_points.len();
         let mut chains_count = 0;
         for (chain_pos, captured_pos) in input_points {
-          if !(self.points[captured_pos].is_captured() && self.points[chain_pos].is_bound()) {
+          if !(self.cell(captured_pos).is_captured() && self.cell(chain_pos).is_bound()) {
             continue;
           }
           if self.find_chain(pos, player, chain_pos) {
@@ -966,7 +970,7 @@ impl Field {
         let mut bound_pos = pos;
         loop {
           bound_pos = self.w(bound_pos);
-          while !self.points[bound_pos].is_bound() {
+          while !self.cell(bound_pos).is_bound() {
             bound_pos = self.w(bound_pos);
           }
           let input_points = self.get_input_points(bound_pos, next_player);
@@ -993,7 +997,7 @@ impl Field {
 
   #[inline]
   pub fn colored_moves(&self) -> impl ExactSizeIterator<Item = (Pos, Player)> + '_ {
-    self.moves.iter().map(|&pos| (pos, self.points[pos].get_player()))
+    self.moves.iter().map(|&pos| (pos, self.cell(pos).get_player()))
   }
 
   #[inline]
@@ -1014,7 +1018,7 @@ impl Field {
 
   #[inline]
   pub fn last_player(&self) -> Option<Player> {
-    self.moves.last().map(|&pos| self.points[pos].get_player())
+    self.moves.last().map(|&pos| self.cell(pos).get_player())
   }
 
   #[inline]
@@ -1073,7 +1077,7 @@ impl Field {
   fn non_grounded_points(&mut self) -> (u32, u32) {
     let mut result = (0, 0);
     for &pos in &self.moves {
-      let player = self.points[pos].get_owner().unwrap();
+      let player = self.cell(pos).get_owner().unwrap();
       let mut points = 0;
       let mut grounded = false;
       wave(&mut self.q, self.width, pos, |pos| {

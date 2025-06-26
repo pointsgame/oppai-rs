@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "unsafe"), forbid(unsafe_code))]
+
 pub mod any_field;
 pub mod cell;
 pub mod construct_field;
