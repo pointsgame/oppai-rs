@@ -40,9 +40,9 @@ pub struct Field {
   pub moves: Vec<Pos>,
   pub points: PointsVec<Cell>,
   #[cfg(feature = "dsu")]
-  dsu: Vec<Pos>,
+  dsu: PointsVec<Pos>,
   #[cfg(feature = "dsu")]
-  dsu_size: Vec<u32>,
+  dsu_size: PointsVec<u32>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   pub hash: u64,
@@ -442,8 +442,8 @@ impl Field {
       score_black: 0,
       moves: Vec::with_capacity(length),
       points: vec![Cell::new(false); length].into(),
-      dsu: (0..length).collect(),
-      dsu_size: vec![1; length],
+      dsu: PointsVec((0..length).collect()),
+      dsu_size: vec![1; length].into(),
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
@@ -1142,10 +1142,10 @@ impl Field {
     self.hash = 0;
     #[cfg(feature = "dsu")]
     {
-      for (i, dsu) in self.dsu.iter_mut().enumerate() {
+      for (i, dsu) in self.dsu.0.iter_mut().enumerate() {
         *dsu = i;
       }
-      for dsu in self.dsu_size.iter_mut() {
+      for dsu in self.dsu_size.0.iter_mut() {
         *dsu = 1;
       }
     }
