@@ -27,15 +27,15 @@ impl WavePruning {
   }
 
   pub fn init(&mut self, field: &mut Field, radius: u32) {
-    let stride = field.stride;
+    let width = field.width;
     for &start_pos in &field.moves {
-      field::wave(&mut field.q, stride, start_pos, |pos| {
+      field::wave(&mut field.q, width, start_pos, |pos| {
         if pos == start_pos && self.moves_field[pos] == 0 {
           self.moves_field[pos] = 1;
           true
         } else if self.moves_field[pos] != start_pos
           && field.points[pos].is_putting_allowed()
-          && field::manhattan(stride, start_pos, pos) <= radius
+          && field::manhattan(width, start_pos, pos) <= radius
         {
           if self.moves_field[pos] == 0 {
             self.moves.push(pos);
@@ -61,16 +61,16 @@ impl WavePruning {
         false
       }
     });
-    let stride = field.stride;
+    let width = field.width;
     let mut added_moves = Vec::new();
     for &next_pos in field.moves.iter().skip(last_moves_count) {
-      field::wave(&mut field.q, stride, next_pos, |pos| {
+      field::wave(&mut field.q, width, next_pos, |pos| {
         if pos == next_pos && moves_field[pos] == 0 {
           moves_field[pos] = 1;
           true
         } else if moves_field[pos] != next_pos
           && field.points[pos].is_putting_allowed()
-          && field::manhattan(stride, next_pos, pos) <= radius
+          && field::manhattan(width, next_pos, pos) <= radius
         {
           if moves_field[pos] == 0 && pos != next_pos {
             moves.push(pos);

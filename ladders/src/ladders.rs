@@ -7,7 +7,7 @@ use std::iter;
 
 fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut marks = Vec::new();
-  wave_diag(&mut field.q, field.stride, start_pos, |pos| {
+  wave_diag(&mut field.q, field.width, start_pos, |pos| {
     if empty_board[pos] != 0 {
       return false;
     }

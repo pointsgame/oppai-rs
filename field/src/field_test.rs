@@ -459,7 +459,7 @@ fn undo_check() {
   let checks = 100;
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
-  let mut moves = (field::min_pos(width + 2)..=field::max_pos(width + 2, height)).collect::<Vec<Pos>>();
+  let mut moves = (field::min_pos(width)..=field::max_pos(width, height)).collect::<Vec<Pos>>();
   for _ in 0..checks {
     let mut field = Field::new(width, height, zobrist.clone());
     moves.shuffle(&mut rng);

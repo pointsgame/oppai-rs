@@ -6,10 +6,10 @@ fn cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 4] {
   let w2 = width / 2;
   let h2 = height / 2;
   [
-    (to_pos(width + 2, w2 - 1, h2 - 1), player),
-    (to_pos(width + 2, w2 - 1, h2), player.next()),
-    (to_pos(width + 2, w2, h2), player),
-    (to_pos(width + 2, w2, h2 - 1), player.next()),
+    (to_pos(width, w2 - 1, h2 - 1), player),
+    (to_pos(width, w2 - 1, h2), player.next()),
+    (to_pos(width, w2, h2), player),
+    (to_pos(width, w2, h2 - 1), player.next()),
   ]
 }
 
@@ -17,14 +17,14 @@ fn two_crosses(width: u32, height: u32, player: Player) -> [(Pos, Player); 8] {
   let w2 = width / 2;
   let h2 = height / 2;
   [
-    (to_pos(width + 2, w2 - 2, h2 - 1), player),
-    (to_pos(width + 2, w2 - 2, h2), player.next()),
-    (to_pos(width + 2, w2 - 1, h2), player),
-    (to_pos(width + 2, w2 - 1, h2 - 1), player.next()),
-    (to_pos(width + 2, w2, h2), player),
-    (to_pos(width + 2, w2, h2 - 1), player.next()),
-    (to_pos(width + 2, w2 + 1, h2 - 1), player),
-    (to_pos(width + 2, w2 + 1, h2), player.next()),
+    (to_pos(width, w2 - 2, h2 - 1), player),
+    (to_pos(width, w2 - 2, h2), player.next()),
+    (to_pos(width, w2 - 1, h2), player),
+    (to_pos(width, w2 - 1, h2 - 1), player.next()),
+    (to_pos(width, w2, h2), player),
+    (to_pos(width, w2, h2 - 1), player.next()),
+    (to_pos(width, w2 + 1, h2 - 1), player),
+    (to_pos(width, w2 + 1, h2), player.next()),
   ]
 }
 
@@ -32,14 +32,14 @@ fn triple_cross(width: u32, height: u32, player: Player) -> [(Pos, Player); 8] {
   let w2 = width / 2;
   let h2 = height / 2;
   [
-    (to_pos(width + 2, w2 - 1, h2 - 1), player),
-    (to_pos(width + 2, w2 - 1, h2), player.next()),
-    (to_pos(width + 2, w2, h2), player),
-    (to_pos(width + 2, w2, h2 - 1), player.next()),
-    (to_pos(width + 2, w2 + 1, h2 - 1), player),
-    (to_pos(width + 2, w2, h2 - 2), player.next()),
-    (to_pos(width + 2, w2, h2 + 1), player),
-    (to_pos(width + 2, w2 + 1, h2), player.next()),
+    (to_pos(width, w2 - 1, h2 - 1), player),
+    (to_pos(width, w2 - 1, h2), player.next()),
+    (to_pos(width, w2, h2), player),
+    (to_pos(width, w2, h2 - 1), player.next()),
+    (to_pos(width, w2 + 1, h2 - 1), player),
+    (to_pos(width, w2, h2 - 2), player.next()),
+    (to_pos(width, w2, h2 + 1), player),
+    (to_pos(width, w2 + 1, h2), player.next()),
   ]
 }
 

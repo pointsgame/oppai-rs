@@ -64,7 +64,7 @@ struct GamesResult {
 
 fn all_moves(width: u32, height: u32) -> Vec<Pos> {
   (0..width)
-    .flat_map(|x| (0..height).map(move |y| to_pos(width + 2, x, y)))
+    .flat_map(|x| (0..height).map(move |y| to_pos(width, x, y)))
     .collect()
 }
 

@@ -22,7 +22,7 @@ pub fn construct_moves(image: &str) -> (u32, u32, Vec<(Player, Pos)>) {
         .chars()
         .enumerate()
         .filter(|&(_, c)| c.to_ascii_lowercase() != c.to_ascii_uppercase())
-        .map(move |(x, c)| (c, to_pos(width + 2, x as u32, y as u32)))
+        .map(move |(x, c)| (c, to_pos(width, x as u32, y as u32)))
     })
     .collect::<Vec<_>>();
   moves.sort_by(|&(c1, ..), &(c2, ..)| {

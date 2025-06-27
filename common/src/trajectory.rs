@@ -53,7 +53,7 @@ fn next_moves(
   marks: &mut Vec<Pos>,
 ) -> Vec<Pos> {
   let mut moves = Vec::new();
-  wave_diag(&mut field.q, field.stride, start_pos, |pos| {
+  wave_diag(&mut field.q, field.width, start_pos, |pos| {
     if empty_board[pos] != 0 {
       return false;
     }
@@ -123,7 +123,7 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
       let mut marks = Vec::new();
       let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
       if last_pos != 0 {
-        next_moves.retain(|&next_pos| euclidean(field.stride, last_pos, next_pos) > 2);
+        next_moves.retain(|&next_pos| euclidean(field.width, last_pos, next_pos) > 2);
       }
       build_trajectories_rec(
         field,

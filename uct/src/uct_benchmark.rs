@@ -3,6 +3,7 @@ extern crate criterion;
 
 use criterion::{Bencher, Criterion};
 use oppai_field::construct_field::construct_field;
+use oppai_field::field;
 use oppai_field::player::Player;
 use oppai_uct::uct::{UcbType, UctConfig, UctKomiType, UctRoot};
 use rand::SeedableRng;
@@ -40,8 +41,9 @@ fn find_best_move(bencher: &mut Bencher) {
     ........
     ",
   );
+  let length = field::length(field.width, field.height);
   bencher.iter(|| {
-    let mut uct = UctRoot::new(UCT_CONFIG, field.length);
+    let mut uct = UctRoot::new(UCT_CONFIG, length);
     uct.best_moves(&mut field, Player::Red, &mut rng.clone(), &|| false, 100_000)
   });
 }
