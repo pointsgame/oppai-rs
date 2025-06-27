@@ -493,7 +493,7 @@ impl Game {
                 GameTree::GoGame(_) => None,
               }) {
                 if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
-                  let visits = sgf_to_visits(node, extended_field.field.width);
+                  let visits = sgf_to_visits(node, extended_field.field.stride);
                   self.moves = extended_field
                     .field
                     .colored_moves()
@@ -533,7 +533,7 @@ impl Game {
                 GameTree::GoGame(_) => None,
               }) {
                 if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
-                  let visits = sgf_to_visits(node, extended_field.field.width);
+                  let visits = sgf_to_visits(node, extended_field.field.stride);
                   self.moves = extended_field
                     .field
                     .colored_moves()

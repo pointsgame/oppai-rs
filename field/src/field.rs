@@ -35,6 +35,7 @@ pub struct Field {
   pub width: u32,
   pub height: u32,
   pub length: Pos,
+  pub stride: u32,
   pub score_red: i32,
   pub score_black: i32,
   pub moves: Vec<Pos>,
@@ -62,28 +63,28 @@ pub fn length(width: u32, height: u32) -> Pos {
 }
 
 #[inline]
-pub fn to_pos(width: u32, x: u32, y: u32) -> Pos {
-  (y as Pos + 1) * (width as Pos + 2) + x as Pos + 1
+pub fn to_pos(stride: u32, x: u32, y: u32) -> Pos {
+  (y as Pos + 1) * (stride as Pos) + x as Pos + 1
 }
 
 #[inline]
-pub fn to_x(width: u32, pos: Pos) -> u32 {
-  (pos % (width as Pos + 2) - 1) as u32
+pub fn to_x(stride: u32, pos: Pos) -> u32 {
+  (pos % (stride as Pos) - 1) as u32
 }
 
 #[inline]
-pub fn to_y(width: u32, pos: Pos) -> u32 {
-  (pos / (width as Pos + 2) - 1) as u32
+pub fn to_y(stride: u32, pos: Pos) -> u32 {
+  (pos / (stride as Pos) - 1) as u32
 }
 
 #[inline]
-pub fn n(width: u32, pos: Pos) -> Pos {
-  pos - width as Pos - 2
+pub fn n(stride: u32, pos: Pos) -> Pos {
+  pos - stride as Pos
 }
 
 #[inline]
-pub fn s(width: u32, pos: Pos) -> Pos {
-  pos + width as Pos + 2
+pub fn s(stride: u32, pos: Pos) -> Pos {
+  pos + stride as Pos
 }
 
 #[inline]
@@ -97,57 +98,57 @@ pub fn e(pos: Pos) -> Pos {
 }
 
 #[inline]
-pub fn nw(width: u32, pos: Pos) -> Pos {
-  n(width, w(pos))
+pub fn nw(stride: u32, pos: Pos) -> Pos {
+  n(stride, w(pos))
 }
 
 #[inline]
-pub fn ne(width: u32, pos: Pos) -> Pos {
-  n(width, e(pos))
+pub fn ne(stride: u32, pos: Pos) -> Pos {
+  n(stride, e(pos))
 }
 
 #[inline]
-pub fn sw(width: u32, pos: Pos) -> Pos {
-  s(width, w(pos))
+pub fn sw(stride: u32, pos: Pos) -> Pos {
+  s(stride, w(pos))
 }
 
 #[inline]
-pub fn se(width: u32, pos: Pos) -> Pos {
-  s(width, e(pos))
+pub fn se(stride: u32, pos: Pos) -> Pos {
+  s(stride, e(pos))
 }
 
 #[inline]
-pub fn min_pos(width: u32) -> Pos {
-  to_pos(width, 0, 0)
+pub fn min_pos(stride: u32) -> Pos {
+  to_pos(stride, 0, 0)
 }
 
 #[inline]
-pub fn max_pos(width: u32, height: u32) -> Pos {
-  to_pos(width, width - 1, height - 1)
+pub fn max_pos(stride: u32, height: u32) -> Pos {
+  to_pos(stride, stride - 3, height - 1)
 }
 
-pub fn is_near(width: u32, pos1: Pos, pos2: Pos) -> bool {
-  n(width, pos1) == pos2
-    || s(width, pos1) == pos2
+pub fn is_near(stride: u32, pos1: Pos, pos2: Pos) -> bool {
+  n(stride, pos1) == pos2
+    || s(stride, pos1) == pos2
     || w(pos1) == pos2
     || e(pos1) == pos2
-    || nw(width, pos1) == pos2
-    || ne(width, pos1) == pos2
-    || sw(width, pos1) == pos2
-    || se(width, pos1) == pos2
+    || nw(stride, pos1) == pos2
+    || ne(stride, pos1) == pos2
+    || sw(stride, pos1) == pos2
+    || se(stride, pos1) == pos2
 }
 
-pub fn is_corner(width: u32, height: u32, pos: Pos) -> bool {
-  let x = to_x(width, pos);
-  let y = to_y(width, pos);
-  (x == 0 || x == width - 1) && (y == 0 || y == height - 1)
+pub fn is_corner(stride: u32, height: u32, pos: Pos) -> bool {
+  let x = to_x(stride, pos);
+  let y = to_y(stride, pos);
+  (x == 0 || x == stride - 3) && (y == 0 || y == height - 1)
 }
 
-fn get_intersection_state(width: u32, pos: Pos, next_pos: Pos) -> IntersectionState {
-  let pos_x = to_x(width, pos);
-  let pos_y = to_y(width, pos);
-  let next_pos_x = to_x(width, next_pos);
-  let next_pos_y = to_y(width, next_pos);
+fn get_intersection_state(stride: u32, pos: Pos, next_pos: Pos) -> IntersectionState {
+  let pos_x = to_x(stride, pos);
+  let pos_y = to_y(stride, pos);
+  let next_pos_x = to_x(stride, next_pos);
+  let next_pos_y = to_y(stride, next_pos);
   if next_pos_x <= pos_x {
     match next_pos_y as i32 - pos_y as i32 {
       1 => IntersectionState::Up,
@@ -160,11 +161,11 @@ fn get_intersection_state(width: u32, pos: Pos, next_pos: Pos) -> IntersectionSt
   }
 }
 
-pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &[Pos]) -> bool {
+pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
   let mut intersections = 0u32;
   let mut state = IntersectionState::None;
   for &next_pos in ring {
-    match get_intersection_state(width, pos, next_pos) {
+    match get_intersection_state(stride, pos, next_pos) {
       IntersectionState::None => {
         state = IntersectionState::None;
       }
@@ -185,9 +186,9 @@ pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &[Pos]) -> bool {
   }
   if state == IntersectionState::Up || state == IntersectionState::Down {
     let mut iter = ring.iter();
-    let mut begin_state = get_intersection_state(width, pos, *iter.next().unwrap());
+    let mut begin_state = get_intersection_state(stride, pos, *iter.next().unwrap());
     while begin_state == IntersectionState::Target {
-      begin_state = get_intersection_state(width, pos, *iter.next().unwrap());
+      begin_state = get_intersection_state(stride, pos, *iter.next().unwrap());
     }
     if state == IntersectionState::Up && begin_state == IntersectionState::Down
       || state == IntersectionState::Down && begin_state == IntersectionState::Up
@@ -199,86 +200,86 @@ pub fn is_point_inside_ring(width: u32, pos: Pos, ring: &[Pos]) -> bool {
 }
 
 #[inline]
-pub fn skew_product(width: u32, pos1: Pos, pos2: Pos) -> i32 {
-  (to_x(width, pos1) * to_y(width, pos2)) as i32 - (to_y(width, pos1) * to_x(width, pos2)) as i32
+pub fn skew_product(stride: u32, pos1: Pos, pos2: Pos) -> i32 {
+  (to_x(stride, pos1) * to_y(stride, pos2)) as i32 - (to_y(stride, pos1) * to_x(stride, pos2)) as i32
 }
 
-pub fn directions(width: u32, pos: Pos) -> [Pos; 4] {
-  [n(width, pos), s(width, pos), w(pos), e(pos)]
+pub fn directions(stride: u32, pos: Pos) -> [Pos; 4] {
+  [n(stride, pos), s(stride, pos), w(pos), e(pos)]
 }
 
-pub fn directions_diag(width: u32, pos: Pos) -> [Pos; 8] {
+pub fn directions_diag(stride: u32, pos: Pos) -> [Pos; 8] {
   [
-    n(width, pos),
-    s(width, pos),
+    n(stride, pos),
+    s(stride, pos),
     w(pos),
     e(pos),
-    nw(width, pos),
-    ne(width, pos),
-    sw(width, pos),
-    se(width, pos),
+    nw(stride, pos),
+    ne(stride, pos),
+    sw(stride, pos),
+    se(stride, pos),
   ]
 }
 
-pub fn wave<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, width: u32, start_pos: Pos, mut cond: F) {
+pub fn wave<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
   q.clear();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
-    q.extend(directions(width, pos).iter().filter(|&&pos| cond(pos)))
+    q.extend(directions(stride, pos).iter().filter(|&&pos| cond(pos)))
   }
 }
 
-pub fn wave_diag<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, width: u32, start_pos: Pos, mut cond: F) {
+pub fn wave_diag<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
   q.clear();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
-    q.extend(directions_diag(width, pos).iter().filter(|&&pos| cond(pos)))
+    q.extend(directions_diag(stride, pos).iter().filter(|&&pos| cond(pos)))
   }
 }
 
 #[inline]
-pub fn manhattan(width: u32, pos1: Pos, pos2: Pos) -> u32 {
-  (i32::abs(to_x(width, pos1) as i32 - to_x(width, pos2) as i32)
-    + i32::abs(to_y(width, pos1) as i32 - to_y(width, pos2) as i32)) as u32
+pub fn manhattan(stride: u32, pos1: Pos, pos2: Pos) -> u32 {
+  (i32::abs(to_x(stride, pos1) as i32 - to_x(stride, pos2) as i32)
+    + i32::abs(to_y(stride, pos1) as i32 - to_y(stride, pos2) as i32)) as u32
 }
 
 #[inline]
-pub fn euclidean(width: u32, pos1: Pos, pos2: Pos) -> u32 {
-  let a = to_x(width, pos1) as i32 - to_x(width, pos2) as i32;
-  let b = to_y(width, pos1) as i32 - to_y(width, pos2) as i32;
+pub fn euclidean(stride: u32, pos1: Pos, pos2: Pos) -> u32 {
+  let a = to_x(stride, pos1) as i32 - to_x(stride, pos2) as i32;
+  let b = to_y(stride, pos1) as i32 - to_y(stride, pos2) as i32;
   (a * a + b * b) as u32
 }
 
 impl Field {
   #[inline]
   pub fn to_pos(&self, x: u32, y: u32) -> Pos {
-    to_pos(self.width, x, y)
+    to_pos(self.stride, x, y)
   }
 
   #[inline]
   pub fn to_x(&self, pos: Pos) -> u32 {
-    to_x(self.width, pos)
+    to_x(self.stride, pos)
   }
 
   #[inline]
   pub fn to_y(&self, pos: Pos) -> u32 {
-    to_y(self.width, pos)
+    to_y(self.stride, pos)
   }
 
   #[inline]
   pub fn n(&self, pos: Pos) -> Pos {
-    n(self.width, pos)
+    n(self.stride, pos)
   }
 
   #[inline]
   pub fn s(&self, pos: Pos) -> Pos {
-    s(self.width, pos)
+    s(self.stride, pos)
   }
 
   #[inline]
@@ -293,42 +294,42 @@ impl Field {
 
   #[inline]
   pub fn nw(&self, pos: Pos) -> Pos {
-    nw(self.width, pos)
+    nw(self.stride, pos)
   }
 
   #[inline]
   pub fn ne(&self, pos: Pos) -> Pos {
-    ne(self.width, pos)
+    ne(self.stride, pos)
   }
 
   #[inline]
   pub fn sw(&self, pos: Pos) -> Pos {
-    sw(self.width, pos)
+    sw(self.stride, pos)
   }
 
   #[inline]
   pub fn se(&self, pos: Pos) -> Pos {
-    se(self.width, pos)
+    se(self.stride, pos)
   }
 
   #[inline]
   pub fn directions(&self, pos: Pos) -> [Pos; 4] {
-    directions(self.width, pos)
+    directions(self.stride, pos)
   }
 
   #[inline]
   pub fn directions_diag(&self, pos: Pos) -> [Pos; 8] {
-    directions_diag(self.width, pos)
+    directions_diag(self.stride, pos)
   }
 
   #[inline]
   pub fn min_pos(&self) -> Pos {
-    min_pos(self.width)
+    min_pos(self.stride)
   }
 
   #[inline]
   pub fn max_pos(&self) -> Pos {
-    max_pos(self.width, self.height)
+    max_pos(self.stride, self.height)
   }
 
   #[inline]
@@ -347,7 +348,7 @@ impl Field {
 
   #[inline]
   pub fn is_near(&self, pos1: Pos, pos2: Pos) -> bool {
-    is_near(self.width, pos1, pos2)
+    is_near(self.stride, pos1, pos2)
   }
 
   pub fn cell(&self, pos: Pos) -> Cell {
@@ -438,6 +439,7 @@ impl Field {
       width,
       height,
       length,
+      stride: width + 2,
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
@@ -455,6 +457,7 @@ impl Field {
       width,
       height,
       length,
+      stride: width + 2,
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
@@ -528,7 +531,7 @@ impl Field {
 
   #[inline]
   fn skew_product(&self, pos1: Pos, pos2: Pos) -> i32 {
-    skew_product(self.width, pos1, pos2)
+    skew_product(self.stride, pos1, pos2)
   }
 
   //  * . .   x . *   . x x   . . .
@@ -634,7 +637,7 @@ impl Field {
 
   #[inline]
   fn is_point_inside_chain(&self, pos: Pos) -> bool {
-    is_point_inside_ring(self.width, pos, &self.chain)
+    is_point_inside_ring(self.stride, pos, &self.chain)
   }
 
   #[inline]
@@ -653,7 +656,7 @@ impl Field {
     for &pos in &self.chain {
       self.points[pos].set_tag();
     }
-    wave(&mut self.q, self.width, inside_pos, |pos| {
+    wave(&mut self.q, self.stride, inside_pos, |pos| {
       let cell = self.points[pos];
       if !cell.is_tagged() && !cell.is_bound_player(player) {
         self.points[pos].set_tag();
@@ -845,7 +848,7 @@ impl Field {
 
   #[inline]
   fn remove_empty_base(&mut self, start_pos: Pos) {
-    wave(&mut self.q, self.width, start_pos, |pos| {
+    wave(&mut self.q, self.stride, start_pos, |pos| {
       if self.points[pos].is_empty_base() {
         self
           .changes
@@ -1082,7 +1085,7 @@ impl Field {
   }
 
   pub fn is_corner(&self, pos: Pos) -> bool {
-    is_corner(self.width, self.height, pos)
+    is_corner(self.stride, self.height, pos)
   }
 
   fn non_grounded_points(&mut self) -> (u32, u32) {
@@ -1091,7 +1094,7 @@ impl Field {
       let player = self.cell(pos).get_owner().unwrap();
       let mut points = 0;
       let mut grounded = false;
-      wave(&mut self.q, self.width, pos, |pos| {
+      wave(&mut self.q, self.stride, pos, |pos| {
         let cell = self.points[pos];
         grounded |= cell.is_bad();
         if !cell.is_tagged() && cell.is_owner(player) {
