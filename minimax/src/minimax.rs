@@ -87,8 +87,7 @@ impl Minimax {
     if depth == 0 {
       return field.score(player);
     }
-    let moves = trajectories_pruning.moves();
-    if moves.is_empty() {
+    if trajectories_pruning.moves.is_empty() {
       return field.score(player);
     }
     let mut cur_alpha = alpha;
@@ -177,7 +176,11 @@ impl Minimax {
       }
     }
     // For all moves instead the one from the hash table.
-    for &pos in moves.iter().filter(|&&pos| Some(pos) != hash_pos_option) {
+    for &pos in trajectories_pruning
+      .moves
+      .iter()
+      .filter(|&&pos| Some(pos) != hash_pos_option)
+    {
       field.put_point(pos, player);
       if common::is_penult_move_stupid(field) {
         field.undo();
@@ -250,15 +253,15 @@ impl Minimax {
     if depth == 0 || should_stop() {
       return field.score(player);
     }
-    let moves = trajectories_pruning.moves();
     debug!(
       "Moves in consideration: {:?}.",
-      moves
+      trajectories_pruning
+        .moves
         .iter()
         .map(|&pos| (field.to_x(pos), field.to_y(pos)))
         .collect::<Vec<(u32, u32)>>()
     );
-    if moves.is_empty() || should_stop() {
+    if trajectories_pruning.moves.is_empty() || should_stop() {
       return field.score(player);
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -266,11 +269,11 @@ impl Minimax {
       let queue = SegQueue::new();
       if let Some(best_pos) = *best_move {
         queue.push(best_pos.get());
-        for &pos in moves.iter().filter(|&&pos| pos != best_pos.get()) {
+        for &pos in trajectories_pruning.moves.iter().filter(|&&pos| pos != best_pos.get()) {
           queue.push(pos);
         }
       } else {
-        for &pos in moves.iter() {
+        for &pos in trajectories_pruning.moves.iter() {
           queue.push(pos);
         }
       }
@@ -378,21 +381,20 @@ impl Minimax {
       let mut result = 0;
       let best_alpha = atomic_alpha.load(Ordering::SeqCst) as i32;
       if best_alpha > alpha {
-        let moves = trajectories_pruning.moves_mut();
-        moves.clear();
+        trajectories_pruning.moves.clear();
         while let Some((pos, pos_alpha)) = best_moves.pop() {
           if pos_alpha == best_alpha || pos_alpha >= beta {
-            moves.push(pos);
+            trajectories_pruning.moves.push(pos);
           }
           if pos_alpha == best_alpha && result == 0 {
             result = pos;
           }
         }
         while let Some(pos) = skipped_moves.pop() {
-          moves.push(pos);
+          trajectories_pruning.moves.push(pos);
         }
         while let Some(pos) = queue.pop() {
-          moves.push(pos);
+          trajectories_pruning.moves.push(pos);
         }
       }
       if !first_move_considered.load(Ordering::SeqCst) {
@@ -495,7 +497,7 @@ impl Minimax {
     let mut alpha = trajectories_pruning.alpha().unwrap_or_else(|| field.score(player));
     let mut beta = trajectories_pruning.beta().unwrap_or_else(|| field.score(player));
     while alpha != beta {
-      if let [single_move] = *trajectories_pruning.moves().as_slice() {
+      if let [single_move] = *trajectories_pruning.moves.as_slice() {
         *best_move = NonZeroPos::new(single_move);
         return alpha;
       }
@@ -572,7 +574,12 @@ impl Minimax {
       should_stop,
     );
     let mut best_move = None;
-    info!("Calculating of our estimation. Player is {}", player);
+    info!(
+      "Calculating our estimation. Player is {}, ours trajectories: {}, enemy's trajectories: {}",
+      player,
+      trajectories_pruning.cur_trajectories.len(),
+      trajectories_pruning.enemy_trajectories.len()
+    );
     let minimax_function = match self.config.minimax_type {
       MinimaxType::NegaScout => Minimax::nega_scout,
       MinimaxType::Mtdf => Minimax::mtdf,
@@ -590,7 +597,7 @@ impl Minimax {
     let mut enemy_best_move = best_move;
     let mut enemy_trajectories_pruning = trajectories_pruning.dec_and_swap(depth - 1, &mut empty_board);
     info!(
-      "Calculating of enemy estimation with upper bound {}. Player is {}",
+      "Calculating enemy estimation with upper bound {}. Player is {}",
       -estimation + 1,
       enemy
     );

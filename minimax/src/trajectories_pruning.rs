@@ -5,10 +5,10 @@ use smallvec::SmallVec;
 use std::collections::HashSet;
 
 pub struct TrajectoriesPruning {
-  rebuild_trajectories: bool,
-  cur_trajectories: Vec<Trajectory<8>>,
-  enemy_trajectories: Vec<Trajectory<8>>,
-  moves: Vec<Pos>,
+  pub rebuild_trajectories: bool,
+  pub cur_trajectories: Vec<Trajectory<8>>,
+  pub enemy_trajectories: Vec<Trajectory<8>>,
+  pub moves: Vec<Pos>,
 }
 
 impl TrajectoriesPruning {
@@ -297,13 +297,5 @@ impl TrajectoriesPruning {
 
   pub fn beta(&self) -> Option<i32> {
     TrajectoriesPruning::trajectories_score(&self.cur_trajectories)
-  }
-
-  pub fn moves(&self) -> &Vec<Pos> {
-    &self.moves
-  }
-
-  pub fn moves_mut(&mut self) -> &mut Vec<Pos> {
-    &mut self.moves
   }
 }
