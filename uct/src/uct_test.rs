@@ -29,7 +29,7 @@ macro_rules! uct_test {
       env_logger::try_init().ok();
       let mut rng = Xoshiro256PlusPlus::seed_from_u64($seed);
       let mut field = construct_field(&mut rng, $image.image);
-      let mut uct = UctRoot::new(UCT_CONFIG, field.length);
+      let mut uct = UctRoot::new(UCT_CONFIG, field.length());
       let (moves, _, _) = uct.best_moves(&mut field, Player::Red, &mut rng, &|| false, $iterations);
       let pos = moves.into_iter()
       .reduce(

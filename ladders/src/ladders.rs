@@ -231,7 +231,7 @@ pub fn ladders<SS: Fn() -> bool>(
   player: Player,
   should_stop: &SS,
 ) -> (Option<NonZeroPos>, i32, u32) {
-  let mut empty_board = iter::repeat_n(0u32, field.length).collect::<Vec<_>>();
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
 
   let mut trajectories = build_trajectories(field, player, 2, &mut empty_board, should_stop);
   trajectories.sort_unstable_by_key(|trajectory| -trajectory.score);

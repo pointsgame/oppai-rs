@@ -34,7 +34,6 @@ enum IntersectionState {
 pub struct Field {
   pub width: u32,
   pub height: u32,
-  pub length: Pos,
   pub score_red: i32,
   pub score_black: i32,
   pub moves: Vec<Pos>,
@@ -350,13 +349,19 @@ impl Field {
     is_near(self.width, pos1, pos2)
   }
 
+  #[inline]
   pub fn cell(&self, pos: Pos) -> Cell {
     self.points[pos]
   }
 
   #[inline]
+  pub fn length(&self) -> usize {
+    self.points.0.len()
+  }
+
+  #[inline]
   pub fn is_putting_allowed(&self, pos: Pos) -> bool {
-    pos < self.length && self.cell(pos).is_putting_allowed()
+    pos < self.length() && self.cell(pos).is_putting_allowed()
   }
 
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
@@ -437,7 +442,6 @@ impl Field {
     let mut field = Field {
       width,
       height,
-      length,
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
@@ -454,7 +458,6 @@ impl Field {
     let mut field = Field {
       width,
       height,
-      length,
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
@@ -642,7 +645,7 @@ impl Field {
     self.hash ^= if player == Player::Red {
       self.zobrist.hashes[pos]
     } else {
-      self.zobrist.hashes[self.length + pos]
+      self.zobrist.hashes[self.length() + pos]
     };
   }
 
