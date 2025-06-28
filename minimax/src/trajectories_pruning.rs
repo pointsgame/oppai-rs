@@ -86,9 +86,9 @@ impl TrajectoriesPruning {
   pub fn empty(rebuild_trajectories: bool) -> TrajectoriesPruning {
     TrajectoriesPruning {
       rebuild_trajectories,
-      cur_trajectories: Vec::with_capacity(0),
-      enemy_trajectories: Vec::with_capacity(0),
-      moves: Vec::with_capacity(0),
+      cur_trajectories: Vec::new(),
+      enemy_trajectories: Vec::new(),
+      moves: Vec::new(),
     }
   }
 
