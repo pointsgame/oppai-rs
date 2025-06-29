@@ -38,8 +38,8 @@ fn episode_simple_surrounding() {
   )
   .unwrap();
   let examples = examples::<f64>(
-    field.width,
-    field.height,
+    field.width(),
+    field.height(),
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),
@@ -50,7 +50,7 @@ fn episode_simple_surrounding() {
 
   field.undo();
   for rotation in 0..ROTATIONS {
-    let (x, y) = rotate(field.width, field.height, 0, 1, rotation);
+    let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
     assert_eq!(examples.policies[rotation as usize][(y as usize, x as usize)], 1.0);
     for channel in 0..CHANNELS {
       assert_eq!(
@@ -70,7 +70,7 @@ fn episode_simple_surrounding() {
   assert_eq!(
     model_inputs.borrow()[0],
     field_features(&field, Player::Red, 0)
-      .to_shape((1, CHANNELS, field.height as usize, field.width as usize))
+      .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
       .unwrap()
   );
 
@@ -104,8 +104,8 @@ fn episode_trap() {
   )
   .unwrap();
   let examples = examples::<f64>(
-    field.width,
-    field.height,
+    field.width(),
+    field.height(),
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),
@@ -116,7 +116,7 @@ fn episode_trap() {
 
   field.undo();
   for rotation in 0..ROTATIONS {
-    let (x, y) = rotate(field.width, field.height, 1, 1, rotation);
+    let (x, y) = rotate(field.width(), field.height(), 1, 1, rotation);
     assert_eq!(
       examples.policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)],
       1.0
@@ -137,7 +137,7 @@ fn episode_trap() {
 
   field.undo();
   for rotation in 0..ROTATIONS {
-    let (x, y) = rotate(field.width, field.height, 0, 1, rotation);
+    let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
     assert!(
       examples.policies[rotation as usize][(y as usize, x as usize)] > examples.policies[rotation as usize][(1, 1)]
     );
@@ -159,7 +159,7 @@ fn episode_trap() {
 
   let features = field_features(&field, Player::Red, 0);
   let features = features
-    .to_shape((1, CHANNELS, field.height as usize, field.width as usize))
+    .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
     .unwrap();
   assert_eq!(model_inputs.borrow()[0], features);
 
@@ -194,8 +194,8 @@ fn episode_winning_game() {
     ",
   );
 
-  let center_x = (field.width / 2) as usize;
-  let center_y = (field.height / 2) as usize;
+  let center_x = (field.width() / 2) as usize;
+  let center_y = (field.height() / 2) as usize;
 
   let visits = episode(
     &mut field,
@@ -217,8 +217,8 @@ fn episode_winning_game() {
   )
   .unwrap();
   let examples = examples::<f64>(
-    field.width,
-    field.height,
+    field.width(),
+    field.height(),
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),
@@ -251,8 +251,8 @@ fn visits_to_examples() {
     Visits(vec![(field.to_pos(0, 0), 8)]),
   ];
   let examples = examples::<f32>(
-    field.width,
-    field.height,
+    field.width(),
+    field.height(),
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),

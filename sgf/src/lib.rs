@@ -144,7 +144,7 @@ pub fn from_sgf_str<F: AnyField, R: Rng>(sgf: &str, rng: &mut R) -> Option<F> {
 }
 
 pub fn to_sgf(field: &ExtendedField) -> Option<SgfNode<Prop>> {
-  if field.field().width > 52 || field.field().height > 52 {
+  if field.field().width() > 52 || field.field().height() > 52 {
     return None;
   }
 
@@ -199,7 +199,7 @@ pub fn to_sgf(field: &ExtendedField) -> Option<SgfNode<Prop>> {
   node.properties.push(Prop::GM(40));
   node
     .properties
-    .push(Prop::SZ((field.field().width as u8, field.field().height as u8)));
+    .push(Prop::SZ((field.field().width() as u8, field.field().height() as u8)));
   node.properties.push(Prop::RU("russian".into()));
   node.is_root = true;
 

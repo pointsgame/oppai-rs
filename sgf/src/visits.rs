@@ -3,7 +3,7 @@ use oppai_field::field::{to_pos, to_x, to_y};
 use oppai_zero::episode::Visits;
 use sgf_parse::{SgfNode, unknown_game::Prop};
 
-pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], width: u32, moves_count: usize) {
+pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], stride: u32, moves_count: usize) {
   for _ in 0..moves_count - visits.len() {
     node = &mut node.children[0];
   }
@@ -18,8 +18,8 @@ pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], width: u32
         .map(|&(pos, visits)| {
           format!(
             "{}{}{}",
-            from_coordinate(to_x(width, pos) as u8) as char,
-            from_coordinate(to_y(width, pos) as u8) as char,
+            from_coordinate(to_x(stride, pos) as u8) as char,
+            from_coordinate(to_y(stride, pos) as u8) as char,
             visits,
           )
         })
@@ -28,7 +28,7 @@ pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], width: u32
   }
 }
 
-pub fn sgf_to_visits(node: &SgfNode<Prop>, width: u32) -> Vec<Visits> {
+pub fn sgf_to_visits(node: &SgfNode<Prop>, stride: u32) -> Vec<Visits> {
   node
     .main_variation()
     .flat_map(|node| node.get_property("ZR"))
@@ -40,7 +40,7 @@ pub fn sgf_to_visits(node: &SgfNode<Prop>, width: u32) -> Vec<Visits> {
             let x = to_coordinate(s.as_bytes()[0]) as u32;
             let y = to_coordinate(s.as_bytes()[1]) as u32;
             let visits = s[2..].parse().unwrap();
-            (to_pos(width, x, y), visits)
+            (to_pos(stride, x, y), visits)
           })
           .collect(),
       )),
@@ -81,8 +81,8 @@ mod tests {
       (field.field().to_pos(2, 0), 3),
     ])];
     let mut node = to_sgf(&field).unwrap();
-    visits_to_sgf(&mut node, &visits, field.field().width, field.field().moves_count());
-    let sgf_visits = sgf_to_visits(&node, field.field().width);
+    visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
+    let sgf_visits = sgf_to_visits(&node, field.field().stride);
     assert_eq!(sgf_visits, visits);
   }
 }

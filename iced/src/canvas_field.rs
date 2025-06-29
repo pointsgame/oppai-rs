@@ -66,7 +66,7 @@ impl Extra for Label {
     let mut text: Text = self.text.as_str().into();
     text.horizontal_alignment = Horizontal::Center;
     text.vertical_alignment = Vertical::Center;
-    text.size = Pixels(self.scale * bounds.width / field.field.width as f32);
+    text.size = Pixels(self.scale * bounds.width / field.field.width() as f32);
     text.color = self.color;
     text.position = pos_to_point(self.pos);
     frame.fill_text(text);
@@ -118,8 +118,8 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
           return (canvas::event::Status::Ignored, None);
         };
 
-        let field_width = self.extended_field.field.width;
-        let field_height = self.extended_field.field.height;
+        let field_width = self.extended_field.field.width();
+        let field_height = self.extended_field.field.height();
         let width = bounds
           .width
           .min(bounds.height / field_height as f32 * field_width as f32);
@@ -202,8 +202,8 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
       .into()
     }
 
-    let field_width = self.extended_field.field.width;
-    let field_height = self.extended_field.field.height;
+    let field_width = self.extended_field.field.width();
+    let field_height = self.extended_field.field.height();
     let width = bounds
       .width
       .min(bounds.height / field_height as f32 * field_width as f32);

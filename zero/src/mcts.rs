@@ -33,12 +33,12 @@ fn create_children<N: Float + Sum, R: Rng>(
   value: N,
   rng: &mut R,
 ) -> Vec<MctsNode<N>> {
-  let width = field.width;
+  let stride = field.stride;
   let mut children = (field.min_pos()..=field.max_pos())
     .filter(|&pos| field.is_putting_allowed(pos) && !field.is_corner(pos))
     .map(|pos| {
-      let x = to_x(width, pos);
-      let y = to_y(width, pos);
+      let x = to_x(stride, pos);
+      let y = to_y(stride, pos);
       let p = policy[(y as usize, x as usize)];
       MctsNode::new(pos, p, value)
     })
@@ -96,7 +96,7 @@ where
     return Ok(());
   }
 
-  let mut features = Vec::with_capacity(field_features_len(field.width, field.height) * fields.len());
+  let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()) * fields.len());
   for cur_field in &fields {
     field_features_to_vec::<N>(
       cur_field,
@@ -110,7 +110,7 @@ where
     )
   }
   let features = Array::from_shape_vec(
-    (fields.len(), CHANNELS, field.height as usize, field.width as usize),
+    (fields.len(), CHANNELS, field.height() as usize, field.width() as usize),
     features,
   )
   .unwrap();

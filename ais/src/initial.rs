@@ -11,10 +11,10 @@ use std::{any::TypeId, cmp};
 
 pub fn initial_move(field: &Field) -> Option<NonZeroPos> {
   let result = match field.moves_count() {
-    0 => Some((field.width / 2, field.height / 2)),
+    0 => Some((field.width() / 2, field.height() / 2)),
     1 => {
-      let width = field.width;
-      let height = field.height;
+      let width = field.width();
+      let height = field.height();
       let pos = field.moves[0];
       let x = field.to_x(pos);
       let y = field.to_y(pos);

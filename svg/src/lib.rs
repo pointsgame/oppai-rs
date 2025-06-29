@@ -80,8 +80,8 @@ const POINTER_ID: &str = "pointer";
 const POINTER_REF: &str = "#pointer";
 
 pub fn field_to_svg(config: &Config, extended_field: &ExtendedField) -> Document {
-  let field_width = extended_field.field.width;
-  let field_height = extended_field.field.height;
+  let field_width = extended_field.field.width();
+  let field_height = extended_field.field.height();
   let offset = if config.grid_thickness % 2 == 0 { 0.0 } else { 0.5 };
   let width = (config.width as f32).min(config.height as f32 / field_height as f32 * field_width as f32);
   let height = (config.height as f32).min(config.width as f32 / field_width as f32 * field_height as f32);

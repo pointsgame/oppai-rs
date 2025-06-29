@@ -97,8 +97,8 @@ fn zagram352562() {
   env_logger::try_init().ok();
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = from_sgf_str::<Field, _>(include_str!("tests/zagram352562.txt"), &mut rng).unwrap();
-  assert_eq!(field.width, 39);
-  assert_eq!(field.height, 32);
+  assert_eq!(field.width(), 39);
+  assert_eq!(field.height(), 32);
   assert_eq!(field.moves_count(), 260);
   assert_eq!(field.captured_count(Player::Red), 60);
   assert_eq!(field.captured_count(Player::Black), 3);

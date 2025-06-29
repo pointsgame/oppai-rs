@@ -93,7 +93,7 @@ where
 
   let field = field.into();
   if let Some(mut node) = to_sgf(&field) {
-    visits_to_sgf(&mut node, &visits, field.field().width, field.field().moves_count());
+    visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
     let score = field.field().score(Player::Red);
     node.properties.push(Prop::RE(match score.cmp(&0) {
       Ordering::Equal => "0".into(),
@@ -152,12 +152,12 @@ where
       })
       .ok_or(anyhow::anyhow!("no sgf tree"))?;
     let field = from_sgf::<Field, _>(node, &mut rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
-    let visits = sgf_to_visits(node, field.width);
+    let visits = sgf_to_visits(node, field.stride);
 
     examples = examples
       + episode::examples(
-        field.width,
-        field.height,
+        field.width(),
+        field.height(),
         field.zobrist_arc(),
         &visits,
         &field.colored_moves().collect::<Vec<_>>(),
