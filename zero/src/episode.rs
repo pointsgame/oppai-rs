@@ -39,8 +39,8 @@ impl Visits {
     let mut policies = Array2::zeros((height as usize, width as usize));
 
     for &(pos, visits) in &self.0 {
-      let x = to_x(width + 2, pos);
-      let y = to_y(width + 2, pos);
+      let x = to_x(width + 1, pos);
+      let y = to_y(width + 1, pos);
       let (x, y) = rotate(width, height, x, y, rotation);
       policies[(y as usize, x as usize)] = N::from(visits).unwrap() / N::from(total).unwrap();
     }

@@ -59,7 +59,7 @@ impl PartialEq for Field {
 
 #[inline]
 pub fn length(width: u32, height: u32) -> Pos {
-  (width as Pos + 2) * (height as Pos + 2)
+  (width as Pos + 1) * (height as Pos + 2) + 1
 }
 
 #[inline]
@@ -129,8 +129,8 @@ pub fn is_near(stride: u32, pos1: Pos, pos2: Pos) -> bool {
 }
 
 pub fn is_corner(width: u32, height: u32, pos: Pos) -> bool {
-  let x = to_x(width + 2, pos);
-  let y = to_y(width + 2, pos);
+  let x = to_x(width + 1, pos);
+  let y = to_y(width + 1, pos);
   (x == 0 || x == width - 1) && (y == 0 || y == height - 1)
 }
 
@@ -250,7 +250,7 @@ pub fn euclidean(stride: u32, pos1: Pos, pos2: Pos) -> u32 {
 impl Field {
   #[inline]
   pub fn width(&self) -> u32 {
-    self.stride - 2
+    self.stride - 1
   }
 
   pub fn height(&self) -> u32 {
@@ -427,14 +427,14 @@ impl Field {
 
   fn set_padding(&mut self) {
     let height = self.height();
-    let max_pos = self.max_pos();
+    let last = self.length() - 2;
+    self.points[last + 1].set_bad();
     for x in 0..self.stride as Pos {
       self.points[x].set_bad();
-      self.points[max_pos + 2 + x].set_bad();
+      self.points[last - x].set_bad();
     }
     for y in 1..=height as Pos {
       self.points[y * (self.stride as Pos)].set_bad();
-      self.points[(y + 1) * (self.stride as Pos) - 1].set_bad();
     }
   }
 
@@ -443,7 +443,7 @@ impl Field {
     assert!(zobrist.hashes.0.len() >= 2 * length);
     #[cfg(feature = "dsu")]
     let mut field = Field {
-      stride: width + 2,
+      stride: width + 1,
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
@@ -458,7 +458,7 @@ impl Field {
     };
     #[cfg(not(feature = "dsu"))]
     let mut field = Field {
-      stride: width + 2,
+      stride: width + 1,
       score_red: 0,
       score_black: 0,
       moves: Vec::with_capacity(length),
