@@ -73,6 +73,11 @@ pub fn to_x(stride: u32, pos: Pos) -> u32 {
 }
 
 #[inline]
+pub fn to_xy(stride: u32, pos: Pos) -> (u32, u32) {
+  (to_x(stride, pos), to_y(stride, pos))
+}
+
+#[inline]
 pub fn to_y(stride: u32, pos: Pos) -> u32 {
   (pos / stride as Pos - 1) as u32
 }
@@ -191,8 +196,8 @@ pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
 }
 
 #[inline]
-pub fn skew_product(stride: u32, pos1: Pos, pos2: Pos) -> i32 {
-  (to_x(stride, pos1) * to_y(stride, pos2)) as i32 - (to_y(stride, pos1) * to_x(stride, pos2)) as i32
+pub fn skew_product(coord1: (u32, u32), coord2: (u32, u32)) -> i32 {
+  (coord1.0 * coord2.1) as i32 - (coord1.1 * coord2.0) as i32
 }
 
 pub fn directions(stride: u32, pos: Pos) -> [Pos; 4] {
@@ -265,6 +270,11 @@ impl Field {
   #[inline]
   pub fn to_x(&self, pos: Pos) -> u32 {
     to_x(self.stride, pos)
+  }
+
+  #[inline]
+  pub fn to_xy(&self, pos: Pos) -> (u32, u32) {
+    to_xy(self.stride, pos)
   }
 
   #[inline]
@@ -530,11 +540,6 @@ impl Field {
     inp_points
   }
 
-  #[inline]
-  fn skew_product(&self, pos1: Pos, pos2: Pos) -> i32 {
-    skew_product(self.stride, pos1, pos2)
-  }
-
   //  * . .   x . *   . x x   . . .
   //  . o .   x o .   . o .   . o x
   //  x x .   . . .   . . *   * . x
@@ -586,7 +591,8 @@ impl Field {
   fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
-    let mut base_square = self.skew_product(center_pos, pos);
+    let mut center_coord = self.to_xy(pos);
+    let mut base_square = skew_product(self.to_xy(center_pos), center_coord);
     self.chain.clear();
     self.chain.push(start_pos);
     loop {
@@ -604,10 +610,12 @@ impl Field {
       while !self.cell(pos).is_live_players_point(player) {
         pos = self.get_next_pos(center_pos, pos);
       }
-      base_square += self.skew_product(center_pos, pos);
+      let pos_coord = self.to_xy(pos);
+      base_square += skew_product(center_coord, pos_coord);
       if pos == start_pos {
         break;
       }
+      center_coord = pos_coord;
     }
     for &pos in &self.chain {
       self.points[pos].clear_tag();
@@ -618,7 +626,8 @@ impl Field {
   fn find_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
     let mut pos = direction_pos;
     let mut center_pos = start_pos;
-    let mut base_square = self.skew_product(center_pos, pos);
+    let mut center_coord = self.to_xy(pos);
+    let mut base_square = skew_product(self.to_xy(center_pos), center_coord);
     self.chain.clear();
     self.chain.push(start_pos);
     loop {
@@ -628,10 +637,12 @@ impl Field {
       while !(self.cell(pos).is_live_players_point(player) && self.cell(pos).is_bound()) {
         pos = self.get_next_pos(center_pos, pos);
       }
-      base_square += self.skew_product(center_pos, pos);
+      let pos_coord = self.to_xy(pos);
+      base_square += skew_product(center_coord, pos_coord);
       if pos == start_pos {
         break;
       }
+      center_coord = pos_coord;
     }
     base_square < 0 && self.chain.len() > 2
   }
