@@ -134,9 +134,8 @@ pub fn is_corner(width: u32, height: u32, pos: Pos) -> bool {
   (x == 0 || x == width - 1) && (y == 0 || y == height - 1)
 }
 
-fn get_intersection_state(stride: u32, pos: Pos, next_pos: Pos) -> IntersectionState {
-  let pos_x = to_x(stride, pos);
-  let pos_y = to_y(stride, pos);
+#[inline]
+fn get_intersection_state(stride: u32, pos_x: u32, pos_y: u32, next_pos: Pos) -> IntersectionState {
   let next_pos_x = to_x(stride, next_pos);
   let next_pos_y = to_y(stride, next_pos);
   if next_pos_x <= pos_x {
@@ -152,10 +151,12 @@ fn get_intersection_state(stride: u32, pos: Pos, next_pos: Pos) -> IntersectionS
 }
 
 pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
+  let pos_x = to_x(stride, pos);
+  let pos_y = to_y(stride, pos);
   let mut intersections = 0u32;
   let mut state = IntersectionState::None;
   for &next_pos in ring {
-    match get_intersection_state(stride, pos, next_pos) {
+    match get_intersection_state(stride, pos_x, pos_y, next_pos) {
       IntersectionState::None => {
         state = IntersectionState::None;
       }
@@ -176,9 +177,9 @@ pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
   }
   if state == IntersectionState::Up || state == IntersectionState::Down {
     let mut iter = ring.iter();
-    let mut begin_state = get_intersection_state(stride, pos, *iter.next().unwrap());
+    let mut begin_state = get_intersection_state(stride, pos_x, pos_y, *iter.next().unwrap());
     while begin_state == IntersectionState::Target {
-      begin_state = get_intersection_state(stride, pos, *iter.next().unwrap());
+      begin_state = get_intersection_state(stride, pos_x, pos_y, *iter.next().unwrap());
     }
     if state == IntersectionState::Up && begin_state == IntersectionState::Down
       || state == IntersectionState::Down && begin_state == IntersectionState::Up
@@ -218,7 +219,7 @@ pub fn wave<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, start_pos
   q.clear();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
-    q.extend(directions(stride, pos).iter().filter(|&&pos| cond(pos)))
+    q.extend(directions(stride, pos).into_iter().filter(|&pos| cond(pos)))
   }
 }
 
@@ -229,7 +230,7 @@ pub fn wave_diag<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, star
   q.clear();
   q.push_back(start_pos);
   while let Some(pos) = q.pop_front() {
-    q.extend(directions_diag(stride, pos).iter().filter(|&&pos| cond(pos)))
+    q.extend(directions_diag(stride, pos).into_iter().filter(|&pos| cond(pos)))
   }
 }
 
@@ -368,30 +369,30 @@ impl Field {
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
     self
       .directions(center_pos)
-      .iter()
-      .any(|&pos| self.cell(pos).is_live_players_point(player))
+      .into_iter()
+      .any(|pos| self.cell(pos).is_live_players_point(player))
   }
 
   pub fn has_near_points_diag(&self, center_pos: Pos, player: Player) -> bool {
     self
       .directions_diag(center_pos)
-      .iter()
-      .any(|&pos| self.cell(pos).is_live_players_point(player))
+      .into_iter()
+      .any(|pos| self.cell(pos).is_live_players_point(player))
   }
 
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
     self
       .directions(center_pos)
-      .iter()
-      .filter(|&&pos| self.cell(pos).is_live_players_point(player))
+      .into_iter()
+      .filter(|&pos| self.cell(pos).is_live_players_point(player))
       .count() as u32
   }
 
   pub fn number_near_points_diag(&self, center_pos: Pos, player: Player) -> u32 {
     self
       .directions_diag(center_pos)
-      .iter()
-      .filter(|&&pos| self.cell(pos).is_live_players_point(player))
+      .into_iter()
+      .filter(|&pos| self.cell(pos).is_live_players_point(player))
       .count() as u32
   }
 
