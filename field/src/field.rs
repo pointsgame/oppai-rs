@@ -673,27 +673,20 @@ impl Field {
   }
 
   fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
-    let mut pos = direction_pos;
+    let pos = direction_pos;
     let mut center_pos = start_pos;
     let mut center_coord = self.to_xy(pos);
     let mut base_square = skew_product(self.to_xy(center_pos), center_coord);
     let mut direction = Direction::from(self.stride, center_pos, pos);
     self.chain.clear();
     self.chain.push(start_pos);
+    self.chain.push(pos);
+    self.points[pos].set_tag();
+    center_pos = pos;
     loop {
-      if self.cell(pos).is_tagged() {
-        while *self.chain.last().unwrap() != pos {
-          self.points[*self.chain.last().unwrap()].clear_tag();
-          self.chain.pop();
-        }
-      } else {
-        self.points[pos].set_tag();
-        self.chain.push(pos);
-      }
-      mem::swap(&mut pos, &mut center_pos);
       direction.opposite();
       direction.rotate_first();
-      pos = direction.apply(self.stride, center_pos);
+      let mut pos = direction.apply(self.stride, center_pos);
       while !self.cell(pos).is_live_players_point(player) {
         direction.rotate();
         pos = direction.apply(self.stride, center_pos);
@@ -703,7 +696,17 @@ impl Field {
       if pos == start_pos {
         break;
       }
+      if self.cell(pos).is_tagged() {
+        while *self.chain.last().unwrap() != pos {
+          self.points[*self.chain.last().unwrap()].clear_tag();
+          self.chain.pop();
+        }
+      } else {
+        self.points[pos].set_tag();
+        self.chain.push(pos);
+      }
       center_coord = pos_coord;
+      center_pos = pos;
     }
     for &pos in &self.chain {
       self.points[pos].clear_tag();
