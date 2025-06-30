@@ -9,6 +9,7 @@ use std::{collections::VecDeque, fmt, mem, num::NonZeroUsize, sync::Arc};
 
 pub type Pos = usize;
 pub type NonZeroPos = NonZeroUsize;
+pub type Coord = (u32, u32);
 
 #[derive(Clone, PartialEq)]
 struct FieldChange {
@@ -28,6 +29,89 @@ enum IntersectionState {
   Up,
   Target,
   Down,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct Direction(u8);
+
+impl Direction {
+  const POS_NEIGHBORS: [fn(u32, Pos) -> Pos; 8] = [n, ne, |_, pos| e(pos), se, s, sw, |_, pos| w(pos), nw];
+
+  const COORD_NEIGHBORS: [fn(Coord) -> Coord; 8] = [
+    |(x, y)| (x, y - 1),
+    |(x, y)| (x + 1, y - 1),
+    |(x, y)| (x + 1, y),
+    |(x, y)| (x + 1, y + 1),
+    |(x, y)| (x, y + 1),
+    |(x, y)| (x - 1, y + 1),
+    |(x, y)| (x - 1, y),
+    |(x, y)| (x - 1, y - 1),
+  ];
+
+  pub fn from(stride: u32, pos1: Pos, pos2: Pos) -> Direction {
+    if pos1 < pos2 {
+      if e(pos1) == pos2 {
+        Direction(2)
+      } else if sw(stride, pos1) == pos2 {
+        Direction(5)
+      } else if s(stride, pos1) == pos2 {
+        Direction(4)
+      } else {
+        Direction(3)
+      }
+    } else if w(pos1) == pos2 {
+      Direction(6)
+    } else if ne(stride, pos1) == pos2 {
+      Direction(1)
+    } else if n(stride, pos1) == pos2 {
+      Direction(0)
+    } else {
+      Direction(7)
+    }
+  }
+
+  #[inline]
+  pub fn apply(self, stride: u32, pos: Pos) -> Pos {
+    Self::POS_NEIGHBORS[self.0 as usize](stride, pos)
+  }
+
+  #[inline]
+  pub fn apply_coord(self, coord: Coord) -> Coord {
+    Self::COORD_NEIGHBORS[self.0 as usize](coord)
+  }
+
+  //  * . .   x . *   . x x   . . .
+  //  . o .   x o .   . o .   . o x
+  //  x x .   . . .   . . *   * . x
+  //  o - center pos
+  //  x - pos
+  //  * - result
+  #[inline]
+  pub fn rotate_first(&mut self) {
+    self.0 = ((self.0 & 254) + 3) % 8;
+  }
+
+  //  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
+  //  * o .   x o .   . o .   . o .   . o *   . o x   . o .   . o .
+  //  x . .   . . .   . . .   . . .   . . .   . . *   . * x   * x .
+  //  o - center pos
+  //  x - pos
+  //  * - result
+  #[inline]
+  pub fn rotate(&mut self) {
+    self.0 = (self.0 + 1) % 8;
+  }
+
+  //  . . *   . . .   x . .   . x .   . . x   . . .   * . .   . * .
+  //  . o .   x o *   . o .   . o .   . o .   * o x   . o .   . o .
+  //  x . .   . . .   . . *   . * .   * . .   . . .   . . x   . x .
+  //  o - center pos
+  //  x - pos
+  //  * - result
+  #[inline]
+  pub fn opposite(&mut self) {
+    self.0 = (self.0 + 4) % 8;
+  }
 }
 
 #[derive(Clone)]
@@ -73,7 +157,7 @@ pub fn to_x(stride: u32, pos: Pos) -> u32 {
 }
 
 #[inline]
-pub fn to_xy(stride: u32, pos: Pos) -> (u32, u32) {
+pub fn to_xy(stride: u32, pos: Pos) -> Coord {
   (to_x(stride, pos), to_y(stride, pos))
 }
 
@@ -196,7 +280,7 @@ pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
 }
 
 #[inline]
-pub fn skew_product(coord1: (u32, u32), coord2: (u32, u32)) -> i32 {
+pub fn skew_product(coord1: Coord, coord2: Coord) -> i32 {
   (coord1.0 * coord2.1) as i32 - (coord1.1 * coord2.0) as i32
 }
 
@@ -273,7 +357,7 @@ impl Field {
   }
 
   #[inline]
-  pub fn to_xy(&self, pos: Pos) -> (u32, u32) {
+  pub fn to_xy(&self, pos: Pos) -> Coord {
     to_xy(self.stride, pos)
   }
 
@@ -593,6 +677,7 @@ impl Field {
     let mut center_pos = start_pos;
     let mut center_coord = self.to_xy(pos);
     let mut base_square = skew_product(self.to_xy(center_pos), center_coord);
+    let mut direction = Direction::from(self.stride, center_pos, pos);
     self.chain.clear();
     self.chain.push(start_pos);
     loop {
@@ -606,11 +691,14 @@ impl Field {
         self.chain.push(pos);
       }
       mem::swap(&mut pos, &mut center_pos);
-      pos = self.get_first_next_pos(center_pos, pos);
+      direction.opposite();
+      direction.rotate_first();
+      pos = direction.apply(self.stride, center_pos);
       while !self.cell(pos).is_live_players_point(player) {
-        pos = self.get_next_pos(center_pos, pos);
+        direction.rotate();
+        pos = direction.apply(self.stride, center_pos);
       }
-      let pos_coord = self.to_xy(pos);
+      let pos_coord = direction.apply_coord(center_coord);
       base_square += skew_product(center_coord, pos_coord);
       if pos == start_pos {
         break;
