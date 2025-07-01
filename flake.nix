@@ -64,6 +64,8 @@
             libxkbcommon
             libGL
 
+            libsixel
+
             # WINIT_UNIX_BACKEND=wayland
             wayland
 
