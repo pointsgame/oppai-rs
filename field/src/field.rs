@@ -509,31 +509,31 @@ impl Field {
 
   fn get_input_points(&self, center_pos: Pos, player: Player) -> SmallVec<[(Pos, Pos); 4]> {
     let mut inp_points = SmallVec::new();
-    if !self.cell(self.w(center_pos)).is_live_players_point(player) {
-      if self.cell(self.nw(center_pos)).is_live_players_point(player) {
+    if !self.cell(self.w(center_pos)).is_always_live_players_point(player) {
+      if self.cell(self.nw(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.nw(center_pos), self.w(center_pos)));
-      } else if self.cell(self.n(center_pos)).is_live_players_point(player) {
+      } else if self.cell(self.n(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.n(center_pos), self.w(center_pos)));
       }
     }
-    if !self.cell(self.s(center_pos)).is_live_players_point(player) {
-      if self.cell(self.sw(center_pos)).is_live_players_point(player) {
+    if !self.cell(self.s(center_pos)).is_always_live_players_point(player) {
+      if self.cell(self.sw(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.sw(center_pos), self.s(center_pos)));
-      } else if self.cell(self.w(center_pos)).is_live_players_point(player) {
+      } else if self.cell(self.w(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.w(center_pos), self.s(center_pos)));
       }
     }
-    if !self.cell(self.e(center_pos)).is_live_players_point(player) {
-      if self.cell(self.se(center_pos)).is_live_players_point(player) {
+    if !self.cell(self.e(center_pos)).is_always_live_players_point(player) {
+      if self.cell(self.se(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.se(center_pos), self.e(center_pos)));
-      } else if self.cell(self.s(center_pos)).is_live_players_point(player) {
+      } else if self.cell(self.s(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.s(center_pos), self.e(center_pos)));
       }
     }
-    if !self.cell(self.n(center_pos)).is_live_players_point(player) {
-      if self.cell(self.ne(center_pos)).is_live_players_point(player) {
+    if !self.cell(self.n(center_pos)).is_always_live_players_point(player) {
+      if self.cell(self.ne(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.ne(center_pos), self.n(center_pos)));
-      } else if self.cell(self.e(center_pos)).is_live_players_point(player) {
+      } else if self.cell(self.e(center_pos)).is_always_live_players_point(player) {
         inp_points.push((self.e(center_pos), self.n(center_pos)));
       }
     }
@@ -607,7 +607,7 @@ impl Field {
       }
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
-      while !self.cell(pos).is_live_players_point(player) {
+      while !self.cell(pos).is_always_live_players_point(player) {
         pos = self.get_next_pos(center_pos, pos);
       }
       let pos_coord = self.to_xy(pos);
@@ -634,7 +634,7 @@ impl Field {
       self.chain.push(pos);
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
-      while !(self.cell(pos).is_live_players_point(player) && self.cell(pos).is_bound()) {
+      while !(self.cell(pos).is_always_live_players_point(player) && self.cell(pos).is_bound()) {
         pos = self.get_next_pos(center_pos, pos);
       }
       let pos_coord = self.to_xy(pos);

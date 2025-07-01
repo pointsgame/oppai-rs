@@ -8,13 +8,15 @@ const PUT_BIT: CellValue = 2;
 
 const CAPTURED_BIT: CellValue = 4;
 
-const BOUND_BIT: CellValue = 8;
+const INSIDE_BIT: CellValue = 8;
 
-const EMPTY_BASE_BIT: CellValue = 16;
+const BOUND_BIT: CellValue = 16;
 
-const BAD_BIT: CellValue = 32;
+const EMPTY_BASE_BIT: CellValue = 32;
 
-const TAG_BIT: CellValue = 64;
+const BAD_BIT: CellValue = 64;
+
+const TAG_BIT: CellValue = 128;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Cell {
@@ -61,7 +63,7 @@ impl Cell {
 
   #[inline]
   pub fn set_captured(&mut self) {
-    self.value |= CAPTURED_BIT
+    self.value |= CAPTURED_BIT | INSIDE_BIT
   }
 
   #[inline]
@@ -171,6 +173,11 @@ impl Cell {
   #[inline]
   pub fn is_live_players_point(self, player: Player) -> bool {
     self.value & (PUT_BIT | CAPTURED_BIT | PLAYER_BIT) == PUT_BIT | player.to_bool() as CellValue
+  }
+
+  #[inline]
+  pub fn is_always_live_players_point(self, player: Player) -> bool {
+    self.value & (PUT_BIT | CAPTURED_BIT | INSIDE_BIT | PLAYER_BIT) == PUT_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
