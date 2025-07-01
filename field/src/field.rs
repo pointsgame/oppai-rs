@@ -840,13 +840,18 @@ impl Field {
   #[cfg(not(feature = "dsu"))]
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
-    let input_points_count = input_points.len();
+    let mut input_points_count = input_points.len();
     if input_points_count > 1 {
       let mut chains_count = 0;
       for (chain_pos, captured_pos) in input_points {
         if self.build_chain(pos, player, chain_pos) {
           self.capture(captured_pos, player);
           chains_count += 1;
+          if chains_count == input_points_count - 1 {
+            break;
+          }
+        } else if self.chain.len() < 4 {
+          input_points_count -= 1;
           if chains_count == input_points_count - 1 {
             break;
           }
