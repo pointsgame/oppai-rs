@@ -45,6 +45,7 @@ pub struct Field {
   zobrist: Arc<Zobrist>,
   pub hash: u64,
   chain: Vec<Pos>,
+  captured_points: Vec<Pos>,
   pub q: VecDeque<Pos>,
 }
 
@@ -464,6 +465,7 @@ impl Field {
       zobrist,
       hash: 0,
       chain: Vec::with_capacity(length),
+      captured_points: Vec::with_capacity(length),
       q: VecDeque::with_capacity(length),
     };
     #[cfg(not(feature = "dsu"))]
@@ -477,6 +479,7 @@ impl Field {
       zobrist,
       hash: 0,
       chain: Vec::with_capacity(length),
+      captured_points: Vec::with_capacity(length),
       q: VecDeque::with_capacity(length),
     };
     field.set_padding();
@@ -654,17 +657,13 @@ impl Field {
 
   #[inline]
   fn update_hash(&mut self, pos: Pos, player: Player) {
-    self.hash ^= if player == Player::Red {
-      self.zobrist.hashes[pos]
-    } else {
-      self.zobrist.hashes[self.length() + pos]
-    };
+    self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos]
   }
 
   fn capture(&mut self, inside_pos: Pos, player: Player) -> bool {
     let mut captured_count = 0i32;
     let mut freed_count = 0i32;
-    let mut captured_points = Vec::new();
+    self.captured_points.clear();
     for &pos in &self.chain {
       self.points[pos].set_tag();
     }
@@ -672,7 +671,7 @@ impl Field {
       let cell = self.points[pos];
       if !cell.is_tagged() && !cell.is_bound_player(player) {
         self.points[pos].set_tag();
-        captured_points.push(pos);
+        self.captured_points.push(pos);
         if cell.is_put() {
           if cell.get_player() != player {
             captured_count += 1;
@@ -706,28 +705,29 @@ impl Field {
           .push((pos, self.points[pos]));
         self.points[pos].set_bound();
       }
-      for &pos in &captured_points {
+      for &pos in &self.captured_points {
         self.points[pos].clear_tag();
-        self.save_pos_value(pos);
+        let cell = self.cell(pos);
+        self.changes.last_mut().unwrap().points_changes.push((pos, cell));
         let cell = self.cell(pos);
         if !cell.is_put() {
           if cell.is_captured() {
-            self.update_hash(pos, player.next());
+            self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos];
           } else {
             self.points[pos].set_captured();
           }
           self.points[pos].clear_empty_base();
           self.points[pos].set_player(player);
-          self.update_hash(pos, player);
+          self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos];
         } else if cell.get_player() != player {
           self.points[pos].set_captured();
           self.points[pos].clear_bound();
-          self.update_hash(pos, player.next());
-          self.update_hash(pos, player);
+          self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos]
+            ^ self.zobrist.hashes[self.length() * player as usize + pos];
         } else if cell.is_captured() {
           self.points[pos].clear_captured();
-          self.update_hash(pos, player.next());
-          self.update_hash(pos, player);
+          self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos]
+            ^ self.zobrist.hashes[self.length() * player as usize + pos];
         }
       }
       true
@@ -735,10 +735,11 @@ impl Field {
       for &pos in self.chain.iter() {
         self.points[pos].clear_tag();
       }
-      for &pos in &captured_points {
+      for &pos in &self.captured_points {
         self.points[pos].clear_tag();
         if !self.points[pos].is_put() {
-          self.save_pos_value(pos);
+          let cell = self.cell(pos);
+          self.changes.last_mut().unwrap().points_changes.push((pos, cell));
           self.points[pos].set_empty_base_player(player);
         }
       }
