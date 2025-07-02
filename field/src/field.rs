@@ -598,6 +598,7 @@ impl Field {
     let mut base_square = skew_product(self.to_xy(center_pos), center_coord);
     self.chain.clear();
     self.chain.push(start_pos);
+    self.points[start_pos].set_tag();
     loop {
       if self.cell(pos).is_tagged() {
         while *self.chain.last().unwrap() != pos {
@@ -619,9 +620,6 @@ impl Field {
         break;
       }
       center_coord = pos_coord;
-    }
-    for &pos in &self.chain {
-      self.points[pos].clear_tag();
     }
     base_square < 0
   }
@@ -660,13 +658,16 @@ impl Field {
     self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos]
   }
 
+  fn clear_chain_tags(&mut self) {
+    for &pos in &self.chain {
+      self.points[pos].clear_tag();
+    }
+  }
+
   fn capture(&mut self, inside_pos: Pos, player: Player) -> bool {
     let mut captured_count = 0i32;
     let mut freed_count = 0i32;
     self.captured_points.clear();
-    for &pos in &self.chain {
-      self.points[pos].set_tag();
-    }
     wave(&mut self.q, self.stride, inside_pos, |pos| {
       let cell = self.points[pos];
       if !cell.is_tagged() && !cell.is_bound_player(player) {
@@ -732,9 +733,7 @@ impl Field {
       }
       true
     } else {
-      for &pos in self.chain.iter() {
-        self.points[pos].clear_tag();
-      }
+      self.clear_chain_tags();
       for &pos in &self.captured_points {
         self.points[pos].clear_tag();
         if !self.points[pos].is_put() {
@@ -811,6 +810,8 @@ impl Field {
               if chains_count == group_points_count - 1 {
                 break;
               }
+            } else {
+              self.clear_chain_tags();
             }
           }
           if chains_count > 0 {
@@ -851,10 +852,13 @@ impl Field {
           if chains_count == input_points_count - 1 {
             break;
           }
-        } else if self.chain.len() < 4 {
-          input_points_count -= 1;
-          if chains_count == input_points_count - 1 {
-            break;
+        } else {
+          self.clear_chain_tags();
+          if self.chain.len() < 4 {
+            input_points_count -= 1;
+            if chains_count == input_points_count - 1 {
+              break;
+            }
           }
         }
       }
@@ -923,6 +927,8 @@ impl Field {
                 if self.build_chain(bound_pos, next_player, chain_pos) && self.is_point_inside_chain(pos) {
                   self.capture(captured_pos, next_player);
                   break 'outer;
+                } else {
+                  self.clear_chain_tags();
                 }
               }
             }
