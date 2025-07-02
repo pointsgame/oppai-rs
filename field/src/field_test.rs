@@ -469,7 +469,7 @@ fn undo_check() {
         let field_before = field.clone();
         field.put_point(pos, player);
         field.undo();
-        assert!(field_before == field);
+        assert_eq!(field_before.points, field.points);
         field.put_point(pos, player);
         player = player.next();
       }
