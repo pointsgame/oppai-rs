@@ -2,133 +2,129 @@ use crate::player::Player;
 
 type CellValue = u8;
 
-const PLAYER_BIT: CellValue = 1;
-
-const PUT_BIT: CellValue = 2;
-
-const CAPTURED_BIT: CellValue = 4;
-
-const INSIDE_BIT: CellValue = 8;
-
-const BOUND_BIT: CellValue = 16;
-
-const EMPTY_BASE_BIT: CellValue = 32;
-
-const BAD_BIT: CellValue = 64;
-
-const TAG_BIT: CellValue = 128;
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Cell {
-  value: CellValue,
-}
+pub struct Cell(pub CellValue);
 
 impl Cell {
+  pub const PLAYER_BIT: CellValue = 1;
+
+  pub const PUT_BIT: CellValue = 2;
+
+  pub const CAPTURED_BIT: CellValue = 4;
+
+  pub const INSIDE_BIT: CellValue = 8;
+
+  pub const BOUND_BIT: CellValue = 16;
+
+  pub const EMPTY_BASE_BIT: CellValue = 32;
+
+  pub const BAD_BIT: CellValue = 64;
+
+  pub const TAG_BIT: CellValue = 128;
+
   #[inline]
   pub fn new(bad: bool) -> Cell {
-    Cell {
-      value: if bad { BAD_BIT } else { 0 },
-    }
+    Cell(if bad { Self::BAD_BIT } else { 0 })
   }
 
   #[inline]
   pub fn get_player(self) -> Player {
-    Player::from_bool(self.value & PLAYER_BIT != 0)
+    Player::from_bool(self.0 & Self::PLAYER_BIT != 0)
   }
 
   #[inline]
   pub fn set_player(&mut self, player: Player) {
-    self.value = self.value & !PLAYER_BIT | player.to_bool() as CellValue
+    self.0 = self.0 & !Self::PLAYER_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
   pub fn is_put(self) -> bool {
-    self.value & PUT_BIT != 0
+    self.0 & Self::PUT_BIT != 0
   }
 
   #[inline]
   pub fn set_put(&mut self) {
-    self.value |= PUT_BIT
+    self.0 |= Self::PUT_BIT
   }
 
   #[inline]
   pub fn clear_put(&mut self) {
-    self.value &= !PUT_BIT
+    self.0 &= !Self::PUT_BIT
   }
 
   #[inline]
   pub fn is_captured(self) -> bool {
-    self.value & CAPTURED_BIT != 0
+    self.0 & Self::CAPTURED_BIT != 0
   }
 
   #[inline]
   pub fn set_captured(&mut self) {
-    self.value |= CAPTURED_BIT | INSIDE_BIT
+    self.0 |= Self::CAPTURED_BIT | Self::INSIDE_BIT
   }
 
   #[inline]
   pub fn clear_captured(&mut self) {
-    self.value &= !CAPTURED_BIT
+    self.0 &= !Self::CAPTURED_BIT
   }
 
   #[inline]
   pub fn is_bound(self) -> bool {
-    self.value & BOUND_BIT != 0
+    self.0 & Self::BOUND_BIT != 0
   }
 
   #[inline]
   pub fn set_bound(&mut self) {
-    self.value |= BOUND_BIT
+    self.0 |= Self::BOUND_BIT
   }
 
   #[inline]
   pub fn clear_bound(&mut self) {
-    self.value &= !BOUND_BIT
+    self.0 &= !Self::BOUND_BIT
   }
 
   #[inline]
   pub fn is_empty_base(self) -> bool {
-    self.value & EMPTY_BASE_BIT != 0
+    self.0 & Self::EMPTY_BASE_BIT != 0
   }
 
   #[inline]
   pub fn set_empty_base(&mut self) {
-    self.value |= EMPTY_BASE_BIT
+    self.0 |= Self::EMPTY_BASE_BIT
   }
 
   #[inline]
   pub fn clear_empty_base(&mut self) {
-    self.value &= !EMPTY_BASE_BIT
+    self.0 &= !Self::EMPTY_BASE_BIT
   }
 
   #[inline]
   pub fn is_bad(self) -> bool {
-    self.value & BAD_BIT != 0
+    self.0 & Self::BAD_BIT != 0
   }
 
   #[inline]
   pub fn set_bad(&mut self) {
-    self.value |= BAD_BIT
+    self.0 |= Self::BAD_BIT
   }
 
   #[inline]
   pub fn clear_bad(&mut self) {
-    self.value &= !BAD_BIT
+    self.0 &= !Self::BAD_BIT
   }
 
   #[inline]
   pub fn is_tagged(self) -> bool {
-    self.value & TAG_BIT != 0
+    self.0 & Self::TAG_BIT != 0
   }
 
   #[inline]
   pub fn set_tag(&mut self) {
-    self.value |= TAG_BIT
+    self.0 |= Self::TAG_BIT
   }
 
   #[inline]
   pub fn clear_tag(&mut self) {
-    self.value &= !TAG_BIT
+    self.0 &= !Self::TAG_BIT
   }
 
   #[inline]
@@ -158,7 +154,7 @@ impl Cell {
 
   #[inline]
   pub fn is_players_point(self, player: Player) -> bool {
-    self.value & (PUT_BIT | PLAYER_BIT) == PUT_BIT | player.to_bool() as CellValue
+    self.0 & (Self::PUT_BIT | Self::PLAYER_BIT) == Self::PUT_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
@@ -172,17 +168,18 @@ impl Cell {
 
   #[inline]
   pub fn is_live_players_point(self, player: Player) -> bool {
-    self.value & (PUT_BIT | CAPTURED_BIT | PLAYER_BIT) == PUT_BIT | player.to_bool() as CellValue
+    self.0 & (Self::PUT_BIT | Self::CAPTURED_BIT | Self::PLAYER_BIT) == Self::PUT_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
   pub fn is_always_live_players_point(self, player: Player) -> bool {
-    self.value & (PUT_BIT | CAPTURED_BIT | INSIDE_BIT | PLAYER_BIT) == PUT_BIT | player.to_bool() as CellValue
+    self.0 & (Self::PUT_BIT | Self::CAPTURED_BIT | Self::INSIDE_BIT | Self::PLAYER_BIT)
+      == Self::PUT_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
   pub fn is_players_empty_base(self, player: Player) -> bool {
-    self.value & (EMPTY_BASE_BIT | PLAYER_BIT) == EMPTY_BASE_BIT | player.to_bool() as CellValue
+    self.0 & (Self::EMPTY_BASE_BIT | Self::PLAYER_BIT) == Self::EMPTY_BASE_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
@@ -196,21 +193,22 @@ impl Cell {
 
   #[inline]
   pub fn put_point(&mut self, player: Player) {
-    self.value = self.value & !PLAYER_BIT | player.to_bool() as CellValue | PUT_BIT
+    self.0 = self.0 & !Self::PLAYER_BIT | player.to_bool() as CellValue | Self::PUT_BIT
   }
 
   #[inline]
   pub fn set_empty_base_player(&mut self, player: Player) {
-    self.value = self.value & !PLAYER_BIT | player.to_bool() as CellValue | EMPTY_BASE_BIT
+    self.0 = self.0 & !Self::PLAYER_BIT | player.to_bool() as CellValue | Self::EMPTY_BASE_BIT
   }
 
   #[inline]
   pub fn is_bound_player(self, player: Player) -> bool {
-    self.value & (PUT_BIT | PLAYER_BIT | BOUND_BIT) == PUT_BIT | BOUND_BIT | player.to_bool() as CellValue
+    self.0 & (Self::PUT_BIT | Self::PLAYER_BIT | Self::BOUND_BIT)
+      == Self::PUT_BIT | Self::BOUND_BIT | player.to_bool() as CellValue
   }
 
   #[inline]
   pub fn is_putting_allowed(self) -> bool {
-    self.value & (PUT_BIT | CAPTURED_BIT | BAD_BIT) == 0
+    self.0 & (Self::PUT_BIT | Self::CAPTURED_BIT | Self::BAD_BIT) == 0
   }
 }

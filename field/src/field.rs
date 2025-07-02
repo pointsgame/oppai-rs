@@ -710,19 +710,17 @@ impl Field {
         self.points[pos].clear_tag();
         let cell = self.cell(pos);
         self.changes.last_mut().unwrap().points_changes.push((pos, cell));
-        let cell = self.cell(pos);
         if !cell.is_put() {
           if cell.is_captured() {
             self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos];
-          } else {
-            self.points[pos].set_captured();
           }
-          self.points[pos].clear_empty_base();
-          self.points[pos].set_player(player);
+          self.points[pos].0 = self.points[pos].0 & !(Cell::EMPTY_BASE_BIT | Cell::PLAYER_BIT)
+            | Cell::CAPTURED_BIT
+            | Cell::INSIDE_BIT
+            | player.to_bool() as u8;
           self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos];
         } else if cell.get_player() != player {
-          self.points[pos].set_captured();
-          self.points[pos].clear_bound();
+          self.points[pos].0 = self.points[pos].0 & !Cell::BOUND_BIT | Cell::CAPTURED_BIT | Cell::INSIDE_BIT;
           self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos]
             ^ self.zobrist.hashes[self.length() * player as usize + pos];
         } else if cell.is_captured() {
