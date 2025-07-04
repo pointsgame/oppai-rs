@@ -612,6 +612,7 @@ impl Field {
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
       while !self.cell(pos).is_always_live_players_point(player) {
+        #[cfg(feature = "dsu")]
         if self.cell(pos).is_bad() {
           return false;
         }
