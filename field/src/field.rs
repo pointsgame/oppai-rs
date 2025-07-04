@@ -612,6 +612,9 @@ impl Field {
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
       while !self.cell(pos).is_always_live_players_point(player) {
+        if self.cell(pos).is_bad() {
+          return false;
+        }
         pos = self.get_next_pos(center_pos, pos);
       }
       let pos_coord = self.to_xy(pos);
