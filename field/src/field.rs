@@ -612,6 +612,8 @@ impl Field {
       mem::swap(&mut pos, &mut center_pos);
       pos = self.get_first_next_pos(center_pos, pos);
       while !self.cell(pos).is_always_live_players_point(player) {
+        // If we reached borders of the field it means we are following the chain in a wrong direction (outside)
+        // This check is not valid when DSU is disabled because we track count of short chains
         #[cfg(feature = "dsu")]
         if self.cell(pos).is_bad() {
           return false;
@@ -857,6 +859,7 @@ impl Field {
         } else {
           self.clear_chain_tags();
           if self.chain.len() < 4 {
+            // If a chain is short it can't form a valid chain when followed in reverse direction
             input_points_count -= 1;
             if chains_count == input_points_count {
               break;
