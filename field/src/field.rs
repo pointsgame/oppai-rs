@@ -843,21 +843,21 @@ impl Field {
   #[cfg(not(feature = "dsu"))]
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
     let input_points = self.get_input_points(pos, player);
-    let mut input_points_count = input_points.len();
-    if input_points_count > 1 {
+    let mut input_points_count = input_points.len() - 1;
+    if input_points_count > 0 {
       let mut chains_count = 0;
       for (chain_pos, captured_pos) in input_points {
         if self.build_chain(pos, player, chain_pos) {
           self.capture(captured_pos, player);
           chains_count += 1;
-          if chains_count == input_points_count - 1 {
+          if chains_count == input_points_count {
             break;
           }
         } else {
           self.clear_chain_tags();
           if self.chain.len() < 4 {
             input_points_count -= 1;
-            if chains_count == input_points_count - 1 {
+            if chains_count == input_points_count {
               break;
             }
           }
@@ -988,7 +988,7 @@ impl Field {
       Ordering::Greater => {
         let mut result = Vec::new();
         let input_points = self.get_input_points(pos, player);
-        let input_points_count = input_points.len();
+        let input_points_count = input_points.len() - 1;
         let mut chains_count = 0;
         for (chain_pos, captured_pos) in input_points {
           if !(self.cell(captured_pos).is_captured() && self.cell(chain_pos).is_bound()) {
@@ -997,7 +997,7 @@ impl Field {
           if self.find_chain(pos, player, chain_pos) {
             result.append(&mut self.chain);
             chains_count += 1;
-            if chains_count == input_points_count - 1 {
+            if chains_count == input_points_count {
               break;
             }
           }
