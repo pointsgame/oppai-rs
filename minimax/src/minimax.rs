@@ -79,10 +79,10 @@ impl Minimax {
       return alpha;
     }
     let enemy = player.next();
-    if let Some(last_pos) = last_pos {
-      if common::is_last_move_stupid(field, last_pos.get(), enemy) {
-        return i32::MAX;
-      }
+    if let Some(last_pos) = last_pos
+      && common::is_last_move_stupid(field, last_pos.get(), enemy)
+    {
+      return i32::MAX;
     }
     if depth == 0 {
       return field.score(player);

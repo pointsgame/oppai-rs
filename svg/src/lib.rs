@@ -387,20 +387,20 @@ pub fn field_to_svg(config: &Config, extended_field: &ExtendedField) -> Document
 
   // last point
 
-  if config.last_point_mark {
-    if let Some(&pos) = extended_field.field.moves.last() {
-      let (x, y) = pos_to_point(pos);
-      let color = color(extended_field.field.cell(pos).get_player());
-      let circle = Circle::new()
-        .set("cx", x)
-        .set("cy", y)
-        .set("r", point_radius * 1.5)
-        .set("fill", "none")
-        .set("stroke", color)
-        .set("stroke-width", 2)
-        .set("shape-rendering", "geometricPrecision");
-      document = document.add(circle);
-    }
+  if config.last_point_mark
+    && let Some(&pos) = extended_field.field.moves.last()
+  {
+    let (x, y) = pos_to_point(pos);
+    let color = color(extended_field.field.cell(pos).get_player());
+    let circle = Circle::new()
+      .set("cx", x)
+      .set("cy", y)
+      .set("r", point_radius * 1.5)
+      .set("fill", "none")
+      .set("stroke", color)
+      .set("stroke-width", 2)
+      .set("shape-rendering", "geometricPrecision");
+    document = document.add(circle);
   }
 
   // pointer

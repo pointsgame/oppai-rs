@@ -100,11 +100,11 @@ pub fn main() -> iced::Result {
           }
         });
       #[cfg(not(target_arch = "wasm32"))]
-      if let Some(patterns_cache) = config.patterns_cache.as_ref() {
-        if !Path::new(patterns_cache).exists() {
-          let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
-          std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
-        }
+      if let Some(patterns_cache) = config.patterns_cache.as_ref()
+        && !Path::new(patterns_cache).exists()
+      {
+        let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
+        std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
       }
       #[cfg(not(target_arch = "wasm32"))]
       let oppai = Oppai::new(
@@ -485,42 +485,39 @@ impl Game {
       }
       #[cfg(not(target_arch = "wasm32"))]
       Message::OpenFile(maybe_file) => {
-        if let Some(file) = maybe_file {
-          if let Ok(sgf) = fs::read_to_string(file.path()) {
-            if let Ok(trees) = sgf_parse::parse(sgf.as_str()) {
-              if let Some(node) = trees.iter().find_map(|tree| match tree {
-                GameTree::Unknown(node) => Some(node),
-                GameTree::GoGame(_) => None,
-              }) {
-                if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
-                  let visits = sgf_to_visits(node, extended_field.field.stride);
-                  self.moves = extended_field
-                    .field
-                    .colored_moves()
-                    .zip(
-                      iter::repeat_n(
-                        Default::default(),
-                        extended_field.field.moves_count() - visits.len() - 1,
-                      )
-                      .chain(visits)
-                      .chain(iter::repeat(Default::default())),
-                    )
-                    .map(|((pos, player), visits)| (pos, player, visits))
-                    .collect();
-                  self.canvas_field.extended_field = extended_field;
-                  self.oppai = Arc::new(Mutex::new(Oppai::new(
-                    self.config.width,
-                    self.config.height,
-                    self.config.ai_config.clone(),
-                    Arc::new(Patterns::default()),
-                    (),
-                  )));
-                  self.put_all_bot_points();
-                  self.refresh();
-                }
-              }
-            }
-          }
+        if let Some(file) = maybe_file
+          && let Ok(sgf) = fs::read_to_string(file.path())
+          && let Ok(trees) = sgf_parse::parse(sgf.as_str())
+          && let Some(node) = trees.iter().find_map(|tree| match tree {
+            GameTree::Unknown(node) => Some(node),
+            GameTree::GoGame(_) => None,
+          })
+          && let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng)
+        {
+          let visits = sgf_to_visits(node, extended_field.field.stride);
+          self.moves = extended_field
+            .field
+            .colored_moves()
+            .zip(
+              iter::repeat_n(
+                Default::default(),
+                extended_field.field.moves_count() - visits.len() - 1,
+              )
+              .chain(visits)
+              .chain(iter::repeat(Default::default())),
+            )
+            .map(|((pos, player), visits)| (pos, player, visits))
+            .collect();
+          self.canvas_field.extended_field = extended_field;
+          self.oppai = Arc::new(Mutex::new(Oppai::new(
+            self.config.width,
+            self.config.height,
+            self.config.ai_config.clone(),
+            Arc::new(Patterns::default()),
+            (),
+          )));
+          self.put_all_bot_points();
+          self.refresh();
         }
       }
       #[cfg(target_arch = "wasm32")]
@@ -560,10 +557,10 @@ impl Game {
       }
       #[cfg(not(target_arch = "wasm32"))]
       Message::SaveFile(maybe_file) => {
-        if let Some(file) = maybe_file {
-          if let Some(s) = to_sgf_str(&self.canvas_field.extended_field) {
-            fs::write(file.path(), s).ok();
-          }
+        if let Some(file) = maybe_file
+          && let Some(s) = to_sgf_str(&self.canvas_field.extended_field)
+        {
+          fs::write(file.path(), s).ok();
         }
       }
       #[cfg(target_arch = "wasm32")]
@@ -701,7 +698,7 @@ impl Game {
     subscription
   }
 
-  fn view(&self) -> Element<Message> {
+  fn view(&self) -> Element<'_, Message> {
     let mode = Text::new(if self.canvas_field.edit_mode {
       "Mode: Editing"
     } else {

@@ -415,21 +415,21 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
 
       // mark last point
 
-      if self.config.last_point_mark {
-        if let Some(&pos) = self.extended_field.field.moves.last() {
-          let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), point_radius * 1.5));
+      if self.config.last_point_mark
+        && let Some(&pos) = self.extended_field.field.moves.last()
+      {
+        let last_point = canvas::Path::new(|path| path.circle(pos_to_point(pos), point_radius * 1.5));
 
-          let color = color(&self.config, self.extended_field.field.cell(pos).get_player());
+        let color = color(&self.config, self.extended_field.field.cell(pos).get_player());
 
-          frame.stroke(
-            &last_point,
-            canvas::Stroke {
-              width: 2.0,
-              style: canvas::Style::Solid(color),
-              ..canvas::Stroke::default()
-            },
-          );
-        }
+        frame.stroke(
+          &last_point,
+          canvas::Stroke {
+            width: 2.0,
+            style: canvas::Style::Solid(color),
+            ..canvas::Stroke::default()
+          },
+        );
       }
 
       // extra

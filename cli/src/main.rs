@@ -60,11 +60,11 @@ fn main() -> Result<()> {
         .expect("Failed to read patterns file.")
       }
     });
-  if let Some(patterns_cache) = config.patterns_cache.as_ref() {
-    if !Path::new(patterns_cache).exists() {
-      let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
-      std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
-    }
+  if let Some(patterns_cache) = config.patterns_cache.as_ref()
+    && !Path::new(patterns_cache).exists()
+  {
+    let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
+    std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
   }
   let patterns_arc = Arc::new(patterns);
   let mut input = BufReader::new(io::stdin());

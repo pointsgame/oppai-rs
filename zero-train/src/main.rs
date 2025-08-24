@@ -114,7 +114,7 @@ where
 fn train<B>(
   config: Config,
   model_path: PathBuf,
-  optimizer_path: PathBuf,
+  mut optimizer_path: PathBuf,
   model_new_path: PathBuf,
   optimizer_new_path: PathBuf,
   games_paths: Vec<PathBuf>,
@@ -133,7 +133,7 @@ where
     &device,
   )?;
   let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
-  let item = Recorder::<B>::load_item(&DefaultFileRecorder::<FullPrecisionSettings>::new(), optimizer_path)?;
+  let item = Recorder::<B>::load_item(&DefaultFileRecorder::<FullPrecisionSettings>::new(), &mut optimizer_path)?;
   let record = Record::from_item::<FullPrecisionSettings>(item, &device);
   let optimizer = optimizer.load_record(record);
   let predictor = Predictor { model, device };

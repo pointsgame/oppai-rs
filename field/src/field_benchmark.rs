@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate criterion;
 
-use criterion::{Bencher, Criterion, black_box};
+use criterion::{Bencher, Criterion};
 use oppai_field::construct_field::construct_moves;
 use oppai_field::field::{self, Field, Pos};
 use oppai_field::player::Player;
@@ -9,7 +9,7 @@ use oppai_field::zobrist::Zobrist;
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_xoshiro::Xoshiro256PlusPlus;
-use std::sync::Arc;
+use std::{hint::black_box, sync::Arc};
 
 const SEED_1: u64 = 3;
 const SEED_2: u64 = 5;

@@ -523,10 +523,10 @@ impl<R: Rng> Session<R> {
       state.unsubscribe(self.connection_id, game_id);
     }
 
-    if let Some(player_id) = self.player_id {
-      if state.remove_players_connection(player_id, self.connection_id) {
-        state.send_to_all(message::Response::PlayerLeft { player_id }).await;
-      }
+    if let Some(player_id) = self.player_id
+      && state.remove_players_connection(player_id, self.connection_id)
+    {
+      state.send_to_all(message::Response::PlayerLeft { player_id }).await;
     }
   }
 
