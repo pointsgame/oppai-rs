@@ -12,15 +12,13 @@ impl Cell {
 
   pub const CAPTURED_BIT: CellValue = 4;
 
-  pub const INSIDE_BIT: CellValue = 8;
+  pub const BOUND_BIT: CellValue = 8;
 
-  pub const BOUND_BIT: CellValue = 16;
+  pub const EMPTY_BASE_BIT: CellValue = 16;
 
-  pub const EMPTY_BASE_BIT: CellValue = 32;
+  pub const BAD_BIT: CellValue = 32;
 
-  pub const BAD_BIT: CellValue = 64;
-
-  pub const TAG_BIT: CellValue = 128;
+  pub const TAG_BIT: CellValue = 64;
 
   #[inline]
   pub fn new(bad: bool) -> Cell {
@@ -59,7 +57,7 @@ impl Cell {
 
   #[inline]
   pub fn set_captured(&mut self) {
-    self.0 |= Self::CAPTURED_BIT | Self::INSIDE_BIT
+    self.0 |= Self::CAPTURED_BIT
   }
 
   #[inline]
@@ -169,12 +167,6 @@ impl Cell {
   #[inline]
   pub fn is_live_players_point(self, player: Player) -> bool {
     self.0 & (Self::PUT_BIT | Self::CAPTURED_BIT | Self::PLAYER_BIT) == Self::PUT_BIT | player.to_bool() as CellValue
-  }
-
-  #[inline]
-  pub fn is_always_live_players_point(self, player: Player) -> bool {
-    self.0 & (Self::PUT_BIT | Self::CAPTURED_BIT | Self::INSIDE_BIT | Self::PLAYER_BIT)
-      == Self::PUT_BIT | player.to_bool() as CellValue
   }
 
   #[inline]

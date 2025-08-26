@@ -44,7 +44,7 @@ pub struct Field {
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   pub hash: u64,
-  chain: Vec<Pos>,
+  chains: [(Vec<Pos>, Pos); 3],
   captured_points: Vec<Pos>,
   pub q: VecDeque<Pos>,
 }
@@ -251,6 +251,174 @@ pub fn euclidean(stride: u32, pos1: Pos, pos2: Pos) -> u32 {
   let a = to_x(stride, pos1) as i32 - to_x(stride, pos2) as i32;
   let b = to_y(stride, pos1) as i32 - to_y(stride, pos2) as i32;
   (a * a + b * b) as u32
+}
+
+fn get_input_points(
+  stride: u32,
+  points: &PointsVec<Cell>,
+  center_pos: Pos,
+  player: Player,
+) -> SmallVec<[(Pos, Pos); 4]> {
+  let mut inp_points = SmallVec::new();
+  if !points[w(center_pos)].is_live_players_point(player) {
+    if points[nw(stride, center_pos)].is_live_players_point(player) {
+      inp_points.push((nw(stride, center_pos), w(center_pos)));
+    } else if points[n(stride, center_pos)].is_live_players_point(player) {
+      inp_points.push((n(stride, center_pos), w(center_pos)));
+    }
+  }
+  if !points[s(stride, center_pos)].is_live_players_point(player) {
+    if points[sw(stride, center_pos)].is_live_players_point(player) {
+      inp_points.push((sw(stride, center_pos), s(stride, center_pos)));
+    } else if points[w(center_pos)].is_live_players_point(player) {
+      inp_points.push((w(center_pos), s(stride, center_pos)));
+    }
+  }
+  if !points[e(center_pos)].is_live_players_point(player) {
+    if points[se(stride, center_pos)].is_live_players_point(player) {
+      inp_points.push((se(stride, center_pos), e(center_pos)));
+    } else if points[s(stride, center_pos)].is_live_players_point(player) {
+      inp_points.push((s(stride, center_pos), e(center_pos)));
+    }
+  }
+  if !points[n(stride, center_pos)].is_live_players_point(player) {
+    if points[ne(stride, center_pos)].is_live_players_point(player) {
+      inp_points.push((ne(stride, center_pos), n(stride, center_pos)));
+    } else if points[e(center_pos)].is_live_players_point(player) {
+      inp_points.push((e(center_pos), n(stride, center_pos)));
+    }
+  }
+  inp_points
+}
+
+//  * . .   x . *   . x x   . . .
+//  . o .   x o .   . o .   . o x
+//  x x .   . . .   . . *   * . x
+//  o - center pos
+//  x - pos
+//  * - result
+fn get_first_next_pos(stride: u32, center_pos: Pos, pos: Pos) -> Pos {
+  if pos < center_pos {
+    if pos == nw(stride, center_pos) || pos == w(center_pos) {
+      ne(stride, center_pos)
+    } else {
+      se(stride, center_pos)
+    }
+  } else if pos == e(center_pos) || pos == se(stride, center_pos) {
+    sw(stride, center_pos)
+  } else {
+    nw(stride, center_pos)
+  }
+}
+
+//  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
+//  * o .   x o .   . o .   . o .   . o *   . o x   . o .   . o .
+//  x . .   . . .   . . .   . . .   . . .   . . *   . * x   * x .
+//  o - center pos
+//  x - pos
+//  * - result
+fn get_next_pos(stride: u32, center_pos: Pos, pos: Pos) -> Pos {
+  if pos < center_pos {
+    if pos == nw(stride, center_pos) {
+      n(stride, center_pos)
+    } else if pos == n(stride, center_pos) {
+      ne(stride, center_pos)
+    } else if pos == ne(stride, center_pos) {
+      e(center_pos)
+    } else {
+      nw(stride, center_pos)
+    }
+  } else if pos == e(center_pos) {
+    se(stride, center_pos)
+  } else if pos == se(stride, center_pos) {
+    s(stride, center_pos)
+  } else if pos == s(stride, center_pos) {
+    sw(stride, center_pos)
+  } else {
+    w(center_pos)
+  }
+}
+
+fn build_chain(
+  stride: u32,
+  points: &mut PointsVec<Cell>,
+  chain: &mut Vec<Pos>,
+  start_pos: Pos,
+  player: Player,
+  direction_pos: Pos,
+) -> bool {
+  let mut pos = direction_pos;
+  let mut center_pos = start_pos;
+  let mut center_coord = to_xy(stride, pos);
+  let mut base_square = skew_product(to_xy(stride, center_pos), center_coord);
+  chain.clear();
+  chain.push(start_pos);
+  loop {
+    if points[pos].is_tagged() {
+      while *chain.last().unwrap() != pos {
+        points[*chain.last().unwrap()].clear_tag();
+        chain.pop();
+      }
+    } else {
+      points[pos].set_tag();
+      chain.push(pos);
+    }
+    mem::swap(&mut pos, &mut center_pos);
+    pos = get_first_next_pos(stride, center_pos, pos);
+    while !points[pos].is_live_players_point(player) {
+      // If we reached borders of the field it means we are following the chain in a wrong direction (outside)
+      // This check is not valid when DSU is disabled because we track count of short chains
+      #[cfg(feature = "dsu")]
+      if points[pos].is_bad() {
+        for &pos in &*chain {
+          points[pos].clear_tag();
+        }
+        return false;
+      }
+      pos = get_next_pos(stride, center_pos, pos);
+    }
+    let pos_coord = to_xy(stride, pos);
+    base_square += skew_product(center_coord, pos_coord);
+    if pos == start_pos {
+      break;
+    }
+    center_coord = pos_coord;
+  }
+  for &pos in &*chain {
+    points[pos].clear_tag();
+  }
+  base_square < 0
+}
+
+fn find_chain(
+  stride: u32,
+  points: &mut PointsVec<Cell>,
+  chain: &mut Vec<Pos>,
+  start_pos: Pos,
+  player: Player,
+  direction_pos: Pos,
+) -> bool {
+  let mut pos = direction_pos;
+  let mut center_pos = start_pos;
+  let mut center_coord = to_xy(stride, pos);
+  let mut base_square = skew_product(to_xy(stride, center_pos), center_coord);
+  chain.clear();
+  chain.push(start_pos);
+  loop {
+    chain.push(pos);
+    mem::swap(&mut pos, &mut center_pos);
+    pos = get_first_next_pos(stride, center_pos, pos);
+    while !(points[pos].is_live_players_point(player) && points[pos].is_bound()) {
+      pos = get_next_pos(stride, center_pos, pos);
+    }
+    let pos_coord = to_xy(stride, pos);
+    base_square += skew_product(center_coord, pos_coord);
+    if pos == start_pos {
+      break;
+    }
+    center_coord = pos_coord;
+  }
+  base_square < 0 && chain.len() > 2
 }
 
 impl Field {
@@ -464,7 +632,11 @@ impl Field {
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
-      chain: Vec::with_capacity(length),
+      chains: [
+        (Vec::with_capacity(length), 0),
+        (Vec::with_capacity(length), 0),
+        (Vec::with_capacity(length), 0),
+      ],
       captured_points: Vec::with_capacity(length),
       q: VecDeque::with_capacity(length),
     };
@@ -478,7 +650,11 @@ impl Field {
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
-      chain: Vec::with_capacity(length),
+      chains: [
+        (Vec::with_capacity(length), 0),
+        (Vec::with_capacity(length), 0),
+        (Vec::with_capacity(length), 0),
+      ],
       captured_points: Vec::with_capacity(length),
       q: VecDeque::with_capacity(length),
     };
@@ -510,170 +686,18 @@ impl Field {
     self.changes.last_mut().unwrap().dsu_size_change = Some((pos, self.dsu_size[pos]));
   }
 
-  fn get_input_points(&self, center_pos: Pos, player: Player) -> SmallVec<[(Pos, Pos); 4]> {
-    let mut inp_points = SmallVec::new();
-    if !self.cell(self.w(center_pos)).is_always_live_players_point(player) {
-      if self.cell(self.nw(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.nw(center_pos), self.w(center_pos)));
-      } else if self.cell(self.n(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.n(center_pos), self.w(center_pos)));
-      }
-    }
-    if !self.cell(self.s(center_pos)).is_always_live_players_point(player) {
-      if self.cell(self.sw(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.sw(center_pos), self.s(center_pos)));
-      } else if self.cell(self.w(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.w(center_pos), self.s(center_pos)));
-      }
-    }
-    if !self.cell(self.e(center_pos)).is_always_live_players_point(player) {
-      if self.cell(self.se(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.se(center_pos), self.e(center_pos)));
-      } else if self.cell(self.s(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.s(center_pos), self.e(center_pos)));
-      }
-    }
-    if !self.cell(self.n(center_pos)).is_always_live_players_point(player) {
-      if self.cell(self.ne(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.ne(center_pos), self.n(center_pos)));
-      } else if self.cell(self.e(center_pos)).is_always_live_players_point(player) {
-        inp_points.push((self.e(center_pos), self.n(center_pos)));
-      }
-    }
-    inp_points
-  }
-
-  //  * . .   x . *   . x x   . . .
-  //  . o .   x o .   . o .   . o x
-  //  x x .   . . .   . . *   * . x
-  //  o - center pos
-  //  x - pos
-  //  * - result
-  fn get_first_next_pos(&self, center_pos: Pos, pos: Pos) -> Pos {
-    if pos < center_pos {
-      if pos == self.nw(center_pos) || pos == self.w(center_pos) {
-        self.ne(center_pos)
-      } else {
-        self.se(center_pos)
-      }
-    } else if pos == self.e(center_pos) || pos == self.se(center_pos) {
-      self.sw(center_pos)
-    } else {
-      self.nw(center_pos)
-    }
-  }
-
-  //  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
-  //  * o .   x o .   . o .   . o .   . o *   . o x   . o .   . o .
-  //  x . .   . . .   . . .   . . .   . . .   . . *   . * x   * x .
-  //  o - center pos
-  //  x - pos
-  //  * - result
-  fn get_next_pos(&self, center_pos: Pos, pos: Pos) -> Pos {
-    if pos < center_pos {
-      if pos == self.nw(center_pos) {
-        self.n(center_pos)
-      } else if pos == self.n(center_pos) {
-        self.ne(center_pos)
-      } else if pos == self.ne(center_pos) {
-        self.e(center_pos)
-      } else {
-        self.nw(center_pos)
-      }
-    } else if pos == self.e(center_pos) {
-      self.se(center_pos)
-    } else if pos == self.se(center_pos) {
-      self.s(center_pos)
-    } else if pos == self.s(center_pos) {
-      self.sw(center_pos)
-    } else {
-      self.w(center_pos)
-    }
-  }
-
-  fn build_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
-    let mut pos = direction_pos;
-    let mut center_pos = start_pos;
-    let mut center_coord = self.to_xy(pos);
-    let mut base_square = skew_product(self.to_xy(center_pos), center_coord);
-    self.chain.clear();
-    self.chain.push(start_pos);
-    self.points[start_pos].set_tag();
-    loop {
-      if self.cell(pos).is_tagged() {
-        while *self.chain.last().unwrap() != pos {
-          self.points[*self.chain.last().unwrap()].clear_tag();
-          self.chain.pop();
-        }
-      } else {
-        self.points[pos].set_tag();
-        self.chain.push(pos);
-      }
-      mem::swap(&mut pos, &mut center_pos);
-      pos = self.get_first_next_pos(center_pos, pos);
-      while !self.cell(pos).is_always_live_players_point(player) {
-        // If we reached borders of the field it means we are following the chain in a wrong direction (outside)
-        // This check is not valid when DSU is disabled because we track count of short chains
-        #[cfg(feature = "dsu")]
-        if self.cell(pos).is_bad() {
-          return false;
-        }
-        pos = self.get_next_pos(center_pos, pos);
-      }
-      let pos_coord = self.to_xy(pos);
-      base_square += skew_product(center_coord, pos_coord);
-      if pos == start_pos {
-        break;
-      }
-      center_coord = pos_coord;
-    }
-    base_square < 0
-  }
-
-  fn find_chain(&mut self, start_pos: Pos, player: Player, direction_pos: Pos) -> bool {
-    let mut pos = direction_pos;
-    let mut center_pos = start_pos;
-    let mut center_coord = self.to_xy(pos);
-    let mut base_square = skew_product(self.to_xy(center_pos), center_coord);
-    self.chain.clear();
-    self.chain.push(start_pos);
-    loop {
-      self.chain.push(pos);
-      mem::swap(&mut pos, &mut center_pos);
-      pos = self.get_first_next_pos(center_pos, pos);
-      while !(self.cell(pos).is_always_live_players_point(player) && self.cell(pos).is_bound()) {
-        pos = self.get_next_pos(center_pos, pos);
-      }
-      let pos_coord = self.to_xy(pos);
-      base_square += skew_product(center_coord, pos_coord);
-      if pos == start_pos {
-        break;
-      }
-      center_coord = pos_coord;
-    }
-    base_square < 0 && self.chain.len() > 2
-  }
-
-  #[inline]
-  fn is_point_inside_chain(&self, pos: Pos) -> bool {
-    is_point_inside_ring(self.stride, pos, &self.chain)
-  }
-
   #[inline]
   fn update_hash(&mut self, pos: Pos, player: Player) {
     self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos]
   }
 
-  fn clear_chain_tags(&mut self) {
-    for &pos in &self.chain {
-      self.points[pos].clear_tag();
-    }
-  }
-
-  fn capture(&mut self, inside_pos: Pos, player: Player) -> bool {
+  fn capture(&mut self, chain_index: usize, inside_pos: Pos, player: Player) -> bool {
     let mut captured_count = 0i32;
     let mut freed_count = 0i32;
     self.captured_points.clear();
+    for &pos in &self.chains[chain_index].0 {
+      self.points[pos].set_tag();
+    }
     wave(&mut self.q, self.stride, inside_pos, |pos| {
       let cell = self.points[pos];
       if !cell.is_tagged() && !cell.is_bound_player(player) {
@@ -702,7 +726,7 @@ impl Field {
           self.score_red -= freed_count;
         }
       }
-      for &pos in self.chain.iter() {
+      for &pos in self.chains[chain_index].0.iter() {
         self.points[pos].clear_tag();
         self
           .changes
@@ -722,11 +746,10 @@ impl Field {
           }
           self.points[pos].0 = self.points[pos].0 & !(Cell::EMPTY_BASE_BIT | Cell::PLAYER_BIT)
             | Cell::CAPTURED_BIT
-            | Cell::INSIDE_BIT
             | player.to_bool() as u8;
           self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos];
         } else if cell.get_player() != player {
-          self.points[pos].0 = self.points[pos].0 & !Cell::BOUND_BIT | Cell::CAPTURED_BIT | Cell::INSIDE_BIT;
+          self.points[pos].0 = self.points[pos].0 & !Cell::BOUND_BIT | Cell::CAPTURED_BIT;
           self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos]
             ^ self.zobrist.hashes[self.length() * player as usize + pos];
         } else if cell.is_captured() {
@@ -737,7 +760,9 @@ impl Field {
       }
       true
     } else {
-      self.clear_chain_tags();
+      for &pos in self.chains[chain_index].0.iter() {
+        self.points[pos].clear_tag();
+      }
       for &pos in &self.captured_points {
         self.points[pos].clear_tag();
         if !self.points[pos].is_put() {
@@ -788,9 +813,10 @@ impl Field {
 
   #[cfg(feature = "dsu")]
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
-    let input_points = self.get_input_points(pos, player);
+    let input_points = get_input_points(self.stride, &self.points, pos, player);
     let input_points_count = input_points.len();
     if input_points_count > 1 {
+      let mut total_chains_count = 0;
       let mut sets: SmallVec<[_; 4]> = SmallVec::new();
       for &(chain_pos, _) in &input_points {
         sets.push(self.find_dsu_set(chain_pos));
@@ -808,14 +834,20 @@ impl Field {
         if group_points_count > 1 {
           let mut chains_count = 0u32;
           for &(chain_pos, captured_pos) in &group {
-            if self.build_chain(pos, player, chain_pos) {
-              self.capture(captured_pos, player);
+            if build_chain(
+              self.stride,
+              &mut self.points,
+              &mut self.chains[total_chains_count].0,
+              pos,
+              player,
+              chain_pos,
+            ) {
+              self.chains[total_chains_count].1 = captured_pos;
               chains_count += 1;
+              total_chains_count += 1;
               if chains_count == group_points_count - 1 {
                 break;
               }
-            } else {
-              self.clear_chain_tags();
             }
           }
           if chains_count > 0 {
@@ -825,6 +857,10 @@ impl Field {
             break;
           }
         }
+      }
+      self.chains[0..total_chains_count].sort_unstable_by_key(|(chain, _)| chain.len());
+      for chain_index in 0..total_chains_count {
+        self.capture(chain_index, self.chains[chain_index].1, player);
       }
       let parent = self.union_dsu_sets(&sets);
       self.save_dsu_value(pos);
@@ -845,27 +881,35 @@ impl Field {
 
   #[cfg(not(feature = "dsu"))]
   fn find_captures(&mut self, pos: Pos, player: Player) -> bool {
-    let input_points = self.get_input_points(pos, player);
+    let input_points = get_input_points(self.stride, &self.points, pos, player);
     let mut input_points_count = input_points.len().saturating_sub(1);
     if input_points_count > 0 {
       let mut chains_count = 0;
       for (chain_pos, captured_pos) in input_points {
-        if self.build_chain(pos, player, chain_pos) {
-          self.capture(captured_pos, player);
+        if build_chain(
+          self.stride,
+          &mut self.points,
+          &mut self.chains[chains_count].0,
+          pos,
+          player,
+          chain_pos,
+        ) {
+          self.chains[chains_count].1 = captured_pos;
           chains_count += 1;
           if chains_count == input_points_count {
             break;
           }
-        } else {
-          self.clear_chain_tags();
-          if self.chain.len() < 4 {
-            // If a chain is short it can't form a valid chain when followed in reverse direction
-            input_points_count -= 1;
-            if chains_count == input_points_count {
-              break;
-            }
+        } else if self.chains[chains_count].0.len() < 4 {
+          // If a chain is short it can't form a valid chain when followed in reverse direction
+          input_points_count -= 1;
+          if chains_count == input_points_count {
+            break;
           }
         }
+      }
+      self.chains[0..chains_count].sort_unstable_by_key(|(chain, _)| chain.len());
+      for chain_index in 0..chains_count {
+        self.capture(chain_index, self.chains[chain_index].1, player);
       }
       chains_count > 0
     } else {
@@ -927,13 +971,19 @@ impl Field {
               while !self.cell(bound_pos).is_players_point(next_player) {
                 bound_pos = self.w(bound_pos);
               }
-              let input_points = self.get_input_points(bound_pos, next_player);
+              let input_points = get_input_points(self.stride, &self.points, bound_pos, next_player);
               for (chain_pos, captured_pos) in input_points {
-                if self.build_chain(bound_pos, next_player, chain_pos) && self.is_point_inside_chain(pos) {
-                  self.capture(captured_pos, next_player);
+                if build_chain(
+                  self.stride,
+                  &mut self.points,
+                  &mut self.chains[0].0,
+                  bound_pos,
+                  next_player,
+                  chain_pos,
+                ) && is_point_inside_ring(self.stride, pos, &self.chains[0].0)
+                {
+                  self.capture(0, captured_pos, next_player);
                   break 'outer;
-                } else {
-                  self.clear_chain_tags();
                 }
               }
             }
@@ -991,15 +1041,22 @@ impl Field {
     match delta_score.cmp(&0) {
       Ordering::Greater => {
         let mut result = Vec::new();
-        let input_points = self.get_input_points(pos, player);
+        let input_points = get_input_points(self.stride, &self.points, pos, player);
         let input_points_count = input_points.len().saturating_sub(1);
         let mut chains_count = 0;
         for (chain_pos, captured_pos) in input_points {
           if !(self.cell(captured_pos).is_captured() && self.cell(chain_pos).is_bound()) {
             continue;
           }
-          if self.find_chain(pos, player, chain_pos) {
-            result.append(&mut self.chain);
+          if find_chain(
+            self.stride,
+            &mut self.points,
+            &mut self.chains[chains_count].0,
+            pos,
+            player,
+            chain_pos,
+          ) {
+            result.append(&mut self.chains[chains_count].0);
             chains_count += 1;
             if chains_count == input_points_count {
               break;
@@ -1016,10 +1073,18 @@ impl Field {
           while !self.cell(bound_pos).is_bound() {
             bound_pos = self.w(bound_pos);
           }
-          let input_points = self.get_input_points(bound_pos, next_player);
+          let input_points = get_input_points(self.stride, &self.points, bound_pos, next_player);
           for (chain_pos, _) in input_points {
-            if self.find_chain(bound_pos, next_player, chain_pos) && self.is_point_inside_chain(pos) {
-              return self.chain.clone();
+            if find_chain(
+              self.stride,
+              &mut self.points,
+              &mut self.chains[0].0,
+              bound_pos,
+              next_player,
+              chain_pos,
+            ) && is_point_inside_ring(self.stride, pos, &self.chains[0].0)
+            {
+              return self.chains[0].0.clone();
             }
           }
         }

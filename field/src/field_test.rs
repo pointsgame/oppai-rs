@@ -299,6 +299,44 @@ fn three_surroundings_with_common_borders() {
 }
 
 #[test]
+fn ambiguous_surrounding_1() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .aa.aa.
+    a..b..a
+    a.aAa.a
+    a..a..a
+    .a...a.
+    ..aaa..
+    ",
+  );
+  assert_eq!(field.captured_count(Player::Red), 1);
+  assert_eq!(field.captured_count(Player::Black), 0);
+  assert!(field.cell(field.to_pos(3, 4)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 4);
+}
+
+#[test]
+fn ambiguous_surrounding_2() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ..aaa..
+    .a...a.
+    a..a..a
+    a.aAa.a
+    a..b..a
+    .aa.aa.
+    ",
+  );
+  assert_eq!(field.captured_count(Player::Red), 1);
+  assert_eq!(field.captured_count(Player::Black), 0);
+  assert!(field.cell(field.to_pos(3, 1)).is_putting_allowed());
+  assert_eq!(field.get_last_chain().len(), 4);
+}
+
+#[test]
 fn game_over_1() {
   let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
