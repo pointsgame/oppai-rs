@@ -5730,6 +5730,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "oppai-verify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "oppai-field",
+ "rand 0.9.2",
+]
+
+[[package]]
+name = "oppai-verify-child"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "oppai-field",
+ "rand 0.9.2",
+]
+
+[[package]]
 name = "oppai-versus"
 version = "0.1.0"
 dependencies = [

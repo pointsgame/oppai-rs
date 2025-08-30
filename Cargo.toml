@@ -24,7 +24,9 @@ members = [
   "term-render",
   "versus",
   "server",
-  "bench"
+  "bench",
+  "verify",
+  "verify-child"
 ]
 
 [workspace.dependencies]
