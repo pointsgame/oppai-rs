@@ -65,6 +65,11 @@ fn main() -> Result<()> {
       writeln!(stdin)?;
       s.clear();
       stdout.read_line(&mut s)?;
+      if let Ok(status) = process.try_wait()
+        && status.is_some()
+      {
+        anyhow::bail!("child terminated");
+      }
     }
 
     Ok(())
