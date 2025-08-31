@@ -63,6 +63,8 @@ fn main() -> Result<()> {
         player = player.next();
       }
       writeln!(stdin)?;
+      s.clear();
+      stdout.read_line(&mut s)?;
     }
 
     Ok(())

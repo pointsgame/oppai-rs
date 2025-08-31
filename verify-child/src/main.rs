@@ -17,6 +17,7 @@ fn main() -> Result<()> {
       }
       field.clear();
       player = Player::Red;
+      println!();
       continue;
     }
     let x = iter.next().unwrap().parse()?;
