@@ -32,39 +32,49 @@ fn main() -> Result<()> {
   let mut moves = all_moves(20, 20);
   let mut s = String::new();
 
-  for i in 0..config.games {
-    if i % (config.games / 100) == 0 {
-      println!("{}%", i * 100 / config.games);
+  let result = (|| {
+    for i in 0..config.games {
+      if i % (config.games / 100) == 0 {
+        println!("{}%", i * 100 / config.games);
+      }
+      field.clear();
+      moves.shuffle(&mut rng);
+      let mut player = Player::Red;
+      for &pos in &moves {
+        if !field.is_putting_allowed(pos) {
+          continue;
+        }
+        let (x, y) = to_xy(field.stride, pos);
+        if !field.put_point(pos, player) {
+          anyhow::bail!("failed to put point");
+        }
+        writeln!(stdin, "{} {}", x, y)?;
+        s.clear();
+        stdout.read_line(&mut s)?;
+        let mut i = s.trim().split(" ");
+        let captured_red = i.next().ok_or_else(|| anyhow::anyhow!("no red"))?.parse()?;
+        let captured_black = i.next().ok_or_else(|| anyhow::anyhow!("no black"))?.parse()?;
+        if field.score_red != captured_red {
+          anyhow::bail!("captured red mismatch");
+        }
+        if field.score_black != captured_black {
+          anyhow::bail!("captured black mismatch");
+        }
+        player = player.next();
+      }
+      writeln!(stdin)?;
     }
-    field.clear();
-    moves.shuffle(&mut rng);
-    let mut player = Player::Red;
-    for &pos in &moves {
-      if !field.is_putting_allowed(pos) {
-        continue;
-      }
-      let (x, y) = to_xy(field.stride, pos);
-      if !field.put_point(pos, player) {
-        anyhow::bail!("failed to put point");
-      }
-      writeln!(stdin, "{} {}", x, y)?;
-      s.clear();
-      stdout.read_line(&mut s)?;
-      let mut i = s.trim().split(" ");
-      let captured_red = i.next().ok_or_else(|| anyhow::anyhow!("no red"))?.parse()?;
-      let captured_black = i.next().ok_or_else(|| anyhow::anyhow!("no black"))?.parse()?;
-      if field.score_red != captured_red {
-        anyhow::bail!("captured red mismatch:\n{:?}", to_sgf_str(&field.into()));
-      }
-      if field.score_black != captured_black {
-        anyhow::bail!("captured black mismatch:\n{:?}", to_sgf_str(&field.into()));
-      }
-      player = player.next();
-    }
-    writeln!(stdin)?;
+
+    Ok(())
+  })();
+
+  if result.is_err()
+    && let Some(sgf) = to_sgf_str(&field.into())
+  {
+    println!("{}", sgf);
   }
 
   process.kill()?;
 
-  Ok(())
+  result
 }
