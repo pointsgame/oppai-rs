@@ -961,6 +961,19 @@ impl Field {
           self.points[pos].put_point(player);
           if empty_base_player == player {
             self.points[pos].clear_empty_base();
+
+            #[cfg(feature = "dsu")]
+            if let Some(direction_pos) = self
+              .directions_diag(pos)
+              .into_iter()
+              .find(|&pos| self.points[pos].is_live_players_point(player))
+            {
+              let parent = self.find_dsu_set(direction_pos);
+              self.save_dsu_value(pos);
+              self.dsu[pos] = parent;
+              self.save_dsu_size_value(parent);
+              self.dsu_size[parent] += 1;
+            }
           } else if self.find_captures(pos, player) {
             self.remove_empty_base(pos);
           } else {
