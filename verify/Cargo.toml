@@ -12,6 +12,7 @@ env_logger.workspace = true
 clap = { workspace = true, features = [ "cargo" ] }
 anyhow.workspace = true
 oppai-field = { path = "../field" }
+oppai-sgf = { path = "../sgf" }
 
 [features]
 default = ["dsu"]

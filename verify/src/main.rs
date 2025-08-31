@@ -4,6 +4,7 @@ use anyhow::Result;
 use config::cli_parse;
 use oppai_field::field::{Field, Pos, to_pos, to_xy};
 use oppai_field::player::Player;
+use oppai_sgf::to_sgf_str;
 use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -53,10 +54,10 @@ fn main() -> Result<()> {
       let captured_red = i.next().ok_or_else(|| anyhow::anyhow!("no red"))?.parse()?;
       let captured_black = i.next().ok_or_else(|| anyhow::anyhow!("no black"))?.parse()?;
       if field.score_red != captured_red {
-        anyhow::bail!("captured red mismatch:\n{:?}", moves);
+        anyhow::bail!("captured red mismatch:\n{:?}", to_sgf_str(&field.into()));
       }
       if field.score_black != captured_black {
-        anyhow::bail!("captured black mismatch:\n{:?}", moves);
+        anyhow::bail!("captured black mismatch:\n{:?}", to_sgf_str(&field.into()));
       }
       player = player.next();
     }
