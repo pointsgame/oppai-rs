@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     .spawn()?;
   let mut stdin = process.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
   let mut stdout = BufReader::new(process.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?);
-  let mut rng = SmallRng::from_os_rng();
+  let mut rng = config.seed.map_or_else(SmallRng::from_os_rng, SmallRng::seed_from_u64);
   let mut field = Field::new_from_rng(20, 20, &mut rng);
   let mut moves = all_moves(20, 20);
   let mut s = String::new();

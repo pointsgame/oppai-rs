@@ -4,6 +4,7 @@ pub struct Config {
   pub worker: String,
   pub worker_args: Vec<String>,
   pub games: u32,
+  pub seed: Option<u64>,
 }
 
 pub fn cli_parse() -> Config {
@@ -35,6 +36,14 @@ pub fn cli_parse() -> Config {
         .num_args(1)
         .value_parser(value_parser!(u32))
         .default_value("1000000"),
+    )
+    .arg(
+      Arg::new("seed")
+        .long("seed")
+        .short('s')
+        .help("RNG seed")
+        .num_args(1)
+        .value_parser(value_parser!(u64)),
     );
   let matches = command.get_matches();
 
@@ -48,5 +57,6 @@ pub fn cli_parse() -> Config {
       .map(|args| args.cloned().collect())
       .unwrap_or_default(),
     games: matches.get_one("games").copied().unwrap(),
+    seed: matches.get_one("seed").copied(),
   }
 }
