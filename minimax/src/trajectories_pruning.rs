@@ -262,7 +262,7 @@ impl TrajectoriesPruning {
     empty_board: &mut [u32],
     should_stop: &SS,
   ) -> TrajectoriesPruning {
-    let (mut cur_trajectories, mut enemy_trajectories) = if depth % 2 == 0 {
+    let (mut cur_trajectories, mut enemy_trajectories) = if depth.is_multiple_of(2) {
       let enemy_trajectories = build_trajectories(field, player.next(), depth / 2, empty_board, should_stop);
       if should_stop() {
         return TrajectoriesPruning::empty(self.rebuild_trajectories);

@@ -100,7 +100,7 @@ where
   for cur_field in &fields {
     field_features_to_vec::<N>(
       cur_field,
-      if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+      if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
         player
       } else {
         player.next()
@@ -121,7 +121,7 @@ where
     let policy = policies.slice(s![i, .., ..]);
     let value = values[i];
     let children = create_children(&mut cur_field, &policy, value, rng);
-    let value = if (cur_field.moves_count() - field.moves_count()) % 2 == 0 {
+    let value = if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
       value
     } else {
       -value
