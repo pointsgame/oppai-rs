@@ -66,7 +66,7 @@
 
             libsixel
 
-            linuxPackages_latest.perf
+            perf
 
             # WINIT_UNIX_BACKEND=wayland
             wayland

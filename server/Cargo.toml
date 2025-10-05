@@ -20,7 +20,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 serde_with.workspace = true
 tokio = { version = "1.47", features = ["full"] }
-tokio-tungstenite = "0.27"
+tokio-tungstenite = "0.28"
 papaya = "0.2"
 imbl = "6.0"
 uuid = { version = "1.18", features = ["serde"] }
