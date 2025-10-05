@@ -43,11 +43,11 @@ use std::{
   sync::Arc,
 };
 
-fn init<B>(config: Config, model_path: PathBuf, optimizer_path: PathBuf, device: B::Device) -> Result<ExitCode>
+fn init<B>(model_path: PathBuf, optimizer_path: PathBuf, device: B::Device) -> Result<ExitCode>
 where
   B: AutodiffBackend,
 {
-  let model = BurnModel::<B>::new(config.width, config.height, &device);
+  let model = BurnModel::<B>::new(&device);
   model.save_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
@@ -70,7 +70,7 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
-  let model = BurnModel::<B>::new(config.width, config.height, &device);
+  let model = BurnModel::<B>::new(&device);
   let model = model.load_file(
     model_path,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -112,7 +112,6 @@ where
 }
 
 fn train<B>(
-  config: Config,
   model_path: PathBuf,
   mut optimizer_path: PathBuf,
   model_new_path: PathBuf,
@@ -126,14 +125,17 @@ where
   B: AutodiffBackend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model = BurnModel::<B>::new(config.width, config.height, &device);
+  let model = BurnModel::<B>::new(&device);
   let model = model.load_file(
     model_path,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
   let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
-  let item = Recorder::<B>::load_item(&DefaultFileRecorder::<FullPrecisionSettings>::new(), &mut optimizer_path)?;
+  let item = Recorder::<B>::load_item(
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    &mut optimizer_path,
+  )?;
   let record = Record::from_item::<FullPrecisionSettings>(item, &device);
   let optimizer = optimizer.load_record(record);
   let predictor = Predictor { model, device };
@@ -195,7 +197,7 @@ where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model = BurnModel::<B>::new(config.width, config.height, &device);
+  let model = BurnModel::<B>::new(&device);
   let model = model.load_file(
     model_path,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -206,7 +208,7 @@ where
     device: device.clone(),
   };
 
-  let model_new = BurnModel::<B>::new(config.width, config.height, &device);
+  let model_new = BurnModel::<B>::new(&device);
   let model_new = model_new.load_file(
     model_new_path,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -241,7 +243,7 @@ where
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
   match action {
-    Action::Init { model, optimizer } => init::<Autodiff<B>>(config, model, optimizer, device),
+    Action::Init { model, optimizer } => init::<Autodiff<B>>(model, optimizer, device),
     Action::Play { model, game } => play::<B>(config, model, game, device),
     Action::Train {
       model,
@@ -252,7 +254,6 @@ where
       batch_size,
       epochs,
     } => train::<Autodiff<B>>(
-      config,
       model,
       optimizer,
       model_new,

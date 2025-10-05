@@ -1,13 +1,13 @@
 use burn::{
   module::Module,
   nn::{
-    BatchNorm, BatchNormConfig, Linear, LinearConfig, PaddingConfig2d, Relu,
+    BatchNorm, BatchNormConfig, PaddingConfig2d, Relu,
     conv::{Conv2d, Conv2dConfig},
   },
   optim::{GradientsParams, Optimizer},
   tensor::{
     DataError, Tensor, TensorData,
-    activation::log_softmax,
+    activation::{log_softmax, softmax},
     backend::{AutodiffBackend, Backend},
   },
 };
@@ -22,10 +22,7 @@ use thiserror::Error;
 
 const INPUT_CHANNELS: usize = CHANNELS;
 const INNER_CHANNELS: usize = 32; // AlphaGo uses 256
-const RESIDUAL_BLOCKS: usize = 5; // AlphaGo uses 19 or 39
-const POLICY_CHANNELS: usize = 2;
-const VALUE_CHANNELS: usize = 1;
-const VALUE_HIDDEN_SIZE: usize = 256;
+const RESIDUAL_BLOCKS: usize = 8; // AlphaGo uses 19 or 39
 
 #[derive(Module, Debug)]
 pub struct ResidualBlock<B: Backend> {
@@ -67,35 +64,29 @@ pub struct Model<B: Backend> {
   initial_bn: BatchNorm<B, 2>,
   residuals: Vec<ResidualBlock<B>>,
   policy_conv: Conv2d<B>,
-  policy_bn: BatchNorm<B, 2>,
-  policy_fc: Linear<B>,
   value_conv: Conv2d<B>,
-  value_bn: BatchNorm<B, 2>,
-  value_fc1: Linear<B>,
-  value_fc2: Linear<B>,
+  // or AdaptiveAvgPool2d(1, 1)?
+  value_attention: Conv2d<B>,
   activation: Relu,
 }
 
 impl<B: Backend> Model<B> {
-  pub fn new(width: u32, height: u32, device: &B::Device) -> Self {
-    let length = (width * height) as usize;
+  pub fn new(device: &B::Device) -> Self {
     Self {
       initial_conv: Conv2dConfig::new([INPUT_CHANNELS, INNER_CHANNELS], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .init(device),
       initial_bn: BatchNormConfig::new(INNER_CHANNELS).init(device),
       residuals: vec![ResidualBlock::new(device); RESIDUAL_BLOCKS],
-      policy_conv: Conv2dConfig::new([INNER_CHANNELS, POLICY_CHANNELS], [1, 1])
+      policy_conv: Conv2dConfig::new([INNER_CHANNELS, 1], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .init(device),
-      policy_bn: BatchNormConfig::new(POLICY_CHANNELS).init(device),
-      policy_fc: LinearConfig::new(POLICY_CHANNELS * length, length).init(device),
-      value_conv: Conv2dConfig::new([INNER_CHANNELS, VALUE_CHANNELS], [1, 1])
+      value_conv: Conv2dConfig::new([INNER_CHANNELS, 1], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .init(device),
-      value_bn: BatchNormConfig::new(VALUE_CHANNELS).init(device),
-      value_fc1: LinearConfig::new(VALUE_CHANNELS * length, VALUE_HIDDEN_SIZE).init(device),
-      value_fc2: LinearConfig::new(VALUE_HIDDEN_SIZE, 1).init(device),
+      value_attention: Conv2dConfig::new([INNER_CHANNELS, 1], [3, 3])
+        .with_padding(PaddingConfig2d::Same)
+        .init(device),
       activation: Default::default(),
     }
   }
@@ -110,25 +101,22 @@ impl<B: Backend> Model<B> {
       x = residual.forward(x);
     }
 
-    let p = self.policy_conv.forward(x.clone());
-    let p = self.policy_bn.forward(p);
-    let p = self.activation.forward(p);
-    let p = p.reshape([batch, POLICY_CHANNELS * height * width]);
-    let p = self.policy_fc.forward(p);
-    let p = log_softmax(p, 1);
-    let p = p.reshape([batch, height, width]);
+    let policy = self.policy_conv.forward(x.clone());
+    let policy = policy.reshape([batch, height * width]);
+    let policy = log_softmax(policy, 1);
+    let policy = policy.reshape([batch, height, width]);
 
-    let v = self.value_conv.forward(x);
-    let v = self.value_bn.forward(v);
-    let v = self.activation.forward(v);
-    let v = v.reshape([batch, VALUE_CHANNELS * height * width]);
-    let v = self.value_fc1.forward(v);
-    let v = self.activation.forward(v);
-    let v = self.value_fc2.forward(v);
-    let v = v.tanh();
-    let v = v.reshape([batch]);
+    let attention = self.value_attention.forward(x.clone());
+    let attention = attention.reshape([batch, height * width]);
+    let attention = softmax(attention, 1);
+    let value = self.value_conv.forward(x);
+    let value = value.reshape([batch, height * width]);
+    let value = value * attention;
+    let value = value.sum_dim(1);
+    let value = value.reshape([batch]);
+    let value = value.tanh();
 
-    (p, v)
+    (policy, value)
   }
 }
 
@@ -262,7 +250,7 @@ mod tests {
 
   #[test]
   fn forward() {
-    let model = Model::<NdArray>::new(4, 8, &NdArrayDevice::Cpu);
+    let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
     let (policies, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
     let policies = policies.exp();
     assert!(
@@ -289,7 +277,7 @@ mod tests {
     ($name:ident, $backend:ty, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<$backend>::new(8, 4, &$device);
+        let model = Model::<$backend>::new(&$device);
         let predictor = Predictor {
           model,
           device: $device,
@@ -308,7 +296,7 @@ mod tests {
     ($name:ident, $backend:ty, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<Autodiff<$backend>>::new(8, 4, &$device);
+        let model = Model::<Autodiff<$backend>>::new(&$device);
         let predictor = Predictor {
           model,
           device: $device,
