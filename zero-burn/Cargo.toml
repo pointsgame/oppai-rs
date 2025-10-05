@@ -17,4 +17,4 @@ oppai-zero = { path = "../zero" }
 derive_more = { workspace = true, features = ["from"] }
 
 [dev-dependencies]
-burn = { workspace = true, features = ["autodiff", "autotune", "ndarray", "wgpu"] }
+burn = { workspace = true, features = ["autodiff", "autotune", "ndarray", "vulkan"] }

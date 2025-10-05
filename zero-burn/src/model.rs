@@ -3,11 +3,12 @@ use burn::{
   nn::{
     BatchNorm, BatchNormConfig, PaddingConfig2d, Relu,
     conv::{Conv2d, Conv2dConfig},
+    pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig},
   },
   optim::{GradientsParams, Optimizer},
   tensor::{
     DataError, Tensor, TensorData,
-    activation::{log_softmax, softmax},
+    activation::log_softmax,
     backend::{AutodiffBackend, Backend},
   },
 };
@@ -65,8 +66,7 @@ pub struct Model<B: Backend> {
   residuals: Vec<ResidualBlock<B>>,
   policy_conv: Conv2d<B>,
   value_conv: Conv2d<B>,
-  // or AdaptiveAvgPool2d(1, 1)?
-  value_attention: Conv2d<B>,
+  value_avg_pool: AdaptiveAvgPool2d,
   activation: Relu,
 }
 
@@ -81,12 +81,10 @@ impl<B: Backend> Model<B> {
       policy_conv: Conv2dConfig::new([INNER_CHANNELS, 1], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .init(device),
-      value_conv: Conv2dConfig::new([INNER_CHANNELS, 1], [1, 1])
+      value_conv: Conv2dConfig::new([INNER_CHANNELS, 1], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .init(device),
-      value_attention: Conv2dConfig::new([INNER_CHANNELS, 1], [3, 3])
-        .with_padding(PaddingConfig2d::Same)
-        .init(device),
+      value_avg_pool: AdaptiveAvgPool2dConfig::new([1, 1]).init(),
       activation: Default::default(),
     }
   }
@@ -106,13 +104,8 @@ impl<B: Backend> Model<B> {
     let policy = log_softmax(policy, 1);
     let policy = policy.reshape([batch, height, width]);
 
-    let attention = self.value_attention.forward(x.clone());
-    let attention = attention.reshape([batch, height * width]);
-    let attention = softmax(attention, 1);
     let value = self.value_conv.forward(x);
-    let value = value.reshape([batch, height * width]);
-    let value = value * attention;
-    let value = value.sum_dim(1);
+    let value = self.value_avg_pool.forward(value);
     let value = value.reshape([batch]);
     let value = value.tanh();
 
