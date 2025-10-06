@@ -7,7 +7,7 @@ export RUST_LOG="oppai_zero=info,oppai_zero_burn=info,oppai_zero_train=info"
 export BURN_WGPU_MAX_TASKS=4
 BIN=(cargo run --release --quiet --)
 
-EXTENSION=.mpk.gz
+EXTENSION=.mpk
 MODELS=./models
 GAMES=./games
 # How many games are played in parallel
