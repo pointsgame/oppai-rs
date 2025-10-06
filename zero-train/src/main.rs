@@ -89,7 +89,7 @@ where
     field.put_point(pos, player);
   }
 
-  let visits = episode(&mut field, player, &predictor, &mut rng, 30)?;
+  let visits = episode(&mut field, player, &predictor, &mut rng)?;
 
   let field = field.into();
   if let Some(mut node) = to_sgf(&field) {

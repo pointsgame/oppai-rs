@@ -49,25 +49,7 @@ impl Visits {
   }
 }
 
-fn select<N: Float + Sum + SampleUniform, R: Rng>(mut nodes: Vec<MctsNode<N>>, rng: &mut R) -> MctsNode<N> {
-  let r = rng.random_range(0..nodes.iter().map(|child| child.visits).sum::<u64>());
-  let mut sum = 0;
-  while let Some(node) = nodes.pop() {
-    sum += node.visits;
-    if sum > r {
-      return node;
-    }
-  }
-  unreachable!()
-}
-
-pub fn episode<N, M, R>(
-  field: &mut Field,
-  mut player: Player,
-  model: &M,
-  rng: &mut R,
-  exploration_threshold: usize,
-) -> Result<Vec<Visits>, M::E>
+pub fn episode<N, M, R>(field: &mut Field, mut player: Player, model: &M, rng: &mut R) -> Result<Vec<Visits>, M::E>
 where
   M: Model<N>,
   N: Float + Sum + SampleUniform + Display + Debug,
@@ -77,7 +59,6 @@ where
   Open01: Distribution<N>,
 {
   let mut node = MctsNode::default();
-  let mut moves_count = 0;
   let mut visits = Vec::new();
 
   while !field.is_game_over() {
@@ -100,14 +81,9 @@ where
         .collect(),
     ));
 
-    node = if moves_count < exploration_threshold {
-      select(node.children, rng)
-    } else {
-      node.best_child().unwrap()
-    };
+    node = node.best_child().unwrap();
     field.put_point(node.pos, player);
     player = player.next();
-    moves_count += 1;
 
     log::debug!(
       "Score: {}, visits: {}, policy: {}, wins: {}\n{:?}",

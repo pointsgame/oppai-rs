@@ -34,7 +34,6 @@ fn episode_simple_surrounding() {
       result
     },
     &mut rng,
-    0,
   )
   .unwrap();
   let examples = examples::<f64>(
@@ -100,7 +99,6 @@ fn episode_trap() {
       result
     },
     &mut rng,
-    0,
   )
   .unwrap();
   let examples = examples::<f64>(
@@ -213,7 +211,6 @@ fn episode_winning_game() {
       result
     },
     &mut rng,
-    0,
   )
   .unwrap();
   let examples = examples::<f64>(
