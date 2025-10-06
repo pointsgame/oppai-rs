@@ -1,7 +1,7 @@
 use burn::{
   module::Module,
   nn::{
-    BatchNorm, BatchNormConfig, PaddingConfig2d, Relu,
+    BatchNorm, BatchNormConfig, Gelu, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
     pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig},
   },
@@ -31,7 +31,7 @@ pub struct ResidualBlock<B: Backend> {
   bn1: BatchNorm<B, 2>,
   conv2: Conv2d<B>,
   bn2: BatchNorm<B, 2>,
-  activation: Relu,
+  activation: Gelu,
 }
 
 impl<B: Backend> ResidualBlock<B> {
@@ -67,7 +67,7 @@ pub struct Model<B: Backend> {
   policy_conv: Conv2d<B>,
   value_conv: Conv2d<B>,
   value_avg_pool: AdaptiveAvgPool2d,
-  activation: Relu,
+  activation: Gelu,
 }
 
 impl<B: Backend> Model<B> {
