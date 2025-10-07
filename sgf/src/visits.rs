@@ -1,3 +1,5 @@
+use std::iter;
+
 use crate::{from_coordinate, to_coordinate};
 use oppai_field::field::{to_pos, to_x, to_y};
 use oppai_zero::episode::Visits;
@@ -8,21 +10,20 @@ pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], stride: u3
     node = &mut node.children[0];
   }
 
-  for Visits(visits) in visits {
+  for Visits(visits, full) in visits {
     node = &mut node.children[0];
 
     node.properties.push(Prop::Unknown(
       "ZR".into(),
-      visits
-        .iter()
-        .map(|&(pos, visits)| {
+      iter::once(full.to_string())
+        .chain(visits.iter().map(|&(pos, visits)| {
           format!(
             "{}{}{}",
             from_coordinate(to_x(stride, pos) as u8) as char,
             from_coordinate(to_y(stride, pos) as u8) as char,
             visits,
           )
-        })
+        }))
         .collect(),
     ));
   }
@@ -33,17 +34,21 @@ pub fn sgf_to_visits(node: &SgfNode<Prop>, stride: u32) -> Vec<Visits> {
     .main_variation()
     .flat_map(|node| node.get_property("ZR"))
     .flat_map(|prop| match prop {
-      Prop::Unknown(_, visits) => Some(Visits(
-        visits
-          .iter()
-          .map(|s| {
-            let x = to_coordinate(s.as_bytes()[0]) as u32;
-            let y = to_coordinate(s.as_bytes()[1]) as u32;
-            let visits = s[2..].parse().unwrap();
-            (to_pos(stride, x, y), visits)
-          })
-          .collect(),
-      )),
+      Prop::Unknown(_, visits) => {
+        let full = visits[0].parse().unwrap();
+        Some(Visits(
+          visits[1..]
+            .iter()
+            .map(|s| {
+              let x = to_coordinate(s.as_bytes()[0]) as u32;
+              let y = to_coordinate(s.as_bytes()[1]) as u32;
+              let visits = s[2..].parse().unwrap();
+              (to_pos(stride, x, y), visits)
+            })
+            .collect(),
+          full,
+        ))
+      }
       _ => None,
     })
     .collect()
@@ -75,11 +80,14 @@ mod tests {
       ",
     )
     .into();
-    let visits = vec![Visits(vec![
-      (field.field().to_pos(0, 0), 1),
-      (field.field().to_pos(0, 1), 2),
-      (field.field().to_pos(2, 0), 3),
-    ])];
+    let visits = vec![Visits(
+      vec![
+        (field.field().to_pos(0, 0), 1),
+        (field.field().to_pos(0, 1), 2),
+        (field.field().to_pos(2, 0), 3),
+      ],
+      true,
+    )];
     let mut node = to_sgf(&field).unwrap();
     visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
     let sgf_visits = sgf_to_visits(&node, field.field().stride);

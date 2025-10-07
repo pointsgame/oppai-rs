@@ -90,7 +90,7 @@ fn episode_trap() {
 
   let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
-  let visits = episode(
+  let mut visits = episode(
     &mut field,
     Player::Red,
     &|inputs: Array4<f64>| {
@@ -101,6 +101,9 @@ fn episode_trap() {
     &mut rng,
   )
   .unwrap();
+  for visits in &mut visits {
+    visits.1 = true;
+  }
   let examples = examples::<f64>(
     field.width(),
     field.height(),
@@ -244,8 +247,8 @@ fn visits_to_examples() {
     ",
   );
   let visits = vec![
-    Visits(vec![(field.to_pos(0, 0), 2), (field.to_pos(0, 1), 6)]),
-    Visits(vec![(field.to_pos(0, 0), 8)]),
+    Visits(vec![(field.to_pos(0, 0), 2), (field.to_pos(0, 1), 6)], true),
+    Visits(vec![(field.to_pos(0, 0), 8)], true),
   ];
   let examples = examples::<f32>(
     field.width(),

@@ -18,10 +18,11 @@ use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
 use std::sync::Arc;
 
-const MCTS_SIMS: u32 = 256;
+const MCTS_SIMS: u32 = 200;
+const MCTS_FULL_SIMS: u32 = 1000;
 
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
-pub struct Visits(pub Vec<(Pos, u64)>);
+pub struct Visits(pub Vec<(Pos, u64)>, pub bool);
 
 impl Visits {
   pub fn total(&self) -> u64 {
@@ -66,9 +67,16 @@ where
       mcts(field, player, &mut node, model, rng)?;
     }
 
-    node.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
+    let full_search = field.moves_count() > 40 && rng.random::<f64>() <= 0.25;
 
-    for _ in 0..MCTS_SIMS {
+    let sims = if full_search {
+      node.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
+      MCTS_FULL_SIMS
+    } else {
+      MCTS_SIMS
+    };
+
+    for _ in 0..sims {
       mcts(field, player, &mut node, model, rng)?;
     }
 
@@ -79,6 +87,7 @@ where
         .filter(|child| child.visits > 0)
         .map(|child| (child.pos, child.visits))
         .collect(),
+      full_search,
     ));
 
     node = node.best_child().unwrap();
@@ -116,21 +125,25 @@ pub fn examples<N: Float + Zero + One>(
   }
 
   for (&(pos, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
-    for rotation in 0..rotations {
-      examples.inputs.push(field_features(&field, player, rotation));
-      examples.policies.push(visits.policies(width, height, rotation));
+    if visits.1 {
+      for rotation in 0..rotations {
+        examples.inputs.push(field_features(&field, player, rotation));
+        examples.policies.push(visits.policies(width, height, rotation));
+      }
     }
 
     assert!(field.put_point(pos, player), "invalid moves siequence");
   }
 
   let value = game_result::<N>(&field, Player::Red);
-  for &(_, player) in &moves[initial_moves..] {
-    let value = match player {
-      Player::Red => value,
-      Player::Black => -value,
-    };
-    examples.values.extend(iter::repeat_n(value, rotations as usize));
+  for (&(_, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
+    if visits.1 {
+      let value = match player {
+        Player::Red => value,
+        Player::Black => -value,
+      };
+      examples.values.extend(iter::repeat_n(value, rotations as usize));
+    }
   }
 
   examples
