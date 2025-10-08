@@ -221,7 +221,7 @@ where
     log::info!("Loss: {}", loss.clone().into_scalar());
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
-    self.predictor.model = self.optimizer.step(0.01, self.predictor.model, grads);
+    self.predictor.model = self.optimizer.step(0.0001, self.predictor.model, grads);
 
     Ok(self)
   }

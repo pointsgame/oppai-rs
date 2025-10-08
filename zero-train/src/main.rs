@@ -6,7 +6,7 @@ use anyhow::Result;
 use burn::{
   backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
   module::Module,
-  optim::{AdamWConfig, Optimizer},
+  optim::{Optimizer, SgdConfig},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
   tensor::backend::{AutodiffBackend, Backend},
 };
@@ -50,7 +50,7 @@ where
   let model = BurnModel::<B>::new(&device);
   model.save_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
-  let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
+  let optimizer = SgdConfig::new().init::<B, BurnModel<_>>();
   let record = optimizer.to_record();
   let item = record.into_item::<FullPrecisionSettings>();
   Recorder::<B>::save_item(
@@ -131,7 +131,7 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let optimizer = AdamWConfig::new().init::<B, BurnModel<_>>();
+  let optimizer = SgdConfig::new().init::<B, BurnModel<_>>();
   let item = Recorder::<B>::load_item(
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &mut optimizer_path,
