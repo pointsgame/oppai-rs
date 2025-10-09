@@ -105,6 +105,8 @@ where
       } else {
         player.next()
       },
+      field.width(),
+      field.height(),
       0,
       &mut features,
     )

@@ -25,7 +25,7 @@ fn episode_simple_surrounding() {
 
   let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
 
-  let visits = episode(
+  let mut visits = episode(
     &mut field,
     Player::Red,
     &|inputs: Array4<f64>| {
@@ -36,6 +36,9 @@ fn episode_simple_surrounding() {
     &mut rng,
   )
   .unwrap();
+  for visits in &mut visits {
+    visits.1 = true;
+  }
   let examples = examples::<f64>(
     field.width(),
     field.height(),
@@ -61,14 +64,14 @@ fn episode_simple_surrounding() {
   for rotation in 0..ROTATIONS {
     assert_eq!(
       examples.inputs[rotation as usize],
-      field_features(&field, Player::Red, rotation)
+      field_features(&field, Player::Red, field.width(), field.height(), rotation)
     );
   }
 
   assert_eq!(model_inputs.borrow().len(), 1);
   assert_eq!(
     model_inputs.borrow()[0],
-    field_features(&field, Player::Red, 0)
+    field_features(&field, Player::Red, field.width(), field.height(), 0)
       .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
       .unwrap()
   );
@@ -132,7 +135,7 @@ fn episode_trap() {
   for rotation in 0..ROTATIONS {
     assert_eq!(
       examples.inputs[(ROTATIONS + rotation) as usize],
-      field_features(&field, Player::Black, rotation)
+      field_features(&field, Player::Black, field.width(), field.height(), rotation)
     );
   }
 
@@ -152,23 +155,23 @@ fn episode_trap() {
   for rotation in 0..ROTATIONS {
     assert_eq!(
       examples.inputs[rotation as usize],
-      field_features(&field, Player::Red, rotation)
+      field_features(&field, Player::Red, field.width(), field.height(), rotation)
     );
   }
 
   assert_eq!(model_inputs.borrow().len(), 2);
 
-  let features = field_features(&field, Player::Red, 0);
+  let features = field_features(&field, Player::Red, field.width(), field.height(), 0);
   let features = features
     .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
     .unwrap();
   assert_eq!(model_inputs.borrow()[0], features);
 
   field.put_point(field.to_pos(0, 1), Player::Red);
-  let features1 = field_features::<f64>(&field, Player::Black, 0);
+  let features1 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   field.undo();
   field.put_point(field.to_pos(1, 1), Player::Red);
-  let features2 = field_features::<f64>(&field, Player::Black, 0);
+  let features2 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   // order depends on rng
   assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
   assert_eq!(features2, model_inputs.borrow()[1].index_axis(Axis(0), 1));
@@ -268,13 +271,13 @@ fn visits_to_examples() {
      [0.0, 1.0, 0.0],
      [1.0, 0.0, 1.0]],
 
-    [[0.0, 0.0, 0.0],
-     [0.0, 0.0, 0.0],
-     [0.0, 0.0, 0.0]],
+    [[0.0, 1.0, 0.0],
+     [0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0]],
 
-    [[0.0, 0.0, 0.0],
-     [0.0, 0.0, 0.0],
-     [0.0, 0.0, 0.0]],
+    [[0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0],
+     [1.0, 0.0, 1.0]],
   ];
   assert_eq!(examples.inputs[0], inputs_0);
 
@@ -291,20 +294,20 @@ fn visits_to_examples() {
   #[rustfmt::skip]
   let inputs_1 = array![
     [[0.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0],
+     [1.0, 0.0, 1.0]],
+
+    [[0.0, 1.0, 0.0],
+     [1.0, 0.0, 1.0],
+     [0.0, 1.0, 0.0]],
+
+    [[0.0, 0.0, 1.0],
      [0.0, 0.0, 0.0],
      [1.0, 0.0, 1.0]],
 
     [[0.0, 1.0, 0.0],
      [1.0, 1.0, 1.0],
      [0.0, 1.0, 0.0]],
-
-    [[0.0, 0.0, 0.0],
-     [0.0, 1.0, 0.0],
-     [0.0, 0.0, 0.0]],
-
-    [[0.0, 0.0, 0.0],
-     [0.0, 0.0, 0.0],
-     [0.0, 0.0, 0.0]],
   ];
   assert_eq!(examples.inputs[8], inputs_1);
 

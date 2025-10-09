@@ -12,9 +12,14 @@ pub fn field_features_len(width: u32, height: u32) -> usize {
   (width * height) as usize * CHANNELS
 }
 
-fn push_features<N, F: Fn(Cell) -> N + Copy>(field: &Field, f: F, features: &mut Vec<N>, rotation: u8) {
-  let width = field.width();
-  let height = field.height();
+fn push_features<N, F: Fn(Cell) -> N + Copy>(
+  field: &Field,
+  f: F,
+  features: &mut Vec<N>,
+  width: u32,
+  height: u32,
+  rotation: u8,
+) {
   features.extend((0..height).flat_map(|y| {
     (0..width).map(move |x| {
       let (x, y) = rotate_back(width, height, x, y, rotation);
@@ -24,7 +29,14 @@ fn push_features<N, F: Fn(Cell) -> N + Copy>(field: &Field, f: F, features: &mut
   }));
 }
 
-pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotation: u8, features: &mut Vec<N>) {
+pub fn field_features_to_vec<N: Zero + One>(
+  field: &Field,
+  player: Player,
+  width: u32,
+  height: u32,
+  rotation: u8,
+  features: &mut Vec<N>,
+) {
   let enemy = player.next();
   push_features(
     field,
@@ -36,6 +48,8 @@ pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotat
       }
     },
     features,
+    width,
+    height,
     rotation,
   );
   push_features(
@@ -48,27 +62,37 @@ pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotat
       }
     },
     features,
+    width,
+    height,
     rotation,
   );
   push_features(
     field,
     |cell| if cell.is_owner(player) { N::one() } else { N::zero() },
     features,
+    width,
+    height,
     rotation,
   );
   push_features(
     field,
     |cell| if cell.is_owner(enemy) { N::one() } else { N::zero() },
     features,
+    width,
+    height,
     rotation,
   );
 }
 
-pub fn field_features<N: Zero + One>(field: &Field, player: Player, rotation: u8) -> Array3<N> {
-  let width = field.width();
-  let height = field.height();
+pub fn field_features<N: Zero + One>(
+  field: &Field,
+  player: Player,
+  width: u32,
+  height: u32,
+  rotation: u8,
+) -> Array3<N> {
   let mut features = Vec::with_capacity(field_features_len(width, height));
-  field_features_to_vec::<N>(field, player, rotation, &mut features);
+  field_features_to_vec::<N>(field, player, width, height, rotation, &mut features);
   Array::from(features)
     .into_shape_with_order((CHANNELS, height as usize, width as usize))
     .unwrap()

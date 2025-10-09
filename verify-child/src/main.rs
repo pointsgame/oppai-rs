@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     std::io::stdin().read_line(&mut s)?;
     let mut iter = s.trim().split(" ").filter(|s| !s.is_empty()).peekable();
     if iter.peek().is_none() {
-      if (field.min_pos() ..= field.max_pos()).any(|pos| field.is_putting_allowed(pos)) {
+      if (field.min_pos()..=field.max_pos()).any(|pos| field.is_putting_allowed(pos)) {
         anyhow::bail!("field is not fully occupied");
       }
       field.clear();
