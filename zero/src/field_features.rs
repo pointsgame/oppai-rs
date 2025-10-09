@@ -5,14 +5,14 @@ use oppai_field::field::Field;
 use oppai_field::player::Player;
 use oppai_rotate::rotate::rotate_back;
 
-pub const CHANNELS: usize = 4;
+pub const CHANNELS: usize = 5;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
   (width * height) as usize * CHANNELS
 }
 
-fn push_features<N, F: Fn(Cell) -> N + Copy>(
+fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
   field: &Field,
   f: F,
   features: &mut Vec<N>,
@@ -20,8 +20,13 @@ fn push_features<N, F: Fn(Cell) -> N + Copy>(
   height: u32,
   rotation: u8,
 ) {
+  let field_width = field.width();
+  let field_height = field.height();
   features.extend((0..height).flat_map(|y| {
     (0..width).map(move |x| {
+      if x >= field_width || y >= field_height {
+        return N::zero();
+      }
       let (x, y) = rotate_back(width, height, x, y, rotation);
       let pos = field.to_pos(x, y);
       f(field.cell(pos))
@@ -38,6 +43,7 @@ pub fn field_features_to_vec<N: Zero + One>(
   features: &mut Vec<N>,
 ) {
   let enemy = player.next();
+  push_features(field, |_| N::one(), features, width, height, rotation);
   push_features(
     field,
     |cell| {

@@ -54,7 +54,7 @@ fn episode_simple_surrounding() {
   for rotation in 0..ROTATIONS {
     let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
     assert_eq!(examples.policies[rotation as usize][(y as usize, x as usize)], 1.0);
-    for channel in 0..CHANNELS {
+    for channel in 1..CHANNELS {
       assert_eq!(
         examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
         0.0
@@ -125,7 +125,7 @@ fn episode_trap() {
       examples.policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)],
       1.0
     );
-    for channel in 0..CHANNELS {
+    for channel in 1..CHANNELS {
       assert_eq!(
         examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
         0.0
@@ -145,7 +145,7 @@ fn episode_trap() {
     assert!(
       examples.policies[rotation as usize][(y as usize, x as usize)] > examples.policies[rotation as usize][(1, 1)]
     );
-    for channel in 0..CHANNELS {
+    for channel in 1..CHANNELS {
       assert_eq!(
         examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
         0.0
@@ -263,6 +263,10 @@ fn visits_to_examples() {
 
   #[rustfmt::skip]
   let inputs_0 = array![
+    [[1.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0]],
+
     [[0.0, 1.0, 0.0],
      [0.0, 0.0, 1.0],
      [0.0, 1.0, 0.0]],
@@ -293,6 +297,10 @@ fn visits_to_examples() {
 
   #[rustfmt::skip]
   let inputs_1 = array![
+    [[1.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0]],
+
     [[0.0, 0.0, 1.0],
      [0.0, 1.0, 0.0],
      [1.0, 0.0, 1.0]],
