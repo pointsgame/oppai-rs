@@ -28,6 +28,30 @@ pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotat
   let enemy = player.next();
   push_features(
     field,
+    |cell| {
+      if cell.is_players_point(player) {
+        N::one()
+      } else {
+        N::zero()
+      }
+    },
+    features,
+    rotation,
+  );
+  push_features(
+    field,
+    |cell| {
+      if cell.is_players_point(enemy) {
+        N::one()
+      } else {
+        N::zero()
+      }
+    },
+    features,
+    rotation,
+  );
+  push_features(
+    field,
     |cell| if cell.is_owner(player) { N::one() } else { N::zero() },
     features,
     rotation,
@@ -35,30 +59,6 @@ pub fn field_features_to_vec<N: Zero + One>(field: &Field, player: Player, rotat
   push_features(
     field,
     |cell| if cell.is_owner(enemy) { N::one() } else { N::zero() },
-    features,
-    rotation,
-  );
-  push_features(
-    field,
-    |cell| {
-      if cell.is_players_point(player) && cell.is_captured() {
-        N::one()
-      } else {
-        N::zero()
-      }
-    },
-    features,
-    rotation,
-  );
-  push_features(
-    field,
-    |cell| {
-      if cell.is_players_point(enemy) && cell.is_captured() {
-        N::one()
-      } else {
-        N::zero()
-      }
-    },
     features,
     rotation,
   );
