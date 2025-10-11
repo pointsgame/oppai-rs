@@ -284,7 +284,7 @@ impl<B: Backend> ValueHead<B> {
     let outv1 = self.bias1.forward(outv1, mask);
     let outv1 = self.act1.forward(outv1);
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
-    let outv2 = self.linear2.forward(outpooled).squeeze(1);
+    let outv2 = self.linear2.forward(outpooled).squeeze_dims(&[1]);
     outv2.tanh()
   }
 }
