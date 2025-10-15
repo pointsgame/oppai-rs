@@ -27,7 +27,7 @@ fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
       if x >= field_width || y >= field_height {
         return N::zero();
       }
-      let (x, y) = rotate_back(width, height, x, y, rotation);
+      let (x, y) = rotate_back(field_width, field_height, x, y, rotation);
       let pos = field.to_pos(x, y);
       f(field.cell(pos))
     })
