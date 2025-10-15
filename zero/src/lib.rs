@@ -11,4 +11,5 @@ pub mod mcts_node;
 pub mod mcts_test;
 pub mod model;
 pub mod pit;
+pub mod random_model;
 pub mod zero;
