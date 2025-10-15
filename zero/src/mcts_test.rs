@@ -38,7 +38,7 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| {
+    &mut |inputs: Array4<f64>| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 1.0)));
       result
     },
@@ -56,7 +56,7 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| {
+    &mut |inputs: Array4<f64>| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, -1.0)));
       result
     },
@@ -93,7 +93,7 @@ fn mcts_last_iterations() {
     &mut field,
     Player::Red,
     &mut node,
-    &|inputs: Array4<f64>| {
+    &mut |inputs: Array4<f64>| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
       result
     },

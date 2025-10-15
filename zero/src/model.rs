@@ -1,10 +1,11 @@
+use either::Either;
 use ndarray::{Array, Array1, Array3, Array4, Axis};
 use num_traits::Float;
 
 pub trait Model<N: Float> {
   type E;
 
-  fn predict(&self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E>;
+  fn predict(&mut self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E>;
 }
 
 pub trait TrainableModel<N: Float>: Model<N> + Sized {
@@ -19,7 +20,7 @@ where
 {
   type E = E;
 
-  fn predict(&self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E> {
+  fn predict(&mut self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E> {
     self(inputs)
   }
 }
@@ -27,7 +28,7 @@ where
 impl<N: Float> Model<N> for () {
   type E = ();
 
-  fn predict(&self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E> {
+  fn predict(&mut self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E> {
     let batch_size = inputs.len_of(Axis(0));
     let height = inputs.len_of(Axis(2));
     let width = inputs.len_of(Axis(3));
@@ -35,5 +36,16 @@ impl<N: Float> Model<N> for () {
     let policies = Array::from_elem((batch_size, height, width), policy);
     let values = Array::from_elem(batch_size, N::one() / (N::one() + N::one()));
     Ok((policies, values))
+  }
+}
+
+impl<N: Float, A: Model<N>, B: Model<N>> Model<N> for Either<A, B> {
+  type E = Either<A::E, B::E>;
+
+  fn predict(&mut self, inputs: Array4<N>) -> Result<(Array3<N>, Array1<N>), Self::E> {
+    match self {
+      Either::Left(a) => a.predict(inputs).map_err(Either::Left),
+      Either::Right(b) => b.predict(inputs).map_err(Either::Right),
+    }
   }
 }

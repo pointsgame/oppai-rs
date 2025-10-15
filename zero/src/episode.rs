@@ -50,7 +50,7 @@ impl Visits {
   }
 }
 
-pub fn episode<N, M, R>(field: &mut Field, mut player: Player, model: &M, rng: &mut R) -> Result<Vec<Visits>, M::E>
+pub fn episode<N, M, R>(field: &mut Field, mut player: Player, model: &mut M, rng: &mut R) -> Result<Vec<Visits>, M::E>
 where
   M: Model<N>,
   N: Float + Sum + SampleUniform + Display + Debug,

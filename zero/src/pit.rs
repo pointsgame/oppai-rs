@@ -17,8 +17,8 @@ const MCTS_SIMS: u32 = 32;
 fn play<'a, N, M, R>(
   field: &mut Field,
   mut player: Player,
-  mut model1: &'a M,
-  mut model2: &'a M,
+  mut model1: &'a mut M,
+  mut model2: &'a mut M,
   rng: &mut R,
 ) -> Result<i32, M::E>
 where
@@ -71,7 +71,13 @@ fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
   }
 }
 
-pub fn pit<N, M, R>(field: &Field, player: Player, new_model: &M, old_model: &M, rng: &mut R) -> Result<bool, M::E>
+pub fn pit<N, M, R>(
+  field: &Field,
+  player: Player,
+  new_model: &mut M,
+  old_model: &mut M,
+  rng: &mut R,
+) -> Result<bool, M::E>
 where
   M: Model<N>,
   N: Float + Sum + Display + Debug,

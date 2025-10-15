@@ -5903,6 +5903,7 @@ dependencies = [
  "anyhow",
  "burn",
  "clap",
+ "either",
  "env_logger",
  "log",
  "ndarray",

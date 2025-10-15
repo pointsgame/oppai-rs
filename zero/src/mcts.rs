@@ -56,7 +56,7 @@ pub fn mcts<N, M, R>(
   field: &mut Field,
   player: Player,
   node: &mut MctsNode<N>,
-  model: &M,
+  model: &mut M,
   rng: &mut R,
 ) -> Result<(), M::E>
 where

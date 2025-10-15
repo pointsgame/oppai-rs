@@ -2,7 +2,7 @@
 
 mod config;
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 use burn::{
   backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
   module::Module,
@@ -11,6 +11,7 @@ use burn::{
   tensor::backend::{AutodiffBackend, Backend},
 };
 use config::{Action, Backend as ConfigBackend, Config, cli_parse};
+use either::Either;
 use num_traits::Float;
 use oppai_field::{
   any_field::AnyField,
@@ -28,9 +29,10 @@ use oppai_zero::{
   examples::Examples,
   model::TrainableModel,
   pit,
+  random_model::RandomModel,
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
-use rand::{SeedableRng, distr::uniform::SampleUniform, rngs::SmallRng};
+use rand::{Rng, SeedableRng, distr::uniform::SampleUniform, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use sgf_parse::{GameTree, SimpleText, serialize, unknown_game::Prop};
 use std::{
@@ -62,7 +64,7 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<B>(config: Config, model_path: PathBuf, game_path: PathBuf, device: B::Device) -> Result<ExitCode>
+fn play<B>(config: Config, model_path: Option<PathBuf>, game_path: PathBuf, device: B::Device) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -70,17 +72,23 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
-  let model = BurnModel::<B>::new(&device);
-  let model = model.load_file(
-    model_path,
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    &device,
-  )?;
-  let predictor = Predictor { model, device };
+  let mut rng = SmallRng::from_os_rng();
+
+  let mut model = match model_path {
+    Some(model_path) => {
+      let model = BurnModel::<B>::new(&device);
+      let model = model.load_file(
+        model_path,
+        &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+        &device,
+      )?;
+      Either::Right(Predictor { model, device })
+    }
+    None => Either::Left(RandomModel(SmallRng::from_seed(rng.random()))),
+  };
 
   let player = Player::Red;
 
-  let mut rng = SmallRng::from_os_rng();
   let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
   let mut field = Field::new(config.width, config.height, zobrist);
 
@@ -89,7 +97,8 @@ where
     field.put_point(pos, player);
   }
 
-  let visits = episode(&mut field, player, &predictor, &mut rng)?;
+  let visits = episode(&mut field, player, &mut model, &mut rng)
+    .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
 
   let field = field.into();
   if let Some(mut node) = to_sgf(&field) {
@@ -203,7 +212,7 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let predictor = Predictor {
+  let mut predictor = Predictor {
     model,
     device: device.clone(),
   };
@@ -214,7 +223,7 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let predictor_new = Predictor {
+  let mut predictor_new = Predictor {
     model: model_new,
     device,
   };
@@ -225,7 +234,7 @@ where
   let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
   let field = Field::new(config.width, config.height, zobrist);
 
-  let result = if pit::pit(&field, player, &predictor_new, &predictor, &mut rng)? {
+  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, &mut rng)? {
     ExitCode::SUCCESS
   } else {
     2.into()

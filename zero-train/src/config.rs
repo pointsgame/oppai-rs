@@ -8,7 +8,7 @@ pub enum Action {
     optimizer: PathBuf,
   },
   Play {
-    model: PathBuf,
+    model: Option<PathBuf>,
     game: PathBuf,
   },
   Train {
@@ -77,8 +77,7 @@ pub fn cli_parse() -> (Config, Action) {
         .short('m')
         .help("Model path")
         .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
+        .value_parser(value_parser!(PathBuf)),
     )
     .arg(
       Arg::new("game")
@@ -223,7 +222,7 @@ pub fn cli_parse() -> (Config, Action) {
       Action::Init { model, optimizer }
     }
     Some(("play", matches)) => {
-      let model = matches.get_one("model").cloned().unwrap();
+      let model = matches.get_one("model").cloned();
       let game = matches.get_one("game").cloned().unwrap();
       Action::Play { model, game }
     }

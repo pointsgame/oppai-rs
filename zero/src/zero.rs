@@ -48,7 +48,7 @@ where
     // TODO: check if game is over
     let mut iterations = 0;
     while !should_stop() && iterations < max_iterations_count {
-      mcts(&mut field.clone(), player, &mut self.node, &self.model, rng)?;
+      mcts(&mut field.clone(), player, &mut self.node, &mut self.model, rng)?;
       iterations += 1;
     }
 

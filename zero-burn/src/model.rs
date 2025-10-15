@@ -151,7 +151,7 @@ where
   type E = ModelError;
 
   fn predict(
-    &self,
+    &mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
   ) -> Result<(Array3<<B as Backend>::FloatElem>, Array1<<B as Backend>::FloatElem>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
@@ -174,7 +174,7 @@ where
   type E = ModelError;
 
   fn predict(
-    &self,
+    &mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
   ) -> Result<(Array3<<B as Backend>::FloatElem>, Array1<<B as Backend>::FloatElem>), Self::E> {
     self.predictor.predict(inputs)
@@ -271,7 +271,7 @@ mod tests {
       #[test]
       fn $name() {
         let model = Model::<$backend>::new(&$device);
-        let predictor = Predictor {
+        let mut predictor = Predictor {
           model,
           device: $device,
         };
@@ -295,14 +295,14 @@ mod tests {
           device: $device,
         };
         let optimizer = SgdConfig::new().init::<Autodiff<$backend>, Model<_>>();
-        let learner = Learner { predictor, optimizer };
+        let mut learner = Learner { predictor, optimizer };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
         let values = Array::from_elem(1, 0.5);
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();
-        let learner = learner.train(inputs.clone(), policies, values).unwrap();
+        let mut learner = learner.train(inputs.clone(), policies, values).unwrap();
         let (out_policies_2, out_values_2) = learner.predict(inputs).unwrap();
 
         assert!((out_policies_1 - out_policies_2).iter().all(|v| v.abs() > 0.0));

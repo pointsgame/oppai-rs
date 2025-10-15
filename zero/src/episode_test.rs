@@ -28,7 +28,7 @@ fn episode_simple_surrounding() {
   let mut visits = episode(
     &mut field,
     Player::Red,
-    &|inputs: Array4<f64>| {
+    &mut |inputs: Array4<f64>| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
       model_inputs.borrow_mut().push(inputs);
       result
@@ -96,7 +96,7 @@ fn episode_trap() {
   let mut visits = episode(
     &mut field,
     Player::Red,
-    &|inputs: Array4<f64>| {
+    &mut |inputs: Array4<f64>| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
       model_inputs.borrow_mut().push(inputs);
       result
@@ -204,7 +204,7 @@ fn episode_winning_game() {
   let visits = episode(
     &mut field,
     Player::Red,
-    &|inputs: Array4<f64>| {
+    &mut |inputs: Array4<f64>| {
       let batch_size = inputs.len_of(Axis(0));
       let values = Array::from_iter((0..batch_size).map(|i| {
         if inputs[(i, 0, center_y, center_x)] > 0.0 {
