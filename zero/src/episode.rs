@@ -121,7 +121,7 @@ pub fn examples<N: Float + Zero + One>(
   let rotations = if width == height { ROTATIONS } else { MIRRORS };
 
   for &(pos, player) in &moves[0..initial_moves] {
-    assert!(field.put_point(pos, player), "invalid moves siequence");
+    assert!(field.put_point(pos, player), "invalid moves sequence");
   }
 
   for (&(pos, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
@@ -134,7 +134,7 @@ pub fn examples<N: Float + Zero + One>(
       }
     }
 
-    assert!(field.put_point(pos, player), "invalid moves siequence");
+    assert!(field.put_point(pos, player), "invalid moves sequence");
   }
 
   let value = game_result::<N>(&field, Player::Red);
