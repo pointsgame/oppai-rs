@@ -4,7 +4,7 @@ use crate::mcts_test::{const_value, uniform_policies};
 use ndarray::{Array, Array4, Axis, array};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use oppai_rotate::rotate::{ROTATIONS, rotate};
+use oppai_rotate::rotate::{ROTATIONS, rotate, rotate_back};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::cell::RefCell;
@@ -284,6 +284,19 @@ fn visits_to_examples() {
      [1.0, 0.0, 1.0]],
   ];
   assert_eq!(examples.inputs[0], inputs_0);
+  for rotation in 0..ROTATIONS {
+    for c in 0..CHANNELS {
+      for y in 0..field.height() {
+        for x in 0..field.width() {
+          let (x_rotated, y_rotated) = rotate_back(field.width(), field.height(), x, y, rotation);
+          assert_eq!(
+            examples.inputs[rotation as usize][[c, y as usize, x as usize]],
+            inputs_0[[c, y_rotated as usize, x_rotated as usize]],
+          );
+        }
+      }
+    }
+  }
 
   #[rustfmt::skip]
   let policies_0 = array![
@@ -292,6 +305,17 @@ fn visits_to_examples() {
     [0.00, 0.0, 0.0],
   ];
   assert_eq!(examples.policies[0], policies_0);
+  for rotation in 0..ROTATIONS {
+    for y in 0..field.height() {
+      for x in 0..field.width() {
+        let (x_rotated, y_rotated) = rotate_back(field.width(), field.height(), x, y, rotation);
+        assert_eq!(
+          examples.policies[rotation as usize][[y as usize, x as usize]],
+          policies_0[[y_rotated as usize, x_rotated as usize]],
+        );
+      }
+    }
+  }
 
   assert!(examples.values[0] > 0.0);
 

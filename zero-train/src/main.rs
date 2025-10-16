@@ -64,7 +64,13 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<B>(config: Config, model_path: Option<PathBuf>, game_path: PathBuf, device: B::Device) -> Result<ExitCode>
+fn play<B, R: Rng>(
+  config: Config,
+  model_path: Option<PathBuf>,
+  game_path: PathBuf,
+  device: B::Device,
+  rng: &mut R,
+) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -72,8 +78,6 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
-  let mut rng = SmallRng::from_os_rng();
-
   let mut model = match model_path {
     Some(model_path) => {
       let model = BurnModel::<B>::new(&device);
@@ -89,7 +93,7 @@ where
 
   let player = Player::Red;
 
-  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
+  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, rng));
   let mut field = Field::new(config.width, config.height, zobrist);
 
   for (pos, player) in InitialPosition::Cross.points(config.width, config.height, player) {
@@ -97,7 +101,7 @@ where
     field.put_point(pos, player);
   }
 
-  let visits = episode(&mut field, player, &mut model, &mut rng)
+  let visits = episode(&mut field, player, &mut model, rng)
     .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
 
   let field = field.into();
@@ -120,7 +124,7 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn train<B>(
+fn train<B, R: Rng>(
   model_path: PathBuf,
   mut optimizer_path: PathBuf,
   model_new_path: PathBuf,
@@ -129,6 +133,7 @@ fn train<B>(
   batch_size: usize,
   epochs: usize,
   device: B::Device,
+  rng: &mut R,
 ) -> Result<ExitCode>
 where
   B: AutodiffBackend,
@@ -150,7 +155,6 @@ where
   let predictor = Predictor { model, device };
   let mut learner = Learner { predictor, optimizer };
 
-  let mut rng = SmallRng::from_os_rng();
   let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
   for path in games_paths {
     let sgf = fs::read_to_string(path)?;
@@ -162,7 +166,7 @@ where
         GameTree::GoGame(_) => None,
       })
       .ok_or(anyhow::anyhow!("no sgf tree"))?;
-    let field = from_sgf::<Field, _>(node, &mut rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+    let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
     let visits = sgf_to_visits(node, field.stride);
 
     examples = examples
@@ -175,11 +179,9 @@ where
       );
   }
 
-  let mut rng = SmallRng::from_os_rng();
-
   for epoch in 0..epochs {
     log::info!("Training {} epoch", epoch);
-    examples.shuffle(&mut rng);
+    examples.shuffle(rng);
     for (inputs, policies, values) in examples.batches(batch_size) {
       learner = learner.train(inputs, policies, values)?;
     }
@@ -201,7 +203,13 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn pit<B>(config: Config, model_path: PathBuf, model_new_path: PathBuf, device: B::Device) -> Result<ExitCode>
+fn pit<B, R: Rng>(
+  config: Config,
+  model_path: PathBuf,
+  model_new_path: PathBuf,
+  device: B::Device,
+  rng: &mut R,
+) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -230,11 +238,10 @@ where
 
   let player = Player::Red;
 
-  let mut rng = SmallRng::from_os_rng();
-  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, &mut rng));
+  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, rng));
   let field = Field::new(config.width, config.height, zobrist);
 
-  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, &mut rng)? {
+  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng)? {
     ExitCode::SUCCESS
   } else {
     2.into()
@@ -251,9 +258,11 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
+  let mut rng = config.seed.map_or_else(SmallRng::from_os_rng, SmallRng::seed_from_u64);
+
   match action {
     Action::Init { model, optimizer } => init::<Autodiff<B>>(model, optimizer, device),
-    Action::Play { model, game } => play::<B>(config, model, game, device),
+    Action::Play { model, game } => play::<B, _>(config, model, game, device, &mut rng),
     Action::Train {
       model,
       optimizer,
@@ -262,7 +271,7 @@ where
       games,
       batch_size,
       epochs,
-    } => train::<Autodiff<B>>(
+    } => train::<Autodiff<B>, _>(
       model,
       optimizer,
       model_new,
@@ -271,8 +280,9 @@ where
       batch_size,
       epochs,
       device,
+      &mut rng,
     ),
-    Action::Pit { model, model_new } => pit::<B>(config, model, model_new, device),
+    Action::Pit { model, model_new } => pit::<B, _>(config, model, model_new, device, &mut rng),
   }
 }
 

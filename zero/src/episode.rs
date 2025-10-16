@@ -91,7 +91,7 @@ where
     ));
 
     node = node.best_child().unwrap();
-    field.put_point(node.pos, player);
+    assert!(field.put_point(node.pos, player));
     player = player.next();
 
     log::debug!(

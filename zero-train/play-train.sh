@@ -42,9 +42,9 @@ while true; do
     parallel --semaphore -u -j "$PARALLEL_GAMES" "
       echo \"Playing game $i with timestamp $TIMESTAMP\"
       if [ \"$CHECKPOINT\" -eq 0 ]; then
-        ${BIN[*]} play --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf
+        ${BIN[*]} --seed $TIMESTAMP play --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf
       else
-        ${BIN[*]} play --model $MODELS/model_$CHECKPOINT --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf
+        ${BIN[*]} --seed $TIMESTAMP play --model $MODELS/model_$CHECKPOINT --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf
       fi
     "
   done

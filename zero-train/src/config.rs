@@ -36,6 +36,7 @@ pub struct Config {
   pub width: u32,
   pub height: u32,
   pub backend: Backend,
+  pub seed: Option<u64>,
 }
 
 impl Default for Config {
@@ -44,6 +45,7 @@ impl Default for Config {
       width: 20,
       height: 20,
       backend: Backend::Wgpu,
+      seed: None,
     }
   }
 }
@@ -207,13 +209,26 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(Backend))
         .default_value("Wgpu"),
     )
+    .arg(
+      Arg::new("seed")
+        .long("seed")
+        .help("Random seed")
+        .num_args(1)
+        .value_parser(value_parser!(u64)),
+    )
     .get_matches();
 
   let width = matches.get_one("width").copied().unwrap();
   let height = matches.get_one("height").copied().unwrap();
   let backend = matches.get_one("backend").copied().unwrap();
+  let seed = matches.get_one("seed").copied();
 
-  let config = Config { width, height, backend };
+  let config = Config {
+    width,
+    height,
+    backend,
+    seed,
+  };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {
