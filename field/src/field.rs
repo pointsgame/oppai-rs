@@ -1088,6 +1088,9 @@ impl Field {
           }
           let input_points = get_input_points(self.stride, &self.points, bound_pos, next_player);
           for (chain_pos, _) in input_points {
+            if !self.cell(chain_pos).is_bound() {
+              continue;
+            }
             if find_chain(
               self.stride,
               &mut self.points,
