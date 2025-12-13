@@ -5,16 +5,16 @@ authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
 license = "AGPL-3.0+"
 description = "Open Points Artificial Intelligence"
 edition = "2024"
-default-run = "main"
+default-run = "oppai-iced"
 
 [dependencies]
-iced = { version = "0.13", features = ["canvas", "image"] }
+iced = { version = "0.14", features = ["canvas", "image"] }
 rand = { workspace = true, features = ["small_rng"] }
 log.workspace = true
 strum.workspace = true
 clap = { workspace = true, features = ["cargo"] }
 humantime.workspace = true
-rfd = { version = "0.15", default-features = false, features = ["async-std", "xdg-portal"] }
+rfd = { version = "0.16", default-features = false, features = ["async-std", "xdg-portal"] }
 sgf-parse.workspace = true
 postcard = { workspace = true, features = [ "use-std" ] }
 oppai-field = { path = "../field" }
@@ -53,7 +53,7 @@ default = ["dsu"]
 dsu = ["oppai-field/dsu", "oppai-ais/dsu"]
 
 [[bin]]
-name = "main"
+name = "oppai-iced"
 path = "src/main.rs"
 
 [[bin]]

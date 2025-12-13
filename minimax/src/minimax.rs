@@ -415,11 +415,13 @@ impl Minimax {
       let mut empty_board = iter::repeat(0u32).take(field.length()).collect::<Vec<_>>();
       let enemy = player.next();
       let first_pos = best_move.map_or(0, |pos| pos.get());
-      for pos in NonZeroPos::new(first_pos)
-        .iter()
-        .map(|pos| pos.get())
-        .chain(moves.iter().filter(|&&pos| pos != first_pos).copied())
-      {
+      for pos in NonZeroPos::new(first_pos).iter().map(|pos| pos.get()).chain(
+        trajectories_pruning
+          .moves
+          .iter()
+          .filter(|&&pos| pos != first_pos)
+          .copied(),
+      ) {
         if should_stop() {
           break;
         }

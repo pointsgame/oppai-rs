@@ -30,5 +30,5 @@ default = ["dsu"]
 dsu = ["oppai-ais/dsu"]
 
 [[bin]]
-name = "main"
+name = "oppai-cli"
 path = "src/main.rs"

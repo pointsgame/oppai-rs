@@ -19,5 +19,5 @@ default = ["dsu"]
 dsu = ["oppai-field/dsu"]
 
 [[bin]]
-name = "main"
+name = "oppai-verify"
 path = "src/main.rs"

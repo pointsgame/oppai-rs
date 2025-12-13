@@ -61,15 +61,8 @@ pub fn main() -> iced::Result {
 
   let config = cli_parse();
 
-  iced::application("OpPAI", Game::update, Game::view)
-    .subscription(Game::subscription)
-    .theme(Game::theme)
-    .antialiasing(true)
-    .window(window::Settings {
-      icon: Some(window::icon::from_file_data(include_bytes!("../../resources/Logo.png"), None).unwrap()),
-      ..Default::default()
-    })
-    .run_with(move || {
+  iced::application(
+    move || {
       let mut rng = SmallRng::from_os_rng();
       let mut extended_field = ExtendedField::new_from_rng(config.width, config.height, &mut rng);
       // TODO: store patterns to use them when new Oppai is created
@@ -129,7 +122,7 @@ pub fn main() -> iced::Result {
           field_cache: Default::default(),
           edit_mode: false,
           // TODO: split configs
-          config: config.canvas_config,
+          config: config.canvas_config.clone(),
           extra: Vec::new(),
         },
         #[cfg(not(target_arch = "wasm32"))]
@@ -160,7 +153,18 @@ pub fn main() -> iced::Result {
       game.put_all_bot_points();
 
       (game, Task::none())
-    })
+    },
+    Game::update,
+    Game::view,
+  )
+  .subscription(Game::subscription)
+  .theme(Game::theme)
+  .antialiasing(true)
+  .window(window::Settings {
+    icon: Some(window::icon::from_file_data(include_bytes!("../../resources/Logo.png"), None).unwrap()),
+    ..Default::default()
+  })
+  .run()
 }
 
 struct Game {
@@ -290,7 +294,7 @@ impl Game {
 
   #[cfg(target_arch = "wasm32")]
   pub fn put_all_bot_points(&self) {
-    for &pos in self.canvas_field.extended_field.field.moves() {
+    for &pos in &self.canvas_field.extended_field.field.moves {
       let player = self.canvas_field.extended_field.field.cell(pos).get_player();
       self.send_worker_message(Request::PutPoint(pos, player));
     }
@@ -390,8 +394,8 @@ impl Game {
         }
         #[cfg(target_arch = "wasm32")]
         self.send_worker_message(Request::New(
-          self.canvas_field.extended_field.field.width,
-          self.canvas_field.extended_field.field.height,
+          self.canvas_field.extended_field.field.width(),
+          self.canvas_field.extended_field.field.height(),
         ));
         self
           .canvas_field
@@ -530,7 +534,7 @@ impl Game {
                 GameTree::GoGame(_) => None,
               }) {
                 if let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng) {
-                  let visits = sgf_to_visits(node, extended_field.field.width);
+                  let visits = sgf_to_visits(node, extended_field.field.width());
                   self.moves = extended_field
                     .field
                     .colored_moves()
@@ -544,8 +548,8 @@ impl Game {
                     .collect();
                   self.canvas_field.extended_field = extended_field;
                   self.send_worker_message(Request::New(
-                    self.canvas_field.extended_field.field.width,
-                    self.canvas_field.extended_field.field.height,
+                    self.canvas_field.extended_field.field.width(),
+                    self.canvas_field.extended_field.field.height(),
                   ));
                   self.put_all_bot_points();
                   self.refresh();
@@ -582,8 +586,8 @@ impl Game {
       #[cfg(target_arch = "wasm32")]
       Message::InitWorker => {
         self.send_worker_message(Request::New(
-          self.canvas_field.extended_field.field.width,
-          self.canvas_field.extended_field.field.height,
+          self.canvas_field.extended_field.field.width(),
+          self.canvas_field.extended_field.field.height(),
         ));
         self.put_all_bot_points();
         if self.thinking {
@@ -598,14 +602,12 @@ impl Game {
   fn subscription(&self) -> Subscription<Message> {
     #[cfg(target_arch = "wasm32")]
     let worker_subscription = {
-      struct WorkerListener;
       enum State {
         Starting,
         Ready(iced::futures::channel::mpsc::UnboundedReceiver<Message>),
       }
-      Subscription::run_with_id(
-        std::any::TypeId::of::<WorkerListener>(),
-        iced::stream::channel(16, |mut output| async move {
+      Subscription::run(|| {
+        iced::stream::channel(16, async |mut output| {
           use iced::futures::{StreamExt, sink::SinkExt};
           let mut state = State::Starting;
           loop {
@@ -621,8 +623,8 @@ impl Game {
               }
             }
           }
-        }),
-      )
+        })
+      })
     };
 
     let keys_subscription = event::listen_with(|event, _, _| match event {

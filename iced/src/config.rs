@@ -110,7 +110,7 @@ pub fn cli_parse() -> Config {
         .help("The degree of filling transparency")
         .num_args(1)
         .value_parser(value_parser!(f32))
-        .default_value("0.5"),
+        .default_value("0.25"),
     )
     .arg(
       Arg::new("no-extended-filling")

@@ -28,9 +28,9 @@ const RESIDUAL_BLOCKS: usize = 8; // AlphaGo uses 19 or 39
 #[derive(Module, Debug)]
 pub struct ResidualBlock<B: Backend> {
   conv1: Conv2d<B>,
-  bn1: BatchNorm<B, 2>,
+  bn1: BatchNorm<B>,
   conv2: Conv2d<B>,
-  bn2: BatchNorm<B, 2>,
+  bn2: BatchNorm<B>,
   activation: Gelu,
 }
 
@@ -62,7 +62,7 @@ impl<B: Backend> ResidualBlock<B> {
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
   initial_conv: Conv2d<B>,
-  initial_bn: BatchNorm<B, 2>,
+  initial_bn: BatchNorm<B>,
   residuals: Vec<ResidualBlock<B>>,
   policy_conv: Conv2d<B>,
   value_conv: Conv2d<B>,

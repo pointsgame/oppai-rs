@@ -1,7 +1,8 @@
 use crate::canvas_config::{CanvasConfig, Rgb};
-use iced::alignment::{Horizontal, Vertical};
+use iced::alignment::Vertical;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{self, Frame, Text};
+use iced::widget::text::Alignment;
 use iced::{Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector, mouse};
 use oppai_field::extended_field::ExtendedField;
 use oppai_field::field::Pos;
@@ -64,8 +65,8 @@ pub struct Label {
 impl Extra for Label {
   fn render<F: Fn(Pos) -> Point>(&self, frame: &mut Frame, bounds: Rectangle, field: &ExtendedField, pos_to_point: &F) {
     let mut text: Text = self.text.as_str().into();
-    text.horizontal_alignment = Horizontal::Center;
-    text.vertical_alignment = Vertical::Center;
+    text.align_x = Alignment::Center;
+    text.align_y = Vertical::Center;
     text.size = Pixels(self.scale * bounds.width / field.field.width() as f32);
     text.color = self.color;
     text.position = pos_to_point(self.pos);
@@ -87,36 +88,32 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
   fn update(
     &self,
     state: &mut Option<(u32, u32)>,
-    event: canvas::Event,
+    event: &canvas::Event,
     bounds: Rectangle,
     cursor: Cursor,
-  ) -> (canvas::event::Status, Option<CanvasMessage>) {
+  ) -> Option<canvas::Action<CanvasMessage>> {
     match event {
       canvas::Event::Mouse(event) => {
         match event {
           mouse::Event::ButtonReleased(mouse::Button::Left) => {}
           mouse::Event::ButtonReleased(mouse::Button::Right) => {
             if !self.edit_mode {
-              return (canvas::event::Status::Ignored, None);
+              return None;
             }
           }
           mouse::Event::CursorMoved { .. } => {}
           mouse::Event::CursorLeft => {
             if state.is_some() {
               *state = None;
-              return (canvas::event::Status::Captured, Some(CanvasMessage::ClearCoordinates));
+              return Some(canvas::Action::publish(CanvasMessage::ClearCoordinates).and_capture());
             } else {
-              return (canvas::event::Status::Ignored, None);
+              return None;
             }
           }
-          _ => return (canvas::event::Status::Ignored, None),
+          _ => return None,
         }
 
-        let cursor_position = if let Some(position) = cursor.position_in(bounds) {
-          position
-        } else {
-          return (canvas::event::Status::Ignored, None);
-        };
+        let cursor_position = cursor.position_in(bounds)?;
 
         let field_width = self.extended_field.field.width();
         let field_height = self.extended_field.field.height();
@@ -144,45 +141,38 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
             mouse::Event::ButtonReleased(button) => {
               let pos = self.extended_field.field.to_pos(x, y);
               match button {
-                mouse::Button::Left => (
-                  canvas::event::Status::Captured,
-                  Some(if self.edit_mode {
+                mouse::Button::Left => Some(
+                  canvas::Action::publish(if self.edit_mode {
                     CanvasMessage::PutPlayersPoint(pos, Player::Red)
                   } else {
                     CanvasMessage::PutPoint(pos)
-                  }),
+                  })
+                  .and_capture(),
                 ),
-                mouse::Button::Right => (
-                  canvas::event::Status::Captured,
-                  Some(CanvasMessage::PutPlayersPoint(pos, Player::Black)),
-                ),
-                _ => (canvas::event::Status::Ignored, None),
+                mouse::Button::Right => {
+                  Some(canvas::Action::publish(CanvasMessage::PutPlayersPoint(pos, Player::Black)).and_capture())
+                }
+                _ => None,
               }
             }
-            mouse::Event::CursorMoved { .. } => (
-              canvas::event::Status::Captured,
+            mouse::Event::CursorMoved { .. } => {
               if *state != Some((x, y)) {
                 *state = Some((x, y));
-                Some(CanvasMessage::ChangeCoordinates(x, y))
+                Some(canvas::Action::publish(CanvasMessage::ChangeCoordinates(x, y)).and_capture())
               } else {
                 None
-              },
-            ),
-            _ => (canvas::event::Status::Ignored, None),
+              }
+            }
+            _ => None,
           }
+        } else if state.is_some() {
+          *state = None;
+          Some(canvas::Action::publish(CanvasMessage::ClearCoordinates).and_capture())
         } else {
-          (
-            canvas::event::Status::Captured,
-            if state.is_some() {
-              *state = None;
-              Some(CanvasMessage::ClearCoordinates)
-            } else {
-              None
-            },
-          )
+          None
         }
       }
-      _ => (canvas::event::Status::Ignored, None),
+      _ => None,
     }
   }
 
