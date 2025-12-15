@@ -104,13 +104,6 @@ pub struct Game {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum AuthProvider {
-  Portier,
-  #[cfg(feature = "test")]
-  Test,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum DrawReason {
   Agreement,
   Grounded,
@@ -136,7 +129,6 @@ pub enum GameResult {
 #[serde(rename_all_fields = "camelCase")]
 pub enum Request {
   GetAuthUrl {
-    provider: AuthProvider,
     remember_me: bool,
   },
   Auth {
@@ -190,7 +182,6 @@ pub enum Request {
 pub enum Response {
   /// First message when connection is established.
   Init {
-    auth_providers: Vec<AuthProvider>,
     player_id: Option<PlayerId>,
     players: HashMap<PlayerId, Player>,
     open_games: HashMap<GameId, OpenGame>,

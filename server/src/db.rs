@@ -29,15 +29,7 @@ pub struct Player {
   pub nickname: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
-#[sqlx(type_name = "provider")]
-#[sqlx(rename_all = "lowercase")]
-pub enum Provider {
-  Portier,
-}
-
 pub struct OidcPlayer {
-  pub provider: Provider,
   pub subject: String,
   pub email: Option<String>,
   pub email_verified: Option<bool>,
@@ -119,7 +111,7 @@ impl Db for SqlxDb {
 WITH updated AS (
   UPDATE oidc_players
   SET email = $1, email_verified = $2, name = $3, nickname = $4, preferred_username = $5
-  WHERE subject = $6 AND provider = $7
+  WHERE subject = $6
   RETURNING player_id
 )
 SELECT players.id, players.nickname FROM updated
@@ -132,7 +124,6 @@ JOIN players ON updated.player_id = players.id
     .bind(oidc_player.nickname.as_ref())
     .bind(oidc_player.preferred_username.as_ref())
     .bind(oidc_player.subject.as_str())
-    .bind(oidc_player.provider)
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -192,12 +183,11 @@ RETURNING id, nickname
 
     sqlx::query(
       "
-INSERT INTO oidc_players (player_id, provider, subject, email, email_verified, \"name\", nickname, preferred_username)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO oidc_players (player_id, subject, email, email_verified, \"name\", nickname, preferred_username)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ",
     )
     .bind(player.id)
-    .bind(oidc_player.provider)
     .bind(&oidc_player.subject)
     .bind(&oidc_player.email)
     .bind(oidc_player.email_verified)

@@ -47,7 +47,6 @@ type OidcClient =
 #[derive(Debug)]
 struct AuthState {
   oidc_client: OidcClient,
-  provider: message::AuthProvider,
   pkce_verifier: PkceCodeVerifier,
   nonce: Nonce,
   csrf_state: CsrfToken,
@@ -89,31 +88,25 @@ impl<R: Rng> Session<R> {
       .ok_or_else(|| anyhow::anyhow!("unauthorized connection {}", self.connection_id))
   }
 
-  async fn oidc_client(&self, provider: message::AuthProvider) -> Result<OidcClient> {
+  async fn oidc_client(&self) -> Result<OidcClient> {
     let redirect_url = RedirectUrl::new("https://kropki.org/".to_string())?;
-    match provider {
-      message::AuthProvider::Portier => {
-        let provider_metadata = CoreProviderMetadata::discover_async(
-          IssuerUrl::new(self.shared.oidc.issuer_url.to_string())?,
-          &self.shared.http_client,
-        )
-        .await?;
-        let client = CoreClient::from_provider_metadata(
-          provider_metadata,
-          self.shared.oidc.client_id.clone(),
-          self.shared.oidc.client_secret.clone(),
-        )
-        .set_redirect_uri(redirect_url);
-        Ok(client)
-      }
-      #[cfg(feature = "test")]
-      message::AuthProvider::Test => anyhow::bail!("test provider can't be used"),
-    }
+    let provider_metadata = CoreProviderMetadata::discover_async(
+      IssuerUrl::new(self.shared.oidc.issuer_url.to_string())?,
+      &self.shared.http_client,
+    )
+    .await?;
+    let client = CoreClient::from_provider_metadata(
+      provider_metadata,
+      self.shared.oidc.client_id.clone(),
+      self.shared.oidc.client_secret.clone(),
+    )
+    .set_redirect_uri(redirect_url);
+    Ok(client)
   }
 
-  async fn get_auth_url(&mut self, state: &State, provider: message::AuthProvider, remember_me: bool) -> Result<()> {
+  async fn get_auth_url(&mut self, state: &State, remember_me: bool) -> Result<()> {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-    let oidc_client = self.oidc_client(provider).await?;
+    let oidc_client = self.oidc_client().await?;
     let (auth_url, csrf_state, nonce) = oidc_client
       .authorize_url(
         CoreAuthenticationFlow::AuthorizationCode,
@@ -136,7 +129,6 @@ impl<R: Rng> Session<R> {
 
     self.auth_state = Some(AuthState {
       oidc_client,
-      provider,
       pkce_verifier,
       nonce,
       csrf_state,
@@ -183,18 +175,11 @@ impl<R: Rng> Session<R> {
       }
     }
 
-    let db_provider = match auth_state.provider {
-      message::AuthProvider::Portier => db::Provider::Portier,
-      #[cfg(feature = "test")]
-      message::AuthProvider::Test => anyhow::bail!("invalid auth provider"),
-    };
-
     let player = self
       .shared
       .db
       .get_or_create_player(
         db::OidcPlayer {
-          provider: db_provider,
           subject: claims.subject().to_string(),
           email: claims.email().map(|email| email.to_string()),
           email_verified: claims.email_verified(),
@@ -309,14 +294,6 @@ impl<R: Rng> Session<R> {
       .await?;
 
     Ok(())
-  }
-
-  pub fn oidc_providers(&self) -> Vec<message::AuthProvider> {
-    let mut providers = Vec::with_capacity(2);
-    providers.push(message::AuthProvider::Portier);
-    #[cfg(feature = "test")]
-    providers.push(message::AuthProvider::Test);
-    providers
   }
 
   async fn init(&self, state: &State, tx: Sender<message::Response>) -> Result<()> {
@@ -460,7 +437,6 @@ impl<R: Rng> Session<R> {
       .collect();
 
     let init = message::Response::Init {
-      auth_providers: self.oidc_providers(),
       player_id: self.player_id,
       players,
       open_games,
@@ -1084,9 +1060,7 @@ impl<R: Rng> Session<R> {
         if let Message::Text(message) = message? {
           let message: message::Request = serde_json::from_str(message.as_str())?;
           match message {
-            message::Request::GetAuthUrl { provider, remember_me } => {
-              self.get_auth_url(&state, provider, remember_me).await?
-            }
+            message::Request::GetAuthUrl { remember_me } => self.get_auth_url(&state, remember_me).await?,
             message::Request::Auth {
               code: oidc_code,
               state: oidc_state,
