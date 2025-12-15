@@ -106,8 +106,6 @@ pub struct Game {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum AuthProvider {
   Portier,
-  Google,
-  GitLab,
   #[cfg(feature = "test")]
   Test,
 }

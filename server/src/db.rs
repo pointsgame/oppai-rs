@@ -34,8 +34,6 @@ pub struct Player {
 #[sqlx(rename_all = "lowercase")]
 pub enum Provider {
   Portier,
-  Google,
-  GitLab,
 }
 
 pub struct OidcPlayer {

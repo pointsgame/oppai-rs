@@ -6,7 +6,6 @@ use futures::channel::mpsc::{self, Sender};
 use futures_util::{FutureExt, SinkExt, StreamExt, select};
 use ids::*;
 use itertools::Itertools;
-use openidconnect::ClientId;
 use openidconnect::{
   AccessTokenHash, AuthorizationCode, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce,
   OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
@@ -59,8 +58,7 @@ struct SessionShared {
   db: db::SqlxDb,
   http_client: reqwest::Client,
   cookie_key: Key,
-  google_oidc: Option<config::OidcConfig>,
-  gitlab_oidc: Option<config::OidcConfig>,
+  oidc: config::OidcConfig,
 }
 
 struct Session<R: Rng> {
@@ -96,51 +94,16 @@ impl<R: Rng> Session<R> {
     match provider {
       message::AuthProvider::Portier => {
         let provider_metadata = CoreProviderMetadata::discover_async(
-          IssuerUrl::new("https://broker.portier.io".to_string())?,
-          &self.shared.http_client,
-        )
-        .await?;
-        let client =
-          CoreClient::from_provider_metadata(provider_metadata, ClientId::new("https://kropki.org".to_string()), None)
-            .set_redirect_uri(redirect_url);
-        Ok(client)
-      }
-      message::AuthProvider::Google => {
-        let oidc_config = self
-          .shared
-          .google_oidc
-          .clone()
-          .ok_or(anyhow::anyhow!("google oidc isn't configured"))?;
-        let provider_metadata = CoreProviderMetadata::discover_async(
-          IssuerUrl::new("https://accounts.google.com".to_string())?,
+          IssuerUrl::new(self.shared.oidc.issuer_url.to_string())?,
           &self.shared.http_client,
         )
         .await?;
         let client = CoreClient::from_provider_metadata(
           provider_metadata,
-          oidc_config.client_id,
-          Some(oidc_config.client_secret),
+          self.shared.oidc.client_id.clone(),
+          self.shared.oidc.client_secret.clone(),
         )
-        .set_redirect_uri(redirect_url.clone());
-        Ok(client)
-      }
-      message::AuthProvider::GitLab => {
-        let oidc_config = self
-          .shared
-          .gitlab_oidc
-          .clone()
-          .ok_or(anyhow::anyhow!("gitlab oidc isn't configured"))?;
-        let provider_metadata = CoreProviderMetadata::discover_async(
-          IssuerUrl::new("https://gitlab.com".to_string())?,
-          &self.shared.http_client,
-        )
-        .await?;
-        let client = CoreClient::from_provider_metadata(
-          provider_metadata,
-          oidc_config.client_id,
-          Some(oidc_config.client_secret),
-        )
-        .set_redirect_uri(redirect_url.clone());
+        .set_redirect_uri(redirect_url);
         Ok(client)
       }
       #[cfg(feature = "test")]
@@ -222,8 +185,6 @@ impl<R: Rng> Session<R> {
 
     let db_provider = match auth_state.provider {
       message::AuthProvider::Portier => db::Provider::Portier,
-      message::AuthProvider::Google => db::Provider::Google,
-      message::AuthProvider::GitLab => db::Provider::GitLab,
       #[cfg(feature = "test")]
       message::AuthProvider::Test => anyhow::bail!("invalid auth provider"),
     };
@@ -351,14 +312,8 @@ impl<R: Rng> Session<R> {
   }
 
   pub fn oidc_providers(&self) -> Vec<message::AuthProvider> {
-    let mut providers = Vec::with_capacity(3);
+    let mut providers = Vec::with_capacity(2);
     providers.push(message::AuthProvider::Portier);
-    if self.shared.google_oidc.is_some() {
-      providers.push(message::AuthProvider::Google);
-    }
-    if self.shared.gitlab_oidc.is_some() {
-      providers.push(message::AuthProvider::GitLab);
-    }
     #[cfg(feature = "test")]
     providers.push(message::AuthProvider::Test);
     providers
@@ -1189,8 +1144,7 @@ async fn main() -> Result<()> {
     db: db::SqlxDb::from(pool),
     http_client,
     cookie_key: config.cookie_key,
-    google_oidc: config.google_oidc,
-    gitlab_oidc: config.gitlab_oidc,
+    oidc: config.oidc,
   });
 
   loop {
