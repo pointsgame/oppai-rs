@@ -21,7 +21,7 @@ impl From<OppaiPlayer> for Color {
   }
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Player {
   pub id: Uuid,
   pub nickname: String,

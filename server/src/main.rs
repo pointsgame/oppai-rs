@@ -14,6 +14,7 @@ use openidconnect::{
 use oppai_field::{field::Field, player::Player};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
+#[cfg(not(feature = "in-memory"))]
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use state::{FieldSize, Game, GameConfig, GameState, GameTime, OpenGame, State};
 use std::collections::{HashMap, HashSet};
@@ -54,7 +55,10 @@ struct AuthState {
 }
 
 struct SessionShared {
+  #[cfg(not(feature = "in-memory"))]
   db: db::SqlxDb,
+  #[cfg(feature = "in-memory")]
+  db: db::InMemoryDb,
   http_client: reqwest::Client,
   cookie_key: Key,
   oidc: config::OidcConfig,
@@ -1106,8 +1110,11 @@ async fn main() -> Result<()> {
 
   let mut rng = StdRng::from_os_rng();
 
+  #[cfg(not(feature = "in-memory"))]
   let options = PgConnectOptions::new_without_pgpass().socket(&config.postgres_socket);
+  #[cfg(not(feature = "in-memory"))]
   let pool = PgPoolOptions::new().connect_with(options).await?;
+  #[cfg(not(feature = "in-memory"))]
   sqlx::migrate!("./migrations").run(&pool).await?;
 
   let http_client = reqwest::ClientBuilder::new()
@@ -1115,7 +1122,10 @@ async fn main() -> Result<()> {
     .build()?;
 
   let session_shared = Arc::new(SessionShared {
+    #[cfg(not(feature = "in-memory"))]
     db: db::SqlxDb::from(pool),
+    #[cfg(feature = "in-memory")]
+    db: db::InMemoryDb::default(),
     http_client,
     cookie_key: config.cookie_key,
     oidc: config.oidc,

@@ -12,12 +12,13 @@ pub struct OidcConfig {
 #[derive(Clone, Debug)]
 pub struct Config {
   pub oidc: OidcConfig,
+  #[cfg(not(feature = "in-memory"))]
   pub postgres_socket: String,
   pub cookie_key: Key,
 }
 
 pub fn cli_parse() -> Config {
-  let matches = Command::new(clap::crate_name!())
+  let command = Command::new(clap::crate_name!())
     .version(clap::crate_version!())
     .author(clap::crate_authors!("\n"))
     .about(clap::crate_description!())
@@ -45,21 +46,22 @@ pub fn cli_parse() -> Config {
         .env("OIDC_CLIENT_SECRET"),
     )
     .arg(
-      Arg::new("postgres-socket")
-        .long("postgres-socket")
-        .help("Postgres UNIX socket")
-        .num_args(1)
-        .required(true)
-        .env("POSTGRES_SOCKET"),
-    )
-    .arg(
       Arg::new("cookie-key")
         .long("cookie-key")
         .help("Cookie secret key")
         .num_args(1)
         .env("COOKIE_KEY"),
-    )
-    .get_matches();
+    );
+  #[cfg(not(feature = "in-memory"))]
+  let command = command.arg(
+    Arg::new("postgres-socket")
+      .long("postgres-socket")
+      .help("Postgres UNIX socket")
+      .num_args(1)
+      .required(true)
+      .env("POSTGRES_SOCKET"),
+  );
+  let matches = command.get_matches();
   let issuer_url = matches.get_one::<String>("oidc-issuer-url").cloned().unwrap();
   let client_id = matches.get_one::<String>("oidc-client-id").cloned().unwrap();
   let client_secret = matches.get_one::<String>("oidc-client-secret").cloned();
@@ -75,6 +77,7 @@ pub fn cli_parse() -> Config {
   });
   Config {
     oidc,
+    #[cfg(not(feature = "in-memory"))]
     postgres_socket: matches.get_one("postgres-socket").cloned().unwrap(),
     cookie_key,
   }
