@@ -1,11 +1,7 @@
--- Limit nickname length to 20 characters
+-- Limit nickname length to 32 characters
 
--- Change nickname column type from TEXT to VARCHAR(20)
-ALTER TABLE players ALTER COLUMN nickname TYPE VARCHAR(20);
-
--- Add constraint to ensure nickname follows the required pattern
-ALTER TABLE players ADD CONSTRAINT nickname_format_check
-CHECK (nickname ~ '^[a-zA-Z0-9_]{3,20}$');
+-- Change nickname column type from TEXT to VARCHAR(32)
+ALTER TABLE players ALTER COLUMN nickname TYPE VARCHAR(32);
 
 -- Update the unique_nickname function to handle the new length constraint
 CREATE OR REPLACE FUNCTION unique_nickname(p_nickname text)
@@ -21,8 +17,8 @@ BEGIN
   counter := 2;
   LOOP
     new_name := p_nickname || '_' || counter;
-    IF LENGTH(new_name) > 20 THEN
-      base_name := SUBSTRING(base_name FROM 1 FOR 20 - LENGTH('_' || counter));
+    IF LENGTH(new_name) > 32 THEN
+      base_name := SUBSTRING(base_name FROM 1 FOR 32 - LENGTH('_' || counter));
       new_name := base_name || '_' || counter;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM players WHERE nickname = new_name) THEN

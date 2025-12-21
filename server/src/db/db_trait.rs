@@ -52,7 +52,7 @@ impl OidcPlayer {
         // Sanitize the nickname by replacing invalid characters with underscores
         nickname
           .chars()
-          .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+          .map(|c| if c.is_alphanumeric() { c } else { '_' })
           .collect::<String>()
       })
       .unwrap_or_else(|| {

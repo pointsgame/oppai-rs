@@ -1018,11 +1018,11 @@ impl<R: Rng> Session<R> {
   }
 
   fn is_nickname_valid(nickname: &str) -> bool {
-    if nickname.len() < 3 || nickname.len() > 20 {
+    if nickname.len() < 3 || nickname.len() > 32 {
       return false;
     }
 
-    if !nickname.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    if !nickname.chars().all(|c| c.is_alphanumeric() || c == '_') {
       return false;
     }
 
