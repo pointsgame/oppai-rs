@@ -1042,14 +1042,10 @@ impl<R: Rng> Session<R> {
       .update_player_nickname(player_id.0, nickname.clone())
       .await?;
 
-    let player = self.shared.db.get_player(player_id.0).await?;
-
     state
       .send_to_all(message::Response::NicknameChanged {
         player_id,
-        player: message::Player {
-          nickname: player.nickname,
-        },
+        player: message::Player { nickname },
       })
       .await;
 
