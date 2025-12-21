@@ -18,8 +18,8 @@ BEGIN
   LOOP
     new_name := p_nickname || '_' || counter;
     IF LENGTH(new_name) > 32 THEN
-      base_name := SUBSTRING(base_name FROM 1 FOR 32 - LENGTH('_' || counter));
-      new_name := base_name || '_' || counter;
+      p_nickname := SUBSTRING(p_nickname FROM 1 FOR 32 - LENGTH('_' || counter));
+      new_name := p_nickname || '_' || counter;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM players WHERE nickname = new_name) THEN
       RETURN new_name;
