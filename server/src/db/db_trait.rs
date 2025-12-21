@@ -1,6 +1,6 @@
 use anyhow::Result;
 use oppai_field::player::Player as OppaiPlayer;
-use rand::Rng;
+use rand::{Rng, distr::Alphanumeric};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -43,6 +43,28 @@ impl OidcPlayer {
       .as_deref()
       .or(self.nickname.as_deref())
       .or(self.name.as_deref())
+  }
+
+  pub fn sanitized_nickname<R: Rng>(&self, rng: &mut R) -> String {
+    self
+      .nickname()
+      .map(|nickname| {
+        // Sanitize the nickname by replacing invalid characters with underscores
+        nickname
+          .chars()
+          .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+          .collect::<String>()
+      })
+      .unwrap_or_else(|| {
+        format!(
+          "player_{}",
+          rng
+            .sample_iter(&Alphanumeric)
+            .map(|n| n as char)
+            .take(4)
+            .collect::<String>()
+        )
+      })
   }
 }
 
@@ -93,4 +115,6 @@ pub trait Db {
   async fn create_move(&self, m: Move) -> Result<()>;
   async fn create_draw_offer(&self, draw_offer: DrawOffer) -> Result<()>;
   async fn set_result(&self, game_id: Uuid, finish_time: PrimitiveDateTime, result: GameResult) -> Result<()>;
+  async fn update_player_nickname(&self, player_id: Uuid, nickname: String) -> Result<()>;
+  async fn is_nickname_available(&self, nickname: String) -> Result<bool>;
 }

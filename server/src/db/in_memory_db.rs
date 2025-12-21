@@ -1,7 +1,7 @@
 use super::*;
 
 use anyhow::{Result, anyhow};
-use rand::{Rng, distr::Alphanumeric};
+use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
 use time::PrimitiveDateTime;
@@ -42,21 +42,10 @@ impl Db for InMemoryDb {
 
     let id = Uuid::new_v4();
 
-    let nickname = oidc_player
-      .nickname()
-      .map(|nickname| nickname.to_string())
-      .unwrap_or_else(|| {
-        format!(
-          "player_{}",
-          rng
-            .sample_iter(&Alphanumeric)
-            .map(|n| n as char)
-            .take(4)
-            .collect::<String>()
-        )
-      });
-
-    let player = Player { id, nickname };
+    let player = Player {
+      id,
+      nickname: oidc_player.sanitized_nickname(rng),
+    };
 
     state.oidc_lookup.insert(oidc_player.subject.clone(), id);
     state.players.insert(id, player.clone());
@@ -155,5 +144,21 @@ impl Db for InMemoryDb {
     state.results.insert(game_id, (finish_time, result));
 
     Ok(())
+  }
+
+  async fn update_player_nickname(&self, player_id: Uuid, nickname: String) -> Result<()> {
+    let mut state = self.state.write().await;
+
+    if let Some(player) = state.players.get_mut(&player_id) {
+      player.nickname = nickname;
+      Ok(())
+    } else {
+      Err(anyhow!("Player with ID {} not found", player_id))
+    }
+  }
+
+  async fn is_nickname_available(&self, nickname: String) -> Result<bool> {
+    let state = self.state.read().await;
+    Ok(!state.players.values().any(|player| player.nickname == nickname))
   }
 }

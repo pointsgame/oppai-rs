@@ -2,7 +2,7 @@ use super::*;
 
 use anyhow::Result;
 use derive_more::{From, Into};
-use rand::{Rng, distr::Alphanumeric};
+use rand::Rng;
 use sqlx::{Pool, Postgres};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
@@ -62,19 +62,7 @@ LIMIT 1
       None
     };
 
-    let nickname = oidc_player
-      .nickname()
-      .map(|nickname| nickname.to_string())
-      .unwrap_or_else(|| {
-        format!(
-          "player_{}",
-          rng
-            .sample_iter(&Alphanumeric)
-            .map(|n| n as char)
-            .take(4)
-            .collect::<String>()
-        )
-      });
+    let nickname = oidc_player.sanitized_nickname(rng);
 
     let player = if let Some(player) = player {
       player
@@ -229,5 +217,32 @@ WHERE id = $3 AND \"result\" IS NULL
     .await
     .map_err(From::from)
     .map(|_| ())
+  }
+
+  async fn update_player_nickname(&self, player_id: Uuid, nickname: String) -> Result<()> {
+    sqlx::query(
+      "
+UPDATE players SET nickname = $1
+WHERE id = $2
+",
+    )
+    .bind(nickname)
+    .bind(player_id)
+    .execute(&self.pool)
+    .await
+    .map_err(From::from)
+    .map(|_| ())
+  }
+
+  async fn is_nickname_available(&self, nickname: String) -> Result<bool> {
+    let count: i64 = sqlx::query_scalar(
+      "
+SELECT COUNT(*) FROM players WHERE nickname = $1
+",
+    )
+    .bind(nickname)
+    .fetch_one(&self.pool)
+    .await?;
+    Ok(count == 0)
   }
 }

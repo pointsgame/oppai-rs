@@ -1017,6 +1017,59 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
+  fn is_nickname_valid(nickname: &str) -> bool {
+    if nickname.len() < 3 || nickname.len() > 20 {
+      return false;
+    }
+
+    if !nickname.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+      return false;
+    }
+
+    true
+  }
+
+  async fn change_nickname(&mut self, state: &State, nickname: String) -> Result<()> {
+    if !Self::is_nickname_valid(&nickname) {
+      anyhow::bail!("Invalid nickname format");
+    }
+
+    let player_id = self.player_id()?;
+
+    self
+      .shared
+      .db
+      .update_player_nickname(player_id.0, nickname.clone())
+      .await?;
+
+    let player = self.shared.db.get_player(player_id.0).await?;
+
+    state
+      .send_to_all(message::Response::NicknameChanged {
+        player_id,
+        player: message::Player {
+          nickname: player.nickname,
+        },
+      })
+      .await;
+
+    Ok(())
+  }
+
+  async fn check_nickname(&self, state: &State, nickname: String) -> Result<()> {
+    let available =
+      Self::is_nickname_valid(&nickname) && self.shared.db.is_nickname_available(nickname.clone()).await?;
+
+    state
+      .send_to_connection(
+        self.connection_id,
+        message::Response::NicknameAvailable { nickname, available },
+      )
+      .await?;
+
+    Ok(())
+  }
+
   async fn accept_connection(mut self, state: Arc<State>, stream: TcpStream) -> Result<()> {
     let ws_stream = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response| {
       let mut jar = CookieJar::new();
@@ -1080,6 +1133,8 @@ impl<R: Rng> Session<R> {
             message::Request::PutPoint { game_id, coordinate } => self.put_point(&state, game_id, coordinate).await?,
             message::Request::Resign { game_id } => self.resign(&state, game_id).await?,
             message::Request::Draw { game_id } => self.draw(&state, game_id).await?,
+            message::Request::ChangeNickname { nickname } => self.change_nickname(&state, nickname).await?,
+            message::Request::CheckNickname { nickname } => self.check_nickname(&state, nickname).await?,
           }
         }
       }

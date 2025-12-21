@@ -173,6 +173,14 @@ pub enum Request {
   Draw {
     game_id: GameId,
   },
+  /// Change user's own nickname.
+  ChangeNickname {
+    nickname: String,
+  },
+  /// Check if a nickname is available.
+  CheckNickname {
+    nickname: String,
+  },
 }
 
 #[serde_as]
@@ -243,5 +251,15 @@ pub enum Response {
   GameResult {
     game_id: GameId,
     result: GameResult,
+  },
+  /// A player changed their nickname.
+  NicknameChanged {
+    player_id: PlayerId,
+    player: Player,
+  },
+  /// Response to nickname availability check.
+  NicknameAvailable {
+    nickname: String,
+    available: bool,
   },
 }
