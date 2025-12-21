@@ -1,10 +1,10 @@
 use clap::{Arg, Command};
 use cookie::Key;
-use openidconnect::{ClientId, ClientSecret, url::Url};
+use openidconnect::{ClientId, ClientSecret, IssuerUrl};
 
 #[derive(Clone, Debug)]
 pub struct OidcConfig {
-  pub issuer_url: Url,
+  pub issuer_url: IssuerUrl,
   pub client_id: ClientId,
   pub client_secret: Option<ClientSecret>,
 }
@@ -67,7 +67,7 @@ pub fn cli_parse() -> Config {
   let client_secret = matches.get_one::<String>("oidc-client-secret").cloned();
 
   let oidc = OidcConfig {
-    issuer_url: Url::parse(&issuer_url).expect("Invalid OIDC issuer URL"),
+    issuer_url: IssuerUrl::new(issuer_url).expect("Invalid OIDC issuer URL"),
     client_id: ClientId::new(client_id),
     client_secret: client_secret.map(ClientSecret::new),
   };

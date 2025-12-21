@@ -7,7 +7,7 @@ use futures_util::{FutureExt, SinkExt, StreamExt, select};
 use ids::*;
 use itertools::Itertools;
 use openidconnect::{
-  AccessTokenHash, AuthorizationCode, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce,
+  AccessTokenHash, AuthorizationCode, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, Nonce,
   OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
   core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
 };
@@ -94,11 +94,8 @@ impl<R: Rng> Session<R> {
 
   async fn oidc_client(&self) -> Result<OidcClient> {
     let redirect_url = RedirectUrl::new("https://kropki.org/".to_string())?;
-    let provider_metadata = CoreProviderMetadata::discover_async(
-      IssuerUrl::new(self.shared.oidc.issuer_url.to_string())?,
-      &self.shared.http_client,
-    )
-    .await?;
+    let provider_metadata =
+      CoreProviderMetadata::discover_async(self.shared.oidc.issuer_url.clone(), &self.shared.http_client).await?;
     let client = CoreClient::from_provider_metadata(
       provider_metadata,
       self.shared.oidc.client_id.clone(),
