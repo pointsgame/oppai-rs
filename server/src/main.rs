@@ -19,7 +19,7 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use state::{FieldSize, Game, GameConfig, GameState, GameTime, OpenGame, State};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use time::PrimitiveDateTime;
 use tokio::sync::Mutex;
 use tokio::{
@@ -1146,6 +1146,41 @@ impl<R: Rng> Session<R> {
   }
 }
 
+async fn close_open_games(state: &State) {
+  let mut candidates: HashMap<GameId, u32> = HashMap::new();
+  let mut removed = Vec::new();
+
+  let mut wakeups = tokio::time::interval(Duration::from_secs(1));
+
+  loop {
+    wakeups.tick().await;
+
+    let pin = state.players.pin();
+    for (&game_id, game) in state.open_games.pin().iter() {
+      if pin.contains_key(&game.player_id) {
+        candidates.remove(&game_id);
+      } else {
+        candidates.entry(game_id).and_modify(|c| *c += 1).or_insert(1);
+      }
+    }
+
+    candidates.retain(|&game_id, &mut count| {
+      if count < 10 {
+        true
+      } else {
+        removed.push(game_id);
+        false
+      }
+    });
+    let pin = state.open_games.pin();
+    for &game_id in removed.iter() {
+      pin.remove(&game_id);
+      state.send_to_all(message::Response::Close { game_id }).await;
+    }
+    removed.clear();
+  }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
@@ -1179,13 +1214,22 @@ async fn main() -> Result<()> {
     oidc: config.oidc,
   });
 
-  loop {
-    let (stream, addr) = listener.accept().await?;
-    let session = Session::new(session_shared.clone(), StdRng::from_rng(&mut rng));
-    tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
-      if let Err(error) = result {
-        log::warn!("Closed a connection from {} with an error: {}", addr, error);
-      }
-    }));
+  let future_1 = async {
+    loop {
+      let (stream, addr) = listener.accept().await?;
+      let session = Session::new(session_shared.clone(), StdRng::from_rng(&mut rng));
+      tokio::spawn(session.accept_connection(state.clone(), stream).map(move |result| {
+        if let Err(error) = result {
+          log::warn!("Closed a connection from {} with an error: {}", addr, error);
+        }
+      }));
+    }
+  };
+
+  let future_2 = close_open_games(&state);
+
+  select! {
+    r = future_1.fuse() => r  ,
+    _ = future_2.fuse() => Ok(()),
   }
 }

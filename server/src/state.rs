@@ -71,7 +71,7 @@ pub struct State {
   pub connections: HashMap<ConnectionId, Arc<Mutex<Sender<Response>>>>,
   /// Immutable set allows to use CAS loop which is useful to avoid races when player is deleted.
   pub players: HashMap<PlayerId, ImHashSet<ConnectionId>>,
-  /// Open games are never muated, they can be only created or removed.
+  /// Open games are never mutated, they can be only created or removed.
   pub open_games: HashMap<GameId, OpenGame>,
   /// Games have mutable state inside.
   pub games: HashMap<GameId, Game>,
