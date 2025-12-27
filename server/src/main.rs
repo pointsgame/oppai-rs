@@ -493,9 +493,7 @@ impl<R: Rng> Session<R> {
       .open_games
       .pin()
       .values()
-      .filter(|open_game| open_game.player_id == player_id)
-      .count()
-      > 2
+      .any(|open_game| open_game.player_id == player_id)
     {
       anyhow::bail!("too many open games for player {}", player_id);
     }
