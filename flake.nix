@@ -64,8 +64,6 @@
             libxkbcommon
             libGL
 
-            libsixel
-
             perf
 
             # WINIT_UNIX_BACKEND=wayland

@@ -10,6 +10,6 @@ edition = "2024"
 anyhow.workspace = true
 resvg = { version = "0.45" }
 image = { version = "0.25" }
-viuer = { version = "0.9", features = [ "sixel" ] }
+viuer = { version = "0.11" }
 oppai-field = { path = "../field" }
 oppai-svg = { path = "../svg" }
