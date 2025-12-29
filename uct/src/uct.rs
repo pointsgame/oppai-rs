@@ -6,10 +6,11 @@ use rand::distr::{Distribution, StandardUniform};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use std::{
-  ptr,
-  sync::atomic::{AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+  mem::{self, ManuallyDrop},
+  sync::atomic::{AtomicIsize, AtomicUsize, Ordering},
 };
 use strum::{EnumString, VariantNames};
+use thin_vec::ThinVec;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum UcbType {
@@ -68,15 +69,12 @@ struct UctNode {
   draws: AtomicUsize,
   visits: AtomicUsize,
   pos: Pos,
-  child: AtomicPtr<UctNode>,
-  sibling: Option<Box<UctNode>>,
+  children: AtomicUsize,
 }
 
 impl Drop for UctNode {
   fn drop(&mut self) {
-    unsafe {
-      self.clear_child();
-    }
+    self.clear_children();
   }
 }
 
@@ -87,10 +85,9 @@ impl Clone for UctNode {
       draws: AtomicUsize::new(self.draws.load(Ordering::SeqCst)),
       visits: AtomicUsize::new(self.visits.load(Ordering::SeqCst)),
       pos: self.pos,
-      child: self.get_child_ref().cloned().map_or(AtomicPtr::default(), |child| {
-        AtomicPtr::new(Box::into_raw(Box::new(child)))
-      }),
-      sibling: self.sibling.clone(),
+      children: unsafe {
+        mem::transmute::<Option<ManuallyDrop<ThinVec<UctNode>>>, AtomicUsize>(self.get_children().clone())
+      },
     }
   }
 }
@@ -102,8 +99,7 @@ impl UctNode {
       draws: AtomicUsize::new(0),
       visits: AtomicUsize::new(0),
       pos,
-      child: AtomicPtr::new(ptr::null_mut()),
-      sibling: None,
+      children: AtomicUsize::new(0),
     }
   }
 
@@ -111,67 +107,23 @@ impl UctNode {
     self.pos
   }
 
-  pub fn get_sibling(&mut self) -> Option<Box<UctNode>> {
-    self.sibling.take()
+  unsafe fn get_children(&self) -> Option<ManuallyDrop<ThinVec<UctNode>>> {
+    let ptr = self.children.load(Ordering::Relaxed);
+    unsafe { mem::transmute(ptr) }
   }
 
-  pub fn get_sibling_ref(&self) -> Option<&UctNode> {
-    self.sibling.as_deref()
+  fn clear_children(&self) -> Option<ThinVec<UctNode>> {
+    let ptr = self.children.swap(0, Ordering::Relaxed);
+    unsafe { mem::transmute::<_, Option<ThinVec<UctNode>>>(ptr) }
   }
 
-  pub fn get_sibling_mut(&mut self) -> Option<&mut UctNode> {
-    self.sibling.as_deref_mut()
-  }
-
-  pub fn clear_sibling(&mut self) {
-    self.sibling = None;
-  }
-
-  pub fn set_sibling(&mut self, sibling: Box<UctNode>) {
-    self.sibling = Some(sibling);
-  }
-
-  pub fn set_sibling_option(&mut self, sibling: Option<Box<UctNode>>) {
-    self.sibling = sibling;
-  }
-
-  pub fn get_child(&self) -> Option<Box<UctNode>> {
-    let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
-    if ptr.is_null() {
-      None
-    } else {
-      Some(unsafe { Box::from_raw(ptr) })
-    }
-  }
-
-  pub fn get_child_ref(&self) -> Option<&UctNode> {
-    let ptr = self.child.load(Ordering::Relaxed);
-    if ptr.is_null() { None } else { Some(unsafe { &*ptr }) }
-  }
-
-  pub fn get_child_mut(&mut self) -> Option<&mut UctNode> {
-    let ptr = self.child.load(Ordering::Relaxed);
-    if ptr.is_null() {
-      None
-    } else {
-      Some(unsafe { &mut *ptr })
-    }
-  }
-
-  unsafe fn clear_child(&self) {
-    let ptr = self.child.swap(ptr::null_mut(), Ordering::Relaxed);
-    if !ptr.is_null() {
-      drop::<Box<UctNode>>(unsafe { Box::from_raw(ptr) });
-    }
-  }
-
-  pub fn set_child(&self, child: Box<UctNode>) {
-    let child_ptr = Box::into_raw(child);
+  pub fn set_children(&self, children: ThinVec<UctNode>) {
+    let children_ptr = unsafe { mem::transmute::<ThinVec<UctNode>, usize>(children) };
     let result = self
-      .child
-      .compare_exchange(ptr::null_mut(), child_ptr, Ordering::Relaxed, Ordering::Relaxed);
+      .children
+      .compare_exchange(0, children_ptr, Ordering::Relaxed, Ordering::Relaxed);
     if result.is_err() {
-      drop::<Box<UctNode>>(unsafe { Box::from_raw(child_ptr) });
+      unsafe { mem::transmute::<usize, ThinVec<UctNode>>(children_ptr) };
     }
   }
 
@@ -216,7 +168,7 @@ impl UctNode {
 
 pub struct UctRoot {
   config: UctConfig,
-  node: Option<Box<UctNode>>,
+  node: Option<UctNode>,
   player: Player,
   moves_count: usize,
   hash: u64,
@@ -259,7 +211,7 @@ impl UctRoot {
 
   fn init(&mut self, field: &mut Field, player: Player) {
     debug!("Initialization.");
-    self.node = Some(Box::new(UctNode::new(0)));
+    self.node = Some(UctNode::new(0));
     self.player = player;
     self.moves_count = field.moves_count();
     self.hash = field.hash;
@@ -270,22 +222,14 @@ impl UctRoot {
   }
 
   fn expand_node<R: Rng>(node: &mut UctNode, moves: &mut Vec<Pos>, rng: &mut R) {
-    if node.get_child_ref().is_none() {
-      if node.get_visits() == usize::MAX {
-        node.clear_stats();
+    if let Some(mut children) = unsafe { node.get_children() } {
+      for child in children.iter_mut() {
+        UctRoot::expand_node(child, moves, rng);
       }
-    } else {
-      let mut next = node.get_child_mut();
-      while next.as_ref().unwrap().get_sibling_ref().is_some() {
-        UctRoot::expand_node(next.as_mut().unwrap(), moves, rng);
-        next = next.unwrap().get_sibling_mut();
-      }
-      UctRoot::expand_node(next.as_mut().unwrap(), moves, rng);
       moves.shuffle(rng);
-      for &pos in moves.iter() {
-        next.as_mut().unwrap().set_sibling(Box::new(UctNode::new(pos)));
-        next = next.unwrap().get_sibling_mut();
-      }
+      children.extend(moves.iter().copied().map(UctNode::new));
+    } else if node.get_visits() == usize::MAX {
+      node.clear_stats();
     }
   }
 
@@ -296,7 +240,6 @@ impl UctRoot {
     if self.node.is_none() {
       self.init(field, player);
     } else {
-      debug!("Updation.");
       let moves = &field.moves;
       let moves_count = field.moves_count();
       let last_moves_count = self.moves_count;
@@ -339,25 +282,25 @@ impl UctRoot {
           self.init(field, player);
           break;
         }
-        let mut next = self.node.as_ref().unwrap().get_child();
-        while next.is_some() && next.as_ref().unwrap().pos != next_pos {
-          next = next.unwrap().get_sibling();
-        }
-        if let Some(ref mut node) = next {
-          let pos = node.get_pos();
-          debug!("Node found for move ({}, {}).", field.to_x(pos), field.to_y(pos));
-          node.clear_sibling();
-        } else {
-          self.clear();
-          self.init(field, player);
-          break;
-        }
-        self.node = next;
-        self.moves_count += 1;
-        self.player = self.player.next();
-        self.hash = field.hash;
-        if self.config.komi_type == UctKomiType::Dynamic {
-          self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
+        if let Some(children) = self.node.take().and_then(|node| node.clear_children()) {
+          if let Some(node) = children.into_iter().find(|node| node.pos == next_pos) {
+            debug!(
+              "Node found for move ({}, {}).",
+              field.to_x(node.pos),
+              field.to_y(node.pos)
+            );
+            self.node = Some(node);
+            self.moves_count += 1;
+            self.player = self.player.next();
+            self.hash = field.hash;
+            if self.config.komi_type == UctKomiType::Dynamic {
+              self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
+            }
+          } else {
+            self.clear();
+            self.init(field, player);
+            break;
+          }
         }
       }
     }
@@ -427,42 +370,40 @@ impl UctRoot {
 
   fn create_children<R: Rng>(field: &Field, possible_moves: &mut [Pos], node: &UctNode, rng: &mut R) {
     possible_moves.shuffle(rng);
-    let mut children = None;
-    for &pos in possible_moves.iter() {
-      if field.cell(pos).is_putting_allowed() {
-        let mut cur_child = Box::new(UctNode::new(pos));
-        cur_child.set_sibling_option(children);
-        children = Some(cur_child);
-      }
+    let mut moves = possible_moves
+      .iter()
+      .copied()
+      .filter(|&pos| field.cell(pos).is_putting_allowed())
+      .peekable();
+    if moves.peek().is_none() {
+      return;
     }
-    if let Some(child) = children {
-      node.set_child(child)
-    }
+    let children = moves.map(UctNode::new).collect::<ThinVec<UctNode>>();
+    node.set_children(children);
   }
 
   fn uct_select<'a>(&self, node: &'a UctNode) -> Option<&'a UctNode> {
     let node_visits_ln = (node.get_visits() as f64).ln();
     let mut best_uct = 0f64;
     let mut result = None;
-    let mut next = node.get_child_ref();
-    while let Some(next_node) = next {
-      let visits = next_node.get_visits();
-      let wins = next_node.get_wins();
+    let children = unsafe { node.get_children() };
+    for child in children.iter().flat_map(|children| children.iter()) {
+      let visits = child.get_visits();
+      let wins = child.get_wins();
       let uct_value = if visits == usize::MAX {
         if wins == usize::MAX {
-          return Some(next_node);
+          return Some(unsafe { mem::transmute::<&UctNode, &UctNode>(child) });
         }
         -1f64
       } else if visits == 0 {
         self.config.fpu
       } else {
-        self.ucb(node_visits_ln, next_node, self.config.ucb_type)
+        self.ucb(node_visits_ln, child, self.config.ucb_type)
       };
       if uct_value > best_uct {
         best_uct = uct_value;
-        result = Some(next_node);
+        result = Some(unsafe { mem::transmute::<&UctNode, &UctNode>(child) });
       }
-      next = next_node.get_sibling_ref();
     }
     result
   }
@@ -480,7 +421,7 @@ impl UctRoot {
     let random_result = if node.get_visits() < self.config.when_create_children || depth == self.config.depth {
       UctRoot::play_random_game(field, player, rng, possible_moves, komi)
     } else {
-      if node.get_child_ref().is_none() {
+      if unsafe { node.get_children() }.is_none() {
         UctRoot::create_children(field, possible_moves, node, rng)
       }
       if let Some(next) = self.uct_select(node) {
@@ -652,26 +593,25 @@ impl UctRoot {
     };
     let mut moves = Vec::new();
     let winrate = if let Some(ref root) = self.node {
-      let mut next = root.get_child_ref();
       let root_visits_ln = (root.get_visits() as f64).ln();
-      while let Some(next_node) = next {
-        let uct_value = if next_node.get_visits() > 0 {
-          self.ucb(root_visits_ln, next_node, UcbType::Winrate)
+      let children = unsafe { root.get_children() };
+      for child in children.iter().flat_map(|children| children.iter()) {
+        let uct_value = if child.get_visits() > 0 {
+          self.ucb(root_visits_ln, child, UcbType::Winrate)
         } else {
           0f64
         };
-        let pos = next_node.get_pos();
+        let pos = child.get_pos();
         info!(
           "Uct for move ({}, {}) is {}, {} wins, {} draws, {} visits.",
           field.to_x(pos),
           field.to_y(pos),
           uct_value,
-          next_node.get_wins(),
-          next_node.get_draws(),
-          next_node.get_visits()
+          child.get_wins(),
+          child.get_draws(),
+          child.get_visits()
         );
         moves.push((pos, uct_value));
-        next = next_node.get_sibling_ref();
       }
       (root.get_wins() as f64 + root.get_draws() as f64 / 2.0) / root.get_visits() as f64
     } else {
