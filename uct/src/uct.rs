@@ -7,7 +7,8 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use std::{
   mem::{self, ManuallyDrop},
-  sync::atomic::{AtomicIsize, AtomicUsize, Ordering},
+  ptr,
+  sync::atomic::{AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
 };
 use strum::{EnumString, VariantNames};
 use thin_vec::ThinVec;
@@ -69,7 +70,7 @@ struct UctNode {
   draws: AtomicUsize,
   visits: AtomicUsize,
   pos: Pos,
-  children: AtomicUsize,
+  children: AtomicPtr<()>,
 }
 
 impl Drop for UctNode {
@@ -86,7 +87,9 @@ impl Clone for UctNode {
       visits: AtomicUsize::new(self.visits.load(Ordering::SeqCst)),
       pos: self.pos,
       children: unsafe {
-        mem::transmute::<Option<ManuallyDrop<ThinVec<UctNode>>>, AtomicUsize>(self.get_children().clone())
+        self.get_children().clone().map_or(AtomicPtr::default(), |children| {
+          AtomicPtr::new(mem::transmute::<ManuallyDrop<ThinVec<UctNode>>, *mut ()>(children))
+        })
       },
     }
   }
@@ -99,7 +102,7 @@ impl UctNode {
       draws: AtomicUsize::new(0),
       visits: AtomicUsize::new(0),
       pos,
-      children: AtomicUsize::new(0),
+      children: AtomicPtr::default(),
     }
   }
 
@@ -109,21 +112,31 @@ impl UctNode {
 
   unsafe fn get_children(&self) -> Option<ManuallyDrop<ThinVec<UctNode>>> {
     let ptr = self.children.load(Ordering::Relaxed);
-    unsafe { mem::transmute(ptr) }
+    if ptr.is_null() {
+      None
+    } else {
+      Some(unsafe { mem::transmute::<*mut (), ManuallyDrop<ThinVec<UctNode>>>(ptr) })
+    }
   }
 
   fn clear_children(&self) -> Option<ThinVec<UctNode>> {
-    let ptr = self.children.swap(0, Ordering::Relaxed);
-    unsafe { mem::transmute::<_, Option<ThinVec<UctNode>>>(ptr) }
+    let ptr = self.children.swap(ptr::null_mut(), Ordering::Relaxed);
+    if ptr.is_null() {
+      None
+    } else {
+      Some(unsafe { mem::transmute::<*mut (), ThinVec<UctNode>>(ptr) })
+    }
   }
 
   pub fn set_children(&self, children: ThinVec<UctNode>) {
-    let children_ptr = unsafe { mem::transmute::<ThinVec<UctNode>, usize>(children) };
+    let ptr = unsafe { mem::transmute::<ThinVec<UctNode>, *mut ()>(children) };
     let result = self
       .children
-      .compare_exchange(0, children_ptr, Ordering::Relaxed, Ordering::Relaxed);
+      .compare_exchange(ptr::null_mut(), ptr, Ordering::Relaxed, Ordering::Relaxed);
     if result.is_err() {
-      unsafe { mem::transmute::<usize, ThinVec<UctNode>>(children_ptr) };
+      unsafe {
+        mem::transmute::<*mut (), ThinVec<UctNode>>(ptr);
+      }
     }
   }
 
@@ -222,12 +235,13 @@ impl UctRoot {
   }
 
   fn expand_node<R: Rng>(node: &mut UctNode, moves: &mut Vec<Pos>, rng: &mut R) {
-    if let Some(mut children) = unsafe { node.get_children() } {
+    if let Some(mut children) = node.clear_children() {
       for child in children.iter_mut() {
         UctRoot::expand_node(child, moves, rng);
       }
       moves.shuffle(rng);
       children.extend(moves.iter().copied().map(UctNode::new));
+      node.set_children(children);
     } else if node.get_visits() == usize::MAX {
       node.clear_stats();
     }
