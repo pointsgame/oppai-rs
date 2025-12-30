@@ -87,7 +87,8 @@ impl Clone for UctNode {
       visits: AtomicUsize::new(self.visits.load(Ordering::SeqCst)),
       pos: self.pos,
       children: unsafe {
-        self.get_children().clone().map_or(AtomicPtr::default(), |children| {
+        self.get_children().map_or(AtomicPtr::default(), |children| {
+          let children = ManuallyDrop::new(ThinVec::from(children));
           AtomicPtr::new(mem::transmute::<ManuallyDrop<ThinVec<UctNode>>, *mut ()>(children))
         })
       },
@@ -110,12 +111,15 @@ impl UctNode {
     self.pos
   }
 
-  unsafe fn get_children(&self) -> Option<ManuallyDrop<ThinVec<UctNode>>> {
+  unsafe fn get_children<'a>(&'a self) -> Option<&'a [UctNode]> {
     let ptr = self.children.load(Ordering::Relaxed);
     if ptr.is_null() {
       None
     } else {
-      Some(unsafe { mem::transmute::<*mut (), ManuallyDrop<ThinVec<UctNode>>>(ptr) })
+      unsafe {
+        let children = mem::transmute::<*mut (), ManuallyDrop<ThinVec<UctNode>>>(ptr);
+        Some(mem::transmute::<&[UctNode], &'a [UctNode]>(children.as_slice()))
+      }
     }
   }
 
@@ -406,7 +410,7 @@ impl UctRoot {
       let wins = child.get_wins();
       let uct_value = if visits == usize::MAX {
         if wins == usize::MAX {
-          return Some(unsafe { mem::transmute::<&UctNode, &UctNode>(child) });
+          return Some(child);
         }
         -1f64
       } else if visits == 0 {
@@ -416,7 +420,7 @@ impl UctRoot {
       };
       if uct_value > best_uct {
         best_uct = uct_value;
-        result = Some(unsafe { mem::transmute::<&UctNode, &UctNode>(child) });
+        result = Some(child);
       }
     }
     result
