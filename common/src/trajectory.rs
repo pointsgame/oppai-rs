@@ -50,9 +50,9 @@ fn next_moves(
   start_pos: Pos,
   player: Player,
   empty_board: &mut [u32],
-  marks: &mut Vec<Pos>,
-) -> Vec<Pos> {
-  let mut moves = Vec::new();
+  marks: &mut SmallVec<[Pos; 1]>,
+) -> SmallVec<[Pos; 7]> {
+  let mut moves = SmallVec::new();
   wave_diag(&mut field.q, field.stride, start_pos, |pos| {
     if empty_board[pos] != 0 {
       return false;
@@ -84,7 +84,7 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
   depth: u32,
   empty_board: &mut [u32],
   last_pos: Pos,
-  moves: Vec<Pos>,
+  moves: SmallVec<[Pos; 7]>,
   ensure_pos: Pos,
   should_stop: &SS,
 ) where
@@ -120,10 +120,10 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
         player,
       );
     } else if depth > 0 {
-      let mut marks = Vec::new();
+      let mut marks = SmallVec::new();
       let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
       if last_pos != 0 {
-        next_moves.retain(|&next_pos| euclidean(field.stride, last_pos, next_pos) > 2);
+        next_moves.retain(|&mut next_pos| euclidean(field.stride, last_pos, next_pos) > 2);
       }
       build_trajectories_rec(
         field,
@@ -161,7 +161,7 @@ where
     return trajectories;
   }
 
-  let mut marks = Vec::new();
+  let mut marks = SmallVec::new();
   for pos in field.moves.clone() {
     if field.cell(pos).get_player() != player {
       continue;
@@ -211,7 +211,7 @@ where
     return trajectories;
   }
 
-  let mut marks = Vec::new();
+  let mut marks = SmallVec::new();
   let moves = next_moves(field, pos, player, empty_board, &mut marks);
 
   build_trajectories_rec(
