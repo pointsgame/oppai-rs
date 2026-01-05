@@ -349,8 +349,6 @@ fn build_chain(
 ) -> bool {
   let mut pos = direction_pos;
   let mut center_pos = start_pos;
-  let mut center_coord = to_xy(stride, pos);
-  let mut base_square = skew_product(to_xy(stride, center_pos), center_coord);
   chain.clear();
   chain.push(start_pos);
   loop {
@@ -377,17 +375,19 @@ fn build_chain(
       }
       pos = get_next_pos(stride, center_pos, pos);
     }
-    let pos_coord = to_xy(stride, pos);
-    base_square += skew_product(center_coord, pos_coord);
     if pos == start_pos {
       break;
     }
-    center_coord = pos_coord;
   }
-  for &pos in &*chain {
+  let mut center_coord = to_xy(stride, pos);
+  let mut base_area = skew_product(to_xy(stride, center_pos), center_coord);
+  for &pos in chain.iter().skip(1) {
+    let pos_coord = to_xy(stride, pos);
+    base_area += skew_product(center_coord, pos_coord);
+    center_coord = pos_coord;
     points[pos].clear_tag();
   }
-  base_square < 0
+  base_area < 0
 }
 
 fn find_chain(
@@ -401,7 +401,7 @@ fn find_chain(
   let mut pos = direction_pos;
   let mut center_pos = start_pos;
   let mut center_coord = to_xy(stride, pos);
-  let mut base_square = skew_product(to_xy(stride, center_pos), center_coord);
+  let mut base_area = skew_product(to_xy(stride, center_pos), center_coord);
   chain.clear();
   chain.push(start_pos);
   loop {
@@ -412,13 +412,13 @@ fn find_chain(
       pos = get_next_pos(stride, center_pos, pos);
     }
     let pos_coord = to_xy(stride, pos);
-    base_square += skew_product(center_coord, pos_coord);
+    base_area += skew_product(center_coord, pos_coord);
     if pos == start_pos {
       break;
     }
     center_coord = pos_coord;
   }
-  base_square < 0 && chain.len() > 2
+  base_area < 0 && chain.len() > 2
 }
 
 impl Field {
