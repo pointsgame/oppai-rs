@@ -790,18 +790,18 @@ impl Field {
   }
 
   #[cfg(feature = "dsu")]
-  fn find_dsu_set(&mut self, pos: Pos) -> Pos {
-    let dsu_value = self.dsu[pos];
-    if dsu_value == pos {
-      pos
-    } else {
-      let result = self.find_dsu_set(dsu_value);
-      if result != dsu_value {
-        self.save_dsu_value(pos);
-        self.dsu[pos] = result;
-      }
-      result
+  fn find_dsu_set(&mut self, mut pos: Pos) -> Pos {
+    let mut root = pos;
+    while self.dsu[root] != root {
+      root = self.dsu[root];
     }
+    while self.dsu[pos] != root {
+      let parent = self.dsu[pos];
+      self.save_dsu_value(pos);
+      self.dsu[pos] = root;
+      pos = parent;
+    }
+    root
   }
 
   #[cfg(feature = "dsu")]
