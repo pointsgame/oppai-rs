@@ -831,14 +831,13 @@ impl Field {
     let input_points_count = input_points.len();
     if input_points_count > 1 {
       let mut total_chains_count = 0;
-      let mut sets: SmallVec<[_; 4]> = SmallVec::new();
-      for &(chain_neighbor, _) in &input_points {
-        sets.push(self.find_dsu_set(chain_neighbor.apply(&self.neighbor_offsets, pos)));
-      }
-      let mut group: SmallVec<[_; 4]> = SmallVec::new();
+      let sets: SmallVec<[_; 4]> = input_points
+        .iter()
+        .map(|&(chain_neighbor, _)| self.find_dsu_set(chain_neighbor.apply(&self.neighbor_offsets, pos)))
+        .collect();
       let mut result = false;
       for (i, &set) in sets.iter().enumerate() {
-        group.clear();
+        let mut group: SmallVec<[_; 4]> = SmallVec::new();
         for j in i..input_points_count {
           if sets[j] == set {
             group.push(input_points[j]);
