@@ -303,34 +303,50 @@ fn get_input_points(
   player: Player,
 ) -> SmallVec<[(Neighbor, Pos); 4]> {
   let mut inp_points = SmallVec::new();
-  if !points[w(center_pos)].is_live_players_point(player) {
-    if points[nw(stride, center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::NW, w(center_pos)));
-    } else if points[n(stride, center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::N, w(center_pos)));
+
+  let pos_w = center_pos - 1;
+  let pos_e = center_pos + 1;
+  let pos_n = center_pos - stride as usize;
+  let pos_s = center_pos + stride as usize;
+
+  let has_w = points[pos_w].is_live_players_point(player);
+  let has_e = points[pos_e].is_live_players_point(player);
+  let has_n = points[pos_n].is_live_players_point(player);
+  let has_s = points[pos_s].is_live_players_point(player);
+
+  if !has_w {
+    // NW
+    if points[pos_n - 1].is_live_players_point(player) {
+      inp_points.push((Neighbor::NW, pos_w));
+    } else if has_n {
+      inp_points.push((Neighbor::N, pos_w));
     }
   }
-  if !points[s(stride, center_pos)].is_live_players_point(player) {
-    if points[sw(stride, center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::SW, s(stride, center_pos)));
-    } else if points[w(center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::W, s(stride, center_pos)));
+  if !has_s {
+    // SW
+    if points[pos_s - 1].is_live_players_point(player) {
+      inp_points.push((Neighbor::SW, pos_s));
+    } else if has_w {
+      inp_points.push((Neighbor::W, pos_s));
     }
   }
-  if !points[e(center_pos)].is_live_players_point(player) {
-    if points[se(stride, center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::SE, e(center_pos)));
-    } else if points[s(stride, center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::S, e(center_pos)));
+  if !has_e {
+    // SE
+    if points[pos_s + 1].is_live_players_point(player) {
+      inp_points.push((Neighbor::SE, pos_e));
+    } else if has_s {
+      inp_points.push((Neighbor::S, pos_e));
     }
   }
-  if !points[n(stride, center_pos)].is_live_players_point(player) {
-    if points[ne(stride, center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::NE, n(stride, center_pos)));
-    } else if points[e(center_pos)].is_live_players_point(player) {
-      inp_points.push((Neighbor::E, n(stride, center_pos)));
+  if !has_n {
+    // NE
+    if points[pos_n + 1].is_live_players_point(player) {
+      inp_points.push((Neighbor::NE, pos_n));
+    } else if has_e {
+      inp_points.push((Neighbor::E, pos_n));
     }
   }
+
   inp_points
 }
 
