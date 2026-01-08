@@ -352,13 +352,12 @@ fn build_chain(
     direction = direction.first_next();
     let mut pos = direction.apply(neighbor_offsets, center_pos);
     while !points[pos].is_live_players_point(player) {
-      // If we reached borders of the field it means we are following the chain in a wrong direction (outside)
-      // This check is not valid when DSU is disabled because we track count of short chains
-      #[cfg(feature = "dsu")]
       if points[pos].is_bad() {
         for &pos in &*chain {
           points[pos].clear_tag();
         }
+        #[cfg(not(feature = "dsu"))]
+        chain.clear(); // used as a mark for reaching border
         return false;
       }
       direction = direction.next();
@@ -916,7 +915,10 @@ impl Field {
           if chains_count == input_points_count {
             break;
           }
-        } else if self.chains[chains_count].0.len() < 4 {
+        } else if {
+          let len = self.chains[chains_count].0.len();
+          len > 0 && len < 4
+        } {
           // If a chain is short it can't form a valid chain when followed in reverse direction
           input_points_count -= 1;
           if chains_count == input_points_count {
