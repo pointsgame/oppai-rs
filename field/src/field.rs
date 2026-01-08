@@ -24,6 +24,12 @@ impl Neighbor {
   const W: Self = Self(6);
   const NW: Self = Self(7);
 
+  //  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
+  //  * o .   x o .   . o .   . o .   . o *   . o x   . o .   . o .
+  //  x . .   . . .   . . .   . . .   . . .   . . *   . * x   * x .
+  //  o - center pos
+  //  x - pos
+  //  * - result
   #[inline(always)]
   fn next(self) -> Self {
     Self((self.0 + 1) & 7)
@@ -40,12 +46,6 @@ impl Neighbor {
     Self(((self.0 + 6) | 1) & 7)
   }
 
-  //  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
-  //  * o .   x o .   . o .   . o .   . o *   . o x   . o .   . o .
-  //  x . .   . . .   . . .   . . .   . . .   . . *   . * x   * x .
-  //  o - center pos
-  //  x - pos
-  //  * - result
   #[inline(always)]
   fn apply(self, neighbor_offsets: &[isize; 8], pos: Pos) -> Pos {
     pos.overflowing_add_signed(neighbor_offsets[self.0]).0
