@@ -37,7 +37,7 @@ impl Neighbor {
   //  * - result
   #[inline(always)]
   fn first_next(self) -> Self {
-    Self(((self.0 + 6) | 1) % 8)
+    Self(((self.0 + 6) | 1) & 7)
   }
 
   //  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
