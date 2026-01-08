@@ -392,14 +392,16 @@ fn build_chain(
     }
     center_pos = pos;
   }
-  let mut center_coord = to_xy(stride, start_pos);
-  let mut base_area = skew_product(to_xy(stride, center_pos), center_coord);
+  let start_coord = to_xy(stride, start_pos);
+  let mut center_coord = start_coord;
+  let mut base_area = 0;
   for &pos in chain.iter().skip(1) {
     let pos_coord = to_xy(stride, pos);
     base_area += skew_product(center_coord, pos_coord);
     center_coord = pos_coord;
     points[pos].clear_tag();
   }
+  base_area += skew_product(center_coord, start_coord);
   base_area < 0
 }
 
