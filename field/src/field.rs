@@ -356,7 +356,6 @@ fn build_chain(
         for &pos in &*chain {
           points[pos].clear_tag();
         }
-        #[cfg(not(feature = "dsu"))]
         chain.clear(); // used as a mark for reaching border
         return false;
       }
@@ -843,8 +842,8 @@ impl Field {
             group.push(input_points[j]);
           }
         }
-        let group_points_count = group.len() as u32;
-        if group_points_count > 1 {
+        let mut group_points_count = group.len().saturating_sub(1) as u32;
+        if group_points_count > 0 {
           let mut chains_count = 0u32;
           for &(chain_neighbor, captured_pos) in &group {
             if build_chain(
@@ -859,15 +858,24 @@ impl Field {
               self.chains[total_chains_count].1 = captured_pos;
               chains_count += 1;
               total_chains_count += 1;
-              if chains_count == group_points_count - 1 {
+              if chains_count == group_points_count {
                 break;
+              }
+            } else {
+              let len = self.chains[total_chains_count].0.len();
+              if len > 0 && len < 4 {
+                // If a chain is short it can't form a valid chain when followed in reverse direction
+                group_points_count -= 1;
+                if chains_count == group_points_count {
+                  break;
+                }
               }
             }
           }
           if chains_count > 0 {
             result = true;
           }
-          if group_points_count >= 3 {
+          if group.len() >= 3 {
             break;
           }
         }
@@ -914,14 +922,14 @@ impl Field {
           if chains_count == input_points_count {
             break;
           }
-        } else if {
+        } else {
           let len = self.chains[chains_count].0.len();
-          len > 0 && len < 4
-        } {
-          // If a chain is short it can't form a valid chain when followed in reverse direction
-          input_points_count -= 1;
-          if chains_count == input_points_count {
-            break;
+          if len > 0 && len < 4 {
+            // If a chain is short it can't form a valid chain when followed in reverse direction
+            input_points_count -= 1;
+            if chains_count == input_points_count {
+              break;
+            }
           }
         }
       }
