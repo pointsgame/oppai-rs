@@ -59,7 +59,7 @@ struct FieldChange {
   hash: u64,
   cell_changes: usize,
   #[cfg(feature = "dsu")]
-  dsu_changes: SmallVec<[(Pos, Pos); 5]>,
+  dsu_changes: usize,
   #[cfg(feature = "dsu")]
   dsu_size_change: Option<(Pos, u32)>,
 }
@@ -85,6 +85,8 @@ pub struct Field {
   #[cfg(feature = "dsu")]
   dsu_size: PointsVec<u32>,
   cell_changes: Vec<(Pos, Cell)>,
+  #[cfg(feature = "dsu")]
+  dsu_changes: Vec<(Pos, Pos)>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   pub hash: u64,
@@ -661,6 +663,7 @@ impl Field {
       dsu: PointsVec((0..length).collect()),
       dsu_size: vec![1; length].into(),
       cell_changes: Vec::with_capacity(length * 8),
+      dsu_changes: Vec::with_capacity(length * 8),
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
@@ -711,7 +714,7 @@ impl Field {
   #[cfg(feature = "dsu")]
   #[inline]
   fn save_dsu_value(&mut self, pos: Pos) {
-    self.changes.last_mut().unwrap().dsu_changes.push((pos, self.dsu[pos]));
+    self.dsu_changes.push((pos, self.dsu[pos]));
   }
 
   #[cfg(feature = "dsu")]
@@ -980,7 +983,7 @@ impl Field {
         score_black: self.score_black,
         hash: self.hash,
         cell_changes: self.cell_changes.len(),
-        dsu_changes: SmallVec::new(),
+        dsu_changes: self.dsu_changes.len(),
         dsu_size_change: None,
       };
       #[cfg(not(feature = "dsu"))]
@@ -1064,9 +1067,10 @@ impl Field {
       self.cell_changes.truncate(change.cell_changes);
       #[cfg(feature = "dsu")]
       {
-        for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
+        for &(pos, dsu_value) in self.dsu_changes[change.dsu_changes..].iter().rev() {
           self.dsu[pos] = dsu_value;
         }
+        self.dsu_changes.truncate(change.dsu_changes);
         if let Some((pos, dsu_size)) = change.dsu_size_change {
           self.dsu_size[pos] = dsu_size;
         }
@@ -1298,6 +1302,7 @@ impl Field {
       self.hash = 0;
       #[cfg(feature = "dsu")]
       {
+        self.dsu_changes.clear();
         for (i, dsu) in self.dsu.0.iter_mut().enumerate() {
           *dsu = i;
         }
