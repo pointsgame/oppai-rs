@@ -728,27 +728,6 @@ impl Field {
     self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos]
   }
 
-  fn capture_single(&mut self, chain_index: usize, pos: Pos, player: Player) {
-    let inside_pos = self.chains[chain_index].1;
-    self.save_pos_value(inside_pos);
-    if self.cell(inside_pos).is_put() {
-      self.remove_empty_base(pos);
-      self.points[inside_pos].set_captured();
-      for &pos in self.chains[chain_index].0.iter() {
-        self.cell_changes.push((pos, self.cell(pos)));
-        self.points[pos].set_bound();
-      }
-      match player {
-        Player::Red => self.score_red += 1,
-        Player::Black => self.score_black += 1,
-      }
-      self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + inside_pos]
-        ^ self.zobrist.hashes[self.length() * player as usize + inside_pos];
-    } else {
-      self.points[inside_pos].set_empty_base_player(player);
-    }
-  }
-
   fn capture(&mut self, chain_index: usize, inside_pos: Pos, player: Player) -> bool {
     let mut captured_count = 0i32;
     let mut freed_count = 0i32;
@@ -922,11 +901,7 @@ impl Field {
       }
       self.chains[0..total_chains_count].sort_unstable_by_key(|(chain, _)| chain.len());
       for chain_index in 0..total_chains_count {
-        if self.chains[chain_index].0.len() == 4 {
-          self.capture_single(chain_index, pos, player);
-        } else {
-          self.capture(chain_index, self.chains[chain_index].1, player);
-        }
+        self.capture(chain_index, self.chains[chain_index].1, player);
       }
       let parent = self.union_dsu_sets(&sets);
       self.save_dsu_value(pos);
@@ -979,11 +954,7 @@ impl Field {
       }
       self.chains[0..chains_count].sort_unstable_by_key(|(chain, _)| chain.len());
       for chain_index in 0..chains_count {
-        if self.chains[chain_index].0.len() == 4 {
-          self.capture_single(chain_index, pos, player);
-        } else {
-          self.capture(chain_index, self.chains[chain_index].1, player);
-        }
+        self.capture(chain_index, self.chains[chain_index].1, player);
       }
       chains_count > 0
     } else {
