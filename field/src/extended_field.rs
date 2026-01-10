@@ -28,7 +28,7 @@ impl From<Field> for ExtendedField {
       .map(|&pos| (pos, field.cell(pos).get_player()))
       .collect::<Vec<_>>();
     let captured = vec![0; field.length()];
-    field.undo_all();
+    field.clear();
     let mut result = ExtendedField {
       player: Player::Red,
       field,

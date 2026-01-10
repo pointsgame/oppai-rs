@@ -2,6 +2,7 @@ use crate::player::Player;
 
 type CellValue = u8;
 
+#[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Cell(pub CellValue);
 

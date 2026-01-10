@@ -57,7 +57,7 @@ struct FieldChange {
   score_red: i32,
   score_black: i32,
   hash: u64,
-  points_changes: SmallVec<[(Pos, Cell); 5]>,
+  cell_changes: usize,
   #[cfg(feature = "dsu")]
   dsu_changes: SmallVec<[(Pos, Pos); 5]>,
   #[cfg(feature = "dsu")]
@@ -84,6 +84,7 @@ pub struct Field {
   dsu: PointsVec<Pos>,
   #[cfg(feature = "dsu")]
   dsu_size: PointsVec<u32>,
+  cell_changes: Vec<(Pos, Cell)>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist>,
   pub hash: u64,
@@ -659,6 +660,7 @@ impl Field {
       neighbor_offsets,
       dsu: PointsVec((0..length).collect()),
       dsu_size: vec![1; length].into(),
+      cell_changes: Vec::with_capacity(length * 8),
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
@@ -678,6 +680,7 @@ impl Field {
       moves: Vec::with_capacity(length),
       points: vec![Cell::new(false); length].into(),
       neighbor_offsets,
+      cell_changes: Vec::with_capacity(length * 8),
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
@@ -702,7 +705,7 @@ impl Field {
   #[inline]
   fn save_pos_value(&mut self, pos: Pos) {
     let cell = self.cell(pos);
-    self.changes.last_mut().unwrap().points_changes.push((pos, cell));
+    self.cell_changes.push((pos, cell));
   }
 
   #[cfg(feature = "dsu")]
@@ -759,18 +762,13 @@ impl Field {
       }
       for &pos in self.chains[chain_index].0.iter() {
         self.points[pos].clear_tag();
-        self
-          .changes
-          .last_mut()
-          .unwrap()
-          .points_changes
-          .push((pos, self.points[pos]));
+        self.cell_changes.push((pos, self.cell(pos)));
         self.points[pos].set_bound();
       }
       for &pos in &self.captured_points {
         self.points[pos].clear_tag();
         let cell = self.cell(pos);
-        self.changes.last_mut().unwrap().points_changes.push((pos, cell));
+        self.cell_changes.push((pos, cell));
         if !cell.is_put() {
           if cell.is_captured() {
             self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos];
@@ -798,7 +796,7 @@ impl Field {
         self.points[pos].clear_tag();
         if !self.points[pos].is_put() {
           let cell = self.cell(pos);
-          self.changes.last_mut().unwrap().points_changes.push((pos, cell));
+          self.cell_changes.push((pos, cell));
           self.points[pos].set_empty_base_player(player);
         }
       }
@@ -965,12 +963,7 @@ impl Field {
   fn remove_empty_base(&mut self, start_pos: Pos) {
     wave(&mut self.q, self.stride, start_pos, |pos| {
       if self.points[pos].is_empty_base() {
-        self
-          .changes
-          .last_mut()
-          .unwrap()
-          .points_changes
-          .push((pos, self.points[pos]));
+        self.cell_changes.push((pos, self.points[pos]));
         self.points[pos].clear_empty_base();
         true
       } else {
@@ -986,7 +979,7 @@ impl Field {
         score_red: self.score_red,
         score_black: self.score_black,
         hash: self.hash,
-        points_changes: SmallVec::new(),
+        cell_changes: self.cell_changes.len(),
         dsu_changes: SmallVec::new(),
         dsu_size_change: None,
       };
@@ -995,7 +988,7 @@ impl Field {
         score_red: self.score_red,
         score_black: self.score_black,
         hash: self.hash,
-        points_changes: SmallVec::new(),
+        cell_changes: self.cell_changes.len(),
       };
       self.changes.push(change);
       self.save_pos_value(pos);
@@ -1065,9 +1058,10 @@ impl Field {
       self.score_red = change.score_red;
       self.score_black = change.score_black;
       self.hash = change.hash;
-      for (pos, cell) in change.points_changes.into_iter().rev() {
+      for &(pos, cell) in self.cell_changes[change.cell_changes..].iter().rev() {
         self.points[pos] = cell;
       }
+      self.cell_changes.truncate(change.cell_changes);
       #[cfg(feature = "dsu")]
       {
         for (pos, dsu_value) in change.dsu_changes.into_iter().rev() {
@@ -1081,10 +1075,6 @@ impl Field {
     } else {
       false
     }
-  }
-
-  pub fn undo_all(&mut self) {
-    while self.undo() {}
   }
 
   pub fn get_last_chain(&mut self) -> Vec<Pos> {
@@ -1242,8 +1232,7 @@ impl Field {
       .changes
       .last()
       .into_iter()
-      .flat_map(|change| change.points_changes.iter())
-      .cloned()
+      .flat_map(|change| self.cell_changes[change.cell_changes..].iter().copied())
   }
 
   pub fn is_corner(&self, pos: Pos) -> bool {
@@ -1301,6 +1290,7 @@ impl Field {
         *cell = Cell::new(false);
       }
       self.set_padding();
+      self.cell_changes.clear();
       self.changes.clear();
       self.moves.clear();
       self.score_red = 0;
