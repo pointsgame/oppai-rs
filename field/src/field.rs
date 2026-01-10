@@ -663,7 +663,7 @@ impl Field {
       dsu: PointsVec((0..length).collect()),
       dsu_size: vec![1; length].into(),
       cell_changes: Vec::with_capacity(length * 8),
-      dsu_changes: Vec::with_capacity(length * 8),
+      dsu_changes: Vec::with_capacity(length * 4),
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
