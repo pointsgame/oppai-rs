@@ -26,14 +26,12 @@ fn add_trajectory<const N: usize>(field: &Field, trajectories: &mut Vec<Trajecto
 where
   [Pos; N]: Array<Item = Pos>,
 {
+  let zobrist = field.zobrist();
+  let mut hash = 0u64;
   for &pos in points {
     if !field.cell(pos).is_bound() || field.number_near_groups(pos, player) < 2 {
       return;
     }
-  }
-  let zobrist = field.zobrist();
-  let mut hash = 0u64;
-  for &pos in points {
     hash ^= zobrist.hashes[pos];
   }
   for trajectory in trajectories.iter() {
