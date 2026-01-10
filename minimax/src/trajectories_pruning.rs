@@ -21,8 +21,9 @@ impl TrajectoriesPruning {
     for trajectory in trajectories {
       let len = trajectory.points.len() as u32;
       for &pos in &trajectory.points {
-        if empty_board[pos] == 0 || empty_board[pos] > len {
-          empty_board[pos] = len;
+        let cur_len = empty_board[pos] >> 16;
+        if cur_len == 0 || cur_len > len {
+          empty_board[pos] = (empty_board[pos] & 0xFFFF) | (len << 16);
         }
       }
     }
@@ -80,14 +81,11 @@ impl TrajectoriesPruning {
       empty_board[pos] &= !SEEN_FLAG;
     }
 
-    result.sort_unstable_by(|&pos1, &pos2| empty_board[pos2].cmp(&empty_board[pos1]));
-
-    TrajectoriesPruning::deproject(trajectories1, empty_board);
-    TrajectoriesPruning::deproject(trajectories2, empty_board);
-
     TrajectoriesPruning::project_length(trajectories1, empty_board);
     TrajectoriesPruning::project_length(trajectories2, empty_board);
-    result.sort_by(|&pos1, &pos2| empty_board[pos1].cmp(&empty_board[pos2]));
+
+    result.sort_unstable_by_key(|&pos| (empty_board[pos] >> 16, -((empty_board[pos] & 0xFFFF) as i32)));
+
     TrajectoriesPruning::deproject(trajectories1, empty_board);
     TrajectoriesPruning::deproject(trajectories2, empty_board);
 
