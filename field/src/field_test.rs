@@ -1,4 +1,4 @@
-use crate::construct_field::construct_field;
+use crate::construct_field::{construct_field, construct_field_with_zobrist};
 use crate::field::{self, Field, Pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
@@ -488,6 +488,123 @@ fn game_not_over_4() {
   );
   assert_eq!(field.score(Player::Black), 5);
   assert!(!field.is_game_over());
+}
+
+#[test]
+fn zobrist_surrounding() {
+  let field_1 = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .a.
+    aBa
+    .a.
+    ",
+  );
+  let field_2 = construct_field_with_zobrist(
+    field_1.zobrist_arc(),
+    "
+    .a.
+    aaa
+    .a.
+    ",
+  );
+  assert_eq!(field_1.hash, field_2.hash);
+}
+
+#[test]
+fn zobrist_control_surrounding() {
+  let field_1 = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .a.
+    aAb
+    .a.
+    ",
+  );
+  let field_2 = construct_field_with_zobrist(
+    field_1.zobrist_arc(),
+    "
+    .a.
+    aaa
+    .a.
+    ",
+  );
+  assert_eq!(field_1.hash, field_2.hash);
+}
+
+#[test]
+fn zobrist_big_surrounding() {
+  let field_1 = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .aa.
+    aB.a
+    .aa.
+    ",
+  );
+  let field_2 = construct_field_with_zobrist(
+    field_1.zobrist_arc(),
+    "
+    .aa.
+    aaaa
+    .aa.
+    ",
+  );
+  assert_eq!(field_1.hash, field_2.hash);
+}
+
+#[test]
+fn zobrist_deep_onion_surroundings() {
+  let field_1 = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ...D...
+    ..DcD..
+    .DcBcD.
+    DcBaBcD
+    .DcBcD.
+    ..DcD..
+    ...D...
+    ",
+  );
+  let field_2 = construct_field_with_zobrist(
+    field_1.zobrist_arc(),
+    "
+    ...A...
+    ..AAA..
+    .AAAAA.
+    AAAAAAA
+    .AAAAA.
+    ..AAA..
+    ...A...
+    ",
+  );
+  assert_eq!(field_1.hash, field_2.hash);
+}
+
+#[test]
+fn zobrist_onion_surroundings() {
+  let field_1 = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ..c..
+    .cBc.
+    cBaBc
+    .cBc.
+    ..c..
+    ",
+  );
+  let field_2 = construct_field_with_zobrist(
+    field_1.zobrist_arc(),
+    "
+    ..a..
+    .aaa.
+    aaaaa
+    .aaa.
+    ..a..
+    ",
+  );
+  assert_eq!(field_1.hash, field_2.hash);
 }
 
 #[test]
