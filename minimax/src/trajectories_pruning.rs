@@ -2,7 +2,6 @@ use oppai_common::trajectory::{Trajectory, build_trajectories};
 use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
 use smallvec::SmallVec;
-use std::collections::HashSet;
 
 pub struct TrajectoriesPruning {
   pub rebuild_trajectories: bool,
@@ -59,26 +58,39 @@ impl TrajectoriesPruning {
   ) -> Vec<Pos> {
     TrajectoriesPruning::project(trajectories1, empty_board);
     TrajectoriesPruning::project(trajectories2, empty_board);
+
     while TrajectoriesPruning::exclude_unnecessary_trajectories(trajectories1, empty_board)
       || TrajectoriesPruning::exclude_unnecessary_trajectories(trajectories2, empty_board)
     {}
-    let mut result_set = HashSet::new();
+
+    const SEEN_FLAG: u32 = 0x8000_0000;
+
+    let mut result = Vec::new();
     for &pos in trajectories1
       .iter()
       .chain(trajectories2.iter())
       .flat_map(|trajectory| trajectory.points.iter())
     {
-      result_set.insert(pos);
+      if empty_board[pos] & SEEN_FLAG == 0 {
+        empty_board[pos] |= SEEN_FLAG;
+        result.push(pos);
+      }
     }
-    let mut result = result_set.into_iter().collect::<Vec<Pos>>();
+    for &pos in &result {
+      empty_board[pos] &= !SEEN_FLAG;
+    }
+
     result.sort_unstable_by(|&pos1, &pos2| empty_board[pos2].cmp(&empty_board[pos1]));
+
     TrajectoriesPruning::deproject(trajectories1, empty_board);
     TrajectoriesPruning::deproject(trajectories2, empty_board);
+
     TrajectoriesPruning::project_length(trajectories1, empty_board);
     TrajectoriesPruning::project_length(trajectories2, empty_board);
     result.sort_by(|&pos1, &pos2| empty_board[pos1].cmp(&empty_board[pos2]));
     TrajectoriesPruning::deproject(trajectories1, empty_board);
     TrajectoriesPruning::deproject(trajectories2, empty_board);
+
     result
   }
 
