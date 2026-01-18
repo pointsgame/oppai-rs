@@ -250,6 +250,7 @@ pub enum Response {
   },
   GameResult {
     game_id: GameId,
+    time_left: TimeLeft,
     result: GameResult,
   },
   /// A player changed their nickname.

@@ -789,9 +789,11 @@ impl<R: Rng> Session<R> {
 
       // We attempt to remove the game. If it's already gone (resigned, drawn, or finished),
       // this returns None and we do nothing.
-      if state.games.pin().remove(&game_id).is_none() {
+      let game_state = if let Some(game) = state.games.pin().remove(&game_id) {
+        game.state.clone()
+      } else {
         return;
-      }
+      };
 
       log::info!("Game {} timed out for {:?}", game_id, player);
 
@@ -804,6 +806,19 @@ impl<R: Rng> Session<R> {
         Player::Black => db::GameResult::TimeOutBlack,
       };
 
+      let game_state = game_state.read().await;
+      let time_left = match player {
+        Player::Red => message::TimeLeft {
+          red: Duration::ZERO,
+          black: game_state.black_time,
+        },
+        Player::Black => message::TimeLeft {
+          red: game_state.red_time,
+          black: Duration::ZERO,
+        },
+      };
+      drop(game_state);
+
       if let Err(e) = shared.db.set_result(game_id.0, now_primitive, result).await {
         log::error!("Failed to set game result on timeout: {}", e);
       }
@@ -813,6 +828,7 @@ impl<R: Rng> Session<R> {
           game_id,
           message::Response::GameResult {
             game_id,
+            time_left,
             result: message::GameResult::Win {
               winner: player.next(),
               reason: message::WinReason::TimeOut,
@@ -946,7 +962,7 @@ impl<R: Rng> Session<R> {
   async fn resign(&self, state: &State, game_id: GameId) -> Result<()> {
     let player_id = self.player_id()?;
 
-    let player = {
+    let (player, game_state) = {
       let pin = state.games.pin();
 
       let player = if let Some(game) = pin.get(&game_id) {
@@ -967,17 +983,35 @@ impl<R: Rng> Session<R> {
         return Ok(());
       };
 
-      if pin.remove(&game_id).is_none() {
+      let game_state = if let Some(game) = pin.remove(&game_id) {
+        game.state.clone()
+      } else {
         log::warn!("Game {} is already finished", game_id);
         return Ok(());
       };
 
-      player
+      (player, game_state)
     };
 
     let now = SystemTime::now();
     let now_offset = OffsetDateTime::from(now);
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
+
+    let game_state = game_state.read().await;
+    let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
+    let current_turn = game_state.field.last_player().map_or(Player::Red, |p| p.next());
+    let time_left = if current_turn == Player::Red {
+      message::TimeLeft {
+        red: game_state.red_time.saturating_sub(elapsed),
+        black: game_state.black_time,
+      }
+    } else {
+      message::TimeLeft {
+        red: game_state.red_time,
+        black: game_state.black_time.saturating_sub(elapsed),
+      }
+    };
+    drop(game_state);
 
     self
       .shared
@@ -997,6 +1031,7 @@ impl<R: Rng> Session<R> {
         game_id,
         message::Response::GameResult {
           game_id,
+          time_left,
           result: message::GameResult::Win {
             winner: player.next(),
             reason: message::WinReason::Resigned,
@@ -1064,6 +1099,23 @@ impl<R: Rng> Session<R> {
           let now_offset = OffsetDateTime::from(now);
           let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
 
+          let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
+          let current_turn = game_state.field.last_player().map_or(Player::Red, |p| p.next());
+
+          let time_left = if current_turn == Player::Red {
+            message::TimeLeft {
+              red: game_state.red_time.saturating_sub(elapsed),
+              black: game_state.black_time,
+            }
+          } else {
+            message::TimeLeft {
+              red: game_state.red_time,
+              black: game_state.black_time.saturating_sub(elapsed),
+            }
+          };
+
+          drop(game_state);
+
           self
             .shared
             .db
@@ -1075,6 +1127,7 @@ impl<R: Rng> Session<R> {
               game_id,
               message::Response::GameResult {
                 game_id,
+                time_left,
                 result: message::GameResult::Draw {
                   reason: message::DrawReason::Agreement,
                 },
