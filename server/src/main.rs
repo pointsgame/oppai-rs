@@ -585,6 +585,10 @@ impl<R: Rng> Session<R> {
         red_player_id: open_game.player_id.0,
         black_player_id: player_id.0,
         start_time: now_primitive,
+        width: open_game.config.size.width as i32,
+        height: open_game.config.size.height as i32,
+        total_time_ms: open_game.config.time.total.as_millis() as i64,
+        increment_ms: open_game.config.time.increment.as_millis() as i64,
       })
       .await?;
 

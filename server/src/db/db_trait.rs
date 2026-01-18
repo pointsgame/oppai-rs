@@ -87,6 +87,10 @@ pub struct Game {
   pub red_player_id: Uuid,
   pub black_player_id: Uuid,
   pub start_time: PrimitiveDateTime,
+  pub width: i32,
+  pub height: i32,
+  pub total_time_ms: i64,
+  pub increment_ms: i64,
 }
 
 pub struct Move {

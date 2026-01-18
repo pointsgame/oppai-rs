@@ -153,14 +153,18 @@ WHERE id IN (SELECT unnest($1::uuid[]))
   async fn create_game(&self, game: Game) -> Result<()> {
     sqlx::query(
       "
-INSERT INTO games (id, red_player_id, black_player_id, start_time)
-VALUES ($1, $2, $3, $4)
+INSERT INTO games (id, red_player_id, black_player_id, start_time, width, height, total_time_ms, increment_ms)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ",
     )
     .bind(game.id)
     .bind(game.red_player_id)
     .bind(game.black_player_id)
     .bind(game.start_time)
+    .bind(game.width)
+    .bind(game.height)
+    .bind(game.total_time_ms)
+    .bind(game.increment_ms)
     .execute(&self.pool)
     .await
     .map_err(From::from)

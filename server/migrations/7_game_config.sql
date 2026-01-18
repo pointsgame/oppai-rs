@@ -1,0 +1,5 @@
+ALTER TABLE games
+ADD COLUMN width integer NOT NULL DEFAULT 39,
+ADD COLUMN height integer NOT NULL DEFAULT 32,
+ADD COLUMN total_time_ms bigint NOT NULL DEFAULT 300000,
+ADD COLUMN increment_ms bigint NOT NULL DEFAULT 5000;
