@@ -82,6 +82,7 @@ pub enum GameResult {
   DrawGrounded,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Game {
   pub id: Uuid,
   pub red_player_id: Uuid,
@@ -93,6 +94,7 @@ pub struct Game {
   pub increment_ms: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Move {
   pub game_id: Uuid,
   pub player: Color,
@@ -102,11 +104,19 @@ pub struct Move {
   pub timestamp: PrimitiveDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct DrawOffer {
   pub game_id: Uuid,
   pub player: Color,
   pub offer: bool,
   pub timestamp: PrimitiveDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameWithMoves {
+  pub game: Game,
+  pub moves: Vec<Move>,
+  pub result: Option<(PrimitiveDateTime, GameResult)>,
 }
 
 pub trait Db {
@@ -121,4 +131,5 @@ pub trait Db {
   async fn set_result(&self, game_id: Uuid, finish_time: PrimitiveDateTime, result: GameResult) -> Result<()>;
   async fn update_player_nickname(&self, player_id: Uuid, nickname: String) -> Result<()>;
   async fn is_nickname_available(&self, nickname: String) -> Result<bool>;
+  async fn get_game(&self, game_id: Uuid) -> Result<GameWithMoves>;
 }

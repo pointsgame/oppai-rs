@@ -249,4 +249,35 @@ SELECT COUNT(*) FROM players WHERE nickname = $1
     .await?;
     Ok(count == 0)
   }
+
+  async fn get_game(&self, game_id: Uuid) -> Result<GameWithMoves> {
+    let (id, red, black, start, w, h, total, inc, res, fin_time) = sqlx::query_as::<_, (Uuid, Uuid, Uuid, PrimitiveDateTime, i32, i32, i64, i64, Option<GameResult>, Option<PrimitiveDateTime>)>(
+      "SELECT id, red_player_id, black_player_id, start_time, width, height, total_time_ms, increment_ms, result, finish_time FROM games WHERE id = $1"
+    )
+    .bind(game_id)
+    .fetch_one(&self.pool)
+    .await?;
+
+    let game = Game {
+      id,
+      red_player_id: red,
+      black_player_id: black,
+      start_time: start,
+      width: w,
+      height: h,
+      total_time_ms: total,
+      increment_ms: inc,
+    };
+
+    let result = fin_time.zip(res);
+
+    let moves = sqlx::query_as::<_, Move>(
+      "SELECT game_id, player, \"number\", x, y, \"timestamp\" FROM moves WHERE game_id = $1 ORDER BY \"number\" ASC",
+    )
+    .bind(game_id)
+    .fetch_all(&self.pool)
+    .await?;
+
+    Ok(GameWithMoves { game, moves, result })
+  }
 }
