@@ -8,7 +8,10 @@ use std::{
   sync::Arc,
   time::{Duration, SystemTime},
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::{
+  sync::{Mutex, RwLock},
+  task::JoinHandle,
+};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct FieldSize {
@@ -34,13 +37,14 @@ pub struct OpenGame {
   pub config: GameConfig,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug)]
 pub struct GameState {
   pub field: Field,
   pub red_time: Duration,
   pub black_time: Duration,
   pub last_move_time: SystemTime,
   pub draw_offer: Option<Player>,
+  pub timer: JoinHandle<()>,
 }
 
 #[derive(Debug, Clone)]

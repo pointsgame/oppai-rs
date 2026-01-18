@@ -555,7 +555,7 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
-  async fn join(&mut self, state: &State, game_id: GameId) -> Result<()> {
+  async fn join(&mut self, state: &Arc<State>, game_id: GameId) -> Result<()> {
     let player_id = self.player_id()?;
 
     let open_game = if let Some(open_game) = state.open_games.pin().remove(&game_id) {
@@ -589,12 +589,22 @@ impl<R: Rng> Session<R> {
       .await?;
 
     let field = Field::new_from_rng(open_game.config.size.width, open_game.config.size.height, &mut self.rng);
+
+    let timer = Self::spawn_timeout_task(
+      state.clone(),
+      self.shared.clone(),
+      game_id,
+      Player::Red,
+      open_game.config.time.total,
+    );
+
     let game_state = GameState {
       field,
       red_time: open_game.config.time.total,
       black_time: open_game.config.time.total,
       last_move_time: now,
       draw_offer: None,
+      timer,
     };
     let game = Game {
       red_player_id: open_game.player_id,
@@ -767,7 +777,53 @@ impl<R: Rng> Session<R> {
     Ok(())
   }
 
-  async fn put_point(&self, state: &State, game_id: GameId, coordinate: message::Coordinate) -> Result<()> {
+  fn spawn_timeout_task(
+    state: Arc<State>,
+    shared: Arc<SessionShared>,
+    game_id: GameId,
+    player: Player,
+    duration: Duration,
+  ) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+      tokio::time::sleep(duration).await;
+
+      // We attempt to remove the game. If it's already gone (resigned, drawn, or finished),
+      // this returns None and we do nothing.
+      if state.games.pin().remove(&game_id).is_none() {
+        return;
+      }
+
+      log::info!("Game {} timed out for {:?}", game_id, player);
+
+      let now = SystemTime::now();
+      let now_offset = OffsetDateTime::from(now);
+      let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
+
+      let result = match player {
+        Player::Red => db::GameResult::TimeOutRed,
+        Player::Black => db::GameResult::TimeOutBlack,
+      };
+
+      if let Err(e) = shared.db.set_result(game_id.0, now_primitive, result).await {
+        log::error!("Failed to set game result on timeout: {}", e);
+      }
+
+      state
+        .send_to_watchers(
+          game_id,
+          message::Response::GameResult {
+            game_id,
+            result: message::GameResult::Win {
+              winner: player.next(),
+              reason: message::WinReason::TimeOut,
+            },
+          },
+        )
+        .await;
+    })
+  }
+
+  async fn put_point(&self, state: &Arc<State>, game_id: GameId, coordinate: message::Coordinate) -> Result<()> {
     let player_id = self.player_id()?;
 
     let (game_state, player, increment) = if let Some(game) = state.games.pin().get(&game_id) {
@@ -816,6 +872,8 @@ impl<R: Rng> Session<R> {
       );
     }
 
+    game_state.timer.abort();
+
     let now = SystemTime::now();
     let now_offset = OffsetDateTime::from(now);
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
@@ -823,8 +881,26 @@ impl<R: Rng> Session<R> {
 
     let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
     match player {
-      Player::Red => game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment,
-      Player::Black => game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment,
+      Player::Red => {
+        game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment;
+        game_state.timer = Self::spawn_timeout_task(
+          state.clone(),
+          self.shared.clone(),
+          game_id,
+          Player::Black,
+          game_state.black_time,
+        );
+      }
+      Player::Black => {
+        game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment;
+        game_state.timer = Self::spawn_timeout_task(
+          state.clone(),
+          self.shared.clone(),
+          game_id,
+          Player::Red,
+          game_state.red_time,
+        );
+      }
     }
 
     game_state.last_move_time = now;
