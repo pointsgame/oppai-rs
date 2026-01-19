@@ -589,6 +589,8 @@ impl<R: Rng> Session<R> {
         height: open_game.config.size.height as i32,
         total_time_ms: open_game.config.time.total.as_millis() as i64,
         increment_ms: open_game.config.time.increment.as_millis() as i64,
+        finish_time: None,
+        result: None,
       })
       .await?;
 

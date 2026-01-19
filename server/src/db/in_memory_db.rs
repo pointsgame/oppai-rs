@@ -21,8 +21,6 @@ struct DbState {
   moves: HashMap<Uuid, Vec<Move>>,
   /// Maps Game ID -> List of Draw Offers
   draw_offers: HashMap<Uuid, Vec<DrawOffer>>,
-  /// Maps Game ID -> Result Data
-  results: HashMap<Uuid, (PrimitiveDateTime, GameResult)>,
 }
 
 #[derive(Clone, Default)]
@@ -137,13 +135,14 @@ impl Db for InMemoryDb {
   async fn set_result(&self, game_id: Uuid, finish_time: PrimitiveDateTime, result: GameResult) -> Result<()> {
     let mut state = self.state.write().await;
 
-    if !state.games.contains_key(&game_id) {
-      return Err(anyhow!("Game ID {} not found to set result", game_id));
+    if let Some(game) = state.games.get_mut(&game_id) {
+      game.finish_time = Some(finish_time);
+      game.result = Some(result);
+
+      Ok(())
+    } else {
+      Err(anyhow!("Game ID {} not found to set result", game_id))
     }
-
-    state.results.insert(game_id, (finish_time, result));
-
-    Ok(())
   }
 
   async fn update_player_nickname(&self, player_id: Uuid, nickname: String) -> Result<()> {
@@ -167,21 +166,10 @@ impl Db for InMemoryDb {
 
     if let Some(game) = state.games.get(&game_id) {
       let moves = state.moves.get(&game_id).cloned().unwrap_or_default();
-      let result = state.results.get(&game_id).cloned();
 
       Ok(GameWithMoves {
-        game: Game {
-          id: game.id,
-          red_player_id: game.red_player_id,
-          black_player_id: game.black_player_id,
-          start_time: game.start_time,
-          width: game.width,
-          height: game.height,
-          total_time_ms: game.total_time_ms,
-          increment_ms: game.increment_ms,
-        },
+        game: game.clone(),
         moves,
-        result,
       })
     } else {
       Err(anyhow!("Game with ID {} not found", game_id))

@@ -92,6 +92,8 @@ pub struct Game {
   pub height: i32,
   pub total_time_ms: i64,
   pub increment_ms: i64,
+  pub finish_time: Option<PrimitiveDateTime>,
+  pub result: Option<GameResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
@@ -116,7 +118,6 @@ pub struct DrawOffer {
 pub struct GameWithMoves {
   pub game: Game,
   pub moves: Vec<Move>,
-  pub result: Option<(PrimitiveDateTime, GameResult)>,
 }
 
 pub trait Db {
