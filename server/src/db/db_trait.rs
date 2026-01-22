@@ -12,6 +12,15 @@ pub enum Color {
   Black,
 }
 
+impl Color {
+  pub fn next(self) -> Self {
+    match self {
+      Color::Red => Color::Black,
+      Color::Black => Color::Red,
+    }
+  }
+}
+
 impl From<OppaiPlayer> for Color {
   fn from(player: OppaiPlayer) -> Self {
     match player {

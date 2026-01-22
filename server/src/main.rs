@@ -677,100 +677,239 @@ impl<R: Rng> Session<R> {
 
     state.subscribe(self.connection_id, game_id);
 
-    let (game_state, red_player_id, black_player_id, config) = if let Some(game) = state.games.pin().get(&game_id) {
+    let game = state.games.pin().get(&game_id).map(|game| {
       (
         game.state.clone(),
         game.red_player_id,
         game.black_player_id,
         game.config.clone(),
       )
-    } else {
-      // TODO: log
-      return Ok(());
-    };
-    let game_state = game_state.read().await;
+    });
+    if let Some((game_state, red_player_id, black_player_id, config)) = game {
+      let game_state = game_state.read().await;
 
-    let moves = game_state
-      .field
-      .colored_moves()
-      .map(|(pos, player)| message::Move {
-        coordinate: message::Coordinate {
-          x: game_state.field.to_x(pos),
-          y: game_state.field.to_y(pos),
-        },
-        player,
-      })
-      .collect();
-
-    let draw_offer = game_state.draw_offer;
-
-    let now = SystemTime::now();
-    let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
-    let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
-
-    let time_left = match game_state
-      .field
-      .last_player()
-      .map_or(Player::Red, |player| player.next())
-    {
-      Player::Red => message::TimeLeft {
-        red: game_state.red_time.saturating_sub(elapsed),
-        black: game_state.black_time,
-      },
-      Player::Black => message::TimeLeft {
-        red: game_state.red_time,
-        black: game_state.black_time.saturating_sub(elapsed),
-      },
-    };
-
-    drop(game_state);
-
-    let [player_1, player_2] = self
-      .shared
-      .db
-      .get_players(&[red_player_id.0, black_player_id.0])
-      .await?
-      .try_into()
-      .map_err(|_| anyhow::anyhow!("can't find players {} and {}", red_player_id.0, black_player_id.0))?;
-    let [red_player, black_player] = if player_1.id == red_player_id.0 {
-      [player_1, player_2]
-    } else {
-      [player_2, player_1]
-    };
-
-    state
-      .send_to_connection(
-        self.connection_id,
-        message::Response::GameInit {
-          game_id,
-          game: message::Game {
-            red_player_id: PlayerId(red_player.id),
-            black_player_id: PlayerId(black_player.id),
-            red_player: message::Player {
-              nickname: red_player.nickname,
-            },
-            black_player: message::Player {
-              nickname: black_player.nickname,
-            },
-            config: message::GameConfig {
-              size: message::FieldSize {
-                width: config.size.width,
-                height: config.size.height,
-              },
-              time: message::GameTime {
-                total: config.time.total,
-                increment: config.time.increment,
-              },
-            },
+      let moves = game_state
+        .field
+        .colored_moves()
+        .map(|(pos, player)| message::Move {
+          coordinate: message::Coordinate {
+            x: game_state.field.to_x(pos),
+            y: game_state.field.to_y(pos),
           },
-          moves,
-          init_time: now_epoch,
-          time_left,
-          draw_offer,
-          result: None,
+          player,
+        })
+        .collect();
+
+      let draw_offer = game_state.draw_offer;
+
+      let now = SystemTime::now();
+      let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+      let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
+
+      let time_left = match game_state
+        .field
+        .last_player()
+        .map_or(Player::Red, |player| player.next())
+      {
+        Player::Red => message::TimeLeft {
+          red: game_state.red_time.saturating_sub(elapsed),
+          black: game_state.black_time,
         },
-      )
-      .await
+        Player::Black => message::TimeLeft {
+          red: game_state.red_time,
+          black: game_state.black_time.saturating_sub(elapsed),
+        },
+      };
+
+      drop(game_state);
+
+      let [player_1, player_2] = self
+        .shared
+        .db
+        .get_players(&[red_player_id.0, black_player_id.0])
+        .await?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("can't find players {} and {}", red_player_id.0, black_player_id.0))?;
+      let [red_player, black_player] = if player_1.id == red_player_id.0 {
+        [player_1, player_2]
+      } else {
+        [player_2, player_1]
+      };
+
+      state
+        .send_to_connection(
+          self.connection_id,
+          message::Response::GameInit {
+            game_id,
+            game: message::Game {
+              red_player_id,
+              black_player_id,
+              red_player: message::Player {
+                nickname: red_player.nickname,
+              },
+              black_player: message::Player {
+                nickname: black_player.nickname,
+              },
+              config: message::GameConfig {
+                size: message::FieldSize {
+                  width: config.size.width,
+                  height: config.size.height,
+                },
+                time: message::GameTime {
+                  total: config.time.total,
+                  increment: config.time.increment,
+                },
+              },
+            },
+            moves,
+            init_time: now_epoch,
+            time_left,
+            draw_offer,
+            result: None,
+          },
+        )
+        .await?;
+    } else {
+      let game_with_moves = self.shared.db.get_game(game_id.0).await?;
+
+      let red_player_id = PlayerId(game_with_moves.game.red_player_id);
+      let black_player_id = PlayerId(game_with_moves.game.black_player_id);
+
+      let [player_1, player_2] = self
+        .shared
+        .db
+        .get_players(&[game_with_moves.game.red_player_id, game_with_moves.game.black_player_id])
+        .await?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("can't find players {} and {}", red_player_id, black_player_id))?;
+
+      let [red_player, black_player] = if player_1.id == red_player_id.0 {
+        [player_1, player_2]
+      } else {
+        [player_2, player_1]
+      };
+
+      let moves: Vec<message::Move> = game_with_moves
+        .moves
+        .iter()
+        .map(|m| message::Move {
+          coordinate: message::Coordinate {
+            x: m.x as u32,
+            y: m.y as u32,
+          },
+          player: match m.player {
+            db::Color::Red => Player::Red,
+            db::Color::Black => Player::Black,
+          },
+        })
+        .collect();
+
+      let result = game_with_moves.game.result.map(|res| match res {
+        db::GameResult::ResignedRed => message::GameResult::Win {
+          winner: Player::Black,
+          reason: message::WinReason::Resigned,
+        },
+        db::GameResult::ResignedBlack => message::GameResult::Win {
+          winner: Player::Red,
+          reason: message::WinReason::Resigned,
+        },
+        db::GameResult::GroundedRed => message::GameResult::Win {
+          winner: Player::Black,
+          reason: message::WinReason::Grounded,
+        },
+        db::GameResult::GroundedBlack => message::GameResult::Win {
+          winner: Player::Red,
+          reason: message::WinReason::Grounded,
+        },
+        db::GameResult::TimeOutRed => message::GameResult::Win {
+          winner: Player::Black,
+          reason: message::WinReason::TimeOut,
+        },
+        db::GameResult::TimeOutBlack => message::GameResult::Win {
+          winner: Player::Red,
+          reason: message::WinReason::TimeOut,
+        },
+        db::GameResult::DrawAgreement => message::GameResult::Draw {
+          reason: message::DrawReason::Agreement,
+        },
+        db::GameResult::DrawGrounded => message::GameResult::Draw {
+          reason: message::DrawReason::Grounded,
+        },
+      });
+
+      let now = SystemTime::now();
+      let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+
+      let start_total = time::Duration::milliseconds(game_with_moves.game.total_time_ms);
+      let increment = time::Duration::milliseconds(game_with_moves.game.increment_ms);
+
+      let mut red_time = start_total;
+      let mut black_time = start_total;
+      let mut last_move_timestamp = game_with_moves.game.start_time;
+
+      for m in &game_with_moves.moves {
+        let elapsed = m.timestamp - last_move_timestamp;
+        match m.player {
+          db::Color::Red => red_time = (red_time - elapsed).max(time::Duration::ZERO) + increment,
+          db::Color::Black => black_time = (black_time - elapsed).max(time::Duration::ZERO) + increment,
+        }
+        last_move_timestamp = m.timestamp;
+      }
+
+      if let Some(finish_time) = game_with_moves.game.finish_time {
+        let player = game_with_moves
+          .moves
+          .last()
+          .map(|m| m.player.next())
+          .unwrap_or(db::Color::Red);
+        let elapsed = finish_time - last_move_timestamp;
+        match player {
+          db::Color::Red => red_time = (red_time - elapsed).max(time::Duration::ZERO),
+          db::Color::Black => black_time = (black_time - elapsed).max(time::Duration::ZERO),
+        }
+      }
+
+      let time_left = message::TimeLeft {
+        red: red_time.try_into().unwrap_or(Duration::ZERO),
+        black: black_time.try_into().unwrap_or(Duration::ZERO),
+      };
+
+      state
+        .send_to_connection(
+          self.connection_id,
+          message::Response::GameInit {
+            game_id,
+            game: message::Game {
+              red_player_id,
+              black_player_id,
+              red_player: message::Player {
+                nickname: red_player.nickname,
+              },
+              black_player: message::Player {
+                nickname: black_player.nickname,
+              },
+              config: message::GameConfig {
+                size: message::FieldSize {
+                  width: game_with_moves.game.width as u32,
+                  height: game_with_moves.game.height as u32,
+                },
+                time: message::GameTime {
+                  total: Duration::from_millis(game_with_moves.game.total_time_ms as u64),
+                  increment: Duration::from_millis(game_with_moves.game.increment_ms as u64),
+                },
+              },
+            },
+            moves,
+            init_time: now_epoch,
+            time_left,
+            draw_offer: None,
+            result,
+          },
+        )
+        .await?;
+    }
+
+    Ok(())
   }
 
   fn unsubscribe(&mut self, state: &State, game_id: GameId) -> Result<()> {
