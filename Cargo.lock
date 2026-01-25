@@ -5869,6 +5869,7 @@ dependencies = [
 name = "oppai-ladders"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "log",
  "oppai-common",
  "oppai-field",

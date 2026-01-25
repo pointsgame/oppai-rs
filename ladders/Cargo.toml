@@ -12,5 +12,11 @@ oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }
 
 [dev-dependencies]
+criterion.workspace = true
 rand.workspace = true
 rand_xoshiro.workspace = true
+
+[[bench]]
+name = "ladders_benchmark"
+path = "src/ladders_benchmark.rs"
+harness = false
