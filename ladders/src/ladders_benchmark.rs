@@ -28,6 +28,7 @@ fn ladders_long(c: &mut Criterion) {
     let pos = field.to_pos(x, y);
     field.put_point(pos, player);
   }
+  field.put_point(field.to_pos(252, 252), Player::Red);
 
   c.bench_function("ladders_long", |bencher| {
     bencher.iter(|| ladders(black_box(&mut field), Player::Red, &|| false))
