@@ -43,33 +43,27 @@ where
   trajectories.push(trajectory);
 }
 
-fn next_moves(
-  field: &mut Field,
-  start_pos: Pos,
-  player: Player,
-  empty_board: &mut [u32],
-  marks: &mut SmallVec<[Pos; 1]>,
-) -> SmallVec<[Pos; 7]> {
+fn next_moves(field: &mut Field, start_pos: Pos, player: Player, marks: &mut SmallVec<[Pos; 1]>) -> SmallVec<[Pos; 7]> {
   let mut moves = SmallVec::new();
   wave_diag(&mut field.q, field.stride, start_pos, |pos| {
-    if empty_board[pos] != 0 {
+    if field.points[pos].is_tagged_2() {
       return false;
     }
     let cell = field.points[pos];
     if cell.is_players_point(player) {
-      empty_board[pos] = 1;
+      field.points[pos].set_tag_2();
       marks.push(pos);
       true
     } else {
       if cell.is_putting_allowed() && !cell.is_players_empty_base(player) {
-        empty_board[pos] = 1;
+        field.points[pos].set_tag_2();
         moves.push(pos);
       }
       false
     }
   });
   for &pos in &moves {
-    empty_board[pos] = 0;
+    field.points[pos].clear_tag_2();
   }
   moves
 }
@@ -80,7 +74,6 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
   player: Player,
   cur_depth: u32,
   depth: u32,
-  empty_board: &mut [u32],
   last_pos: Pos,
   moves: SmallVec<[Pos; 7]>,
   ensure_pos: Pos,
@@ -119,7 +112,7 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
       );
     } else if depth > 0 {
       let mut marks = SmallVec::new();
-      let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
+      let mut next_moves = next_moves(field, pos, player, &mut marks);
       if last_pos != 0 {
         next_moves.retain(|&mut next_pos| euclidean(field.stride, last_pos, next_pos) > 2);
       }
@@ -129,14 +122,13 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
         player,
         cur_depth + 1,
         depth - 1,
-        empty_board,
         pos,
         next_moves,
         ensure_pos,
         should_stop,
       );
       for mark_pos in marks {
-        empty_board[mark_pos] = 0;
+        field.points[mark_pos].clear_tag_2();
       }
     }
     field.undo();
@@ -147,7 +139,6 @@ pub fn build_trajectories<const N: usize, SS: Fn() -> bool>(
   field: &mut Field,
   player: Player,
   depth: u32,
-  empty_board: &mut [u32],
   should_stop: &SS,
 ) -> Vec<Trajectory<N>>
 where
@@ -169,24 +160,13 @@ where
       break;
     }
 
-    let moves = next_moves(field, pos, player, empty_board, &mut marks);
+    let moves = next_moves(field, pos, player, &mut marks);
 
-    build_trajectories_rec(
-      field,
-      &mut trajectories,
-      player,
-      1,
-      depth - 1,
-      empty_board,
-      0,
-      moves,
-      0,
-      should_stop,
-    );
+    build_trajectories_rec(field, &mut trajectories, player, 1, depth - 1, 0, moves, 0, should_stop);
   }
 
   for pos in marks {
-    empty_board[pos] = 0;
+    field.points[pos].clear_tag_2();
   }
 
   trajectories
@@ -197,7 +177,6 @@ pub fn build_trajectories_from<const N: usize, SS: Fn() -> bool>(
   pos: Pos,
   player: Player,
   depth: u32,
-  empty_board: &mut [u32],
   should_stop: &SS,
 ) -> Vec<Trajectory<N>>
 where
@@ -210,7 +189,7 @@ where
   }
 
   let mut marks = SmallVec::new();
-  let moves = next_moves(field, pos, player, empty_board, &mut marks);
+  let moves = next_moves(field, pos, player, &mut marks);
 
   build_trajectories_rec(
     field,
@@ -218,7 +197,6 @@ where
     player,
     1,
     depth - 1,
-    empty_board,
     0,
     moves,
     pos,
@@ -226,7 +204,7 @@ where
   );
 
   for pos in marks {
-    empty_board[pos] = 0;
+    field.points[pos].clear_tag_2();
   }
 
   trajectories

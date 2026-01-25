@@ -21,6 +21,8 @@ impl Cell {
 
   pub const TAG_BIT: CellValue = 64;
 
+  pub const TAG_2_BIT: CellValue = 128;
+
   #[inline]
   pub fn new(bad: bool) -> Cell {
     Cell(if bad { Self::BAD_BIT } else { 0 })
@@ -124,6 +126,21 @@ impl Cell {
   #[inline]
   pub fn clear_tag(&mut self) {
     self.0 &= !Self::TAG_BIT
+  }
+
+  #[inline]
+  pub fn is_tagged_2(self) -> bool {
+    self.0 & Self::TAG_2_BIT != 0
+  }
+
+  #[inline]
+  pub fn set_tag_2(&mut self) {
+    self.0 |= Self::TAG_2_BIT
+  }
+
+  #[inline]
+  pub fn clear_tag_2(&mut self) {
+    self.0 &= !Self::TAG_2_BIT
   }
 
   #[inline]
