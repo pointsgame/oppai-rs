@@ -25,7 +25,7 @@ fn collect_near_moves(field: &mut Field, player: Player) -> Vec<Pos> {
   let mut moves = Vec::new();
   for &pos in &field.moves {
     if field.points[pos].is_players_point(player) {
-      for &near_pos in field.directions(pos).iter() {
+      for &near_pos in field.directions_diag(pos).iter() {
         if !field.points[near_pos].is_tagged_2() && field.is_putting_allowed(near_pos) {
           moves.push(near_pos);
           field.points[near_pos].set_tag_2();
@@ -49,8 +49,8 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
   }
 
   let result = field.get_delta_score(player) > 0 || {
+    let moves = collect_near_moves(field, player);
     let enemy = player.next();
-    let moves = collect_near_moves(field, enemy);
     moves.into_iter().any(|pos| {
       field.put_point(pos, player);
       let result = field.get_delta_score(player) > 0
@@ -83,8 +83,8 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
 }
 
 fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory<2>, player: Player) -> bool {
-  let moves = collect_near_moves(field, player);
   let enemy = player.next();
+  let moves = collect_near_moves(field, enemy);
   moves.into_iter().all(|enemy_pos| {
     field.put_point(enemy_pos, enemy);
 
