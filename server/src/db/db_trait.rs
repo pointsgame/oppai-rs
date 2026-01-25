@@ -137,6 +137,7 @@ pub trait Db {
   async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>>;
   async fn create_game(&self, game: Game) -> Result<()>;
   async fn create_move(&self, m: Move) -> Result<()>;
+  async fn create_move_and_set_result(&self, m: Move, result: GameResult) -> Result<()>;
   async fn create_draw_offer(&self, draw_offer: DrawOffer) -> Result<()>;
   async fn set_result(&self, game_id: Uuid, finish_time: PrimitiveDateTime, result: GameResult) -> Result<()>;
   async fn update_player_nickname(&self, player_id: Uuid, nickname: String) -> Result<()>;

@@ -116,6 +116,27 @@ impl Db for InMemoryDb {
     Ok(())
   }
 
+  async fn create_move_and_set_result(&self, m: Move, result: GameResult) -> Result<()> {
+    let mut state = self.state.write().await;
+
+    if !state.games.contains_key(&m.game_id) {
+      return Err(anyhow!("Game ID {} not found", m.game_id));
+    }
+
+    state.moves.entry(m.game_id).or_default().push(m.clone());
+
+    let game = state.games.get_mut(&m.game_id).unwrap();
+
+    if game.result.is_none() {
+      game.finish_time = Some(m.timestamp);
+      game.result = Some(result);
+      Ok(())
+    } else {
+      state.moves.entry(m.game_id).or_default().pop();
+      Err(anyhow!("Game ID {} already has a result", m.game_id))
+    }
+  }
+
   async fn create_draw_offer(&self, draw_offer: DrawOffer) -> Result<()> {
     let mut state = self.state.write().await;
 
@@ -136,10 +157,14 @@ impl Db for InMemoryDb {
     let mut state = self.state.write().await;
 
     if let Some(game) = state.games.get_mut(&game_id) {
-      game.finish_time = Some(finish_time);
-      game.result = Some(result);
+      if game.result.is_none() {
+        game.finish_time = Some(finish_time);
+        game.result = Some(result);
 
-      Ok(())
+        Ok(())
+      } else {
+        Err(anyhow!("Game ID {} already has a result", game_id))
+      }
     } else {
       Err(anyhow!("Game ID {} not found to set result", game_id))
     }

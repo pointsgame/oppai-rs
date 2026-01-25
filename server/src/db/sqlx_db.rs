@@ -171,6 +171,41 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     .map(|_| ())
   }
 
+  async fn create_move_and_set_result(&self, m: Move, result: GameResult) -> Result<()> {
+    let mut tx = self.pool.begin().await?;
+
+    sqlx::query(
+      "
+INSERT INTO moves (game_id, player, \"number\", x, y, \"timestamp\")
+VALUES ($1, $2, $3, $4, $5, $6)
+",
+    )
+    .bind(m.game_id)
+    .bind(m.player)
+    .bind(m.number)
+    .bind(m.x)
+    .bind(m.y)
+    .bind(m.timestamp)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+      "
+UPDATE games SET \"result\" = $1, finish_time = $2
+WHERE id = $3 AND \"result\" IS NULL
+",
+    )
+    .bind(result)
+    .bind(m.timestamp)
+    .bind(m.game_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(())
+  }
+
   async fn create_move(&self, m: Move) -> Result<()> {
     sqlx::query(
       "

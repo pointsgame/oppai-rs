@@ -685,7 +685,7 @@ impl<R: Rng> Session<R> {
         game.config.clone(),
       )
     });
-    if let Some((game_state, red_player_id, black_player_id, config)) = game {
+    let message = if let Some((game_state, red_player_id, black_player_id, config)) = game {
       let game_state = game_state.read().await;
 
       let moves = game_state
@@ -736,39 +736,34 @@ impl<R: Rng> Session<R> {
         [player_2, player_1]
       };
 
-      state
-        .send_to_connection(
-          self.connection_id,
-          message::Response::GameInit {
-            game_id,
-            game: message::Game {
-              red_player_id,
-              black_player_id,
-              red_player: message::Player {
-                nickname: red_player.nickname,
-              },
-              black_player: message::Player {
-                nickname: black_player.nickname,
-              },
-              config: message::GameConfig {
-                size: message::FieldSize {
-                  width: config.size.width,
-                  height: config.size.height,
-                },
-                time: message::GameTime {
-                  total: config.time.total,
-                  increment: config.time.increment,
-                },
-              },
-            },
-            moves,
-            init_time: now_epoch,
-            time_left,
-            draw_offer,
-            result: None,
+      message::Response::GameInit {
+        game_id,
+        game: message::Game {
+          red_player_id,
+          black_player_id,
+          red_player: message::Player {
+            nickname: red_player.nickname,
           },
-        )
-        .await?;
+          black_player: message::Player {
+            nickname: black_player.nickname,
+          },
+          config: message::GameConfig {
+            size: message::FieldSize {
+              width: config.size.width,
+              height: config.size.height,
+            },
+            time: message::GameTime {
+              total: config.time.total,
+              increment: config.time.increment,
+            },
+          },
+        },
+        moves,
+        init_time: now_epoch,
+        time_left,
+        draw_offer,
+        result: None,
+      }
     } else {
       let game_with_moves = self.shared.db.get_game(game_id.0).await?;
 
@@ -874,40 +869,37 @@ impl<R: Rng> Session<R> {
         black: black_time.try_into().unwrap_or(Duration::ZERO),
       };
 
-      state
-        .send_to_connection(
-          self.connection_id,
-          message::Response::GameInit {
-            game_id,
-            game: message::Game {
-              red_player_id,
-              black_player_id,
-              red_player: message::Player {
-                nickname: red_player.nickname,
-              },
-              black_player: message::Player {
-                nickname: black_player.nickname,
-              },
-              config: message::GameConfig {
-                size: message::FieldSize {
-                  width: game_with_moves.game.width as u32,
-                  height: game_with_moves.game.height as u32,
-                },
-                time: message::GameTime {
-                  total: Duration::from_millis(game_with_moves.game.total_time_ms as u64),
-                  increment: Duration::from_millis(game_with_moves.game.increment_ms as u64),
-                },
-              },
-            },
-            moves,
-            init_time: now_epoch,
-            time_left,
-            draw_offer: None,
-            result,
+      message::Response::GameInit {
+        game_id,
+        game: message::Game {
+          red_player_id,
+          black_player_id,
+          red_player: message::Player {
+            nickname: red_player.nickname,
           },
-        )
-        .await?;
-    }
+          black_player: message::Player {
+            nickname: black_player.nickname,
+          },
+          config: message::GameConfig {
+            size: message::FieldSize {
+              width: game_with_moves.game.width as u32,
+              height: game_with_moves.game.height as u32,
+            },
+            time: message::GameTime {
+              total: Duration::from_millis(game_with_moves.game.total_time_ms as u64),
+              increment: Duration::from_millis(game_with_moves.game.increment_ms as u64),
+            },
+          },
+        },
+        moves,
+        init_time: now_epoch,
+        time_left,
+        draw_offer: None,
+        result,
+      }
+    };
+
+    state.send_to_connection(self.connection_id, message).await?;
 
     Ok(())
   }
@@ -1040,47 +1032,94 @@ impl<R: Rng> Session<R> {
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
     let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
 
-    let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
-    match player {
-      Player::Red => {
-        game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment;
-        game_state.timer = Self::spawn_timeout_task(
-          state.clone(),
-          self.shared.clone(),
-          game_id,
-          Player::Black,
-          game_state.black_time,
-        );
-      }
-      Player::Black => {
-        game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment;
-        game_state.timer = Self::spawn_timeout_task(
-          state.clone(),
-          self.shared.clone(),
-          game_id,
-          Player::Red,
-          game_state.red_time,
-        );
-      }
-    }
+    let result = if game_state.field.is_game_over() {
+      state.games.pin().remove(&game_id);
 
-    game_state.last_move_time = now;
+      let (db_result, result) = if game_state.field.score_red != game_state.field.score_black {
+        (
+          match player {
+            Player::Red => db::GameResult::GroundedRed,
+            Player::Black => db::GameResult::GroundedBlack,
+          },
+          message::GameResult::Win {
+            winner: player,
+            reason: message::WinReason::Grounded,
+          },
+        )
+      } else {
+        (
+          db::GameResult::DrawGrounded,
+          message::GameResult::Draw {
+            reason: message::DrawReason::Grounded,
+          },
+        )
+      };
 
-    self
-      .shared
-      .db
-      .create_move(db::Move {
-        game_id: game_id.0,
-        player: player.into(),
-        number: (game_state.field.moves_count() - 1) as i16,
-        x: coordinate.x as i16,
-        y: coordinate.y as i16,
-        timestamp: now_primitive,
-      })
-      .await
-      .inspect_err(|_| {
-        game_state.field.undo();
-      })?;
+      self
+        .shared
+        .db
+        .create_move_and_set_result(
+          db::Move {
+            game_id: game_id.0,
+            player: player.into(),
+            number: (game_state.field.moves_count() - 1) as i16,
+            x: coordinate.x as i16,
+            y: coordinate.y as i16,
+            timestamp: now_primitive,
+          },
+          db_result,
+        )
+        .await
+        .inspect_err(|_| {
+          game_state.field.undo();
+        })?;
+
+      Some(result)
+    } else {
+      let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
+      match player {
+        Player::Red => {
+          game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment;
+          game_state.timer = Self::spawn_timeout_task(
+            state.clone(),
+            self.shared.clone(),
+            game_id,
+            Player::Black,
+            game_state.black_time,
+          );
+        }
+        Player::Black => {
+          game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment;
+          game_state.timer = Self::spawn_timeout_task(
+            state.clone(),
+            self.shared.clone(),
+            game_id,
+            Player::Red,
+            game_state.red_time,
+          );
+        }
+      }
+
+      game_state.last_move_time = now;
+
+      self
+        .shared
+        .db
+        .create_move(db::Move {
+          game_id: game_id.0,
+          player: player.into(),
+          number: (game_state.field.moves_count() - 1) as i16,
+          x: coordinate.x as i16,
+          y: coordinate.y as i16,
+          timestamp: now_primitive,
+        })
+        .await
+        .inspect_err(|_| {
+          game_state.field.undo();
+        })?;
+
+      None
+    };
 
     let time_left = message::TimeLeft {
       red: game_state.red_time,
@@ -1096,10 +1135,23 @@ impl<R: Rng> Session<R> {
           game_id,
           _move: message::Move { coordinate, player },
           putting_time: now_epoch,
-          time_left,
+          time_left: time_left.clone(),
         },
       )
       .await;
+
+    if let Some(result) = result {
+      state
+        .send_to_watchers(
+          game_id,
+          message::Response::GameResult {
+            game_id,
+            time_left,
+            result,
+          },
+        )
+        .await;
+    }
 
     Ok(())
   }
