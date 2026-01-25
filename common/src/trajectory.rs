@@ -3,6 +3,43 @@ use oppai_field::player::Player;
 use smallvec::{Array, SmallVec};
 use std::ops::Index;
 
+pub trait VecLike<T> {
+  fn new() -> Self;
+  fn push(&mut self, item: T);
+  fn iter(&self) -> std::slice::Iter<'_, T>;
+}
+
+impl<T> VecLike<T> for Vec<T> {
+  fn new() -> Self {
+    Vec::new()
+  }
+
+  fn push(&mut self, item: T) {
+    self.push(item);
+  }
+
+  fn iter(&self) -> std::slice::Iter<'_, T> {
+    self.as_slice().iter()
+  }
+}
+
+impl<T, A> VecLike<T> for SmallVec<A>
+where
+  A: Array<Item = T>,
+{
+  fn new() -> Self {
+    SmallVec::new()
+  }
+
+  fn push(&mut self, item: T) {
+    SmallVec::push(self, item)
+  }
+
+  fn iter(&self) -> std::slice::Iter<'_, T> {
+    self.as_slice().iter()
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct Trajectory<const N: usize>
 where
@@ -22,8 +59,12 @@ where
   }
 }
 
-fn add_trajectory<const N: usize>(field: &Field, trajectories: &mut Vec<Trajectory<N>>, points: &[Pos], player: Player)
-where
+fn add_trajectory<const N: usize, C: VecLike<Trajectory<N>>>(
+  field: &Field,
+  trajectories: &mut C,
+  points: &[Pos],
+  player: Player,
+) where
   [Pos; N]: Array<Item = Pos>,
 {
   let zobrist = field.zobrist();
@@ -68,9 +109,9 @@ fn next_moves(field: &mut Field, start_pos: Pos, player: Player, marks: &mut Sma
   moves
 }
 
-fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
+fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajectory<N>>>(
   field: &mut Field,
-  trajectories: &mut Vec<Trajectory<N>>,
+  trajectories: &mut C,
   player: Player,
   cur_depth: u32,
   depth: u32,
@@ -135,16 +176,16 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool>(
   }
 }
 
-pub fn build_trajectories<const N: usize, SS: Fn() -> bool>(
+pub fn build_trajectories<const N: usize, SS: Fn() -> bool, C: VecLike<Trajectory<N>>>(
   field: &mut Field,
   player: Player,
   depth: u32,
   should_stop: &SS,
-) -> Vec<Trajectory<N>>
+) -> C
 where
   [Pos; N]: Array<Item = Pos>,
 {
-  let mut trajectories = Vec::new();
+  let mut trajectories = C::new();
 
   if depth == 0 {
     return trajectories;
@@ -172,17 +213,17 @@ where
   trajectories
 }
 
-pub fn build_trajectories_from<const N: usize, SS: Fn() -> bool>(
+pub fn build_trajectories_from<const N: usize, SS: Fn() -> bool, C: VecLike<Trajectory<N>>>(
   field: &mut Field,
   pos: Pos,
   player: Player,
   depth: u32,
   should_stop: &SS,
-) -> Vec<Trajectory<N>>
+) -> C
 where
   [Pos; N]: Array<Item = Pos>,
 {
-  let mut trajectories = Vec::new();
+  let mut trajectories = C::new();
 
   if depth == 0 {
     return trajectories;

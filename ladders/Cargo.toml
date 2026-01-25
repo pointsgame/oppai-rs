@@ -7,6 +7,7 @@ description = "Open Points Artificial Intelligence"
 edition = "2024"
 
 [dependencies]
+smallvec.workspace = true
 log.workspace = true
 oppai-field = { path = "../field" }
 oppai-common = { path = "../common" }

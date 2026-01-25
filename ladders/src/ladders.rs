@@ -3,6 +3,7 @@ use oppai_common::trajectory::{Trajectory, build_trajectories, build_trajectorie
 use oppai_field::field::wave_diag;
 use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
+use smallvec::SmallVec;
 
 fn mark_group(field: &mut Field, start_pos: Pos, player: Player, marks: &mut Vec<Pos>) {
   wave_diag(&mut field.q, field.stride, start_pos, |pos| {
@@ -164,7 +165,7 @@ fn ladders_rec<SS: Fn() -> bool>(
           );
         }
 
-        let trajectories = build_trajectories_from(field, our_pos, player, 2, should_stop);
+        let trajectories: SmallVec<[_; 2]> = build_trajectories_from(field, our_pos, player, 2, should_stop);
 
         if should_stop() {
           field.undo();
@@ -223,7 +224,7 @@ pub fn ladders<SS: Fn() -> bool>(
   player: Player,
   should_stop: &SS,
 ) -> (Option<NonZeroPos>, i32, u32) {
-  let mut trajectories = build_trajectories(field, player, 2, should_stop);
+  let mut trajectories: SmallVec<[_; 8]> = build_trajectories(field, player, 2, should_stop);
   trajectories.sort_unstable_by_key(|trajectory| -trajectory.score);
 
   info!("Solving ladders for {} trajectories.", trajectories.len());
