@@ -5,8 +5,7 @@ use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use std::iter;
 
-fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
-  let mut marks = Vec::new();
+fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &mut [u32], marks: &mut Vec<Pos>) {
   wave_diag(&mut field.q, field.stride, start_pos, |pos| {
     if empty_board[pos] != 0 {
       return false;
@@ -20,7 +19,6 @@ fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &m
       false
     }
   });
-  marks
 }
 
 fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
@@ -119,6 +117,7 @@ fn ladders_rec<SS: Fn() -> bool>(
   empty_board: &mut Vec<u32>,
   should_stop: &SS,
   depth: u32,
+  marks: &mut Vec<Pos>,
 ) -> (Option<NonZeroPos>, i32, u32) {
   match *trajectory.points.as_slice() {
     [pos] => {
@@ -182,7 +181,8 @@ fn ladders_rec<SS: Fn() -> bool>(
           break;
         }
 
-        let marks = mark_group(field, our_pos, player, empty_board);
+        let marks_len = marks.len();
+        mark_group(field, our_pos, player, empty_board, marks);
 
         for trajectory in trajectories {
           if alpha >= beta || should_stop() {
@@ -202,6 +202,7 @@ fn ladders_rec<SS: Fn() -> bool>(
             empty_board,
             should_stop,
             depth + 1,
+            marks,
           );
           let cur_score = cur_score.min(trajectory.score);
 
@@ -212,9 +213,10 @@ fn ladders_rec<SS: Fn() -> bool>(
           }
         }
 
-        for pos in marks {
+        for &pos in &marks[marks_len..] {
           empty_board[pos] = 0;
         }
+        marks.truncate(marks_len);
 
         field.undo();
         field.undo();
@@ -251,19 +253,15 @@ pub fn ladders<SS: Fn() -> bool>(
       continue;
     }
 
-    let marks = if let [pos1, _] = *trajectory.points.as_slice() {
-      if let Some(&pos) = field
+    let mut marks = Vec::with_capacity(field.length());
+    if let [pos1, _] = *trajectory.points.as_slice()
+      && let Some(&pos) = field
         .directions_diag(pos1)
         .iter()
         .find(|&&pos| field.cell(pos).is_players_point(player))
-      {
-        // mark one of near groups to not search trajectories from it
-        mark_group(field, pos, player, &mut empty_board)
-      } else {
-        Vec::new()
-      }
-    } else {
-      Vec::new()
+    {
+      // mark one of near groups to not search trajectories from it
+      mark_group(field, pos, player, &mut empty_board, &mut marks);
     };
 
     let (cur_pos, cur_score, cur_capture_depth) = ladders_rec(
@@ -275,6 +273,7 @@ pub fn ladders<SS: Fn() -> bool>(
       &mut empty_board,
       should_stop,
       0,
+      &mut marks,
     );
     let cur_score = cur_score.min(trajectory.score);
     if cur_score > alpha && is_trajectoty_viable(field, &trajectory, player, &mut empty_board) {
