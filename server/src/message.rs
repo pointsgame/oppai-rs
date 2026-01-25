@@ -45,9 +45,9 @@ pub struct TimeLeft {
 }
 
 impl GameTime {
-  const MIN_TOTAL: Duration = Duration::from_secs(30);
-  const MAX_TOTAL: Duration = Duration::from_secs(4 * 60 * 60);
-  const MAX_INCREMENT: Duration = Duration::from_secs(60);
+  const MIN_TOTAL: Duration = Duration::from_secs(10);
+  const MAX_TOTAL: Duration = Duration::from_secs(5 * 24 * 60 * 60);
+  const MAX_INCREMENT: Duration = Duration::from_secs(24 * 60 * 60);
 
   pub fn is_valid(&self) -> bool {
     self.total >= Self::MIN_TOTAL && self.total <= Self::MAX_TOTAL && self.increment <= Self::MAX_INCREMENT
