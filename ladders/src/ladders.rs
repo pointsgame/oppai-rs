@@ -159,8 +159,8 @@ fn ladders_rec<SS: Fn() -> bool>(
         if !field.put_point(enemy_pos, player.next()) {
           panic!(
             "Failed to put a point to ({}, {}) on the field:\n{}",
-            field.to_x(our_pos),
-            field.to_y(our_pos),
+            field.to_x(enemy_pos),
+            field.to_y(enemy_pos),
             field,
           );
         }
