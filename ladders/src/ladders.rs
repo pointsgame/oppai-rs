@@ -117,17 +117,18 @@ fn ladders_rec<SS: Fn() -> bool>(
   should_stop: &SS,
   depth: u32,
   marks: &mut Vec<Pos>,
-) -> (Option<NonZeroPos>, i32, u32) {
+) -> (Option<NonZeroPos>, i32, u32, bool) {
   match *trajectory.points.as_slice() {
     [pos] => {
       field.put_point(pos, player);
       let cur_score = field.score(player);
       field.undo();
-      (NonZeroPos::new(pos), cur_score, depth)
+      (NonZeroPos::new(pos), cur_score, depth, true)
     }
     [pos1, pos2] => {
       let mut best_move = None;
       let mut capture_depth = 0;
+      let mut viable = false;
 
       for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
         if trajectory.score <= alpha || alpha >= beta || should_stop() {
@@ -192,7 +193,7 @@ fn ladders_rec<SS: Fn() -> bool>(
             continue;
           }
 
-          let (_, cur_score, cur_capture_depth) = ladders_rec(
+          let (_, cur_score, cur_capture_depth, cur_viable) = ladders_rec(
             field,
             player,
             &trajectory,
@@ -204,7 +205,8 @@ fn ladders_rec<SS: Fn() -> bool>(
           );
           let cur_score = cur_score.min(trajectory.score);
 
-          if cur_score > alpha && is_trajectoty_viable(field, &trajectory, player) {
+          if cur_score > alpha && cur_viable {
+            viable = trajectory.points.len() > 1;
             alpha = cur_score;
             best_move = NonZeroPos::new(our_pos);
             capture_depth = cur_capture_depth;
@@ -220,7 +222,12 @@ fn ladders_rec<SS: Fn() -> bool>(
         field.undo();
       }
 
-      (best_move, alpha, capture_depth)
+      (
+        best_move,
+        alpha,
+        capture_depth,
+        best_move.is_some() && (viable || is_trajectoty_viable(field, trajectory, player)),
+      )
     }
     _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
   }
@@ -260,7 +267,7 @@ pub fn ladders<SS: Fn() -> bool>(
       mark_group(field, pos, player, &mut marks);
     };
 
-    let (cur_pos, cur_score, cur_capture_depth) = ladders_rec(
+    let (cur_pos, cur_score, cur_capture_depth, cur_viable) = ladders_rec(
       field,
       player,
       &trajectory,
@@ -271,7 +278,7 @@ pub fn ladders<SS: Fn() -> bool>(
       &mut marks,
     );
     let cur_score = cur_score.min(trajectory.score);
-    if cur_score > alpha && is_trajectoty_viable(field, &trajectory, player) {
+    if cur_score > alpha && cur_viable {
       alpha = cur_score;
       capture_depth = cur_capture_depth;
       best_move = cur_pos;
