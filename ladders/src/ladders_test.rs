@@ -241,14 +241,16 @@ fn ladders_fake_rotate() {
     .aAAa.......
     ..aa......a.
     ............
+    ............
+    ............
     ",
   );
 
   let (pos, score, depth) = ladders(&mut field, Player::Red, &|| false);
 
-  assert_eq!(pos, None);
-  assert_eq!(score, 0);
-  assert_eq!(depth, 0);
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 3)));
+  assert_eq!(score, 2);
+  assert_eq!(depth, 11);
 }
 
 #[test]
