@@ -52,7 +52,7 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
     let moves = collect_near_moves(field, player);
     moves.into_iter().any(|pos| {
       field.put_point(pos, player);
-      if field.get_delta_score(player) == 0
+      if field.get_delta_score(player) <= 0
         || trajectory
           .points
           .iter()
@@ -95,7 +95,7 @@ fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory<2>, player: P
 
     field.put_point(enemy_pos, enemy);
 
-    if field.get_delta_score(enemy) == 0 {
+    if field.get_delta_score(enemy) <= 0 {
       field.undo();
       return true;
     }
