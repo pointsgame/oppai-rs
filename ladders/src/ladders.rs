@@ -50,28 +50,27 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
 
   let result = field.get_delta_score(player) > 0 || {
     let moves = collect_near_moves(field, player);
-    let enemy = player.next();
     moves.into_iter().any(|pos| {
       field.put_point(pos, player);
-      let result = field.get_delta_score(player) > 0
-        && trajectory
+      if field.get_delta_score(player) == 0
+        || trajectory
           .points
           .iter()
-          .all(|&trajectory_pos| field.cell(trajectory_pos).is_bound());
-      field.undo();
-      result && {
-        let enemies_around = field
-          .directions(pos)
-          .iter()
-          .filter(|&&pos| field.cell(pos).is_players_point(enemy))
-          .count();
-        enemies_around < 3
-          || enemies_around == 3
-            && field
-              .directions(pos)
-              .iter()
-              .all(|&near_pos| !field.cell(near_pos).is_putting_allowed())
+          .any(|&trajectory_pos| !field.cell(trajectory_pos).is_bound())
+      {
+        field.undo();
+        return false;
       }
+      for _ in 0..trajectory.points.len() + 1 {
+        field.undo();
+      }
+      field.put_point(pos, player);
+      let result = is_trajectoty_viable(field, trajectory, player);
+      field.undo();
+      for &pos in &trajectory.points {
+        field.put_point(pos, player);
+      }
+      result
     })
   };
 
@@ -83,9 +82,17 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
 }
 
 fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory<2>, player: Player) -> bool {
+  if trajectory.points.len() == 1 {
+    return true;
+  }
+
   let enemy = player.next();
   let moves = collect_near_moves(field, enemy);
   moves.into_iter().all(|enemy_pos| {
+    if trajectory.points.contains(&enemy_pos) {
+      return true;
+    }
+
     field.put_point(enemy_pos, enemy);
 
     if field.get_delta_score(enemy) == 0 {

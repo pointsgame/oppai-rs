@@ -225,7 +225,30 @@ fn ladders_rotate() {
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 3)));
   assert_eq!(score, 2);
-  assert_eq!(depth, 11);
+  assert_eq!(depth, 13);
+}
+
+#[test]
+fn ladders_fake_rotate() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ............
+    ............
+    .......a....
+    ............
+    .aAAa.......
+    ..aa......a.
+    ............
+    ",
+  );
+
+  let (pos, score, depth) = ladders(&mut field, Player::Red, &|| false);
+
+  assert_eq!(pos, None);
+  assert_eq!(score, 0);
+  assert_eq!(depth, 0);
 }
 
 #[test]
@@ -429,9 +452,7 @@ fn ladders_viable_complex() {
   );
 
   let (_, score, _) = ladders(&mut field, Player::Red, &|| false);
-  // It's possible to capture 8 points here but current method is
-  // limited - it doesn't consider ladders after captures.
-  assert_eq!(score, 6);
+  assert_eq!(score, 7);
 }
 
 #[test]
