@@ -42,8 +42,8 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      width: 20,
-      height: 20,
+      width: 16,
+      height: 16,
       backend: Backend::Wgpu,
       seed: None,
     }
@@ -153,7 +153,7 @@ pub fn cli_parse() -> (Config, Action) {
         .help("Number of epochs to train")
         .num_args(1)
         .value_parser(value_parser!(usize))
-        .default_value("10"),
+        .default_value("1"),
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
