@@ -1,7 +1,7 @@
+use crate::examples::Examples;
 use crate::field_features::field_features;
-use crate::mcts::{game_result, mcts};
+use crate::mcgs::{Search, game_result};
 use crate::model::Model;
-use crate::{examples::Examples, mcts_node::MctsNode};
 use ndarray::Array2;
 use num_traits::{Float, One, Zero};
 use oppai_field::field::{to_x, to_y};
@@ -59,49 +59,31 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
-  let mut node = MctsNode::default();
+  let mut search = Search::new();
   let mut visits = Vec::new();
 
   while !field.is_game_over() {
-    if node.children.is_empty() {
-      mcts(field, player, &mut node, model, rng)?;
-    }
-
-    let full_search = field.moves_count() > 40 && rng.random::<f64>() <= 0.25;
+    let full_search = rng.random::<f64>() <= 0.25;
 
     let sims = if full_search {
-      node.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
+      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
       MCTS_FULL_SIMS
     } else {
       MCTS_SIMS
     };
 
     for _ in 0..sims {
-      mcts(field, player, &mut node, model, rng)?;
+      search.mcgs(field, player, model)?;
     }
 
     visits.push(Visits(
-      node
-        .children
-        .iter()
-        .filter(|child| child.visits > 0)
-        .map(|child| (child.pos, child.visits))
-        .collect(),
+      search.visits().filter(|(_, visits)| *visits > 0).collect(),
       full_search,
     ));
 
-    node = node.best_child().unwrap();
-    assert!(field.put_point(node.pos, player));
+    let pos = search.next_best_root().unwrap();
+    assert!(field.put_point(pos.get(), player));
     player = player.next();
-
-    log::debug!(
-      "Score: {}, visits: {}, policy: {}, wins: {}\n{:?}",
-      field.score(Player::Red),
-      node.visits,
-      node.policy,
-      node.wins,
-      field
-    );
   }
 
   Ok(visits)

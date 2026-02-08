@@ -7,42 +7,69 @@ use oppai_field::{
   field::{Field, NonZeroPos, Pos},
   player::Player,
 };
+use rand::Rng;
+use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
 use std::{collections::HashMap, iter, iter::Sum};
 
 /// Represents an edge from a parent to a child in the graph.
-struct Edge<N: Float> {
-  pos: Pos,
+#[derive(Clone, PartialEq, Debug)]
+pub struct Edge<N: Float> {
+  pub pos: Pos,
   /// Index into the global node storage
-  node_idx: usize,
+  pub node_idx: usize,
   /// Number of times this specific edge was traversed (N(n, a))
-  visits: u32,
+  pub visits: u64,
   /// The raw policy prediction P(a)
-  prior: N,
+  pub prior: N,
   /// Virtual losses to reduce parallelization conflicts
-  virtual_losses: u32,
+  pub virtual_losses: u64,
 }
 
 /// Represents a single state in the game graph.
-struct Node<N: Float> {
+#[derive(Clone, PartialEq, Debug)]
+pub struct Node<N: Float> {
   /// N(n): Total visits to this node.
   /// Note: In MCGS, this is effectively 1 + sum(edge.visits).
-  visits: u32,
+  pub visits: u64,
   /// Q(n): Expected utility.
   /// Calculated recursively: (U(n) + sum(edge.visits * child.Q)) / N(n)
-  value: N,
+  pub value: N,
   /// U(n): Raw utility from the neural net for this state.
-  raw_value: N,
+  pub raw_value: N,
   /// Edges to children.
-  children: Vec<Edge<N>>,
+  pub children: Vec<Edge<N>>,
 }
 
 impl<N: Float> Node<N> {
-  fn new() -> Self {
+  pub fn new() -> Self {
     Node {
       visits: 0,
       value: N::zero(),
       raw_value: N::zero(),
       children: Vec::new(),
+    }
+  }
+}
+
+impl<N> Node<N>
+where
+  N: Float + Sum,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
+  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N) {
+    let gamma = Gamma::<N>::new(N::from(shape).unwrap(), N::one()).unwrap();
+    let mut dirichlet = gamma.sample_iter(rng).take(self.children.len()).collect::<Vec<_>>();
+    let sum = dirichlet.iter().cloned().sum::<N>();
+    if sum == N::zero() {
+      return;
+    }
+    for eta in dirichlet.iter_mut() {
+      *eta = *eta / sum;
+    }
+    for (child, eta) in self.children.iter_mut().zip(dirichlet.into_iter()) {
+      child.prior = child.prior * (N::one() - epsilon) + epsilon * eta;
     }
   }
 }
@@ -53,32 +80,21 @@ impl<N: Float> Default for Node<N> {
   }
 }
 
-pub struct Search<N: Float> {
-  /// Index of the root node in `nodes`
-  root_idx: usize,
-  /// Arena allocation for nodes
-  nodes: Vec<Node<N>>,
-  /// Maps Zobrist hash -> index in `nodes`
-  map: HashMap<u64, usize>,
+pub fn game_result<N: Float>(field: &Field, player: Player) -> N {
+  N::from(field.score(player).signum()).unwrap()
 }
 
-impl<N: Float + Sum> Search<N> {
-  pub fn new(field: &Field) -> Self {
-    let mut search = Search {
-      root_idx: 0,
-      nodes: Vec::new(),
-      map: HashMap::new(),
-    };
+#[derive(Clone, PartialEq, Debug)]
+pub struct Search<N: Float> {
+  /// Index of the root node in `nodes`
+  pub root_idx: usize,
+  /// Arena allocation for nodes
+  pub nodes: Vec<Node<N>>,
+  /// Maps Zobrist hash -> index in `nodes`
+  pub map: HashMap<u64, usize>,
+}
 
-    // Initialize root
-    search.add_node(field.hash);
-    search
-  }
-
-  fn game_result(field: &Field, player: Player) -> N {
-    N::from(field.score(player).signum()).unwrap()
-  }
-
+impl<N: Float> Search<N> {
   fn add_node(&mut self, hash: u64) -> usize {
     if let Some(&idx) = self.map.get(&hash) {
       return idx;
@@ -92,6 +108,20 @@ impl<N: Float + Sum> Search<N> {
     idx
   }
 
+  pub fn new() -> Self {
+    let mut search = Search {
+      root_idx: 0,
+      nodes: Vec::new(),
+      map: HashMap::new(),
+    };
+
+    // Initialize root
+    search.add_node(0);
+    search
+  }
+}
+
+impl<N: Float + Sum> Search<N> {
   fn update_node(nodes: &mut [Node<N>], node_idx: usize) {
     let mut sum_values = N::zero();
     let mut sum_visits = 0;
@@ -256,7 +286,7 @@ impl<N: Float + Sum> Search<N> {
       if cur_field.is_game_over() {
         self.add_result(
           &cur_field.moves[field.moves_count()..],
-          Self::game_result(
+          game_result(
             cur_field,
             if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
               player
@@ -311,10 +341,60 @@ impl<N: Float + Sum> Search<N> {
 
   /// Get the best move based on visit counts
   pub fn best_move(&self) -> Option<NonZeroPos> {
-    self.nodes[0]
+    self.nodes[self.root_idx]
       .children
       .iter()
       .max_by_key(|edge| edge.visits)
       .and_then(|edge| NonZeroPos::new(edge.pos))
+  }
+
+  /// Move the root to the best child
+  pub fn next_best_root(&mut self) -> Option<NonZeroPos> {
+    if let Some(edge) = self.nodes[self.root_idx].children.iter().max_by_key(|edge| edge.visits) {
+      self.root_idx = edge.node_idx;
+      NonZeroPos::new(edge.pos)
+    } else {
+      None
+    }
+  }
+
+  /// Move the root to the child with the given position
+  pub fn next_root(&mut self, pos: Pos) -> bool {
+    if let Some(edge) = self.nodes[self.root_idx].children.iter().find(|edge| edge.pos == pos) {
+      self.root_idx = edge.node_idx;
+      true
+    } else {
+      false
+    }
+  }
+
+  /// Get the visits for each child of the root node
+  pub fn visits(&self) -> impl Iterator<Item = (Pos, u64)> + '_ {
+    self.nodes[self.root_idx]
+      .children
+      .iter()
+      .map(|edge| (edge.pos, edge.visits))
+  }
+
+  pub fn value(&self) -> N {
+    self.nodes[self.root_idx].value
+  }
+}
+
+impl<N> Search<N>
+where
+  N: Float + Sum,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
+  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N) {
+    self.nodes[self.root_idx].add_dirichlet_noise(rng, epsilon, shape);
+  }
+}
+
+impl<N: Float> Default for Search<N> {
+  fn default() -> Self {
+    Self::new()
   }
 }

@@ -1,6 +1,6 @@
 use crate::episode::{Visits, episode, examples};
 use crate::field_features::{CHANNELS, field_features};
-use crate::mcts_test::{const_value, uniform_policies};
+use crate::mcgs_test::{const_value, uniform_policies};
 use ndarray::{Array, Array4, Axis, array};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;

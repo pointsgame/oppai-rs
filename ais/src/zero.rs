@@ -17,7 +17,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
 
   fn analyze<S, R, SS>(
     &mut self,
-    rng: &mut R,
+    _rng: &mut R,
     field: &mut Field,
     player: Player,
     confidence: Option<Self::Confidence>,
@@ -31,7 +31,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
     if let Ok((moves, confidence, estimation)) =
       self
         .0
-        .best_moves(field, player, rng, should_stop, confidence.unwrap_or(usize::MAX))
+        .best_moves(field, player, should_stop, confidence.unwrap_or(usize::MAX))
     {
       SimpleAnalysis {
         moves,
