@@ -5,6 +5,7 @@ pub mod examples;
 pub mod field_features;
 #[cfg(test)]
 pub mod field_features_test;
+pub mod mcgs;
 pub mod mcts;
 pub mod mcts_node;
 #[cfg(test)]
