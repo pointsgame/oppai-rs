@@ -88,7 +88,7 @@ pub struct Field {
   #[cfg(feature = "dsu")]
   dsu_changes: Vec<(Pos, Pos)>,
   changes: Vec<FieldChange>,
-  zobrist: Arc<Zobrist>,
+  zobrist: Arc<Zobrist<u64>>,
   pub hash: u64,
   chains: [(Vec<Pos>, Pos); 3],
   captured_points: Vec<Pos>,
@@ -637,7 +637,7 @@ impl Field {
     }
   }
 
-  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Field {
+  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist<u64>>) -> Field {
     let length = length(width, height);
     assert!(zobrist.hashes.0.len() >= 2 * length);
     let stride = width + 1;
@@ -1222,12 +1222,12 @@ impl Field {
   }
 
   #[inline]
-  pub fn zobrist(&self) -> &Zobrist {
+  pub fn zobrist(&self) -> &Zobrist<u64> {
     &self.zobrist
   }
 
   #[inline]
-  pub fn zobrist_arc(&self) -> Arc<Zobrist> {
+  pub fn zobrist_arc(&self) -> Arc<Zobrist<u64>> {
     self.zobrist.clone()
   }
 

@@ -41,7 +41,7 @@ impl From<Field> for ExtendedField {
 }
 
 impl ExtendedField {
-  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist>) -> Self {
+  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist<u64>>) -> Self {
     let field = Field::new(width, height, zobrist);
     let length = field.length();
     Self {

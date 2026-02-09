@@ -38,7 +38,7 @@ pub fn construct_moves(image: &str) -> (u32, u32, Vec<(Player, Pos)>) {
   )
 }
 
-pub fn construct_field_with_zobrist(zobrist: Arc<Zobrist>, image: &str) -> Field {
+pub fn construct_field_with_zobrist(zobrist: Arc<Zobrist<u64>>, image: &str) -> Field {
   let (width, height, moves) = construct_moves(image);
   let mut field = Field::new(width, height, zobrist);
   for (player, pos) in moves {

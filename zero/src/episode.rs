@@ -93,7 +93,7 @@ where
 pub fn examples<N: Float + Zero + One>(
   width: u32,
   height: u32,
-  zobrist: Arc<Zobrist>,
+  zobrist: Arc<Zobrist<u64>>,
   visits: &[Visits],
   moves: &[(Pos, Player)],
 ) -> Examples<N> {
