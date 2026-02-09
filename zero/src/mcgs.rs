@@ -9,14 +9,16 @@ use oppai_field::{
 };
 use rand::Rng;
 use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
+use std::collections::VecDeque;
+use std::mem;
 use std::{collections::HashMap, iter, iter::Sum};
 
 /// Represents an edge from a parent to a child in the graph.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Edge<N: Float> {
   pub pos: Pos,
-  /// Index into the global node storage
-  pub node_idx: usize,
+  /// Zobrist hash of the child state
+  pub hash: u64,
   /// Number of times this specific edge was traversed (N(n, a))
   pub visits: u64,
   /// The raw policy prediction P(a)
@@ -96,16 +98,12 @@ pub struct Search<N: Float> {
 
 impl<N: Float> Search<N> {
   fn add_node(&mut self, hash: u64) -> usize {
-    if let Some(&idx) = self.map.get(&hash) {
-      return idx;
-    }
-
-    let idx = self.nodes.len();
-    let node = Node::new();
-
-    self.nodes.push(node);
-    self.map.insert(hash, idx);
-    idx
+    *self.map.entry(hash).or_insert_with(|| {
+      let idx = self.nodes.len();
+      let node = Node::new();
+      self.nodes.push(node);
+      idx
+    })
   }
 
   pub fn new() -> Self {
@@ -116,18 +114,18 @@ impl<N: Float> Search<N> {
     };
 
     // Initialize root
-    search.add_node(0);
+    search.nodes.push(Node::new());
     search
   }
 }
 
 impl<N: Float + Sum> Search<N> {
-  fn update_node(nodes: &mut [Node<N>], node_idx: usize) {
+  fn update_node(map: &HashMap<u64, usize>, nodes: &mut [Node<N>], node_idx: usize) {
     let mut sum_values = N::zero();
     let mut sum_visits = 0;
 
     for edge in nodes[node_idx].children.iter() {
-      let child = &nodes[edge.node_idx];
+      let child = &nodes[map[&edge.hash]];
       sum_values = sum_values + N::from(edge.visits).unwrap() * (-child.value);
       sum_visits += edge.visits;
     }
@@ -148,7 +146,7 @@ impl<N: Float + Sum> Search<N> {
     let mut best = 0;
 
     for (idx, edge) in node.children.iter().enumerate() {
-      let child = &self.nodes[edge.node_idx];
+      let child = &self.nodes[self.map[&edge.hash]];
 
       // Hyperparameter for PUCT
       let c_puct = N::from(2.5).unwrap();
@@ -179,7 +177,7 @@ impl<N: Float + Sum> Search<N> {
     while let Some(edge_idx) = self.select_edge(idx) {
       self.nodes[idx].children[edge_idx].virtual_losses += 1;
       moves.push(self.nodes[idx].children[edge_idx].pos);
-      idx = self.nodes[idx].children[edge_idx].node_idx;
+      idx = self.map[&self.nodes[idx].children[edge_idx].hash];
     }
 
     moves
@@ -194,7 +192,7 @@ impl<N: Float + Sum> Search<N> {
         .position(|edge| edge.pos == pos)
         .unwrap();
       self.nodes[idx].children[edge_idx].virtual_losses -= 1;
-      idx = self.nodes[idx].children[edge_idx].node_idx;
+      idx = self.map[&self.nodes[idx].children[edge_idx].hash];
     }
   }
 
@@ -209,14 +207,14 @@ impl<N: Float + Sum> Search<N> {
         .position(|edge| edge.pos == pos)
         .unwrap();
       self.nodes[idx].children[edge_idx].visits += 1;
-      idx = self.nodes[idx].children[edge_idx].node_idx;
+      idx = self.map[&self.nodes[idx].children[edge_idx].hash];
     }
     self.nodes[idx].value = result;
     self.nodes[idx].raw_value = result;
     self.nodes[idx].visits = 1;
     self.nodes[idx].children = children;
     while let Some(idx) = indices.pop() {
-      Self::update_node(&mut self.nodes, idx);
+      Self::update_node(&self.map, &mut self.nodes, idx);
     }
   }
 
@@ -225,13 +223,13 @@ impl<N: Float + Sum> Search<N> {
   fn make_moves(initial: &Field, moves: &[Pos], mut player: Player) -> Field {
     let mut field = initial.clone();
     for &pos in moves {
-      field.put_point(pos, player);
+      assert!(field.put_point(pos, player), "can't put point, likely a collision");
       player = player.next();
     }
     field
   }
 
-  fn create_children(&mut self, field: &mut Field, policy: &ArrayView2<N>) -> Vec<Edge<N>> {
+  fn create_children(&mut self, field: &mut Field, player: Player, policy: &ArrayView2<N>) -> Vec<Edge<N>> {
     let stride = field.stride;
     let mut children = Vec::new();
 
@@ -240,17 +238,20 @@ impl<N: Float + Sum> Search<N> {
         continue;
       }
 
-      field.put_point(pos, field.cur_player());
-      let hash = field.hash;
+      field.put_point(pos, player);
+      let hash = field.colored_hash(player);
       field.undo();
 
       let x = to_x(stride, pos);
       let y = to_y(stride, pos);
       let p = policy[(y as usize, x as usize)];
 
+      // TODO: don't add empty node?
+      self.add_node(hash);
+
       children.push(Edge {
         pos,
-        node_idx: self.add_node(hash),
+        hash,
         visits: 0,
         prior: p,
         virtual_losses: 0,
@@ -308,18 +309,12 @@ impl<N: Float + Sum> Search<N> {
 
     let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()) * fields.len());
     for cur_field in &fields {
-      field_features_to_vec::<N>(
-        cur_field,
-        if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
-          player
-        } else {
-          player.next()
-        },
-        field.width(),
-        field.height(),
-        0,
-        &mut features,
-      )
+      let player = if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
+        player
+      } else {
+        player.next()
+      };
+      field_features_to_vec::<N>(cur_field, player, field.width(), field.height(), 0, &mut features)
     }
     let features = Array::from_shape_vec(
       (fields.len(), CHANNELS, field.height() as usize, field.width() as usize),
@@ -330,9 +325,14 @@ impl<N: Float + Sum> Search<N> {
     let (policies, values) = model.predict(features)?;
 
     for (i, mut cur_field) in fields.into_iter().enumerate() {
+      let player = if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
+        player
+      } else {
+        player.next()
+      };
       let policy = policies.slice(s![i, .., ..]);
       let value = values[i];
-      let children = self.create_children(&mut cur_field, &policy);
+      let children = self.create_children(&mut cur_field, player, &policy);
       self.add_result(&cur_field.moves[field.moves_count()..], value, children);
     }
 
@@ -351,7 +351,7 @@ impl<N: Float + Sum> Search<N> {
   /// Move the root to the best child
   pub fn next_best_root(&mut self) -> Option<NonZeroPos> {
     if let Some(edge) = self.nodes[self.root_idx].children.iter().max_by_key(|edge| edge.visits) {
-      self.root_idx = edge.node_idx;
+      self.root_idx = self.map[&edge.hash];
       NonZeroPos::new(edge.pos)
     } else {
       None
@@ -361,11 +361,42 @@ impl<N: Float + Sum> Search<N> {
   /// Move the root to the child with the given position
   pub fn next_root(&mut self, pos: Pos) -> bool {
     if let Some(edge) = self.nodes[self.root_idx].children.iter().find(|edge| edge.pos == pos) {
-      self.root_idx = edge.node_idx;
+      self.root_idx = self.map[&edge.hash];
       true
     } else {
       false
     }
+  }
+
+  /// Compact the search tree by removing unused nodes
+  pub fn compact(&mut self) {
+    let mut new_search = Self {
+      root_idx: 0,
+      nodes: Vec::with_capacity(self.nodes.len()),
+      map: HashMap::with_capacity(self.map.len()),
+    };
+
+    let mut queue = VecDeque::new();
+    for edge in &mut self.nodes[self.root_idx].children {
+      queue.push_back(edge.hash);
+    }
+
+    new_search.nodes.push(mem::take(&mut self.nodes[self.root_idx]));
+
+    while let Some(hash) = queue.pop_front() {
+      if new_search.map.contains_key(&hash) {
+        continue;
+      }
+
+      for edge in &mut self.nodes[self.map[&hash]].children {
+        queue.push_back(edge.hash);
+      }
+
+      new_search.nodes.push(mem::take(&mut self.nodes[self.map[&hash]]));
+      new_search.map.insert(hash, new_search.nodes.len() - 1);
+    }
+
+    *self = new_search;
   }
 
   /// Get the visits for each child of the root node
@@ -376,6 +407,7 @@ impl<N: Float + Sum> Search<N> {
       .map(|edge| (edge.pos, edge.visits))
   }
 
+  /// Get the value of the root node
   pub fn value(&self) -> N {
     self.nodes[self.root_idx].value
   }

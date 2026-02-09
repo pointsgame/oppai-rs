@@ -51,19 +51,19 @@ fn mcts_first_iterations() {
     search.nodes[0]
       .children
       .iter()
-      .all(|edge| search.nodes[edge.node_idx].raw_value == 0.0)
+      .all(|edge| search.nodes[search.map[&edge.hash]].raw_value == 0.0)
   );
   assert!(
     search.nodes[0]
       .children
       .iter()
-      .all(|edge| search.nodes[edge.node_idx].value == 0.0)
+      .all(|edge| search.nodes[search.map[&edge.hash]].value == 0.0)
   );
   assert!(
     search.nodes[0]
       .children
       .iter()
-      .all(|edge| search.nodes[edge.node_idx].children.is_empty())
+      .all(|edge| search.nodes[search.map[&edge.hash]].children.is_empty())
   );
 
   search
@@ -79,7 +79,9 @@ fn mcts_first_iterations() {
     search.nodes[0]
       .children
       .iter()
-      .filter(|edge| search.nodes[edge.node_idx].children.len() == (field.width() * field.height()) as usize - 7)
+      .filter(
+        |edge| search.nodes[search.map[&edge.hash]].children.len() == (field.width() * field.height()) as usize - 7
+      )
       .count(),
     8
   );
@@ -87,7 +89,7 @@ fn mcts_first_iterations() {
     search.nodes[0]
       .children
       .iter()
-      .filter(|edge| search.nodes[edge.node_idx].raw_value == -1.0)
+      .filter(|edge| search.nodes[search.map[&edge.hash]].raw_value == -1.0)
       .count(),
     8
   );
@@ -95,7 +97,7 @@ fn mcts_first_iterations() {
     search.nodes[0]
       .children
       .iter()
-      .filter(|edge| search.nodes[edge.node_idx].value == -1.0)
+      .filter(|edge| search.nodes[search.map[&edge.hash]].value == -1.0)
       .count(),
     8
   );
