@@ -33,7 +33,7 @@ where
 
     let pos = search1.next_best_root().unwrap();
     search1.compact();
-    assert!(search2.next_root(pos.get()));
+    search2.next_root(pos.get());
     search2.compact();
     field.put_point(pos.get(), player);
 

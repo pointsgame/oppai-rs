@@ -354,17 +354,17 @@ impl<N: Float + Sum> Search<N> {
       self.root_idx = self.map[&edge.hash];
       NonZeroPos::new(edge.pos)
     } else {
+      *self = Self::new();
       None
     }
   }
 
   /// Move the root to the child with the given position
-  pub fn next_root(&mut self, pos: Pos) -> bool {
+  pub fn next_root(&mut self, pos: Pos) {
     if let Some(edge) = self.nodes[self.root_idx].children.iter().find(|edge| edge.pos == pos) {
       self.root_idx = self.map[&edge.hash];
-      true
     } else {
-      false
+      *self = Self::new();
     }
   }
 
