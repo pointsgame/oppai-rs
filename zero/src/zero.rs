@@ -4,6 +4,7 @@ use oppai_field::{
   field::{Field, Pos},
   player::Player,
 };
+use rand::Rng;
 use std::{
   fmt::{Debug, Display},
   iter::Sum,
@@ -33,10 +34,11 @@ where
     self.search = Search::new();
   }
 
-  pub fn best_moves<SS: Fn() -> bool>(
+  pub fn best_moves<SS: Fn() -> bool, R: Rng>(
     &mut self,
     field: &Field,
     player: Player,
+    rng: &mut R,
     should_stop: &SS,
     max_iterations_count: usize,
   ) -> Result<Analysis<N>, <M as Model<N>>::E> {
@@ -46,7 +48,7 @@ where
     // TODO: check if game is over
     let mut iterations = 0;
     while !should_stop() && iterations < max_iterations_count {
-      self.search.mcgs(&mut field.clone(), player, &mut self.model)?;
+      self.search.mcgs(&mut field.clone(), player, &mut self.model, rng)?;
       iterations += 1;
     }
 

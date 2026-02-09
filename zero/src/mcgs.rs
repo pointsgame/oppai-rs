@@ -8,6 +8,7 @@ use oppai_field::{
   player::Player,
 };
 use rand::Rng;
+use rand::seq::SliceRandom;
 use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
 use std::collections::VecDeque;
 use std::mem;
@@ -229,7 +230,13 @@ impl<N: Float + Sum> Search<N> {
     field
   }
 
-  fn create_children(&mut self, field: &mut Field, player: Player, policy: &ArrayView2<N>) -> Vec<Edge<N>> {
+  fn create_children<R: Rng>(
+    &mut self,
+    field: &mut Field,
+    player: Player,
+    policy: &ArrayView2<N>,
+    rng: &mut R,
+  ) -> Vec<Edge<N>> {
     let stride = field.stride;
     let mut children = Vec::new();
 
@@ -264,10 +271,18 @@ impl<N: Float + Sum> Search<N> {
       child.prior = child.prior / sum;
     }
 
+    children.shuffle(rng);
+
     children
   }
 
-  pub fn mcgs<M: Model<N>>(&mut self, field: &mut Field, player: Player, model: &mut M) -> Result<(), M::E> {
+  pub fn mcgs<M: Model<N>, R: Rng>(
+    &mut self,
+    field: &mut Field,
+    player: Player,
+    model: &mut M,
+    rng: &mut R,
+  ) -> Result<(), M::E> {
     let mut leafs = iter::repeat_with(|| self.select_path())
       .take(Self::PARALLEL_READOUTS)
       .collect::<Vec<_>>();
@@ -332,7 +347,7 @@ impl<N: Float + Sum> Search<N> {
       };
       let policy = policies.slice(s![i, .., ..]);
       let value = values[i];
-      let children = self.create_children(&mut cur_field, player, &policy);
+      let children = self.create_children(&mut cur_field, player, &policy, rng);
       self.add_result(&cur_field.moves[field.moves_count()..], value, children);
     }
 

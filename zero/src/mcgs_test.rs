@@ -35,10 +35,15 @@ fn mcts_first_iterations() {
   let mut search = Search::<f64>::new();
 
   search
-    .mcgs(&mut field, Player::Red, &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 1.0)));
-      result
-    })
+    .mcgs(
+      &mut field,
+      Player::Red,
+      &mut |inputs: Array4<f64>| {
+        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 1.0)));
+        result
+      },
+      &mut rng,
+    )
     .unwrap();
   assert_eq!(search.nodes[0].visits, 1);
   assert_eq!(search.nodes[0].value, 1.0);
@@ -67,10 +72,15 @@ fn mcts_first_iterations() {
   );
 
   search
-    .mcgs(&mut field, Player::Red, &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, -1.0)));
-      result
-    })
+    .mcgs(
+      &mut field,
+      Player::Red,
+      &mut |inputs: Array4<f64>| {
+        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, -1.0)));
+        result
+      },
+      &mut rng,
+    )
     .unwrap();
   assert_eq!(search.nodes[0].visits, 9);
   assert_eq!(search.nodes[0].value, 1.0);
@@ -117,10 +127,15 @@ fn mcts_last_iterations() {
   let mut search = Search::<f64>::new();
 
   search
-    .mcgs(&mut field, Player::Red, &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
-      result
-    })
+    .mcgs(
+      &mut field,
+      Player::Red,
+      &mut |inputs: Array4<f64>| {
+        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
+        result
+      },
+      &mut rng,
+    )
     .unwrap();
   assert_eq!(search.nodes[0].visits, 1);
   assert_eq!(search.nodes[0].value, 1.0);

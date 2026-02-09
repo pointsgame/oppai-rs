@@ -73,7 +73,7 @@ where
     };
 
     for _ in 0..sims {
-      search.mcgs(field, player, model)?;
+      search.mcgs(field, player, model, rng)?;
     }
 
     visits.push(Visits(

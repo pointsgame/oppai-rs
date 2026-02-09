@@ -241,7 +241,7 @@ where
   let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, rng));
   let field = Field::new(config.width, config.height, zobrist);
 
-  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor)? {
+  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng)? {
     ExitCode::SUCCESS
   } else {
     2.into()
