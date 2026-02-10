@@ -504,32 +504,11 @@ fn zobrist_surrounding() {
     field_1.zobrist_arc(),
     "
     .a.
-    aaa
-    .a.
-    ",
-  );
-  assert_eq!(field_1.hash, field_2.hash);
-}
-
-#[test]
-fn zobrist_control_surrounding() {
-  let field_1 = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    .a.
     aAb
     .a.
     ",
   );
-  let field_2 = construct_field_with_zobrist(
-    field_1.zobrist_arc(),
-    "
-    .a.
-    aaa
-    .a.
-    ",
-  );
-  assert_eq!(field_1.hash, field_2.hash);
+  assert_eq!(field_1.hash(), field_2.hash());
 }
 
 #[test]
@@ -545,12 +524,12 @@ fn zobrist_big_surrounding() {
   let field_2 = construct_field_with_zobrist(
     field_1.zobrist_arc(),
     "
-    .aa.
-    aaaa
-    .aa.
+    .bb.
+    bbAb
+    .bb.
     ",
   );
-  assert_eq!(field_1.hash, field_2.hash);
+  assert_eq!(field_1.hash(), field_2.hash());
 }
 
 #[test]
@@ -570,16 +549,16 @@ fn zobrist_deep_onion_surroundings() {
   let field_2 = construct_field_with_zobrist(
     field_1.zobrist_arc(),
     "
-    ...A...
-    ..AAA..
-    .AAAAA.
-    AAAAAAA
-    .AAAAA.
-    ..AAA..
-    ...A...
+    ...B...
+    ..BBB..
+    .BaaaB.
+    BBaaaBB
+    .BaaaB.
+    ..BBB..
+    ...B...
     ",
   );
-  assert_eq!(field_1.hash, field_2.hash);
+  assert_eq!(field_1.hash(), field_2.hash());
 }
 
 #[test]
@@ -597,14 +576,14 @@ fn zobrist_onion_surroundings() {
   let field_2 = construct_field_with_zobrist(
     field_1.zobrist_arc(),
     "
-    ..a..
-    .aaa.
-    aaaaa
-    .aaa.
-    ..a..
+    ..b..
+    .bAb.
+    bAAAb
+    .bbb.
+    ..b..
     ",
   );
-  assert_eq!(field_1.hash, field_2.hash);
+  assert_eq!(field_1.hash(), field_2.hash());
 }
 
 #[test]

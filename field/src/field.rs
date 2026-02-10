@@ -89,7 +89,7 @@ pub struct Field {
   dsu_changes: Vec<(Pos, Pos)>,
   changes: Vec<FieldChange>,
   zobrist: Arc<Zobrist<u64>>,
-  pub hash: u64,
+  hash: u64,
   chains: [(Vec<Pos>, Pos); 3],
   captured_points: Vec<Pos>,
   pub q: VecDeque<Pos>,
@@ -1171,8 +1171,13 @@ impl Field {
   }
 
   #[inline]
+  pub fn hash(&self) -> u64 {
+    self.hash ^ ((self.length() as u64 + self.score_red as u64 - self.score_black as u64) << 1)
+  }
+
+  #[inline]
   pub fn colored_hash(&self, player: Player) -> u64 {
-    self.hash ^ player as u64
+    self.hash() ^ player as u64
   }
 
   #[inline]

@@ -231,7 +231,7 @@ impl UctRoot {
     self.node = Some(UctNode::new(0));
     self.player = player;
     self.moves_count = field.moves_count();
-    self.hash = field.hash;
+    self.hash = field.hash();
     if self.config.komi_type != UctKomiType::None {
       self.komi = AtomicIsize::new(field.score(player) as isize);
     }
@@ -310,7 +310,7 @@ impl UctRoot {
             self.node = Some(node);
             self.moves_count += 1;
             self.player = self.player.next();
-            self.hash = field.hash;
+            self.hash = field.hash();
             if self.config.komi_type == UctKomiType::Dynamic {
               self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
             }
