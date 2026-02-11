@@ -159,24 +159,22 @@ where
   for path in games_paths {
     let sgf = fs::read_to_string(path)?;
     let trees = sgf_parse::parse(&sgf)?;
-    let node = trees
-      .iter()
-      .find_map(|tree| match tree {
-        GameTree::Unknown(node) => Some(node),
-        GameTree::GoGame(_) => None,
-      })
-      .ok_or(anyhow::anyhow!("no sgf tree"))?;
-    let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
-    let visits = sgf_to_visits(node, field.stride);
+    for node in trees.iter().filter_map(|tree| match tree {
+      GameTree::Unknown(node) => Some(node),
+      GameTree::GoGame(_) => None,
+    }) {
+      let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+      let visits = sgf_to_visits(node, field.stride);
 
-    examples = examples
-      + episode::examples(
-        field.width(),
-        field.height(),
-        field.zobrist_arc(),
-        &visits,
-        &field.colored_moves().collect::<Vec<_>>(),
-      );
+      examples = examples
+        + episode::examples(
+          field.width(),
+          field.height(),
+          field.zobrist_arc(),
+          &visits,
+          &field.colored_moves().collect::<Vec<_>>(),
+        );
+    }
   }
 
   for epoch in 0..epochs {
