@@ -36,6 +36,12 @@ fn field_features_square() {
     [1., 0., 0.],
     [0., 0., 1.],
   ];
+  #[rustfmt::skip]
+  let empty = array![
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.],
+  ];
 
   let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -43,6 +49,8 @@ fn field_features_square() {
   assert_eq!(features.slice(s![2, .., ..]), black);
   assert_eq!(features.slice(s![3, .., ..]), red);
   assert_eq!(features.slice(s![4, .., ..]), black);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
 
   let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -50,6 +58,8 @@ fn field_features_square() {
   assert_eq!(features.slice(s![2, .., ..]), red);
   assert_eq!(features.slice(s![3, .., ..]), black);
   assert_eq!(features.slice(s![4, .., ..]), red);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
 }
 
 #[test]
@@ -81,6 +91,12 @@ fn field_features_rectangle() {
     [1., 0.],
     [0., 1.],
   ];
+  #[rustfmt::skip]
+  let empty = array![
+    [0., 0.],
+    [0., 0.],
+    [0., 0.],
+  ];
 
   let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -88,6 +104,8 @@ fn field_features_rectangle() {
   assert_eq!(features.slice(s![2, .., ..]), black);
   assert_eq!(features.slice(s![3, .., ..]), red);
   assert_eq!(features.slice(s![4, .., ..]), black);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
 
   let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -95,6 +113,8 @@ fn field_features_rectangle() {
   assert_eq!(features.slice(s![2, .., ..]), red);
   assert_eq!(features.slice(s![3, .., ..]), black);
   assert_eq!(features.slice(s![4, .., ..]), red);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
 }
 
 #[test]
@@ -129,6 +149,13 @@ fn field_features_wide_rectangle() {
     [0., 1., 0.],
     [0., 0., 0.],
   ];
+  #[rustfmt::skip]
+  let empty = array![
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.],
+  ];
 
   let features = field_features::<f64>(&field, Player::Red, field.width() + 1, field.height() + 1, 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -136,6 +163,8 @@ fn field_features_wide_rectangle() {
   assert_eq!(features.slice(s![2, .., ..]), black);
   assert_eq!(features.slice(s![3, .., ..]), red);
   assert_eq!(features.slice(s![4, .., ..]), black);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
 
   let features = field_features::<f64>(&field, Player::Black, field.width() + 1, field.height() + 1, 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -143,6 +172,8 @@ fn field_features_wide_rectangle() {
   assert_eq!(features.slice(s![2, .., ..]), red);
   assert_eq!(features.slice(s![3, .., ..]), black);
   assert_eq!(features.slice(s![4, .., ..]), red);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
 }
 
 #[test]
@@ -186,6 +217,12 @@ fn field_features_capture() {
     [0., 0., 0.],
     [0., 0., 0.],
   ];
+  #[rustfmt::skip]
+  let empty = array![
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.],
+  ];
 
   let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -193,6 +230,8 @@ fn field_features_capture() {
   assert_eq!(features.slice(s![2, .., ..]), black);
   assert_eq!(features.slice(s![3, .., ..]), red_owner);
   assert_eq!(features.slice(s![4, .., ..]), black_owner);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
 
   let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -200,4 +239,61 @@ fn field_features_capture() {
   assert_eq!(features.slice(s![2, .., ..]), red);
   assert_eq!(features.slice(s![3, .., ..]), black_owner);
   assert_eq!(features.slice(s![4, .., ..]), red_owner);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
+}
+
+#[test]
+fn field_features_empty_base() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .a.
+    a.a
+    .a.
+    ",
+  );
+
+  #[rustfmt::skip]
+  let mask = array![
+    [1., 1., 1.],
+    [1., 1., 1.],
+    [1., 1., 1.],
+  ];
+  #[rustfmt::skip]
+  let red = array![
+    [0., 1., 0.],
+    [1., 0., 1.],
+    [0., 1., 0.],
+  ];
+  #[rustfmt::skip]
+  let empty_base = array![
+    [0., 0., 0.],
+    [0., 1., 0.],
+    [0., 0., 0.],
+  ];
+  #[rustfmt::skip]
+  let empty = array![
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.],
+  ];
+
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
+  assert_eq!(features.slice(s![0, .., ..]), mask);
+  assert_eq!(features.slice(s![1, .., ..]), red);
+  assert_eq!(features.slice(s![2, .., ..]), empty);
+  assert_eq!(features.slice(s![3, .., ..]), red);
+  assert_eq!(features.slice(s![4, .., ..]), empty);
+  assert_eq!(features.slice(s![5, .., ..]), empty_base);
+  assert_eq!(features.slice(s![6, .., ..]), empty);
+
+  let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
+  assert_eq!(features.slice(s![0, .., ..]), mask);
+  assert_eq!(features.slice(s![1, .., ..]), empty);
+  assert_eq!(features.slice(s![2, .., ..]), red);
+  assert_eq!(features.slice(s![3, .., ..]), empty);
+  assert_eq!(features.slice(s![4, .., ..]), red);
+  assert_eq!(features.slice(s![5, .., ..]), empty);
+  assert_eq!(features.slice(s![6, .., ..]), empty_base);
 }

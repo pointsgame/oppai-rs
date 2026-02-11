@@ -5,7 +5,7 @@ use oppai_field::field::Field;
 use oppai_field::player::Player;
 use oppai_rotate::rotate::rotate_back;
 
-pub const CHANNELS: usize = 5;
+pub const CHANNELS: usize = 7;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
@@ -83,6 +83,34 @@ pub fn field_features_to_vec<N: Zero + One>(
   push_features(
     field,
     |cell| if cell.is_owner(enemy) { N::one() } else { N::zero() },
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_features(
+    field,
+    |cell| {
+      if cell.is_players_empty_base(player) {
+        N::one()
+      } else {
+        N::zero()
+      }
+    },
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_features(
+    field,
+    |cell| {
+      if cell.is_players_empty_base(enemy) {
+        N::one()
+      } else {
+        N::zero()
+      }
+    },
     features,
     width,
     height,
