@@ -153,7 +153,11 @@ where
   let record = Record::from_item::<FullPrecisionSettings>(item, &device);
   let optimizer = optimizer.load_record(record);
   let predictor = Predictor { model, device };
-  let mut learner = Learner { predictor, optimizer };
+  let mut learner = Learner {
+    predictor,
+    optimizer,
+    lr: 0.00001,
+  };
 
   let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
   for path in games_paths {
