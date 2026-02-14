@@ -22,14 +22,15 @@ use oppai_zero::{
 use thiserror::Error;
 
 const INPUT_CHANNELS: usize = CHANNELS;
-const INNER_CHANNELS: usize = 384;
+const INNER_CHANNELS: usize = 192;
 const RESIDUAL_INNER_CHANNELS: usize = INNER_CHANNELS / 2;
-const RESIDUAL_BLOCKS: usize = 10;
+const RESIDUAL_BLOCKS: usize = 5;
 const RESIDUAL_SIZE: usize = 2;
-const GPOOL_CHANNELS: usize = 64;
-const V1_CHANNELS: usize = 48;
-const P1_CHANNELS: usize = 48;
-const G1_CHANNELS: usize = 48;
+const GPOOL_EVERY: usize = 2;
+const GPOOL_CHANNELS: usize = 32;
+const V1_CHANNELS: usize = 32;
+const P1_CHANNELS: usize = 32;
+const G1_CHANNELS: usize = 32;
 
 #[derive(Module, Debug)]
 pub struct NormMask<B: Backend> {
@@ -361,7 +362,7 @@ impl<B: Backend> Model<B> {
         .with_padding(PaddingConfig2d::Same)
         .init(device),
       residuals: (0..RESIDUAL_BLOCKS)
-        .map(|i| ResidualBlock::new(device, (i + 1) % 3 == 0))
+        .map(|i| ResidualBlock::new(device, (i + 1) % GPOOL_EVERY == 0))
         .collect(),
       norm_trunkfinal: NormMask::new(device, INNER_CHANNELS, false),
       act_trunkfinal: Gelu::new(),
