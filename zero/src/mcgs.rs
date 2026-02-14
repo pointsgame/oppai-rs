@@ -154,7 +154,7 @@ impl<N: Float + Sum> Search<N> {
 
       // Child value is from child's perspective.
       // Parent wants to maximize own value, which is -child.value
-      let visits = N::from(edge.visits).unwrap();
+      let visits = N::from(edge.visits + 1).unwrap();
       let virtual_losses = N::from(edge.virtual_losses).unwrap();
       let q = (-child.value * visits - virtual_losses) / (visits + virtual_losses);
       let n = edge.visits + edge.virtual_losses;
