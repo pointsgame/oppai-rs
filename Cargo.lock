@@ -738,7 +738,6 @@ dependencies = [
  "burn-core",
  "burn-cpu",
  "burn-cuda",
- "burn-ir",
  "burn-ndarray",
  "burn-nn",
  "burn-optim",
@@ -832,7 +831,6 @@ checksum = "60aa53c4536719f1c91c250d4b4348daca473c44cf0c45b81096785f5510c192"
 dependencies = [
  "burn-backend",
  "burn-cubecl",
- "burn-fusion",
  "cubecl",
 ]
 
@@ -880,7 +878,6 @@ checksum = "4d0c68cf653eb9c27dcbe046bb7b04cc18c6b33afda4c09317c102e6f4ae7cb6"
 dependencies = [
  "burn-backend",
  "burn-cubecl",
- "burn-fusion",
  "cubecl",
 ]
 
@@ -978,7 +975,6 @@ checksum = "73e2abda6ee63bdcb730f1a335349a9ff83f03048130d405b6ecdccd2df3ff23"
 dependencies = [
  "burn-backend",
  "burn-cubecl",
- "burn-fusion",
  "cubecl",
 ]
 
@@ -1052,7 +1048,6 @@ checksum = "df78d62afc9b9fbb8ee4e49b72006485bb64f778a790e185a2d919479bcfc008"
 dependencies = [
  "burn-backend",
  "burn-cubecl",
- "burn-fusion",
  "cubecl",
 ]
 
@@ -4290,6 +4285,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "2.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5186,6 +5190,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "numpy"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "778da78c64ddc928ebf5ad9df5edf0789410ff3bdbf3619aed51cd789a6af1e2"
+dependencies = [
+ "libc",
+ "ndarray",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "pyo3",
+ "pyo3-build-config",
+ "rustc-hash 2.1.1",
+]
+
+[[package]]
 name = "oauth2"
 version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5995,6 +6015,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "oppai-zero-torch"
+version = "0.1.0"
+dependencies = [
+ "indoc",
+ "ndarray",
+ "num-traits",
+ "numpy",
+ "oppai-zero",
+ "pyo3",
+]
+
+[[package]]
 name = "oppai-zero-train"
 version = "0.1.0"
 dependencies = [
@@ -6011,6 +6043,29 @@ dependencies = [
  "oppai-sgf",
  "oppai-zero",
  "oppai-zero-burn",
+ "rand 0.9.2",
+ "rand_distr",
+ "rand_xoshiro",
+ "sgf-parse",
+ "strum",
+]
+
+[[package]]
+name = "oppai-zero-train-torch"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "either",
+ "env_logger",
+ "log",
+ "ndarray",
+ "num-traits",
+ "oppai-field",
+ "oppai-initial",
+ "oppai-sgf",
+ "oppai-zero",
+ "oppai-zero-torch",
  "rand 0.9.2",
  "rand_distr",
  "rand_xoshiro",
@@ -6490,6 +6545,64 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7186d3822593aa4393561d186d1393b3923e9d6163d3fbfd6e825e3e6cf3e6a8"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "pyo3"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcf3ccafdf54c050be48a3a086d372f77ba6615f5057211607cd30e5ac5cec6d"
+dependencies = [
+ "libc",
+ "once_cell",
+ "portable-atomic",
+ "pyo3-build-config",
+ "pyo3-ffi",
+ "pyo3-macros",
+]
+
+[[package]]
+name = "pyo3-build-config"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "972720a441c91fd9c49f212a1d2d74c6e3803b231ebc8d66c51efbd7ccab11c8"
+dependencies = [
+ "target-lexicon",
+]
+
+[[package]]
+name = "pyo3-ffi"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5994456d9dab8934d600d3867571b6410f24fbd6002570ad56356733eb54859b"
+dependencies = [
+ "libc",
+ "pyo3-build-config",
+]
+
+[[package]]
+name = "pyo3-macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11ce9cc8d81b3c4969748807604d92b4eef363c5bb82b1a1bdb34ec6f1093a18"
+dependencies = [
+ "proc-macro2",
+ "pyo3-macros-backend",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
+name = "pyo3-macros-backend"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaf4b60036a154d23282679b658e3cc7d88d3b8c9a40b43824785f232d2e1b98"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "pyo3-build-config",
+ "quote",
+ "syn 2.0.114",
 ]
 
 [[package]]
@@ -8177,6 +8290,12 @@ dependencies = [
  "libc",
  "xattr",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1dd07eb858a2067e2f3c7155d54e929265c264e6f37efe3ee7a8d1b5a1dd0ba"
 
 [[package]]
 name = "tempfile"
