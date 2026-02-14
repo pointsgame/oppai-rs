@@ -130,6 +130,7 @@ fn train<B, R: Rng>(
   model_new_path: PathBuf,
   optimizer_new_path: PathBuf,
   games_paths: Vec<PathBuf>,
+  lr: f64,
   batch_size: usize,
   epochs: usize,
   device: B::Device,
@@ -156,7 +157,7 @@ where
   let mut learner = Learner {
     predictor,
     optimizer,
-    lr: 0.00001,
+    lr,
   };
 
   let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
@@ -271,6 +272,7 @@ where
       model_new,
       optimizer_new,
       games,
+      learning_rate,
       batch_size,
       epochs,
     } => train::<Autodiff<B>, _>(
@@ -279,6 +281,7 @@ where
       model_new,
       optimizer_new,
       games,
+      learning_rate,
       batch_size,
       epochs,
       device,

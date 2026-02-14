@@ -17,6 +17,7 @@ pub enum Action {
     model_new: PathBuf,
     optimizer_new: PathBuf,
     games: Vec<PathBuf>,
+    learning_rate: f64,
     batch_size: usize,
     epochs: usize,
   },
@@ -138,6 +139,15 @@ pub fn cli_parse() -> (Config, Action) {
         .required(true),
     )
     .arg(
+      Arg::new("learning-rate")
+        .long("learning-rate")
+        .short('l')
+        .help("Learning rate")
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("0.00001"),
+    )
+    .arg(
       Arg::new("batch-size")
         .long("batch-size")
         .short('b')
@@ -247,6 +257,7 @@ pub fn cli_parse() -> (Config, Action) {
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
       let games = matches.get_many("games").unwrap().cloned().collect();
+      let learning_rate = matches.get_one("learning-rate").cloned().unwrap();
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let epochs = matches.get_one("epochs").cloned().unwrap();
       Action::Train {
@@ -255,6 +266,7 @@ pub fn cli_parse() -> (Config, Action) {
         model_new,
         optimizer_new,
         games,
+        learning_rate,
         batch_size,
         epochs,
       }
