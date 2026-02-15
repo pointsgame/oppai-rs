@@ -491,6 +491,57 @@ fn game_not_over_4() {
 }
 
 #[test]
+fn grounded() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ....
+    .aba
+    ..C.
+    ....
+    ",
+  );
+  assert!(field.cell(field.to_pos(1, 1)).is_grounded());
+  assert!(field.cell(field.to_pos(2, 1)).is_grounded());
+  assert!(field.cell(field.to_pos(3, 1)).is_grounded());
+  assert!(!field.cell(field.to_pos(2, 2)).is_grounded());
+}
+
+#[test]
+fn grounded_surrounding() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ......
+    ..aa..
+    .bA.aa
+    ..aa..
+    ......
+    ",
+  );
+  for (x, y) in [(2, 1), (3, 1), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (2, 3), (3, 3)] {
+    assert!(field.cell(field.to_pos(x, y)).is_grounded());
+  }
+}
+
+#[test]
+fn grounded_control_surrounding() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ......
+    ..aa..
+    .aB.aa
+    ..aa..
+    ......
+    ",
+  );
+  for (x, y) in [(2, 1), (3, 1), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (2, 3), (3, 3)] {
+    assert!(field.cell(field.to_pos(x, y)).is_grounded());
+  }
+}
+
+#[test]
 fn zobrist() {
   let field_1 = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
@@ -546,6 +597,7 @@ fn undo_check() {
       if field.is_putting_allowed(pos) {
         let field_before = field.clone();
         field.put_point(pos, player);
+        field.update_grounded(pos);
         field.undo();
         assert_eq!(field_before.points, field.points);
         field.put_point(pos, player);

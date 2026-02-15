@@ -99,6 +99,7 @@ impl Game {
 
   async fn put_point(&mut self, pos: Pos, player: Player) -> Result<bool> {
     if self.field.put_players_point(pos, player) {
+      self.field.field.update_grounded(pos);
       let x = self.field.field.to_x(pos);
       let y = self.field.field.to_y(pos);
       Ok(self.client1.put_point(x, y, player).await? && self.client2.put_point(x, y, player).await?)

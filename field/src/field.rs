@@ -91,7 +91,7 @@ pub struct Field {
   zobrist: Arc<Zobrist<u64>>,
   hash: u64,
   chains: [(Vec<Pos>, Pos); 3],
-  captured_points: Vec<Pos>,
+  buffer: Vec<Pos>,
   pub q: VecDeque<Pos>,
 }
 
@@ -672,7 +672,7 @@ impl Field {
         (Vec::with_capacity(length), 0),
         (Vec::with_capacity(length), 0),
       ],
-      captured_points: Vec::with_capacity(length),
+      buffer: Vec::with_capacity(length),
       q: VecDeque::with_capacity(length),
     };
     #[cfg(not(feature = "dsu"))]
@@ -692,7 +692,7 @@ impl Field {
         (Vec::with_capacity(length), 0),
         (Vec::with_capacity(length), 0),
       ],
-      captured_points: Vec::with_capacity(length),
+      buffer: Vec::with_capacity(length),
       q: VecDeque::with_capacity(length),
     };
     field.set_padding();
@@ -726,7 +726,7 @@ impl Field {
   fn capture(&mut self, chain_index: usize, inside_pos: Pos, player: Player) -> bool {
     let mut captured_count = 0i32;
     let mut freed_count = 0i32;
-    self.captured_points.clear();
+    self.buffer.clear();
     for &pos in &self.chains[chain_index].0 {
       self.points[pos].set_tag();
     }
@@ -734,7 +734,7 @@ impl Field {
       let cell = self.points[pos];
       if !cell.is_tagged() && !cell.is_bound_player(player) {
         self.points[pos].set_tag();
-        self.captured_points.push(pos);
+        self.buffer.push(pos);
         if cell.is_put() {
           if cell.get_player() != player {
             captured_count += 1;
@@ -763,7 +763,7 @@ impl Field {
         self.cell_changes.push((pos, self.cell(pos)));
         self.points[pos].set_bound();
       }
-      for &pos in &self.captured_points {
+      for &pos in &self.buffer {
         self.points[pos].clear_tag();
         let cell = self.cell(pos);
         self.cell_changes.push((pos, cell));
@@ -785,7 +785,7 @@ impl Field {
       for &pos in self.chains[chain_index].0.iter() {
         self.points[pos].clear_tag();
       }
-      for &pos in &self.captured_points {
+      for &pos in &self.buffer {
         self.points[pos].clear_tag();
         if !self.points[pos].is_put() {
           let cell = self.cell(pos);
@@ -1045,6 +1045,49 @@ impl Field {
     }
   }
 
+  pub fn update_grounded(&mut self, pos: Pos) {
+    let player = if let Some(player) = self.cell(pos).get_owner() {
+      player
+    } else {
+      return;
+    };
+
+    self.buffer.clear();
+    let mut grounded = false;
+    wave(&mut self.q, self.stride, pos, |pos| {
+      if self.points[pos].is_tagged() {
+        return false;
+      }
+
+      if self.points[pos].is_owner(player) {
+        if (self.points[pos].0 & (Cell::GROUNDED_BIT | Cell::BAD_BIT)) != 0 {
+          grounded = true;
+          false
+        } else {
+          self.buffer.push(pos);
+          self.points[pos].set_tag();
+          true
+        }
+      } else {
+        if self.points[pos].is_bad() {
+          grounded = true;
+        }
+        false
+      }
+    });
+    if grounded {
+      for &pos in &self.buffer {
+        self.points[pos].clear_tag();
+        self.cell_changes.push((pos, self.cell(pos)));
+        self.points[pos].set_grounded();
+      }
+    } else {
+      for &pos in &self.buffer {
+        self.points[pos].clear_tag();
+      }
+    }
+  }
+
   pub fn undo(&mut self) -> bool {
     if let Some(change) = self.changes.pop() {
       self.moves.pop();
@@ -1241,31 +1284,26 @@ impl Field {
   fn non_grounded_points(&mut self) -> (u32, u32) {
     let mut result = (0, 0);
     for &pos in &self.moves {
-      let player = self.cell(pos).get_owner().unwrap();
-      let mut points = 0;
-      let mut grounded = false;
-      wave(&mut self.q, self.stride, pos, |pos| {
-        let cell = self.points[pos];
-        grounded |= cell.is_bad();
-        if !cell.is_tagged() && cell.is_owner(player) {
-          if cell.is_put() {
-            points += 1;
+      if self.points[pos].is_grounded() {
+        continue;
+      }
+      let player = self.cell(pos).get_player();
+      match player {
+        Player::Red => {
+          if self.points[pos].is_captured() {
+            result.1 += 1
+          } else {
+            result.0 += 1
           }
-          self.points[pos].set_tag();
-          true
-        } else {
-          false
         }
-      });
-      if !grounded {
-        match player {
-          Player::Red => result.0 += points,
-          Player::Black => result.1 += points,
+        Player::Black => {
+          if self.points[pos].is_captured() {
+            result.0 += 1
+          } else {
+            result.1 += 1
+          }
         }
       }
-    }
-    for cell in self.min_to_max_mut() {
-      cell.clear_tag();
     }
     result
   }

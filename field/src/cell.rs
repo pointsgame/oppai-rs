@@ -19,7 +19,9 @@ impl Cell {
 
   pub const BAD_BIT: CellValue = 32;
 
-  pub const TAG_BIT: CellValue = 64;
+  pub const GROUNDED_BIT: CellValue = 64;
+
+  pub const TAG_BIT: CellValue = 128;
 
   #[inline]
   pub fn new(bad: bool) -> Cell {
@@ -124,6 +126,21 @@ impl Cell {
   #[inline]
   pub fn clear_tag(&mut self) {
     self.0 &= !Self::TAG_BIT
+  }
+
+  #[inline]
+  pub fn is_grounded(self) -> bool {
+    self.0 & Self::GROUNDED_BIT != 0
+  }
+
+  #[inline]
+  pub fn set_grounded(&mut self) {
+    self.0 |= Self::GROUNDED_BIT
+  }
+
+  #[inline]
+  pub fn clear_grounded(&mut self) {
+    self.0 &= !Self::GROUNDED_BIT
   }
 
   #[inline]
