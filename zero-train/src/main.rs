@@ -13,12 +13,7 @@ use burn::{
 use config::{Action, Backend as ConfigBackend, Config, cli_parse};
 use either::Either;
 use num_traits::Float;
-use oppai_field::{
-  any_field::AnyField,
-  field::{Field, length},
-  player::Player,
-  zobrist::Zobrist,
-};
+use oppai_field::{any_field::AnyField, field::Field, player::Player};
 use oppai_initial::initial::InitialPosition;
 use oppai_sgf::{
   from_sgf, to_sgf,
@@ -42,7 +37,6 @@ use std::{
   iter::{self, Sum},
   path::PathBuf,
   process::ExitCode,
-  sync::Arc,
 };
 
 fn init<B>(model_path: PathBuf, optimizer_path: PathBuf, device: B::Device) -> Result<ExitCode>
@@ -92,9 +86,7 @@ where
   };
 
   let player = Player::Red;
-
-  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, rng));
-  let mut field = Field::new(config.width, config.height, zobrist);
+  let mut field = Field::new_from_rng(config.width, config.height, rng);
 
   for (pos, player) in InitialPosition::Cross.points(config.width, config.height, player) {
     // TODO: random shift
@@ -240,9 +232,7 @@ where
   };
 
   let player = Player::Red;
-
-  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, rng));
-  let field = Field::new(config.width, config.height, zobrist);
+  let field = Field::new_from_rng(config.width, config.height, rng);
 
   let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng)? {
     ExitCode::SUCCESS

@@ -5,19 +5,14 @@ mod config;
 use anyhow::{Result, anyhow};
 use config::{Action, Backend as ConfigBackend, Config, cli_parse};
 use either::Either;
-use oppai_field::{
-  any_field::AnyField,
-  field::{Field, length},
-  player::Player,
-  zobrist::Zobrist,
-};
+use oppai_field::{any_field::AnyField, field::Field, player::Player};
 use oppai_initial::initial::InitialPosition;
 use oppai_sgf::{to_sgf, visits::visits_to_sgf};
 use oppai_zero::{episode::episode, examples::Examples, model::TrainableModel, pit, random_model::RandomModel};
 use oppai_zero_torch::model::PyModel;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use sgf_parse::{GameTree, SimpleText, serialize, unknown_game::Prop};
-use std::{cmp::Ordering, fs, iter, path::PathBuf, process::ExitCode, sync::Arc};
+use std::{cmp::Ordering, fs, iter, path::PathBuf, process::ExitCode};
 
 fn init(model_path: PathBuf, device: &str) -> Result<ExitCode> {
   let mut model = PyModel::<f32>::new(oppai_zero::field_features::CHANNELS as u32, 0.0)?;
@@ -45,8 +40,7 @@ fn play<R: Rng>(
 
   let player = Player::Red;
 
-  let zobrist = Arc::new(Zobrist::new(length(config.width, config.height) * 2, rng));
-  let mut field = Field::new(config.width, config.height, zobrist);
+  let mut field = Field::new_from_rng(config.width, config.height, rng);
 
   for (pos, player) in InitialPosition::Cross.points(config.width, config.height, player) {
     field.put_point(pos, player);
@@ -146,11 +140,7 @@ fn pit<R: Rng>(
   model_new.load(model_new_path)?;
 
   let player = Player::Red;
-  let zobrist = Arc::new(Zobrist::new(
-    oppai_field::field::length(config.width, config.height) * 2,
-    rng,
-  ));
-  let field = Field::new(config.width, config.height, zobrist);
+  let field = Field::new_from_rng(config.width, config.height, rng);
 
   // Pit logic: New model (challenger) vs Old model (champion)
   if pit::pit(&field, player, &mut model_new, &mut model, rng)? {

@@ -1,4 +1,4 @@
-use crate::field::{self, Field, Pos, to_pos};
+use crate::field::{Field, Pos, to_pos};
 use crate::player::Player;
 use crate::zobrist::Zobrist;
 use rand::Rng;
@@ -49,8 +49,7 @@ pub fn construct_field_with_zobrist(zobrist: Arc<Zobrist<u64>>, image: &str) -> 
 
 pub fn construct_field<T: Rng>(rng: &mut T, image: &str) -> Field {
   let (width, height, moves) = construct_moves(image);
-  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, rng));
-  let mut field = Field::new(width, height, zobrist);
+  let mut field = Field::new_from_rng(width, height, rng);
   for (player, pos) in moves {
     assert!(field.put_point(pos, player));
   }

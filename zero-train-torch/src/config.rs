@@ -49,17 +49,15 @@ impl Default for Config {
 }
 
 pub fn cli_parse() -> (Config, Action) {
-  let init = Command::new("init")
-    .about("Initialize the neural network")
-    .arg(
-      Arg::new("model")
-        .long("model")
-        .short('m')
-        .help("Model path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    );
+  let init = Command::new("init").about("Initialize the neural network").arg(
+    Arg::new("model")
+      .long("model")
+      .short('m')
+      .help("Model path")
+      .num_args(1)
+      .value_parser(value_parser!(PathBuf))
+      .required(true),
+  );
   let play = Command::new("play")
     .about("Self-play a single game")
     .arg(

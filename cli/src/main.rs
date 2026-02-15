@@ -10,10 +10,7 @@ use oppai_ais::{
   oppai::{InConfidence, Oppai},
   time_limited_ai::TimeLimitedAI,
 };
-use oppai_field::{
-  field::{Field, length},
-  zobrist::Zobrist,
-};
+use oppai_field::field::Field;
 use oppai_patterns::patterns::Patterns;
 use oppai_protocol::{Constraint, Coords, Move, Request, Response};
 use rand::{SeedableRng, rngs::SmallRng};
@@ -79,9 +76,8 @@ fn main() -> Result<()> {
     let response = match request {
       Request::Init { width, height } => {
         let mut rng = SmallRng::from_os_rng();
-        let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, &mut rng));
         state_option = Some(State {
-          field: Field::new(width, height, zobrist),
+          field: Field::new_from_rng(width, height, &mut rng),
           rng,
           oppai: Oppai::new(width, height, config.ai.clone(), patterns_arc.clone(), ()),
         });

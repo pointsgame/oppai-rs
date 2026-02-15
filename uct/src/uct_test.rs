@@ -47,7 +47,7 @@ macro_rules! uct_test {
 
 uct_test!(uct_1, IMAGE_1, 1_000_000, 5);
 uct_test!(uct_2, IMAGE_2, 100_000, 7);
-uct_test!(uct_3, IMAGE_3, 1_000_000, 5);
+uct_test!(uct_3, IMAGE_3, 1_000_000, 7);
 uct_test!(uct_4, IMAGE_4, 1_000_000, 5);
 uct_test!(uct_5, IMAGE_5, 100_000, 7);
 uct_test!(uct_6, IMAGE_6, 1_000_000, 13);

@@ -13,10 +13,7 @@ fn main() {
     oppai::{Config as AIConfig, Oppai},
     time_limited_ai::TimeLimitedAI,
   };
-  use oppai_field::{
-    field::{Field, length},
-    zobrist::Zobrist,
-  };
+  use oppai_field::Field;
   use oppai_patterns::patterns::Patterns;
   use rand::SeedableRng;
   use rand::rngs::SmallRng;
@@ -45,9 +42,8 @@ fn main() {
 
     if let Request::New(width, height) = request {
       let mut rng = SmallRng::from_seed([1; 32]);
-      let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, &mut rng));
       state = Some(State {
-        field: Field::new(width, height, zobrist),
+        field: Field::new_from_rng(width, height, &mut rng),
         rng,
         oppai: Oppai::new(width, height, AIConfig::default(), Arc::new(Patterns::default()), ()),
       })
