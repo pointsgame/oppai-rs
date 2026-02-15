@@ -106,6 +106,7 @@ pub fn examples<N: Float + Zero + One>(
 
   for &(pos, player) in &moves[0..initial_moves] {
     assert!(field.put_point(pos, player), "invalid moves sequence");
+    field.update_grounded();
   }
 
   for (&(pos, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
@@ -119,6 +120,7 @@ pub fn examples<N: Float + Zero + One>(
     }
 
     assert!(field.put_point(pos, player), "invalid moves sequence");
+    field.update_grounded();
   }
 
   let value = game_result::<N>(&field, Player::Red);

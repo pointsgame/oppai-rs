@@ -168,9 +168,11 @@ fn episode_trap() {
   assert_eq!(model_inputs.borrow()[0], features);
 
   field.put_point(field.to_pos(0, 1), Player::Red);
+  field.update_grounded();
   let features1 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   field.undo();
   field.put_point(field.to_pos(1, 1), Player::Red);
+  field.update_grounded();
   let features2 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   // order depends on rng
   assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
@@ -290,6 +292,10 @@ fn visits_to_examples() {
     [[0.0, 0.0, 0.0],
      [0.0, 0.0, 0.0],
      [0.0, 0.0, 0.0]],
+
+    [[0.0, 1.0, 1.0],
+     [0.0, 0.0, 1.0],
+     [1.0, 1.0, 1.0]],
   ];
   assert_eq!(examples.inputs[0], inputs_0);
   for rotation in 0..ROTATIONS {
@@ -356,6 +362,10 @@ fn visits_to_examples() {
     [[0.0, 0.0, 0.0],
      [0.0, 0.0, 0.0],
      [0.0, 0.0, 0.0]],
+
+    [[0.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0]],
   ];
   assert_eq!(examples.inputs[8], inputs_1);
 

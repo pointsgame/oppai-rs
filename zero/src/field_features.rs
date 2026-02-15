@@ -5,7 +5,7 @@ use oppai_field::field::Field;
 use oppai_field::player::Player;
 use oppai_rotate::rotate::rotate_back;
 
-pub const CHANNELS: usize = 7;
+pub const CHANNELS: usize = 8;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
@@ -110,6 +110,16 @@ pub fn field_features_to_vec<N: Zero + One>(
       } else {
         N::zero()
       }
+    },
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_features(
+    field,
+    |cell| {
+      if cell.is_grounded() { N::one() } else { N::zero() }
     },
     features,
     width,
