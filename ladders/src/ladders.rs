@@ -4,15 +4,16 @@ use oppai_field::field::wave_diag;
 use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use smallvec::SmallVec;
+use std::iter;
 
-fn mark_group(field: &mut Field, start_pos: Pos, player: Player, marks: &mut Vec<Pos>) {
+fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &mut [u32], marks: &mut Vec<Pos>) {
   wave_diag(&mut field.q, field.stride, start_pos, |pos| {
-    if field.points[pos].is_tagged_2() {
+    if empty_board[pos] != 0 {
       return false;
     }
     let cell = field.points[pos];
     if cell.is_players_point(player) {
-      field.points[pos].set_tag_2();
+      empty_board[pos] = 1;
       marks.push(pos);
       true
     } else {
@@ -21,25 +22,25 @@ fn mark_group(field: &mut Field, start_pos: Pos, player: Player, marks: &mut Vec
   });
 }
 
-fn collect_near_moves(field: &mut Field, player: Player) -> Vec<Pos> {
+fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
   let mut moves = Vec::new();
   for &pos in &field.moves {
     if field.points[pos].is_players_point(player) {
       for &near_pos in field.directions_diag(pos).iter() {
-        if !field.points[near_pos].is_tagged_2() && field.is_putting_allowed(near_pos) {
+        if empty_board[near_pos] == 0 && field.is_putting_allowed(near_pos) {
           moves.push(near_pos);
-          field.points[near_pos].set_tag_2();
+          empty_board[near_pos] = 1;
         }
       }
     }
   }
   for &pos in &moves {
-    field.points[pos].clear_tag_2();
+    empty_board[pos] = 0;
   }
   moves
 }
 
-fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Player) -> bool {
+fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Player, empty_board: &mut [u32]) -> bool {
   if trajectory.points.iter().any(|&pos| !field.is_putting_allowed(pos)) {
     return false;
   }
@@ -49,7 +50,7 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
   }
 
   let result = field.get_delta_score(player) > 0 || {
-    let moves = collect_near_moves(field, player);
+    let moves = collect_near_moves(field, player, empty_board);
     moves.into_iter().any(|pos| {
       field.put_point(pos, player);
       if field.get_delta_score(player) <= 0
@@ -65,7 +66,7 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
         field.undo();
       }
       field.put_point(pos, player);
-      let result = is_trajectoty_viable(field, trajectory, player);
+      let result = is_trajectoty_viable(field, trajectory, player, empty_board);
       field.undo();
       for &pos in &trajectory.points {
         field.put_point(pos, player);
@@ -81,13 +82,18 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
   result
 }
 
-fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory<2>, player: Player) -> bool {
+fn is_trajectoty_viable(
+  field: &mut Field,
+  trajectory: &Trajectory<2>,
+  player: Player,
+  empty_board: &mut [u32],
+) -> bool {
   if trajectory.points.len() == 1 {
     return true;
   }
 
   let enemy = player.next();
-  let moves = collect_near_moves(field, enemy);
+  let moves = collect_near_moves(field, enemy, empty_board);
   moves.into_iter().all(|enemy_pos| {
     if trajectory.points.contains(&enemy_pos) {
       return true;
@@ -100,7 +106,7 @@ fn is_trajectoty_viable(field: &mut Field, trajectory: &Trajectory<2>, player: P
       return true;
     }
 
-    let result = is_trajectoty_alive(field, trajectory, player);
+    let result = is_trajectoty_alive(field, trajectory, player, empty_board);
 
     field.undo();
 
@@ -114,6 +120,7 @@ fn ladders_rec<SS: Fn() -> bool>(
   trajectory: &Trajectory<2>,
   mut alpha: i32,
   beta: i32,
+  empty_board: &mut Vec<u32>,
   should_stop: &SS,
   depth: u32,
   marks: &mut Vec<Pos>,
@@ -173,7 +180,8 @@ fn ladders_rec<SS: Fn() -> bool>(
           );
         }
 
-        let trajectories: SmallVec<[_; 2]> = build_trajectories_from(field, our_pos, player, 2, should_stop);
+        let trajectories: SmallVec<[_; 2]> =
+          build_trajectories_from(field, our_pos, player, 2, empty_board, should_stop);
 
         if should_stop() {
           field.undo();
@@ -182,7 +190,7 @@ fn ladders_rec<SS: Fn() -> bool>(
         }
 
         let marks_len = marks.len();
-        mark_group(field, our_pos, player, marks);
+        mark_group(field, our_pos, player, empty_board, marks);
 
         for trajectory in trajectories {
           if alpha >= beta || should_stop() {
@@ -199,6 +207,7 @@ fn ladders_rec<SS: Fn() -> bool>(
             &trajectory,
             alpha,
             beta.min(trajectory.score),
+            empty_board,
             should_stop,
             depth + 1,
             marks,
@@ -214,7 +223,7 @@ fn ladders_rec<SS: Fn() -> bool>(
         }
 
         for &pos in &marks[marks_len..] {
-          field.points[pos].clear_tag_2();
+          empty_board[pos] = 0;
         }
         marks.truncate(marks_len);
 
@@ -226,7 +235,7 @@ fn ladders_rec<SS: Fn() -> bool>(
         best_move,
         alpha,
         capture_depth,
-        best_move.is_some() && (viable || is_trajectoty_viable(field, trajectory, player)),
+        best_move.is_some() && (viable || is_trajectoty_viable(field, trajectory, player, empty_board)),
       )
     }
     _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
@@ -238,7 +247,9 @@ pub fn ladders<SS: Fn() -> bool>(
   player: Player,
   should_stop: &SS,
 ) -> (Option<NonZeroPos>, i32, u32) {
-  let mut trajectories: SmallVec<[_; 8]> = build_trajectories(field, player, 2, should_stop);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let mut trajectories: SmallVec<[_; 8]> = build_trajectories(field, player, 2, &mut empty_board, should_stop);
   trajectories.sort_unstable_by_key(|trajectory| -trajectory.score);
 
   info!("Solving ladders for {} trajectories.", trajectories.len());
@@ -264,7 +275,7 @@ pub fn ladders<SS: Fn() -> bool>(
         .find(|&&pos| field.cell(pos).is_players_point(player))
     {
       // mark one of near groups to not search trajectories from it
-      mark_group(field, pos, player, &mut marks);
+      mark_group(field, pos, player, &mut empty_board, &mut marks);
     };
 
     let (cur_pos, cur_score, cur_capture_depth, cur_viable) = ladders_rec(
@@ -273,6 +284,7 @@ pub fn ladders<SS: Fn() -> bool>(
       &trajectory,
       alpha,
       trajectory.score,
+      &mut empty_board,
       should_stop,
       0,
       &mut marks,
@@ -285,7 +297,7 @@ pub fn ladders<SS: Fn() -> bool>(
     }
 
     for pos in marks {
-      field.points[pos].clear_tag_2();
+      empty_board[pos] = 0;
     }
   }
 

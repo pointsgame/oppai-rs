@@ -4,6 +4,7 @@ use oppai_field::player::Player;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use smallvec::SmallVec;
+use std::iter;
 
 const SEED: u64 = 7;
 
@@ -22,7 +23,10 @@ fn build_trajectories_1() {
     ",
   );
 
-  let trajectories = build_trajectories::<1, _, SmallVec<[_; 3]>>(&mut field, Player::Red, 1, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<1, _, SmallVec<[_; 3]>>(&mut field, Player::Red, 1, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 3);
 }
@@ -42,7 +46,10 @@ fn build_trajectories_2() {
     ",
   );
 
-  let trajectories = build_trajectories::<2, _, SmallVec<[_; 7]>>(&mut field, Player::Red, 2, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<2, _, SmallVec<[_; 7]>>(&mut field, Player::Red, 2, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 7);
 }
@@ -64,7 +71,10 @@ fn build_trajectories_3() {
     ",
   );
 
-  let trajectories = build_trajectories::<3, _, SmallVec<[_; 19]>>(&mut field, Player::Red, 3, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<3, _, SmallVec<[_; 19]>>(&mut field, Player::Red, 3, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 19);
 }
@@ -86,7 +96,10 @@ fn build_trajectories_with_no_extra_points() {
     ",
   );
 
-  let trajectories = build_trajectories::<2, _, SmallVec<[_; 3]>>(&mut field, Player::Red, 2, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<2, _, SmallVec<[_; 3]>>(&mut field, Player::Red, 2, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 3);
 }
@@ -108,7 +121,10 @@ fn build_trajectories_through_empty_base() {
     ",
   );
 
-  let trajectories = build_trajectories::<2, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 2, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<2, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 2, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 1);
 }
@@ -127,7 +143,10 @@ fn build_trajectories_crankle_1() {
     ",
   );
 
-  let trajectories = build_trajectories::<0, _, SmallVec<[_; 512]>>(&mut field, Player::Red, 29, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<0, _, SmallVec<[_; 512]>>(&mut field, Player::Red, 29, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 512);
 }
@@ -147,7 +166,10 @@ fn build_trajectories_crankle_2() {
     ",
   );
 
-  let trajectories = build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 27, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 27, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 1);
 }
@@ -173,7 +195,10 @@ fn build_trajectories_crankle_3() {
     ",
   );
 
-  let trajectories = build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 61, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 61, &mut empty_board, &|| false);
 
   assert_eq!(trajectories.len(), 1);
 }
@@ -209,7 +234,10 @@ fn build_trajectories_maze_1() {
     ",
   );
 
-  let trajectories = build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 39, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 39, &mut empty_board, &|| false);
 
   assert!(!trajectories.is_empty());
 }
@@ -255,7 +283,10 @@ fn build_trajectories_maze_2() {
     ",
   );
 
-  let trajectories = build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 67, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 67, &mut empty_board, &|| false);
 
   assert!(!trajectories.is_empty());
 }
@@ -312,7 +343,10 @@ fn build_trajectories_maze_3() {
     ",
   );
 
-  let trajectories = build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 80, &|| false);
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories =
+    build_trajectories::<0, _, SmallVec<[_; 1]>>(&mut field, Player::Red, 80, &mut empty_board, &|| false);
 
   assert!(!trajectories.is_empty());
 }
@@ -331,19 +365,25 @@ fn build_trajectories_from_1() {
     ",
   );
 
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
   let pos = field.to_pos(2, 1);
-  let trajectories = build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &|| false);
+  let trajectories =
+    build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &mut empty_board, &|| false);
   assert_eq!(trajectories.len(), 1);
 
   let pos = field.to_pos(3, 2);
-  let trajectories = build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &|| false);
+  let trajectories =
+    build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &mut empty_board, &|| false);
   assert_eq!(trajectories.len(), 1);
 
   let pos = field.to_pos(5, 1);
-  let trajectories = build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &|| false);
+  let trajectories =
+    build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &mut empty_board, &|| false);
   assert_eq!(trajectories.len(), 1);
 
   let pos = field.to_pos(4, 2);
-  let trajectories = build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &|| false);
+  let trajectories =
+    build_trajectories_from::<2, _, SmallVec<[_; 1]>>(&mut field, pos, Player::Red, 2, &mut empty_board, &|| false);
   assert_eq!(trajectories.len(), 1);
 }
