@@ -572,7 +572,7 @@ mod tests {
         let mut learner = Learner {
           predictor,
           optimizer,
-          lr: 0.0001,
+          lr: 0.01,
         };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
