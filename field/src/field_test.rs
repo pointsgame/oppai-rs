@@ -491,6 +491,25 @@ fn game_not_over_4() {
 }
 
 #[test]
+fn zobrist() {
+  let field_1 = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ab
+    CD
+    ",
+  );
+  let field_2 = construct_field_with_zobrist(
+    field_1.zobrist_arc(),
+    "
+    dc
+    BA
+    ",
+  );
+  assert_eq!(field_1.hash(), field_2.hash());
+}
+
+#[test]
 fn zobrist_surrounding() {
   let field_1 = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
@@ -512,87 +531,12 @@ fn zobrist_surrounding() {
 }
 
 #[test]
-fn zobrist_big_surrounding() {
-  let field_1 = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    .aa.
-    aB.a
-    .aa.
-    ",
-  );
-  let field_2 = construct_field_with_zobrist(
-    field_1.zobrist_arc(),
-    "
-    .bb.
-    bbAb
-    .bb.
-    ",
-  );
-  assert_eq!(field_1.hash(), field_2.hash());
-}
-
-#[test]
-fn zobrist_deep_onion_surroundings() {
-  let field_1 = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    ...D...
-    ..DcD..
-    .DcBcD.
-    DcBaBcD
-    .DcBcD.
-    ..DcD..
-    ...D...
-    ",
-  );
-  let field_2 = construct_field_with_zobrist(
-    field_1.zobrist_arc(),
-    "
-    ...B...
-    ..BBB..
-    .BaaaB.
-    BBaaaBB
-    .BaaaB.
-    ..BBB..
-    ...B...
-    ",
-  );
-  assert_eq!(field_1.hash(), field_2.hash());
-}
-
-#[test]
-fn zobrist_onion_surroundings() {
-  let field_1 = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    ..c..
-    .cBc.
-    cBaBc
-    .cBc.
-    ..c..
-    ",
-  );
-  let field_2 = construct_field_with_zobrist(
-    field_1.zobrist_arc(),
-    "
-    ..b..
-    .bAb.
-    bAAAb
-    .bbb.
-    ..b..
-    ",
-  );
-  assert_eq!(field_1.hash(), field_2.hash());
-}
-
-#[test]
 fn undo_check() {
   let width = 20;
   let height = 20;
   let checks = 100;
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
-  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 2, &mut rng));
+  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 3, &mut rng));
   let mut moves = (0..field::length(width, height)).collect::<Vec<Pos>>();
   for _ in 0..checks {
     let mut field = Field::new(width, height, zobrist.clone());

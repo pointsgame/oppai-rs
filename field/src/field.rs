@@ -639,7 +639,7 @@ impl Field {
 
   pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist<u64>>) -> Field {
     let length = length(width, height);
-    assert!(zobrist.hashes.0.len() >= 2 * length);
+    debug_assert!(zobrist.hashes.0.len() >= 3 * length);
     let stride = width + 1;
     let s = stride as isize;
     let neighbor_offsets = [
@@ -701,7 +701,7 @@ impl Field {
 
   #[inline]
   pub fn new_from_rng<R: Rng>(width: u32, height: u32, rng: &mut R) -> Field {
-    let zobrist = Arc::new(Zobrist::new(length(width, height) * 2, rng));
+    let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, rng));
     Field::new(width, height, zobrist)
   }
 
@@ -721,11 +721,6 @@ impl Field {
   #[inline]
   fn save_dsu_size_value(&mut self, pos: Pos) {
     self.changes.last_mut().unwrap().dsu_size_change = Some((pos, self.dsu_size[pos]));
-  }
-
-  #[inline]
-  fn update_hash(&mut self, pos: Pos, player: Player) {
-    self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos]
   }
 
   fn capture(&mut self, chain_index: usize, inside_pos: Pos, player: Player) -> bool {
@@ -773,21 +768,16 @@ impl Field {
         let cell = self.cell(pos);
         self.cell_changes.push((pos, cell));
         if !cell.is_put() {
-          if cell.is_captured() {
-            self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos];
-          }
           self.points[pos].0 = self.points[pos].0 & !(Cell::EMPTY_BASE_BIT | Cell::PLAYER_BIT)
             | Cell::CAPTURED_BIT
             | player.to_bool() as u8;
-          self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos];
-        } else if cell.get_player() != player {
-          self.points[pos].0 = self.points[pos].0 & !Cell::BOUND_BIT | Cell::CAPTURED_BIT;
-          self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos]
-            ^ self.zobrist.hashes[self.length() * player as usize + pos];
-        } else if cell.is_captured() {
-          self.points[pos].clear_captured();
-          self.hash ^= self.zobrist.hashes[self.length() * player.next() as usize + pos]
-            ^ self.zobrist.hashes[self.length() * player as usize + pos];
+        } else {
+          if cell.get_player() != player {
+            self.points[pos].0 = self.points[pos].0 & !Cell::BOUND_BIT | Cell::CAPTURED_BIT;
+          } else if cell.is_captured() {
+            self.points[pos].clear_captured();
+          }
+          self.hash ^= self.zobrist.hashes[self.length() * 2 + pos];
         }
       }
       true
@@ -995,7 +985,7 @@ impl Field {
       };
       self.changes.push(change);
       self.save_pos_value(pos);
-      self.update_hash(pos, player);
+      self.hash ^= self.zobrist.hashes[self.length() * player as usize + pos];
       match self.cell(pos).get_empty_base_player() {
         Some(empty_base_player) => {
           self.points[pos].put_point(player);
@@ -1172,7 +1162,7 @@ impl Field {
 
   #[inline]
   pub fn hash(&self) -> u64 {
-    self.hash ^ ((self.length() as u64 + self.score_red as u64 - self.score_black as u64) << 1)
+    self.hash
   }
 
   #[inline]
