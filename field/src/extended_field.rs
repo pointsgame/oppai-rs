@@ -81,7 +81,7 @@ impl ExtendedField {
       if let Some(&pos) = last_chain.first() {
         let player = self.field.cell(pos).get_player();
         self.captures.push((last_chain, player, self.field.moves_count()));
-        for (pos, _) in self.field.last_changed_cells() {
+        for pos in self.field.last_changed_cells() {
           if self.captured[pos] == 0 && self.field.cell(pos).is_captured() {
             self.captured[pos] = self.field.moves_count();
           }
@@ -130,7 +130,7 @@ impl ExtendedField {
   pub fn undo(&mut self) -> bool {
     if let Some(player) = self.field.last_player() {
       let moves_count = self.field.moves_count();
-      for (pos, _) in self.field.last_changed_cells() {
+      for pos in self.field.last_changed_cells() {
         if self.captured[pos] == moves_count {
           self.captured[pos] = 0;
         }

@@ -84,7 +84,7 @@ where
     let pos = search.next_best_root().unwrap();
     search.compact();
     assert!(field.put_point(pos.get(), player));
-    field.update_grounded(pos.get());
+    field.update_grounded();
     player = player.next();
   }
 

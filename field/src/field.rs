@@ -264,14 +264,24 @@ pub fn directions_diag(stride: u32, pos: Pos) -> [Pos; 8] {
   ]
 }
 
+pub fn wave_loop<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, mut cond: F) {
+  while let Some(pos) = q.pop_front() {
+    q.extend(directions(stride, pos).into_iter().filter(|&pos| cond(pos)))
+  }
+}
+
 pub fn wave<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, start_pos: Pos, mut cond: F) {
   if !cond(start_pos) {
     return;
   }
   q.clear();
   q.push_back(start_pos);
+  wave_loop(q, stride, cond);
+}
+
+pub fn wave_diag_loop<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, mut cond: F) {
   while let Some(pos) = q.pop_front() {
-    q.extend(directions(stride, pos).into_iter().filter(|&pos| cond(pos)))
+    q.extend(directions_diag(stride, pos).into_iter().filter(|&pos| cond(pos)))
   }
 }
 
@@ -281,9 +291,7 @@ pub fn wave_diag<F: FnMut(Pos) -> bool>(q: &mut VecDeque<Pos>, stride: u32, star
   }
   q.clear();
   q.push_back(start_pos);
-  while let Some(pos) = q.pop_front() {
-    q.extend(directions_diag(stride, pos).into_iter().filter(|&pos| cond(pos)))
-  }
+  wave_diag_loop(q, stride, cond);
 }
 
 #[inline]
@@ -1045,16 +1053,30 @@ impl Field {
     }
   }
 
-  pub fn update_grounded(&mut self, pos: Pos) {
-    let player = if let Some(player) = self.cell(pos).get_owner() {
-      player
+  pub fn update_grounded(&mut self) {
+    let pos = if let Some(&pos) = self.moves.last() {
+      pos
     } else {
       return;
     };
+    let player = self.cell(pos).get_owner().unwrap();
 
     self.buffer.clear();
     let mut grounded = false;
-    wave(&mut self.q, self.stride, pos, |pos| {
+
+    for pos in self
+      .changes
+      .last()
+      .into_iter()
+      .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
+    {
+      if !self.points[pos].is_empty_base() {
+        self.points[pos].set_tag();
+        self.q.push_back(pos);
+      }
+    }
+
+    wave_loop(&mut self.q, self.stride, |pos| {
       if self.points[pos].is_tagged() {
         return false;
       }
@@ -1075,14 +1097,33 @@ impl Field {
         false
       }
     });
+
     if grounded {
+      for pos in self
+        .changes
+        .last()
+        .into_iter()
+        .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
+      {
+        if !self.points[pos].is_empty_base() {
+          self.points[pos].clear_tag();
+          self.points[pos].set_grounded();
+        }
+      }
+
       for &pos in &self.buffer {
         self.points[pos].clear_tag();
         self.cell_changes.push((pos, self.cell(pos)));
         self.points[pos].set_grounded();
       }
     } else {
-      for &pos in &self.buffer {
+      for pos in self
+        .changes
+        .last()
+        .into_iter()
+        .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
+        .chain(self.buffer.iter().copied())
+      {
         self.points[pos].clear_tag();
       }
     }
@@ -1269,12 +1310,12 @@ impl Field {
     self.zobrist.clone()
   }
 
-  pub fn last_changed_cells(&self) -> impl Iterator<Item = (Pos, Cell)> + '_ {
+  pub fn last_changed_cells(&self) -> impl Iterator<Item = Pos> + '_ {
     self
       .changes
       .last()
       .into_iter()
-      .flat_map(|change| self.cell_changes[change.cell_changes..].iter().copied())
+      .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
   }
 
   pub fn is_corner(&self, pos: Pos) -> bool {

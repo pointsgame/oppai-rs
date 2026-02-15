@@ -1024,7 +1024,7 @@ impl<R: Rng> Session<R> {
         game_id,
       );
     }
-    game_state.field.update_grounded(pos);
+    game_state.field.update_grounded();
 
     game_state.timer.abort();
 

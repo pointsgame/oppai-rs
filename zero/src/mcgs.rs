@@ -227,7 +227,7 @@ impl<N: Float + Sum> Search<N> {
     let mut field = initial.clone();
     for &pos in moves {
       assert!(field.put_point(pos, player), "can't put point, likely a collision");
-      field.update_grounded(pos);
+      field.update_grounded();
       player = player.next();
     }
     field

@@ -39,7 +39,7 @@ where
     search2.next_root(pos.get());
     search2.compact();
     assert!(field.put_point(pos.get(), player));
-    field.update_grounded(pos.get());
+    field.update_grounded();
 
     mem::swap(&mut model1, &mut model2);
     mem::swap(&mut search1, &mut search2);

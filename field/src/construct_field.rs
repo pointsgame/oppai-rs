@@ -52,7 +52,7 @@ pub fn construct_field<T: Rng>(rng: &mut T, image: &str) -> Field {
   let mut field = Field::new_from_rng(width, height, rng);
   for (player, pos) in moves {
     assert!(field.put_point(pos, player));
-    field.update_grounded(pos);
+    field.update_grounded();
   }
   field
 }
