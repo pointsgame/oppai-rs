@@ -14,7 +14,7 @@ log.workspace = true
 strum.workspace = true
 clap = { workspace = true, features = ["cargo"] }
 humantime.workspace = true
-rfd = { version = "0.16", default-features = false, features = ["async-std", "xdg-portal"] }
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 sgf-parse.workspace = true
 postcard = { workspace = true, features = [ "use-std" ] }
 oppai-field = { path = "../field" }

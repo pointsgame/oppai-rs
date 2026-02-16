@@ -66,6 +66,9 @@
 
             perf
 
+            # for rfd
+            dbus
+
             # WINIT_UNIX_BACKEND=wayland
             wayland
 
