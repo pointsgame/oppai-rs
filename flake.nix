@@ -70,10 +70,10 @@
             wayland
 
             # WINIT_UNIX_BACKEND=x11
-            xorg.libXcursor
-            xorg.libXrandr
-            xorg.libXi
-            xorg.libX11
+            libXcursor
+            libXrandr
+            libXi
+            libX11
           ];
 
           LD_LIBRARY_PATH = inputs.nixpkgs.lib.makeLibraryPath buildInputs;
