@@ -117,6 +117,7 @@ where
 }
 
 fn train<B, R: Rng>(
+  config: Config,
   model_path: PathBuf,
   mut optimizer_path: PathBuf,
   model_new_path: PathBuf,
@@ -163,10 +164,18 @@ where
       let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let visits = sgf_to_visits(node, field.stride);
 
+      if field.width() < config.width || field.height() < config.height {
+        return Err(anyhow::anyhow!(
+          "Game is bigger than config: {}:{}",
+          field.width(),
+          field.height()
+        ));
+      }
+
       examples = examples
         + episode::examples(
-          field.width(),
-          field.height(),
+          config.width,
+          config.height,
           field.zobrist_arc(),
           &visits,
           &field.colored_moves().collect::<Vec<_>>(),
@@ -266,6 +275,7 @@ where
       batch_size,
       epochs,
     } => train::<Autodiff<B>, _>(
+      config,
       model,
       optimizer,
       model_new,
