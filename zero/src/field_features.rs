@@ -1,15 +1,36 @@
+use std::iter;
+
 use ndarray::{Array, Array3};
 use num_traits::{One, Zero};
 use oppai_field::cell::Cell;
-use oppai_field::field::Field;
+use oppai_field::field::{Field, NonZeroPos};
 use oppai_field::player::Player;
-use oppai_rotate::rotate::rotate_back;
+use oppai_rotate::rotate::{rotate, rotate_back};
 
-pub const CHANNELS: usize = 8;
+pub const CHANNELS: usize = 13;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
   (width * height) as usize * CHANNELS
+}
+
+fn push_history<N: Zero + One + Copy>(
+  field: &Field,
+  pos: Option<NonZeroPos>,
+  features: &mut Vec<N>,
+  width: u32,
+  height: u32,
+  rotation: u8,
+) {
+  let field_width = field.width();
+  let field_height = field.height();
+  let len = features.len();
+  features.extend(iter::repeat_n(N::zero(), (width * height) as usize));
+  if let Some(pos) = pos {
+    let (x, y) = field.to_xy(pos.get());
+    let (x, y) = rotate(field_width, field_height, x, y, rotation);
+    features[len + (y * width + x) as usize] = N::one();
+  }
 }
 
 fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
@@ -34,7 +55,7 @@ fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
   }));
 }
 
-pub fn field_features_to_vec<N: Zero + One>(
+pub fn field_features_to_vec<N: Zero + One + Copy>(
   field: &Field,
   player: Player,
   width: u32,
@@ -126,9 +147,65 @@ pub fn field_features_to_vec<N: Zero + One>(
     height,
     rotation,
   );
+  push_history(
+    field,
+    field.moves.last().copied().and_then(NonZeroPos::new),
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_history(
+    field,
+    field
+      .moves
+      .get(field.moves.len().overflowing_sub(2).0)
+      .copied()
+      .and_then(NonZeroPos::new),
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_history(
+    field,
+    field
+      .moves
+      .get(field.moves.len().overflowing_sub(3).0)
+      .copied()
+      .and_then(NonZeroPos::new),
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_history(
+    field,
+    field
+      .moves
+      .get(field.moves.len().overflowing_sub(4).0)
+      .copied()
+      .and_then(NonZeroPos::new),
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_history(
+    field,
+    field
+      .moves
+      .get(field.moves.len().overflowing_sub(5).0)
+      .copied()
+      .and_then(NonZeroPos::new),
+    features,
+    width,
+    height,
+    rotation,
+  );
 }
 
-pub fn field_features<N: Zero + One>(
+pub fn field_features<N: Zero + One + Copy>(
   field: &Field,
   player: Player,
   width: u32,

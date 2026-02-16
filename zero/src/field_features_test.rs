@@ -12,9 +12,9 @@ fn field_features_square() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
-    a.a
-    Aa.
-    .aA
+    d.c
+    Eb.
+    .aF
     ",
   );
 
@@ -48,6 +48,36 @@ fn field_features_square() {
     [0., 0., 0.],
     [0., 0., 0.],
   ];
+  #[rustfmt::skip]
+  let history_1 = array![
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 1.],
+  ];
+  #[rustfmt::skip]
+  let history_2 = array![
+    [0., 0., 0.],
+    [1., 0., 0.],
+    [0., 0., 0.],
+  ];
+  #[rustfmt::skip]
+  let history_3 = array![
+    [1., 0., 0.],
+    [0., 0., 0.],
+    [0., 0., 0.],
+  ];
+  #[rustfmt::skip]
+  let history_4 = array![
+    [0., 0., 1.],
+    [0., 0., 0.],
+    [0., 0., 0.],
+  ];
+  #[rustfmt::skip]
+  let history_5 = array![
+    [0., 0., 0.],
+    [0., 1., 0.],
+    [0., 0., 0.],
+  ];
 
   let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -58,6 +88,11 @@ fn field_features_square() {
   assert_eq!(features.slice(s![5, .., ..]), empty);
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), grounded);
+  assert_eq!(features.slice(s![8, .., ..]), history_1);
+  assert_eq!(features.slice(s![9, .., ..]), history_2);
+  assert_eq!(features.slice(s![10, .., ..]), history_3);
+  assert_eq!(features.slice(s![11, .., ..]), history_4);
+  assert_eq!(features.slice(s![12, .., ..]), history_5);
 
   let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
@@ -68,6 +103,41 @@ fn field_features_square() {
   assert_eq!(features.slice(s![5, .., ..]), empty);
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), grounded);
+  assert_eq!(features.slice(s![8, .., ..]), history_1);
+  assert_eq!(features.slice(s![9, .., ..]), history_2);
+  assert_eq!(features.slice(s![10, .., ..]), history_3);
+  assert_eq!(features.slice(s![11, .., ..]), history_4);
+  assert_eq!(features.slice(s![12, .., ..]), history_5);
+
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 4);
+  assert_eq!(features.slice(s![0, .., ..]), mask.t());
+  assert_eq!(features.slice(s![1, .., ..]), red.t());
+  assert_eq!(features.slice(s![2, .., ..]), black.t());
+  assert_eq!(features.slice(s![3, .., ..]), red.t());
+  assert_eq!(features.slice(s![4, .., ..]), black.t());
+  assert_eq!(features.slice(s![5, .., ..]), empty.t());
+  assert_eq!(features.slice(s![6, .., ..]), empty.t());
+  assert_eq!(features.slice(s![7, .., ..]), grounded.t());
+  assert_eq!(features.slice(s![8, .., ..]), history_1.t());
+  assert_eq!(features.slice(s![9, .., ..]), history_2.t());
+  assert_eq!(features.slice(s![10, .., ..]), history_3.t());
+  assert_eq!(features.slice(s![11, .., ..]), history_4.t());
+  assert_eq!(features.slice(s![12, .., ..]), history_5.t());
+
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 5);
+  assert_eq!(features.slice(s![0, .., ..]), mask.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![1, .., ..]), red.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![2, .., ..]), black.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![3, .., ..]), red.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![4, .., ..]), black.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![5, .., ..]), empty.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![6, .., ..]), empty.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![7, .., ..]), grounded.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![8, .., ..]), history_1.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![9, .., ..]), history_2.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![10, .., ..]), history_3.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![11, .., ..]), history_4.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![12, .., ..]), history_5.slice(s![..; -1, ..]).t());
 }
 
 #[test]
