@@ -231,14 +231,12 @@ impl<N: Float + Sum> Search<N> {
 
   const PARALLEL_READOUTS: usize = 8;
 
-  fn make_moves(initial: &Field, moves: &[Pos], mut player: Player) -> Field {
-    let mut field = initial.clone();
+  fn make_moves(field: &mut Field, moves: &[Pos], mut player: Player) {
     for &pos in moves {
       assert!(field.put_point(pos, player), "can't put point, likely a collision");
       field.update_grounded();
       player = player.next();
     }
-    field
   }
 
   fn create_children<R: Rng>(
@@ -301,62 +299,68 @@ impl<N: Float + Sum> Search<N> {
     leafs.sort_unstable();
     leafs.dedup();
 
-    let mut fields = leafs
-      .iter()
-      .map(|leaf| Self::make_moves(field, leaf, player))
-      .collect::<Vec<_>>();
+    let features_len = field_features_len(field.width(), field.height());
+    let mut features = Vec::with_capacity(features_len * leafs.len());
 
-    fields.retain_mut(|cur_field| {
-      if cur_field.is_game_over() {
-        self.add_result(
-          &cur_field.moves[field.moves_count()..],
-          game_result(
-            cur_field,
-            if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
-              player
-            } else {
-              player.next()
-            },
-          ),
-          Vec::new(),
-        );
-        false
-      } else {
-        true
-      }
-    });
+    leafs.retain(|leaf| {
+      Self::make_moves(field, leaf, player);
 
-    if fields.is_empty() {
-      return Ok(());
-    }
-
-    let mut features = Vec::with_capacity(field_features_len(field.width(), field.height()) * fields.len());
-    for cur_field in &fields {
-      let player = if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
+      let player = if leaf.len().is_multiple_of(2) {
         player
       } else {
         player.next()
       };
-      field_features_to_vec::<N>(cur_field, player, field.width(), field.height(), 0, &mut features)
+
+      let result = if field.is_game_over() {
+        self.add_result(leaf, game_result(field, player), Vec::new());
+        false
+      } else {
+        field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
+        true
+      };
+
+      for _ in 0..leaf.len() {
+        field.undo();
+      }
+
+      result
+    });
+
+    if features.is_empty() {
+      return Ok(());
     }
+
     let features = Array::from_shape_vec(
-      (fields.len(), CHANNELS, field.height() as usize, field.width() as usize),
+      (
+        features.len() / features_len,
+        CHANNELS,
+        field.height() as usize,
+        field.width() as usize,
+      ),
       features,
     )
     .unwrap();
 
     let (policies, values) = model.predict(features)?;
 
-    for (i, mut cur_field) in fields.into_iter().enumerate() {
-      let player = if (cur_field.moves_count() - field.moves_count()).is_multiple_of(2) {
+    for (i, leaf) in leafs.iter().enumerate() {
+      Self::make_moves(field, leaf, player);
+
+      let player = if (leaf.len()).is_multiple_of(2) {
         player
       } else {
         player.next()
       };
+
       let policy = policies.slice(s![i, .., ..]);
       let value = values[i];
-      let children = self.create_children(&mut cur_field, player, &policy, rng);
-      self.add_result(&cur_field.moves[field.moves_count()..], value, children);
+
+      let children = self.create_children(field, player, &policy, rng);
+      self.add_result(leaf, value, children);
+
+      for _ in 0..leaf.len() {
+        field.undo();
+      }
     }
 
     Ok(())
