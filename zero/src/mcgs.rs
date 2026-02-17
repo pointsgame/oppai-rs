@@ -98,15 +98,6 @@ pub struct Search<N: Float> {
 }
 
 impl<N: Float> Search<N> {
-  fn add_node(&mut self, hash: u64) -> usize {
-    *self.map.entry(hash).or_insert_with(|| {
-      let idx = self.nodes.len();
-      let node = Node::new();
-      self.nodes.push(node);
-      idx
-    })
-  }
-
   pub fn new() -> Self {
     let mut search = Search {
       root_idx: 0,
@@ -121,13 +112,23 @@ impl<N: Float> Search<N> {
 }
 
 impl<N: Float + Sum> Search<N> {
+  fn add_node(&mut self, hash: u64) -> usize {
+    *self.map.entry(hash).or_insert_with(|| {
+      let idx = self.nodes.len();
+      let node = Node::new();
+      self.nodes.push(node);
+      idx
+    })
+  }
+
   fn update_node(map: &HashMap<u64, usize>, nodes: &mut [Node<N>], node_idx: usize) {
     let mut sum_values = N::zero();
     let mut sum_visits = 0;
 
     for edge in nodes[node_idx].children.iter() {
-      let child = &nodes[map[&edge.hash]];
-      sum_values = sum_values + N::from(edge.visits).unwrap() * (-child.value);
+      if let Some(&child_idx) = map.get(&edge.hash) {
+        sum_values = sum_values - N::from(edge.visits).unwrap() * nodes[child_idx].value;
+      }
       sum_visits += edge.visits;
     }
 
@@ -137,17 +138,16 @@ impl<N: Float + Sum> Search<N> {
 
   fn select_edge(&self, node_idx: usize) -> Option<usize> {
     let node = &self.nodes[node_idx];
-    if node.children.is_empty() {
-      return None;
-    }
-
     let total_n_sqrt = N::from(node.visits).unwrap().sqrt();
 
     let mut best_score = -N::infinity();
-    let mut best = 0;
+    let mut best = None;
 
     for (idx, edge) in node.children.iter().enumerate() {
-      let child = &self.nodes[self.map[&edge.hash]];
+      let child_value = self
+        .map
+        .get(&edge.hash)
+        .map_or(N::zero(), |&child_idx| self.nodes[child_idx].value);
 
       // Hyperparameter for PUCT
       let c_puct = N::from(2.5).unwrap();
@@ -156,7 +156,7 @@ impl<N: Float + Sum> Search<N> {
       // Parent wants to maximize own value, which is -child.value
       let visits = N::from(edge.visits + 1).unwrap();
       let virtual_losses = N::from(edge.virtual_losses).unwrap();
-      let q = (-child.value * visits - virtual_losses) / (visits + virtual_losses);
+      let q = (-child_value * visits - virtual_losses) / (visits + virtual_losses);
       let n = edge.visits + edge.virtual_losses;
       let p = edge.prior;
 
@@ -166,11 +166,11 @@ impl<N: Float + Sum> Search<N> {
 
       if score > best_score {
         best_score = score;
-        best = idx;
+        best = Some(idx);
       }
     }
 
-    Some(best)
+    best
   }
 
   fn select_path(&mut self) -> Vec<Pos> {
@@ -180,7 +180,11 @@ impl<N: Float + Sum> Search<N> {
     while let Some(edge_idx) = self.select_edge(idx) {
       self.nodes[idx].children[edge_idx].virtual_losses += 1;
       moves.push(self.nodes[idx].children[edge_idx].pos);
-      idx = self.map[&self.nodes[idx].children[edge_idx].hash];
+      if let Some(&child_idx) = self.map.get(&self.nodes[idx].children[edge_idx].hash) {
+        idx = child_idx;
+      } else {
+        break;
+      }
     }
 
     moves
@@ -195,7 +199,11 @@ impl<N: Float + Sum> Search<N> {
         .position(|edge| edge.pos == pos)
         .unwrap();
       self.nodes[idx].children[edge_idx].virtual_losses -= 1;
-      idx = self.map[&self.nodes[idx].children[edge_idx].hash];
+      if let Some(&child_idx) = self.map.get(&self.nodes[idx].children[edge_idx].hash) {
+        idx = child_idx;
+      } else {
+        break;
+      }
     }
   }
 
@@ -210,7 +218,7 @@ impl<N: Float + Sum> Search<N> {
         .position(|edge| edge.pos == pos)
         .unwrap();
       self.nodes[idx].children[edge_idx].visits += 1;
-      idx = self.map[&self.nodes[idx].children[edge_idx].hash];
+      idx = self.add_node(self.nodes[idx].children[edge_idx].hash);
     }
     self.nodes[idx].value = result;
     self.nodes[idx].raw_value = result;
@@ -255,9 +263,6 @@ impl<N: Float + Sum> Search<N> {
       let x = to_x(stride, pos);
       let y = to_y(stride, pos);
       let p = policy[(y as usize, x as usize)];
-
-      // TODO: don't add empty node?
-      self.add_node(hash);
 
       children.push(Edge {
         pos,
@@ -368,9 +373,14 @@ impl<N: Float + Sum> Search<N> {
 
   /// Move the root to the best child
   pub fn next_best_root(&mut self) -> Option<NonZeroPos> {
-    if let Some(edge) = self.nodes[self.root_idx].children.iter().max_by_key(|edge| edge.visits) {
-      self.root_idx = self.map[&edge.hash];
-      NonZeroPos::new(edge.pos)
+    if let Some((edge_hash, edge_pos)) = self.nodes[self.root_idx]
+      .children
+      .iter()
+      .max_by_key(|edge| edge.visits)
+      .map(|edge| (edge.hash, edge.pos))
+    {
+      self.root_idx = self.add_node(edge_hash);
+      NonZeroPos::new(edge_pos)
     } else {
       *self = Self::new();
       None
@@ -379,8 +389,13 @@ impl<N: Float + Sum> Search<N> {
 
   /// Move the root to the child with the given position
   pub fn next_root(&mut self, pos: Pos) {
-    if let Some(edge) = self.nodes[self.root_idx].children.iter().find(|edge| edge.pos == pos) {
-      self.root_idx = self.map[&edge.hash];
+    if let Some(edge_hash) = self.nodes[self.root_idx]
+      .children
+      .iter()
+      .find(|edge| edge.pos == pos)
+      .map(|edge| edge.hash)
+    {
+      self.root_idx = self.add_node(edge_hash);
     } else {
       *self = Self::new();
     }
@@ -402,16 +417,17 @@ impl<N: Float + Sum> Search<N> {
     new_search.nodes.push(mem::take(&mut self.nodes[self.root_idx]));
 
     while let Some(hash) = queue.pop_front() {
-      if new_search.map.contains_key(&hash) {
-        continue;
+      if let Some(child_idx) = self.map.remove(&hash) {
+        for edge in self.nodes[child_idx]
+          .children
+          .iter()
+          .filter(|edge| self.map.contains_key(&edge.hash))
+        {
+          queue.push_back(edge.hash);
+        }
+        new_search.nodes.push(mem::take(&mut self.nodes[child_idx]));
+        new_search.map.insert(hash, new_search.nodes.len() - 1);
       }
-
-      for edge in &mut self.nodes[self.map[&hash]].children {
-        queue.push_back(edge.hash);
-      }
-
-      new_search.nodes.push(mem::take(&mut self.nodes[self.map[&hash]]));
-      new_search.map.insert(hash, new_search.nodes.len() - 1);
     }
 
     *self = new_search;
