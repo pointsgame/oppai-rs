@@ -490,9 +490,14 @@ where
       .sum()
       / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
-    let loss = values_loss + policies_loss;
+    let loss = values_loss.clone() + policies_loss.clone();
 
-    log::info!("Loss: {}", loss.clone().into_scalar());
+    log::info!(
+      "Loss: value {} policy {} total: {}",
+      values_loss.clone().into_scalar(),
+      policies_loss.clone().into_scalar(),
+      loss.clone().into_scalar(),
+    );
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(self.lr, self.predictor.model, grads);
