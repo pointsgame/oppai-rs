@@ -434,6 +434,7 @@ where
       &self.device,
     );
     let (policies, values) = self.model.forward(inputs);
+    let policies = policies.exp();
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
     let values = Array1::from_vec(values.into_data().into_vec()?);
     Ok((policies, values))
