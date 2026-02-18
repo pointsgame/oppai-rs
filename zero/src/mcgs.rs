@@ -353,7 +353,7 @@ impl<N: Float + Sum> Search<N> {
       };
 
       let policy = policies.slice(s![i, .., ..]);
-      let value = values[i];
+      let value = values[(i, 0)] - values[(i, 1)];
 
       let children = self.create_children(field, player, &policy, rng);
       self.add_result(leaf, value, children);

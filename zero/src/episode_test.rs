@@ -1,7 +1,7 @@
 use crate::episode::{Visits, episode, examples};
 use crate::field_features::{CHANNELS, field_features};
 use crate::mcgs_test::{const_value, uniform_policies};
-use ndarray::{Array, Array4, Axis, array};
+use ndarray::{Array2, Array4, Axis, array};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use oppai_rotate::rotate::{ROTATIONS, rotate, rotate_back};
@@ -29,7 +29,7 @@ fn episode_simple_surrounding() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 0.0, 1.0])));
       model_inputs.borrow_mut().push(inputs);
       result
     },
@@ -76,7 +76,7 @@ fn episode_simple_surrounding() {
       .unwrap()
   );
 
-  assert_eq!(examples.values, vec![1.0; 8]);
+  assert_eq!(examples.values, vec![array![1.0, 0.0, 0.0]; 8]);
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn episode_trap() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 0.0, 1.0])));
       model_inputs.borrow_mut().push(inputs);
       result
     },
@@ -178,7 +178,7 @@ fn episode_trap() {
   assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
   assert_eq!(features2, model_inputs.borrow()[1].index_axis(Axis(0), 1));
 
-  assert_eq!(examples.values, vec![0.0; 16]);
+  assert_eq!(examples.values, vec![array![0.0, 0.0, 1.0]; 16]);
 }
 
 #[test]
@@ -208,13 +208,13 @@ fn episode_winning_game() {
     Player::Red,
     &mut |inputs: Array4<f64>| {
       let batch_size = inputs.len_of(Axis(0));
-      let values = Array::from_iter((0..batch_size).map(|i| {
-        if inputs[(i, 0, center_y, center_x)] > 0.0 {
-          1.0
-        } else {
-          0.0
+      let values = Array2::from_shape_fn((batch_size, 3), |(i, j)| {
+        match (inputs[(i, 1, center_y, center_x)] > 0.0, j) {
+          (true, 1) => 1.0,  // [0.0, 1.0, 0.0]
+          (false, 0) => 1.0, // [1.0, 0.0, 0.0]
+          _ => 0.0,
         }
-      }));
+      });
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), values));
       result
     },
@@ -232,11 +232,11 @@ fn episode_winning_game() {
   assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
 
   for (value, input) in examples.values.into_iter().zip(examples.inputs.into_iter()) {
-    assert!(if input[(0, center_y, center_x)] > 0.0 {
-      value > 0.0
+    if input[(1, center_y, center_x)] > 0.0 {
+      assert_eq!(value, array![0.0, 1.0, 0.0]);
     } else {
-      value < 0.0
-    });
+      assert_eq!(value, array![1.0, 0.0, 0.0]);
+    }
   }
 }
 
@@ -351,7 +351,7 @@ fn visits_to_examples() {
     }
   }
 
-  assert!(examples.values[0] > 0.0);
+  assert_eq!(examples.values[0], array![1.0, 0.0, 0.0]);
 
   #[rustfmt::skip]
   let inputs_1 = array![
@@ -417,5 +417,5 @@ fn visits_to_examples() {
   ];
   assert_eq!(examples.policies[8], policies_1);
 
-  assert!(examples.values[8] < 0.0);
+  assert_eq!(examples.values[8], array![0.0, 1.0, 0.0]);
 }

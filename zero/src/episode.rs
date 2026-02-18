@@ -1,8 +1,8 @@
 use crate::examples::Examples;
 use crate::field_features::field_features;
-use crate::mcgs::{Search, game_result};
+use crate::mcgs::Search;
 use crate::model::Model;
-use ndarray::Array2;
+use ndarray::{Array1, Array2, array};
 use num_traits::{Float, One, Zero};
 use oppai_field::field::{to_x, to_y};
 use oppai_field::zobrist::Zobrist;
@@ -14,6 +14,7 @@ use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate, rotate_sizes};
 use rand::Rng;
 use rand::distr::uniform::SampleUniform;
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
+use std::cmp::Ordering;
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
 use std::sync::Arc;
@@ -91,6 +92,14 @@ where
   Ok(visits)
 }
 
+fn game_result<N: Float>(field: &Field, player: Player) -> Array1<N> {
+  match field.score(player).cmp(&0) {
+    Ordering::Less => array![N::zero(), N::one(), N::zero()],
+    Ordering::Equal => array![N::zero(), N::zero(), N::one()],
+    Ordering::Greater => array![N::one(), N::zero(), N::zero()],
+  }
+}
+
 pub fn examples<N: Float + Zero + One>(
   width: u32,
   height: u32,
@@ -123,13 +132,9 @@ pub fn examples<N: Float + Zero + One>(
     field.update_grounded();
   }
 
-  let value = game_result::<N>(&field, Player::Red);
   for (&(_, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
     if visits.1 {
-      let value = match player {
-        Player::Red => value,
-        Player::Black => -value,
-      };
+      let value = game_result::<N>(&field, player);
       examples.values.extend(iter::repeat_n(value, rotations as usize));
     }
   }

@@ -13,7 +13,7 @@ use burn::{
   },
 };
 use derive_more::From;
-use ndarray::{Array, Array1, Array3, Array4, Dimension, ShapeError};
+use ndarray::{Array, Array2, Array3, Array4, Dimension, ShapeError};
 use num_traits::{Float, NumCast};
 use oppai_zero::{
   field_features::CHANNELS,
@@ -265,7 +265,7 @@ impl<B: Backend> ValueHead<B> {
         .init(device),
       bias1: NormMask::new(device, V1_CHANNELS, false),
       act1: Gelu::new(),
-      linear2: LinearConfig::new(3 * V1_CHANNELS, 1).init(device),
+      linear2: LinearConfig::new(3 * V1_CHANNELS, 3).init(device),
     }
   }
 
@@ -283,13 +283,12 @@ impl<B: Backend> ValueHead<B> {
     Tensor::cat(vec![out_pool1, out_pool2, out_pool3], 1)
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 1> {
+  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 2> {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask);
     let outv1 = self.act1.forward(outv1);
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
-    let outv2 = self.linear2.forward(outpooled).squeeze_dims(&[1]);
-    outv2.tanh()
+    self.linear2.forward(outpooled)
   }
 }
 
@@ -370,7 +369,7 @@ impl<B: Backend> Model<B> {
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 1>) {
+  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>) {
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let mut x = self.initial_conv.forward(inputs);
@@ -426,16 +425,17 @@ where
   fn predict(
     &mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
-  ) -> Result<(Array3<<B as Backend>::FloatElem>, Array1<<B as Backend>::FloatElem>), Self::E> {
+  ) -> Result<(Array3<<B as Backend>::FloatElem>, Array2<<B as Backend>::FloatElem>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
     );
-    let (policy_logists, values) = self.model.forward(inputs);
+    let (policy_logists, value_logists) = self.model.forward(inputs);
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
+    let values = softmax(value_logists, 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
-    let values = Array1::from_vec(values.into_data().into_vec()?);
+    let values = Array2::from_shape_vec((batch, 3), values.into_data().into_vec()?)?;
     Ok((policies, values))
   }
 }
@@ -450,7 +450,7 @@ where
   fn predict(
     &mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
-  ) -> Result<(Array3<<B as Backend>::FloatElem>, Array1<<B as Backend>::FloatElem>), Self::E> {
+  ) -> Result<(Array3<<B as Backend>::FloatElem>, Array2<<B as Backend>::FloatElem>), Self::E> {
     self.predictor.predict(inputs)
   }
 }
@@ -467,7 +467,7 @@ where
     mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
     policies: Array3<<B as Backend>::FloatElem>,
-    values: Array1<<B as Backend>::FloatElem>,
+    values: Array2<<B as Backend>::FloatElem>,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
@@ -478,18 +478,16 @@ where
       TensorData::new(into_data_vec(policies), [batch, height * width]),
       &self.predictor.device,
     );
-    let values = Tensor::from_data(TensorData::new(into_data_vec(values), [batch]), &self.predictor.device);
-    let (out_policy_logists, out_values) = self.predictor.model.forward(inputs);
+    let values = Tensor::from_data(
+      TensorData::new(into_data_vec(values), [batch, 3]),
+      &self.predictor.device,
+    );
+    let (out_policy_logists, out_value_logists) = self.predictor.model.forward(inputs);
     let out_policies = log_softmax(out_policy_logists.reshape([0, -1]), 1);
+    let out_values = log_softmax(out_value_logists, 1);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
-    let values_loss = (out_values - values)
-      .powf(Tensor::from_data(
-        [<<B as Backend>::FloatElem as NumCast>::from(2.0).unwrap()],
-        &self.predictor.device,
-      ))
-      .sum()
-      / batch;
+    let values_loss = -(out_values * values).sum() * 1.5 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
     let loss = values_loss.clone() + policies_loss.clone();
 
@@ -515,7 +513,7 @@ mod tests {
     optim::SgdConfig,
     tensor::{Tensor, activation::softmax},
   };
-  use ndarray::{Array, Array3, Array4};
+  use ndarray::{Array3, Array4, array};
   use oppai_zero::{
     field_features::CHANNELS,
     model::{Model as OppaiModel, TrainableModel},
@@ -583,7 +581,7 @@ mod tests {
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
-        let values = Array::from_elem(1, 0.5);
+        let values = array![[1.0, 0.0, 0.0]];
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();
         let mut learner = learner.train(inputs.clone(), policies, values).unwrap();

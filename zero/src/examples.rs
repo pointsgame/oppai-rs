@@ -1,5 +1,5 @@
 use either::Either;
-use ndarray::{Array, Array1, Array2, Array3, Array4, Axis};
+use ndarray::{Array1, Array2, Array3, Array4, Axis};
 use rand::Rng;
 use std::{iter, ops::Add};
 
@@ -7,7 +7,7 @@ use std::{iter, ops::Add};
 pub struct Examples<N> {
   pub inputs: Vec<Array3<N>>,
   pub policies: Vec<Array2<N>>,
-  pub values: Vec<N>,
+  pub values: Vec<Array1<N>>,
 }
 
 impl<N> Default for Examples<N> {
@@ -46,8 +46,8 @@ impl<N: Clone> Examples<N> {
   }
 
   #[inline]
-  fn values_array(values: &[N]) -> Array1<N> {
-    Array::from(values.to_vec())
+  fn values_array(values: &[Array1<N>]) -> Array2<N> {
+    ndarray::stack(Axis(0), values.iter().map(|v| v.view()).collect::<Vec<_>>().as_slice()).unwrap()
   }
 
   #[inline]
@@ -61,7 +61,7 @@ impl<N: Clone> Examples<N> {
   }
 
   #[inline]
-  pub fn values(&self) -> Array1<N> {
+  pub fn values(&self) -> Array2<N> {
     Examples::values_array(&self.values)
   }
 
@@ -92,7 +92,7 @@ impl<N: Clone> Examples<N> {
     }
   }
 
-  pub fn batches(&self, size: usize) -> impl Iterator<Item = (Array4<N>, Array3<N>, Array1<N>)> + '_ {
+  pub fn batches(&self, size: usize) -> impl Iterator<Item = (Array4<N>, Array3<N>, Array2<N>)> + '_ {
     if self.len() <= size {
       Either::Left(iter::once((self.inputs(), self.policies(), self.values())))
     } else {

@@ -1,4 +1,4 @@
-use ndarray::{Array, Array1, Array3, Array4, Axis};
+use ndarray::{Array, Array1, Array2, Array3, Array4, Axis, array};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use rand::SeedableRng;
@@ -16,9 +16,9 @@ pub fn uniform_policies(inputs: &Array4<f64>) -> Array3<f64> {
   Array::from_elem((batch_size, height, width), policy)
 }
 
-pub fn const_value(inputs: &Array4<f64>, value: f64) -> Array1<f64> {
+pub fn const_value(inputs: &Array4<f64>, value: Array1<f64>) -> Array2<f64> {
   let batch_size = inputs.len_of(Axis(0));
-  Array::from_elem(batch_size, value)
+  value.broadcast((batch_size, value.len())).unwrap().to_owned()
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn mcts_first_iterations() {
       &mut field,
       Player::Red,
       &mut |inputs: Array4<f64>| {
-        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 1.0)));
+        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0, 0.0])));
         result
       },
       &mut rng,
@@ -64,7 +64,7 @@ fn mcts_first_iterations() {
       &mut field,
       Player::Red,
       &mut |inputs: Array4<f64>| {
-        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, -1.0)));
+        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0, 0.0])));
         result
       },
       &mut rng,
@@ -123,7 +123,7 @@ fn mcts_last_iterations() {
       &mut field,
       Player::Red,
       &mut |inputs: Array4<f64>| {
-        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, 0.0)));
+        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 0.0, 1.0])));
         result
       },
       &mut rng,
