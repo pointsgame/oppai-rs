@@ -7,7 +7,7 @@ use burn::{
   optim::{GradientsParams, LearningRate, Optimizer},
   tensor::{
     DataError, Tensor, TensorData,
-    activation::log_softmax,
+    activation::{log_softmax, softmax},
     backend::{AutodiffBackend, Backend},
     s,
   },
@@ -340,7 +340,6 @@ impl<B: Backend> PolicyHead<B> {
     let outp = self.act2.forward(outp);
     let outp = self.conv2p.forward(outp);
     let outp: Tensor<B, 4> = outp - (1.0 - mask) * 5000.0;
-    let outp = log_softmax(outp.reshape([0, -1]), 1);
     outp.reshape([batch, height, width])
   }
 }
@@ -433,8 +432,8 @@ where
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
     );
-    let (policies, values) = self.model.forward(inputs);
-    let policies = policies.exp();
+    let (policy_logists, values) = self.model.forward(inputs);
+    let policies = softmax(policy_logists.reshape([0, -1]), 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
     let values = Array1::from_vec(values.into_data().into_vec()?);
     Ok((policies, values))
@@ -476,11 +475,12 @@ where
       &self.predictor.device,
     );
     let policies = Tensor::from_data(
-      TensorData::new(into_data_vec(policies), [batch, height, width]),
+      TensorData::new(into_data_vec(policies), [batch, height * width]),
       &self.predictor.device,
     );
     let values = Tensor::from_data(TensorData::new(into_data_vec(values), [batch]), &self.predictor.device);
-    let (out_policies, out_values) = self.predictor.model.forward(inputs);
+    let (out_policy_logists, out_values) = self.predictor.model.forward(inputs);
+    let out_policies = log_softmax(out_policy_logists.reshape([0, -1]), 1);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
     let values_loss = (out_values - values)
@@ -513,7 +513,7 @@ mod tests {
   use burn::{
     backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
     optim::SgdConfig,
-    tensor::Tensor,
+    tensor::{Tensor, activation::softmax},
   };
   use ndarray::{Array, Array3, Array4};
   use oppai_zero::{
@@ -524,8 +524,8 @@ mod tests {
   #[test]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
-    let (policies, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
-    let policies = policies.exp();
+    let (policy_logists, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
+    let policies = softmax(policy_logists.reshape([0, -1]), 1);
     assert!(
       policies
         .clone()
