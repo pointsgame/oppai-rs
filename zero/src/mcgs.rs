@@ -150,7 +150,7 @@ impl<N: Float + Sum> Search<N> {
         .map_or(N::zero(), |&child_idx| self.nodes[child_idx].value);
 
       // Hyperparameter for PUCT
-      let c_puct = N::from(2.5).unwrap();
+      let c_puct = N::from(1.1).unwrap();
 
       // Child value is from child's perspective.
       // Parent wants to maximize own value, which is -child.value
