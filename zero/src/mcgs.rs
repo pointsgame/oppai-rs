@@ -10,6 +10,7 @@ use oppai_field::{
 use rand::Rng;
 use rand::seq::SliceRandom;
 use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
+use std::cell::LazyCell;
 use std::collections::VecDeque;
 use std::mem;
 use std::{collections::HashMap, iter, iter::Sum};
@@ -36,7 +37,7 @@ pub struct Node<N: Float> {
   pub visits: u64,
   /// Q(n): Expected utility.
   /// Calculated recursively: (U(n) + sum(edge.visits * child.Q)) / N(n)
-  pub value: N,
+  pub value: N, // utilityAvg
   /// U(n): Raw utility from the neural net for this state.
   pub raw_value: N,
   /// Edges to children.
@@ -95,6 +96,8 @@ pub struct Search<N: Float> {
   pub nodes: Vec<Node<N>>,
   /// Maps Zobrist hash -> index in `nodes`
   pub map: HashMap<u64, usize>,
+  /// Whether dirichlet noise was added to the root node
+  pub dirichlet_noise: bool,
 }
 
 impl<N: Float> Search<N> {
@@ -103,6 +106,7 @@ impl<N: Float> Search<N> {
       root_idx: 0,
       nodes: Vec::new(),
       map: HashMap::new(),
+      dirichlet_noise: false,
     };
 
     // Initialize root
@@ -136,12 +140,21 @@ impl<N: Float + Sum> Search<N> {
     nodes[node_idx].value = (nodes[node_idx].raw_value + sum_values) / N::from(nodes[node_idx].visits).unwrap();
   }
 
-  fn select_edge(&self, node_idx: usize) -> Option<usize> {
+  fn select_edge(&self, node_idx: usize, noise: bool) -> Option<usize> {
     let node = &self.nodes[node_idx];
     let total_n_sqrt = N::from(node.visits).unwrap().sqrt();
 
     let mut best_score = -N::infinity();
     let mut best = None;
+
+    let prior_visited = LazyCell::new(|| {
+      node
+        .children
+        .iter()
+        .filter(|edge| edge.visits > 0)
+        .map(|edge| edge.prior)
+        .sum()
+    });
 
     for (idx, edge) in node.children.iter().enumerate() {
       let child_value = self
@@ -151,12 +164,18 @@ impl<N: Float + Sum> Search<N> {
 
       // Hyperparameter for PUCT
       let c_puct = N::from(1.1).unwrap();
+      let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
 
       // Child value is from child's perspective.
       // Parent wants to maximize own value, which is -child.value
-      let visits = N::from(edge.visits + 1).unwrap();
-      let virtual_losses = N::from(edge.virtual_losses).unwrap();
-      let q = (-child_value * visits - virtual_losses) / (visits + virtual_losses);
+      let q = if edge.visits > 0 {
+        let visits = N::from(edge.visits).unwrap();
+        let virtual_losses = N::from(edge.virtual_losses).unwrap();
+        (-child_value * visits - virtual_losses) / (visits + virtual_losses)
+      } else {
+        // FPU
+        node.value - c_fpu * *prior_visited
+      };
       let n = edge.visits + edge.virtual_losses;
       let p = edge.prior;
 
@@ -176,8 +195,10 @@ impl<N: Float + Sum> Search<N> {
   fn select_path(&mut self) -> Vec<Pos> {
     let mut moves = Vec::new();
     let mut idx = self.root_idx;
+    let mut noise = self.dirichlet_noise;
 
-    while let Some(edge_idx) = self.select_edge(idx) {
+    while let Some(edge_idx) = self.select_edge(idx, noise) {
+      noise = false;
       self.nodes[idx].children[edge_idx].virtual_losses += 1;
       moves.push(self.nodes[idx].children[edge_idx].pos);
       if let Some(&child_idx) = self.map.get(&self.nodes[idx].children[edge_idx].hash) {
@@ -411,6 +432,7 @@ impl<N: Float + Sum> Search<N> {
       root_idx: 0,
       nodes: Vec::with_capacity(self.nodes.len()),
       map: HashMap::with_capacity(self.map.len()),
+      dirichlet_noise: self.dirichlet_noise,
     };
 
     let mut queue = VecDeque::new();
@@ -460,6 +482,7 @@ where
 {
   pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N) {
     self.nodes[self.root_idx].add_dirichlet_noise(rng, epsilon, shape);
+    self.dirichlet_noise = true;
   }
 }
 
