@@ -489,14 +489,14 @@ where
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
     let values_loss = -(out_values * values).sum() * 1.5 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
-    let loss = values_loss.clone() + policies_loss.clone();
 
     log::info!(
-      "Loss: value {} policy {} total: {}",
+      "Loss: value {} policy {}",
       values_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
-      loss.clone().into_scalar(),
     );
+
+    let loss = values_loss + policies_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(self.lr, self.predictor.model, grads);
