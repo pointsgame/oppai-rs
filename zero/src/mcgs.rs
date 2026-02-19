@@ -418,6 +418,7 @@ impl<N: Float + Sum> Search<N> {
       .map(|edge| (edge.hash, edge.pos))
     {
       self.root_idx = self.add_node(edge_hash);
+      self.dirichlet_noise = false;
       NonZeroPos::new(edge_pos)
     } else {
       *self = Self::new();
@@ -434,6 +435,7 @@ impl<N: Float + Sum> Search<N> {
       .map(|edge| edge.hash)
     {
       self.root_idx = self.add_node(edge_hash);
+      self.dirichlet_noise = false;
     } else {
       *self = Self::new();
     }
