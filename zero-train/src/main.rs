@@ -6,7 +6,7 @@ use anyhow::{Error, Result};
 use burn::{
   backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
   module::Module,
-  optim::{Optimizer, SgdConfig},
+  optim::{Optimizer, SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
   tensor::backend::{AutodiffBackend, Backend},
 };
@@ -46,7 +46,10 @@ where
   let model = BurnModel::<B>::new(&device);
   model.save_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
-  let optimizer = SgdConfig::new().init::<B, BurnModel<_>>();
+  let optimizer = SgdConfig::new()
+    .with_weight_decay(Some(WeightDecayConfig::new(0.00003)))
+    .with_momentum(Some(MomentumConfig::new()))
+    .init::<B, BurnModel<_>>();
   let record = optimizer.to_record();
   let item = record.into_item::<FullPrecisionSettings>();
   Recorder::<B>::save_item(
@@ -139,7 +142,10 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let optimizer = SgdConfig::new().init::<B, BurnModel<_>>();
+  let optimizer = SgdConfig::new()
+    .with_weight_decay(Some(WeightDecayConfig::new(0.00003)))
+    .with_momentum(Some(MomentumConfig::new()))
+    .init::<B, BurnModel<_>>();
   let item = Recorder::<B>::load_item(
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &mut optimizer_path,
