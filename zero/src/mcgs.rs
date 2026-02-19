@@ -62,6 +62,19 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
+  pub fn apply_temperature(&mut self, temperature: N) {
+    let max_ln = self.children.iter().map(|edge| edge.prior).fold(N::zero(), N::max).ln();
+    let mut sum = N::zero();
+    for edge in self.children.iter_mut() {
+      // Numerically stable way to raise to power and normalize
+      edge.prior = ((edge.prior.ln() - max_ln) / temperature).exp();
+      sum = sum + edge.prior;
+    }
+    for edge in self.children.iter_mut() {
+      edge.prior = edge.prior / sum;
+    }
+  }
+
   pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N) {
     let gamma = Gamma::<N>::new(N::from(shape).unwrap(), N::one()).unwrap();
     let mut dirichlet = gamma.sample_iter(rng).take(self.children.len()).collect::<Vec<_>>();
@@ -480,7 +493,8 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
-  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N) {
+  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N, temperature: N) {
+    self.nodes[self.root_idx].apply_temperature(temperature);
     self.nodes[self.root_idx].add_dirichlet_noise(rng, epsilon, shape);
     self.dirichlet_noise = true;
   }

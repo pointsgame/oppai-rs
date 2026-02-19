@@ -68,7 +68,10 @@ where
 
     let sims = if full_search {
       let shape = N::from(0.03 * 19.0.powi(2)).unwrap() / N::from(field.width() * field.height()).unwrap();
-      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), shape);
+      // TODO: dynamically adjust temperature from 1.25 to 1.1?
+      // see Search::maybeAddPolicyNoiseAndTemp and interpolateEarly in KataGo
+      let temperature = N::from(1.1).unwrap();
+      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), shape, temperature);
       MCTS_FULL_SIMS
     } else {
       MCTS_SIMS
