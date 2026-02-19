@@ -67,7 +67,8 @@ where
     let full_search = rng.random::<f64>() <= 0.25;
 
     let sims = if full_search {
-      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), N::from(0.03).unwrap());
+      let shape = N::from(0.03 * 19.0.powi(2)).unwrap() / N::from(field.width() * field.height()).unwrap();
+      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), shape);
       MCTS_FULL_SIMS
     } else {
       MCTS_SIMS
