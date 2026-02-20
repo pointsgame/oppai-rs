@@ -98,9 +98,9 @@ where
 
 fn game_result<N: Float>(field: &Field, player: Player) -> Array1<N> {
   match field.score(player).cmp(&0) {
-    Ordering::Less => array![N::zero(), N::one(), N::zero()],
-    Ordering::Equal => array![N::zero(), N::zero(), N::one()],
-    Ordering::Greater => array![N::one(), N::zero(), N::zero()],
+    Ordering::Less => array![N::zero(), N::one()],
+    Ordering::Equal => array![N::one() / (N::one() + N::one()), N::one() / (N::one() + N::one())],
+    Ordering::Greater => array![N::one(), N::zero()],
   }
 }
 

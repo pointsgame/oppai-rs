@@ -265,7 +265,7 @@ impl<B: Backend> ValueHead<B> {
         .init(device),
       bias1: NormMask::new(device, V1_CHANNELS, false),
       act1: Gelu::new(),
-      linear2: LinearConfig::new(3 * V1_CHANNELS, 3).init(device),
+      linear2: LinearConfig::new(3 * V1_CHANNELS, 2).init(device),
     }
   }
 
@@ -435,7 +435,7 @@ where
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
     let values = softmax(value_logists, 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
-    let values = Array2::from_shape_vec((batch, 3), values.into_data().into_vec()?)?;
+    let values = Array2::from_shape_vec((batch, 2), values.into_data().into_vec()?)?;
     Ok((policies, values))
   }
 }
@@ -479,7 +479,7 @@ where
       &self.predictor.device,
     );
     let values = Tensor::from_data(
-      TensorData::new(into_data_vec(values), [batch, 3]),
+      TensorData::new(into_data_vec(values), [batch, 2]),
       &self.predictor.device,
     );
     let (out_policy_logists, out_value_logists) = self.predictor.model.forward(inputs);
@@ -581,7 +581,7 @@ mod tests {
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
-        let values = array![[1.0, 0.0, 0.0]];
+        let values = array![[1.0, 0.0]];
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();
         let mut learner = learner.train(inputs.clone(), policies, values).unwrap();

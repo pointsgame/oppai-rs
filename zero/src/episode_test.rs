@@ -76,7 +76,7 @@ fn episode_simple_surrounding() {
       .unwrap()
   );
 
-  assert_eq!(examples.values, vec![array![1.0, 0.0, 0.0]; 8]);
+  assert_eq!(examples.values, vec![array![1.0, 0.0]; 8]);
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn episode_trap() {
   assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
   assert_eq!(features2, model_inputs.borrow()[1].index_axis(Axis(0), 1));
 
-  assert_eq!(examples.values, vec![array![0.0, 0.0, 1.0]; 16]);
+  assert_eq!(examples.values, vec![array![0.5, 0.5]; 16]);
 }
 
 #[test]
@@ -208,10 +208,10 @@ fn episode_winning_game() {
     Player::Red,
     &mut |inputs: Array4<f64>| {
       let batch_size = inputs.len_of(Axis(0));
-      let values = Array2::from_shape_fn((batch_size, 3), |(i, j)| {
+      let values = Array2::from_shape_fn((batch_size, 2), |(i, j)| {
         match (inputs[(i, 1, center_y, center_x)] > 0.0, j) {
-          (true, 1) => 1.0,  // [0.0, 1.0, 0.0]
-          (false, 0) => 1.0, // [1.0, 0.0, 0.0]
+          (true, 1) => 1.0,  // [0.0, 1.0]
+          (false, 0) => 1.0, // [1.0, 0.0]
           _ => 0.0,
         }
       });
@@ -233,9 +233,9 @@ fn episode_winning_game() {
 
   for (value, input) in examples.values.into_iter().zip(examples.inputs.into_iter()) {
     if input[(1, center_y, center_x)] > 0.0 {
-      assert_eq!(value, array![0.0, 1.0, 0.0]);
+      assert_eq!(value, array![0.0, 1.0]);
     } else {
-      assert_eq!(value, array![1.0, 0.0, 0.0]);
+      assert_eq!(value, array![1.0, 0.0]);
     }
   }
 }
@@ -351,7 +351,7 @@ fn visits_to_examples() {
     }
   }
 
-  assert_eq!(examples.values[0], array![1.0, 0.0, 0.0]);
+  assert_eq!(examples.values[0], array![1.0, 0.0]);
 
   #[rustfmt::skip]
   let inputs_1 = array![
@@ -417,5 +417,5 @@ fn visits_to_examples() {
   ];
   assert_eq!(examples.policies[8], policies_1);
 
-  assert_eq!(examples.values[8], array![0.0, 1.0, 0.0]);
+  assert_eq!(examples.values[8], array![0.0, 1.0]);
 }
