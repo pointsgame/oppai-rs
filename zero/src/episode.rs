@@ -125,9 +125,14 @@ pub fn examples<N: Float + Zero + One>(
   for (&(pos, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
     if visits.1 {
       for rotation in 0..rotations {
-        examples
-          .inputs
-          .push(field_features(&field, player, field.width(), field.height(), rotation));
+        examples.inputs.push(field_features(
+          &field,
+          player,
+          field.width(),
+          field.height(),
+          rotation,
+          0,
+        ));
         examples.policies.push(visits.policies(width, height, rotation));
       }
     }

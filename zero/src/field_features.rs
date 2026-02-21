@@ -1,13 +1,13 @@
 use std::iter;
 
-use ndarray::{Array, Array3};
-use num_traits::{One, Zero};
+use ndarray::{Array, Array2, Array3};
+use num_traits::{Float, One, Zero};
 use oppai_field::cell::Cell;
 use oppai_field::field::{Field, NonZeroPos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::{rotate, rotate_back};
 
-pub const CHANNELS: usize = 13;
+pub const CHANNELS: usize = 14;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
@@ -55,13 +55,51 @@ fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
   }));
 }
 
-pub fn field_features_to_vec<N: Zero + One + Copy>(
+fn push_score<N: Float + Zero + One + Copy>(
+  field: &Field,
+  player: Player,
+  features: &mut Vec<N>,
+  width: u32,
+  height: u32,
+  komi_x_2: i32,
+) {
+  let len = features.len();
+  features.extend(iter::repeat_n(N::zero(), (width * height) as usize));
+
+  let field_width = field.width();
+  let score_len = (field_width * field.height()) as usize;
+  let center = (score_len / 2) as i32;
+
+  let score = field.score(player) + komi_x_2.div_euclid(2);
+  let lower_idx = center + score;
+  let upper_idx = center + score + 1;
+
+  let to_index = |idx: i32| -> usize {
+    let idx = idx as u32;
+    let x = idx % field_width;
+    let y = idx / field_width;
+    (y * width + x) as usize
+  };
+
+  if upper_idx <= 0 {
+    features[len + to_index(0)] = N::one();
+  } else if lower_idx >= score_len as i32 - 1 {
+    features[len + to_index(score_len as i32 - 1)] = N::one();
+  } else {
+    let lambda = N::from(komi_x_2.rem_euclid(2)).unwrap() / (N::one() + N::one());
+    features[len + to_index(lower_idx)] = N::one() - lambda;
+    features[len + to_index(upper_idx)] = lambda;
+  }
+}
+
+pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   field: &Field,
   player: Player,
   width: u32,
   height: u32,
   rotation: u8,
   features: &mut Vec<N>,
+  komi_x_2: i32,
 ) {
   let enemy = player.next();
   push_features(field, |_| N::one(), features, width, height, rotation);
@@ -203,18 +241,34 @@ pub fn field_features_to_vec<N: Zero + One + Copy>(
     height,
     rotation,
   );
+  push_score(field, player, features, width, height, komi_x_2);
 }
 
-pub fn field_features<N: Zero + One + Copy>(
+pub fn field_features<N: Float + Zero + One + Copy>(
   field: &Field,
   player: Player,
   width: u32,
   height: u32,
   rotation: u8,
+  komi_x_2: i32,
 ) -> Array3<N> {
   let mut features = Vec::with_capacity(field_features_len(width, height));
-  field_features_to_vec::<N>(field, player, width, height, rotation, &mut features);
+  field_features_to_vec::<N>(field, player, width, height, rotation, &mut features, komi_x_2);
   Array::from(features)
     .into_shape_with_order((CHANNELS, height as usize, width as usize))
+    .unwrap()
+}
+
+pub fn score_features<N: Float + Zero + One + Copy>(
+  field: &Field,
+  player: Player,
+  width: u32,
+  height: u32,
+  komi_x_2: i32,
+) -> Array2<N> {
+  let mut features = Vec::with_capacity((width * height) as usize);
+  push_score::<N>(field, player, &mut features, width, height, komi_x_2);
+  Array::from(features)
+    .into_shape_with_order((height as usize, width as usize))
     .unwrap()
 }

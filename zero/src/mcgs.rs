@@ -349,7 +349,7 @@ impl<N: Float + Sum> Search<N> {
         self.add_result(leaf, game_result(field, player), Vec::new());
         false
       } else {
-        field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
+        field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features, 0);
         true
       };
 
