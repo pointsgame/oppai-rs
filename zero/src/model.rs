@@ -11,7 +11,13 @@ pub trait Model<N: Float> {
 pub trait TrainableModel<N: Float>: Model<N> + Sized {
   type TE: From<Self::E>;
 
-  fn train(self, inputs: Array4<N>, policies: Array3<N>, values: Array2<N>) -> Result<Self, Self::TE>;
+  fn train(
+    self,
+    inputs: Array4<N>,
+    policies: Array3<N>,
+    values: Array2<N>,
+    scores: Array3<N>,
+  ) -> Result<Self, Self::TE>;
 }
 
 impl<T, E, N: Float> Model<N> for T

@@ -8,6 +8,7 @@ pub struct Examples<N> {
   pub inputs: Vec<Array3<N>>,
   pub policies: Vec<Array2<N>>,
   pub values: Vec<Array1<N>>,
+  pub scores: Vec<Array2<N>>,
 }
 
 impl<N> Default for Examples<N> {
@@ -16,6 +17,7 @@ impl<N> Default for Examples<N> {
       inputs: Default::default(),
       policies: Default::default(),
       values: Default::default(),
+      scores: Default::default(),
     }
   }
 }
@@ -26,6 +28,7 @@ impl<N> Add for Examples<N> {
     self.inputs.extend(rhs.inputs);
     self.policies.extend(rhs.policies);
     self.values.extend(rhs.values);
+    self.scores.extend(rhs.scores);
     self
   }
 }
@@ -51,6 +54,11 @@ impl<N: Clone> Examples<N> {
   }
 
   #[inline]
+  pub fn scores_array(scores: &[Array2<N>]) -> Array3<N> {
+    ndarray::stack(Axis(0), scores.iter().map(|s| s.view()).collect::<Vec<_>>().as_slice()).unwrap()
+  }
+
+  #[inline]
   pub fn inputs(&self) -> Array4<N> {
     Examples::inputs_array(&self.inputs)
   }
@@ -66,10 +74,16 @@ impl<N: Clone> Examples<N> {
   }
 
   #[inline]
+  pub fn scores(&self) -> Array3<N> {
+    Examples::scores_array(&self.scores)
+  }
+
+  #[inline]
   pub fn clear(&mut self) {
     self.inputs.clear();
     self.policies.clear();
     self.values.clear();
+    self.scores.clear();
   }
 
   #[inline]
@@ -89,24 +103,32 @@ impl<N: Clone> Examples<N> {
       self.inputs.swap(i, j);
       self.policies.swap(i, j);
       self.values.swap(i, j);
+      self.scores.swap(i, j);
     }
   }
 
-  pub fn batches(&self, size: usize) -> impl Iterator<Item = (Array4<N>, Array3<N>, Array2<N>)> + '_ {
+  pub fn batches(&self, size: usize) -> impl Iterator<Item = (Array4<N>, Array3<N>, Array2<N>, Array3<N>)> + '_ {
     if self.len() <= size {
-      Either::Left(iter::once((self.inputs(), self.policies(), self.values())))
+      Either::Left(iter::once((
+        self.inputs(),
+        self.policies(),
+        self.values(),
+        self.scores(),
+      )))
     } else {
       Either::Right(
         itertools::izip!(
           self.inputs.chunks(size),
           self.policies.chunks(size),
-          self.values.chunks(size)
+          self.values.chunks(size),
+          self.scores.chunks(size),
         )
-        .map(|(inputs, policies, values)| {
+        .map(|(inputs, policies, values, scores)| {
           (
             Examples::inputs_array(inputs),
             Examples::policies_array(policies),
             Examples::values_array(values),
+            Examples::scores_array(scores),
           )
         })
         .take(self.len() / size),

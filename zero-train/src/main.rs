@@ -192,8 +192,8 @@ where
   for epoch in 0..epochs {
     log::info!("Training {} epoch", epoch);
     examples.shuffle(rng);
-    for (inputs, policies, values) in examples.batches(batch_size) {
-      learner = learner.train(inputs, policies, values)?;
+    for (inputs, policies, values, scores) in examples.batches(batch_size) {
+      learner = learner.train(inputs, policies, values, scores)?;
     }
   }
 

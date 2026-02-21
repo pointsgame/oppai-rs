@@ -500,6 +500,29 @@ fn score_features_minus_one() {
 }
 
 #[test]
+fn score_features_one_opposite() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .a.
+    aAa
+    .a.
+    ",
+  );
+
+  let features = score_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
+
+  #[rustfmt::skip]
+  let score = array![
+    [0., 0., 0.],
+    [1., 0., 0.],
+    [0., 0., 0.],
+  ];
+
+  assert_eq!(features, score);
+}
+
+#[test]
 fn score_features_fractional_komi() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),

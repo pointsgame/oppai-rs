@@ -255,6 +255,7 @@ pub struct ValueHead<B: Backend> {
   bias1: NormMask<B>,
   act1: Gelu,
   linear2: Linear<B>,
+  conv_scoring: Conv2d<B>,
 }
 
 impl<B: Backend> ValueHead<B> {
@@ -266,6 +267,9 @@ impl<B: Backend> ValueHead<B> {
       bias1: NormMask::new(device, V1_CHANNELS, false),
       act1: Gelu::new(),
       linear2: LinearConfig::new(3 * V1_CHANNELS, 2).init(device),
+      conv_scoring: Conv2dConfig::new([V1_CHANNELS, 1], [1, 1])
+        .with_padding(PaddingConfig2d::Same)
+        .init(device),
     }
   }
 
@@ -283,12 +287,18 @@ impl<B: Backend> ValueHead<B> {
     Tensor::cat(vec![out_pool1, out_pool2, out_pool3], 1)
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 2> {
+  pub fn forward(
+    &self,
+    inputs: Tensor<B, 4>,
+    mask: Tensor<B, 4>,
+    mask_sum_hw: Tensor<B, 4>,
+  ) -> (Tensor<B, 2>, Tensor<B, 3>) {
     let outv1 = self.conv1.forward(inputs);
-    let outv1 = self.bias1.forward(outv1, mask);
+    let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = self.act1.forward(outv1);
+    let out_scoring = self.conv_scoring.forward(outv1.clone()) * mask;
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
-    self.linear2.forward(outpooled)
+    (self.linear2.forward(outpooled), out_scoring.squeeze_dims(&[1]))
   }
 }
 
@@ -369,7 +379,7 @@ impl<B: Backend> Model<B> {
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>) {
+  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>, Tensor<B, 3>) {
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let mut x = self.initial_conv.forward(inputs);
@@ -379,8 +389,8 @@ impl<B: Backend> Model<B> {
     x = self.norm_trunkfinal.forward(x, mask.clone());
     x = self.act_trunkfinal.forward(x);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
-    let value = self.value_head.forward(x, mask, mask_sum_hw);
-    (policy, value)
+    let (value, score) = self.value_head.forward(x, mask, mask_sum_hw);
+    (policy, value, score)
   }
 }
 
@@ -431,7 +441,7 @@ where
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
     );
-    let (policy_logists, value_logists) = self.model.forward(inputs);
+    let (policy_logists, value_logists, _) = self.model.forward(inputs);
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
     let values = softmax(value_logists, 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
@@ -468,6 +478,7 @@ where
     inputs: Array4<<B as Backend>::FloatElem>,
     policies: Array3<<B as Backend>::FloatElem>,
     values: Array2<<B as Backend>::FloatElem>,
+    scores: Array3<<B as Backend>::FloatElem>,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
@@ -482,21 +493,32 @@ where
       TensorData::new(into_data_vec(values), [batch, 2]),
       &self.predictor.device,
     );
-    let (out_policy_logists, out_value_logists) = self.predictor.model.forward(inputs);
+    let scores = Tensor::from_data(
+      TensorData::new(into_data_vec(scores), [batch, height * width]),
+      &self.predictor.device,
+    );
+    let scores_cdf = scores.clone().cumsum(1);
+    let (out_policy_logists, out_value_logists, out_score_logists) = self.predictor.model.forward(inputs);
     let out_policies = log_softmax(out_policy_logists.reshape([0, -1]), 1);
     let out_values = log_softmax(out_value_logists, 1);
+    let out_scores = log_softmax(out_score_logists.clone().reshape([0, -1]), 1);
+    let out_scores_cdf = softmax(out_score_logists.reshape([0, -1]), 1).cumsum(1);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
     let values_loss = -(out_values * values).sum() * 1.5 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
+    let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
+    let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
 
     log::info!(
-      "Loss: value {} policy {}",
+      "Loss: value {} policy {} pdf {} cdf {}",
       values_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
+      pdf_loss.clone().into_scalar(),
+      cdf_loss.clone().into_scalar(),
     );
 
-    let loss = values_loss + policies_loss;
+    let loss = values_loss + policies_loss + pdf_loss + cdf_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(self.lr, self.predictor.model, grads);
@@ -522,7 +544,7 @@ mod tests {
   #[test]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
-    let (policy_logists, values) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
+    let (policy_logists, values, _) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
     assert!(
       policies
@@ -582,9 +604,19 @@ mod tests {
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
         let values = array![[1.0, 0.0]];
+        let scores = array![[
+          [1.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+        ]];
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();
-        let mut learner = learner.train(inputs.clone(), policies, values).unwrap();
+        let mut learner = learner.train(inputs.clone(), policies, values, scores).unwrap();
         let (out_policies_2, out_values_2) = learner.predict(inputs).unwrap();
 
         assert!((out_policies_1 - out_policies_2).iter().all(|v| v.abs() > 0.0));

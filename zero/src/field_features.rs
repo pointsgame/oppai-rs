@@ -92,6 +92,32 @@ fn push_score<N: Float + Zero + One + Copy>(
   }
 }
 
+// fn push_score<N: Float + Zero + One + Copy>(
+//   field: &Field,
+//   player: Player,
+//   features: &mut Vec<N>,
+//   width: u32,
+//   height: u32,
+//   komi_x_2: i32,
+// ) {
+//   let len = features.len();
+//   let score_len = (width * height) as usize;
+//   features.extend(iter::repeat_n(N::zero(), score_len));
+//   let center = (score_len / 2) as i32;
+//   let score = field.score(player) + komi_x_2.div_euclid(2);
+//   let lower_idx = center + score;
+//   let upper_idx = center + score + 1;
+//   if upper_idx <= 0 {
+//     features[len] = N::one();
+//   } else if lower_idx >= score_len as i32 - 1 {
+//     features[len + score_len - 1] = N::one();
+//   } else {
+//     let lambda = N::from(komi_x_2.rem_euclid(2)).unwrap() / (N::one() + N::one());
+//     features[len + lower_idx as usize] = N::one() - lambda;
+//     features[len + upper_idx as usize] = lambda;
+//   }
+// }
+
 pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   field: &Field,
   player: Player,
