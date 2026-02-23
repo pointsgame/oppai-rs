@@ -1,5 +1,5 @@
 use crate::examples::Examples;
-use crate::field_features::{field_features, score_features};
+use crate::field_features::{field_features, score_one_hop};
 use crate::mcgs::Search;
 use crate::model::Model;
 use ndarray::{Array1, Array2, array};
@@ -125,14 +125,9 @@ pub fn examples<N: Float + Zero + One>(
   for (&(pos, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
     if visits.1 {
       for rotation in 0..rotations {
-        examples.inputs.push(field_features(
-          &field,
-          player,
-          field.width(),
-          field.height(),
-          rotation,
-          0,
-        ));
+        examples
+          .inputs
+          .push(field_features(&field, player, field.width(), field.height(), rotation));
         examples.policies.push(visits.policies(width, height, rotation));
       }
     }
@@ -145,7 +140,7 @@ pub fn examples<N: Float + Zero + One>(
     if visits.1 {
       let value = game_result::<N>(&field, player);
       examples.values.extend(iter::repeat_n(value, rotations as usize));
-      let score = score_features(&field, player, width, height, 0);
+      let score = score_one_hop(&field, player, 0);
       examples.scores.extend(iter::repeat_n(score, rotations as usize));
     }
   }

@@ -64,14 +64,14 @@ fn episode_simple_surrounding() {
   for rotation in 0..ROTATIONS {
     assert_eq!(
       examples.inputs[rotation as usize],
-      field_features(&field, Player::Red, field.width(), field.height(), rotation, 0)
+      field_features(&field, Player::Red, field.width(), field.height(), rotation)
     );
   }
 
   assert_eq!(model_inputs.borrow().len(), 1);
   assert_eq!(
     model_inputs.borrow()[0],
-    field_features(&field, Player::Red, field.width(), field.height(), 0, 0)
+    field_features(&field, Player::Red, field.width(), field.height(), 0)
       .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
       .unwrap()
   );
@@ -125,8 +125,7 @@ fn episode_trap() {
       examples.policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)],
       1.0
     );
-    // last channel is score which is not rotated
-    for channel in 1..CHANNELS - 1 {
+    for channel in 1..CHANNELS {
       assert_eq!(
         examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
         0.0
@@ -136,7 +135,7 @@ fn episode_trap() {
   for rotation in 0..ROTATIONS {
     assert_eq!(
       examples.inputs[(ROTATIONS + rotation) as usize],
-      field_features(&field, Player::Black, field.width(), field.height(), rotation, 0)
+      field_features(&field, Player::Black, field.width(), field.height(), rotation)
     );
   }
 
@@ -156,13 +155,13 @@ fn episode_trap() {
   for rotation in 0..ROTATIONS {
     assert_eq!(
       examples.inputs[rotation as usize],
-      field_features(&field, Player::Red, field.width(), field.height(), rotation, 0)
+      field_features(&field, Player::Red, field.width(), field.height(), rotation)
     );
   }
 
   assert_eq!(model_inputs.borrow().len(), 2);
 
-  let features = field_features(&field, Player::Red, field.width(), field.height(), 0, 0);
+  let features = field_features(&field, Player::Red, field.width(), field.height(), 0);
   let features = features
     .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
     .unwrap();
@@ -170,11 +169,11 @@ fn episode_trap() {
 
   field.put_point(field.to_pos(0, 1), Player::Red);
   field.update_grounded();
-  let features1 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0, 0);
+  let features1 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   field.undo();
   field.put_point(field.to_pos(1, 1), Player::Red);
   field.update_grounded();
-  let features2 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0, 0);
+  let features2 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   // order depends on rng
   assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
   assert_eq!(features2, model_inputs.borrow()[1].index_axis(Axis(0), 1));
@@ -317,10 +316,6 @@ fn visits_to_examples() {
     [[0.0, 0.0, 1.0],
      [0.0, 0.0, 0.0],
      [0.0, 0.0, 0.0]],
-
-    [[0.0, 0.0, 0.0],
-     [0.0, 1.0, 0.0],
-     [0.0, 0.0, 0.0]],
   ];
   assert_eq!(examples.inputs[0], inputs_0);
   for rotation in 0..ROTATIONS {
@@ -411,10 +406,6 @@ fn visits_to_examples() {
     [[0.0, 0.0, 0.0],
      [0.0, 0.0, 1.0],
      [0.0, 0.0, 0.0]],
-
-   [[0.0, 0.0, 0.0],
-    [1.0, 0.0, 0.0],
-    [0.0, 0.0, 0.0]],
   ];
   assert_eq!(examples.inputs[8], inputs_1);
 

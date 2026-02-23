@@ -16,7 +16,7 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
     inputs: Array4<N>,
     policies: Array3<N>,
     values: Array2<N>,
-    scores: Array3<N>,
+    scores: Array2<N>,
   ) -> Result<Self, Self::TE>;
 }
 

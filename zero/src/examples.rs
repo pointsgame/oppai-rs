@@ -8,7 +8,7 @@ pub struct Examples<N> {
   pub inputs: Vec<Array3<N>>,
   pub policies: Vec<Array2<N>>,
   pub values: Vec<Array1<N>>,
-  pub scores: Vec<Array2<N>>,
+  pub scores: Vec<Array1<N>>,
 }
 
 impl<N> Default for Examples<N> {
@@ -54,7 +54,7 @@ impl<N: Clone> Examples<N> {
   }
 
   #[inline]
-  pub fn scores_array(scores: &[Array2<N>]) -> Array3<N> {
+  pub fn scores_array(scores: &[Array1<N>]) -> Array2<N> {
     ndarray::stack(Axis(0), scores.iter().map(|s| s.view()).collect::<Vec<_>>().as_slice()).unwrap()
   }
 
@@ -74,7 +74,7 @@ impl<N: Clone> Examples<N> {
   }
 
   #[inline]
-  pub fn scores(&self) -> Array3<N> {
+  pub fn scores(&self) -> Array2<N> {
     Examples::scores_array(&self.scores)
   }
 
@@ -107,7 +107,7 @@ impl<N: Clone> Examples<N> {
     }
   }
 
-  pub fn batches(&self, size: usize) -> impl Iterator<Item = (Array4<N>, Array3<N>, Array2<N>, Array3<N>)> + '_ {
+  pub fn batches(&self, size: usize) -> impl Iterator<Item = (Array4<N>, Array3<N>, Array2<N>, Array2<N>)> + '_ {
     if self.len() <= size {
       Either::Left(iter::once((
         self.inputs(),

@@ -16,7 +16,7 @@ use derive_more::From;
 use ndarray::{Array, Array2, Array3, Array4, Dimension, ShapeError};
 use num_traits::{Float, NumCast};
 use oppai_zero::{
-  field_features::CHANNELS,
+  field_features::{CHANNELS, SCORE_ONE_HOP_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
 };
 use thiserror::Error;
@@ -31,6 +31,8 @@ const GPOOL_CHANNELS: usize = 32;
 const V1_CHANNELS: usize = 32;
 const P1_CHANNELS: usize = 32;
 const G1_CHANNELS: usize = 32;
+const V2_SIZE: usize = 80;
+const SBV2_SIZE: usize = 80;
 
 #[derive(Module, Debug)]
 pub struct NormMask<B: Backend> {
@@ -75,13 +77,17 @@ impl<B: Backend> ConvAndGPool<B> {
         [3, 3],
       )
       .with_padding(PaddingConfig2d::Same)
+      .with_bias(false)
       .init(device),
       conv1g: Conv2dConfig::new([RESIDUAL_INNER_CHANNELS, GPOOL_CHANNELS], [3, 3])
         .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
         .init(device),
       normg: NormMask::new(device, GPOOL_CHANNELS, false),
       actg: Gelu::new(),
-      linearg: LinearConfig::new(3 * GPOOL_CHANNELS, RESIDUAL_INNER_CHANNELS - GPOOL_CHANNELS).init(device),
+      linearg: LinearConfig::new(3 * GPOOL_CHANNELS, RESIDUAL_INNER_CHANNELS - GPOOL_CHANNELS)
+        .with_bias(false)
+        .init(device),
     }
   }
 
@@ -135,6 +141,7 @@ impl<B: Backend> ConvOrGpool<B> {
       Self::Conv(
         Conv2dConfig::new([in_channels, out_channels], kernel_size)
           .with_padding(PaddingConfig2d::Same)
+          .with_bias(false)
           .init(device),
       )
     }
@@ -255,21 +262,42 @@ pub struct ValueHead<B: Backend> {
   bias1: NormMask<B>,
   act1: Gelu,
   linear2: Linear<B>,
-  conv_scoring: Conv2d<B>,
+  act2: Gelu,
+  linear_valuehead: Linear<B>,
+  // Score belief components
+  linear_s2: Linear<B>,
+  linear_s2off: Linear<B>,
+  linear_s3: Linear<B>,
+  linear_smix: Linear<B>,
+  act3: Gelu,
+  score_belief_offset_bias: Param<Tensor<B, 1>>,
 }
 
 impl<B: Backend> ValueHead<B> {
   pub fn new(device: &B::Device) -> Self {
+    let offset_bias_data: Vec<f32> = (0..SCORE_ONE_HOP_SIZE as i32)
+      .map(|i| 0.002 * ((i - (SCORE_ONE_HOP_SIZE - 1) as i32 / 2) as f32))
+      .collect();
+    let offset_bias_tensor: Tensor<B, 1> =
+      Tensor::from_data(TensorData::new(offset_bias_data, [SCORE_ONE_HOP_SIZE]), device);
+
     Self {
       conv1: Conv2dConfig::new([INNER_CHANNELS, V1_CHANNELS], [1, 1])
         .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
         .init(device),
       bias1: NormMask::new(device, V1_CHANNELS, false),
       act1: Gelu::new(),
-      linear2: LinearConfig::new(3 * V1_CHANNELS, 2).init(device),
-      conv_scoring: Conv2dConfig::new([V1_CHANNELS, 1], [1, 1])
-        .with_padding(PaddingConfig2d::Same)
-        .init(device),
+      linear2: LinearConfig::new(3 * V1_CHANNELS, V2_SIZE).init(device),
+      act2: Gelu::new(),
+      linear_valuehead: LinearConfig::new(V2_SIZE, 2).init(device),
+
+      linear_s2: LinearConfig::new(3 * V1_CHANNELS, SBV2_SIZE).init(device),
+      linear_s2off: LinearConfig::new(1, SBV2_SIZE).with_bias(false).init(device),
+      linear_s3: LinearConfig::new(SBV2_SIZE, SCORE_ONE_HOP_SIZE).init(device),
+      linear_smix: LinearConfig::new(3 * V1_CHANNELS, SCORE_ONE_HOP_SIZE).init(device),
+      act3: Gelu::new(),
+      score_belief_offset_bias: Param::from_tensor(offset_bias_tensor).no_grad(),
     }
   }
 
@@ -292,13 +320,57 @@ impl<B: Backend> ValueHead<B> {
     inputs: Tensor<B, 4>,
     mask: Tensor<B, 4>,
     mask_sum_hw: Tensor<B, 4>,
-  ) -> (Tensor<B, 2>, Tensor<B, 3>) {
+  ) -> (Tensor<B, 2>, Tensor<B, 2>) {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = self.act1.forward(outv1);
-    let out_scoring = self.conv_scoring.forward(outv1.clone()) * mask;
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
-    (self.linear2.forward(outpooled), out_scoring.squeeze_dims(&[1]))
+
+    // Main Value Head
+
+    let outv2 = self.linear2.forward(outpooled.clone());
+    let outv2 = self.act2.forward(outv2);
+    let out_value = self.linear_valuehead.forward(outv2);
+
+    // Score Belief Head
+
+    // Term 1: Linear from pooled
+    let s2_term = self.linear_s2.forward(outpooled.clone()).reshape([0, 1, -1]);
+
+    // Term 2: Offset bias
+    let offset_bias = self.score_belief_offset_bias.val().reshape([1, SCORE_ONE_HOP_SIZE, 1]);
+    let s2off_term = self.linear_s2off.forward(offset_bias);
+
+    let outsv2 = s2_term + s2off_term;
+    let outsv2 = self.act3.forward(outsv2);
+    let outsv3 = self.linear_s3.forward(outsv2);
+
+    let outsmix = self.linear_smix.forward(outpooled);
+    let outsmix_logweights = log_softmax(outsmix, 1);
+
+    let out_scorebelief_logprobs = log_softmax(outsv3, 1);
+
+    // Take the mixture distribution weighted by outsmix_logweights
+    let out_score_log_dist = (out_scorebelief_logprobs + outsmix_logweights.unsqueeze_dim(1))
+      .exp()
+      .sum_dim(2)
+      .log()
+      .squeeze_dim(2);
+
+    (out_value, out_score_log_dist)
+  }
+
+  pub fn forward_no_score(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 2> {
+    let outv1 = self.conv1.forward(inputs);
+    let outv1 = self.bias1.forward(outv1, mask.clone());
+    let outv1 = self.act1.forward(outv1);
+    let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
+
+    // Main Value Head
+
+    let outv2 = self.linear2.forward(outpooled.clone());
+    let outv2 = self.act2.forward(outv2);
+    self.linear_valuehead.forward(outv2)
   }
 }
 
@@ -319,17 +391,22 @@ impl<B: Backend> PolicyHead<B> {
     Self {
       conv1p: Conv2dConfig::new([INNER_CHANNELS, P1_CHANNELS], [1, 1])
         .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
         .init(device),
       conv1g: Conv2dConfig::new([INNER_CHANNELS, G1_CHANNELS], [1, 1])
         .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
         .init(device),
       biasg: NormMask::new(device, G1_CHANNELS, false),
       actg: Gelu::new(),
-      linearg: LinearConfig::new(3 * G1_CHANNELS, P1_CHANNELS).init(device),
+      linearg: LinearConfig::new(3 * G1_CHANNELS, P1_CHANNELS)
+        .with_bias(false)
+        .init(device),
       bias2: NormMask::new(device, P1_CHANNELS, false),
       act2: Gelu::new(),
       conv2p: Conv2dConfig::new([P1_CHANNELS, 1], [1, 1])
         .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
         .init(device),
     }
   }
@@ -368,6 +445,7 @@ impl<B: Backend> Model<B> {
     Self {
       initial_conv: Conv2dConfig::new([INPUT_CHANNELS, INNER_CHANNELS], [3, 3])
         .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
         .init(device),
       residuals: (0..RESIDUAL_BLOCKS)
         .map(|i| ResidualBlock::new(device, (i + 1) % GPOOL_EVERY == 0))
@@ -379,7 +457,7 @@ impl<B: Backend> Model<B> {
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>, Tensor<B, 3>) {
+  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>, Tensor<B, 2>) {
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let mut x = self.initial_conv.forward(inputs);
@@ -391,6 +469,20 @@ impl<B: Backend> Model<B> {
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
     let (value, score) = self.value_head.forward(x, mask, mask_sum_hw);
     (policy, value, score)
+  }
+
+  pub fn forward_no_score(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>) {
+    let mask = inputs.clone().slice(s![.., 0..1]);
+    let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
+    let mut x = self.initial_conv.forward(inputs);
+    for residual in &self.residuals {
+      x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
+    }
+    x = self.norm_trunkfinal.forward(x, mask.clone());
+    x = self.act_trunkfinal.forward(x);
+    let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
+    let value = self.value_head.forward_no_score(x, mask, mask_sum_hw);
+    (policy, value)
   }
 }
 
@@ -441,7 +533,7 @@ where
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
     );
-    let (policy_logists, value_logists, _) = self.model.forward(inputs);
+    let (policy_logists, value_logists) = self.model.forward_no_score(inputs);
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
     let values = softmax(value_logists, 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
@@ -478,7 +570,7 @@ where
     inputs: Array4<<B as Backend>::FloatElem>,
     policies: Array3<<B as Backend>::FloatElem>,
     values: Array2<<B as Backend>::FloatElem>,
-    scores: Array3<<B as Backend>::FloatElem>,
+    scores: Array2<<B as Backend>::FloatElem>,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
@@ -494,15 +586,15 @@ where
       &self.predictor.device,
     );
     let scores = Tensor::from_data(
-      TensorData::new(into_data_vec(scores), [batch, height * width]),
+      TensorData::new(into_data_vec(scores), [batch, SCORE_ONE_HOP_SIZE]),
       &self.predictor.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
     let (out_policy_logists, out_value_logists, out_score_logists) = self.predictor.model.forward(inputs);
     let out_policies = log_softmax(out_policy_logists.reshape([0, -1]), 1);
     let out_values = log_softmax(out_value_logists, 1);
-    let out_scores = log_softmax(out_score_logists.clone().reshape([0, -1]), 1);
-    let out_scores_cdf = softmax(out_score_logists.reshape([0, -1]), 1).cumsum(1);
+    let out_scores = log_softmax(out_score_logists.clone(), 1);
+    let out_scores_cdf = softmax(out_score_logists, 1).cumsum(1);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
     let values_loss = -(out_values * values).sum() * 1.5 / batch;
@@ -535,9 +627,9 @@ mod tests {
     optim::SgdConfig,
     tensor::{Tensor, activation::softmax},
   };
-  use ndarray::{Array3, Array4, array};
+  use ndarray::{Array2, Array3, Array4, array};
   use oppai_zero::{
-    field_features::CHANNELS,
+    field_features::{CHANNELS, SCORE_ONE_HOP_SIZE},
     model::{Model as OppaiModel, TrainableModel},
   };
 
@@ -604,16 +696,8 @@ mod tests {
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
         let values = array![[1.0, 0.0]];
-        let scores = array![[
-          [1.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-        ]];
+        let mut scores = Array2::from_elem((1, SCORE_ONE_HOP_SIZE), 0.0);
+        scores[(0, 0)] = 1.0;
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();
         let mut learner = learner.train(inputs.clone(), policies, values, scores).unwrap();
