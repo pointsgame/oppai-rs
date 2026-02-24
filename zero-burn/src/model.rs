@@ -597,6 +597,7 @@ where
     let out_scores_cdf = softmax(out_score_logists, 1).cumsum(1);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
+    // TODO: KataGo uses different weight
     let values_loss = -(out_values * values).sum() * 1.5 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
     let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;

@@ -57,6 +57,7 @@ where
   N: Float + Sum + SampleUniform,
   R: Rng,
 {
+  // TODO: KataGo also makes random moves with small probability, see PlayUtils::getGameInitializationMove
   let mut sum = N::zero();
   for pos in field.min_pos()..=field.max_pos() {
     if field.is_putting_allowed(pos) {
@@ -88,6 +89,7 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
+  // TODO: does it scale to big sizes?
   let exp = Exp::new(N::from(25).unwrap() / N::from(field.width() * field.height()).unwrap()).unwrap();
   let raw_policy_moves = exp.sample(rng).floor().to_u32().unwrap();
 
@@ -112,6 +114,7 @@ where
     let full_search = rng.random::<f64>() <= 0.25;
 
     let sims = if full_search {
+      // TODO: does it scale to big sizes?
       let shape = N::from(0.03 * 19.0.powi(2)).unwrap() / N::from(field.width() * field.height()).unwrap();
       // TODO: dynamically adjust temperature from 1.25 to 1.1?
       // see Search::maybeAddPolicyNoiseAndTemp and interpolateEarly in KataGo
