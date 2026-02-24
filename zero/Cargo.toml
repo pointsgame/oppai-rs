@@ -16,6 +16,7 @@ itertools.workspace = true
 log.workspace = true
 oppai-field = { path = "../field" }
 oppai-rotate = { path = "../rotate" }
+oppai-ladders = { path = "../ladders" }
 
 [dev-dependencies]
 rand_xoshiro.workspace = true

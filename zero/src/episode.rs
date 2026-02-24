@@ -175,7 +175,7 @@ pub fn examples<N: Float + Zero + One>(
       for rotation in 0..rotations {
         examples
           .inputs
-          .push(field_features(&field, player, field.width(), field.height(), rotation));
+          .push(field_features(&mut field, player, width, height, rotation));
         examples.policies.push(visits.policies(width, height, rotation));
       }
     }

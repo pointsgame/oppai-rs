@@ -1,13 +1,17 @@
 use std::iter;
+use std::time::{Duration, Instant};
 
 use ndarray::{Array, Array1, Array3};
 use num_traits::{Float, One, Zero};
 use oppai_field::cell::Cell;
-use oppai_field::field::{Field, NonZeroPos};
+use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
+use oppai_ladders::ladders::ladder_moves;
 use oppai_rotate::rotate::{rotate, rotate_back};
 
-pub const CHANNELS: usize = 13;
+const LADDERS_TIME: Duration = Duration::from_millis(200);
+
+pub const CHANNELS: usize = 15;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
@@ -33,7 +37,7 @@ fn push_history<N: Zero + One + Copy>(
   }
 }
 
-fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
+fn push_features<N: Zero, F: Fn(Pos, Cell) -> N + Copy>(
   field: &Field,
   f: F,
   features: &mut Vec<N>,
@@ -50,24 +54,29 @@ fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
       }
       let (x, y) = rotate_back(field_width, field_height, x, y, rotation);
       let pos = field.to_pos(x, y);
-      f(field.cell(pos))
+      f(pos, field.cell(pos))
     })
   }));
 }
 
 pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
-  field: &Field,
+  field: &mut Field,
   player: Player,
   width: u32,
   height: u32,
   rotation: u8,
   features: &mut Vec<N>,
 ) {
+  let deadline = Instant::now() + LADDERS_TIME;
+  let ladders = ladder_moves(field, player, &|| Instant::now() >= deadline);
+  let deadline = Instant::now() + LADDERS_TIME;
+  let enemy_ladders = ladder_moves(field, player.next(), &|| Instant::now() >= deadline);
+
   let enemy = player.next();
-  push_features(field, |_| N::one(), features, width, height, rotation);
+  push_features(field, |_, _| N::one(), features, width, height, rotation);
   push_features(
     field,
-    |cell| {
+    |_, cell| {
       if cell.is_players_point(player) {
         N::one()
       } else {
@@ -81,7 +90,7 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   );
   push_features(
     field,
-    |cell| {
+    |_, cell| {
       if cell.is_players_point(enemy) {
         N::one()
       } else {
@@ -95,7 +104,7 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   );
   push_features(
     field,
-    |cell| if cell.is_owner(player) { N::one() } else { N::zero() },
+    |_, cell| if cell.is_owner(player) { N::one() } else { N::zero() },
     features,
     width,
     height,
@@ -103,7 +112,7 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   );
   push_features(
     field,
-    |cell| if cell.is_owner(enemy) { N::one() } else { N::zero() },
+    |_, cell| if cell.is_owner(enemy) { N::one() } else { N::zero() },
     features,
     width,
     height,
@@ -111,7 +120,7 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   );
   push_features(
     field,
-    |cell| {
+    |_, cell| {
       if cell.is_players_empty_base(player) {
         N::one()
       } else {
@@ -125,7 +134,7 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   );
   push_features(
     field,
-    |cell| {
+    |_, cell| {
       if cell.is_players_empty_base(enemy) {
         N::one()
       } else {
@@ -139,8 +148,32 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   );
   push_features(
     field,
-    |cell| {
+    |_, cell| {
       if cell.is_grounded() { N::one() } else { N::zero() }
+    },
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_features(
+    field,
+    |pos, _| {
+      if ladders.contains(&pos) { N::one() } else { N::zero() }
+    },
+    features,
+    width,
+    height,
+    rotation,
+  );
+  push_features(
+    field,
+    |pos, _| {
+      if enemy_ladders.contains(&pos) {
+        N::one()
+      } else {
+        N::zero()
+      }
     },
     features,
     width,
@@ -206,7 +239,7 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
 }
 
 pub fn field_features<N: Float + Zero + One + Copy>(
-  field: &Field,
+  field: &mut Field,
   player: Player,
   width: u32,
   height: u32,
