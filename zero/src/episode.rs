@@ -2,18 +2,19 @@ use crate::examples::Examples;
 use crate::field_features::{field_features, score_one_hop};
 use crate::mcgs::Search;
 use crate::model::Model;
-use ndarray::{Array1, Array2, array};
+use log::info;
+use ndarray::{Array1, Array2, Array3, Axis, array};
 use num_traits::{Float, One, Zero};
 use oppai_field::field::{to_x, to_y};
 use oppai_field::zobrist::Zobrist;
 use oppai_field::{
-  field::{Field, Pos},
+  field::{Field, NonZeroPos, Pos},
   player::Player,
 };
 use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate, rotate_sizes};
 use rand::Rng;
 use rand::distr::uniform::SampleUniform;
-use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
+use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
@@ -51,6 +52,33 @@ impl Visits {
   }
 }
 
+fn select_policy_move<N, R>(field: &Field, policy: Array3<N>, rng: &mut R) -> Option<NonZeroPos>
+where
+  N: Float + Sum + SampleUniform,
+  R: Rng,
+{
+  let mut sum = N::zero();
+  for pos in field.min_pos()..=field.max_pos() {
+    if field.is_putting_allowed(pos) {
+      let (x, y) = field.to_xy(pos);
+      sum = sum + policy[(0, y as usize, x as usize)];
+    }
+  }
+  let r = rng.random_range(N::zero()..sum);
+  for pos in field.min_pos()..=field.max_pos() {
+    if field.is_putting_allowed(pos) {
+      let (x, y) = field.to_xy(pos);
+      let policy = policy[(0, y as usize, x as usize)];
+      if policy > r {
+        return NonZeroPos::new(pos);
+      } else {
+        sum = sum - policy;
+      }
+    }
+  }
+  None
+}
+
 pub fn episode<N, M, R>(field: &mut Field, mut player: Player, model: &mut M, rng: &mut R) -> Result<Vec<Visits>, M::E>
 where
   M: Model<N>,
@@ -60,6 +88,23 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
+  let exp = Exp::new(N::from(25).unwrap() / N::from(field.width() * field.height()).unwrap()).unwrap();
+  let raw_policy_moves = exp.sample(rng).floor().to_u32().unwrap();
+
+  info!("Playing {} raw policy moves", raw_policy_moves);
+
+  for _ in 0..raw_policy_moves {
+    let features = field_features(field, player, field.width(), field.height(), 0);
+    let (policy, _) = model.predict(features.insert_axis(Axis(0)))?;
+    if let Some(pos) = select_policy_move(field, policy, rng) {
+      assert!(field.put_point(pos.get(), player));
+      field.update_grounded();
+      player = player.next();
+    } else {
+      break;
+    }
+  }
+
   let mut search = Search::new();
   let mut visits = Vec::new();
 
