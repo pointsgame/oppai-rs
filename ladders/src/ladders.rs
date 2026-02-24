@@ -4,6 +4,7 @@ use oppai_field::field::wave_diag;
 use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use smallvec::SmallVec;
+use std::collections::HashSet;
 use std::iter;
 
 fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &mut [u32], marks: &mut Vec<Pos>) {
@@ -302,4 +303,132 @@ pub fn ladders<SS: Fn() -> bool>(
   }
 
   (best_move, alpha, capture_depth)
+}
+
+pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_stop: &SS) -> HashSet<Pos> {
+  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+
+  let trajectories: SmallVec<[Trajectory<2>; 8]> = build_trajectories(field, player, 2, &mut empty_board, should_stop);
+
+  let alpha = field.score(player);
+
+  let mut moves = HashSet::new();
+
+  for trajectory in trajectories {
+    if should_stop() {
+      break;
+    }
+
+    match *trajectory.points.as_slice() {
+      [pos] => {
+        moves.insert(pos);
+        continue;
+      }
+      [pos1, pos2] => {
+        let mut marks = Vec::with_capacity(field.length());
+        if let Some(&pos) = field
+          .directions_diag(pos1)
+          .iter()
+          .find(|&&pos| field.cell(pos).is_players_point(player))
+        {
+          // mark one of near groups to not search trajectories from it
+          mark_group(field, pos, player, &mut empty_board, &mut marks);
+        };
+
+        for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
+          if should_stop() {
+            break;
+          }
+
+          if field.cell(our_pos).is_players_empty_base(player.next()) {
+            continue;
+          }
+
+          if !field.put_point(our_pos, player) {
+            panic!(
+              "Failed to put a point to ({}, {}) on the field:\n{}",
+              field.to_x(our_pos),
+              field.to_y(our_pos),
+              field,
+            );
+          }
+
+          if is_last_move_stupid(field, our_pos, player) {
+            field.undo();
+            continue;
+          }
+
+          if field.get_delta_score(player) > 0 {
+            field.undo();
+            moves.insert(our_pos);
+            continue;
+          }
+
+          if !field.put_point(enemy_pos, player.next()) {
+            panic!(
+              "Failed to put a point to ({}, {}) on the field:\n{}",
+              field.to_x(enemy_pos),
+              field.to_y(enemy_pos),
+              field,
+            );
+          }
+
+          let trajectories: SmallVec<[_; 2]> =
+            build_trajectories_from(field, our_pos, player, 2, &mut empty_board, should_stop);
+
+          if should_stop() {
+            field.undo();
+            field.undo();
+            break;
+          }
+
+          let marks_len = marks.len();
+          mark_group(field, our_pos, player, &mut empty_board, &mut marks);
+
+          for next_trajectory in trajectories {
+            if should_stop() {
+              break;
+            }
+
+            let (_, cur_score, _, cur_viable) = ladders_rec(
+              field,
+              player,
+              &next_trajectory,
+              alpha,
+              trajectory.score.min(next_trajectory.score),
+              &mut empty_board,
+              should_stop,
+              0,
+              &mut marks,
+            );
+            let cur_score = cur_score.min(next_trajectory.score);
+
+            if cur_score > alpha
+              && cur_viable
+              && (next_trajectory.points.len() > 1
+                || is_trajectoty_viable(field, &trajectory, player, &mut empty_board))
+            {
+              moves.insert(our_pos);
+              break;
+            }
+          }
+
+          for &pos in &marks[marks_len..] {
+            empty_board[pos] = 0;
+          }
+          marks.truncate(marks_len);
+
+          field.undo();
+          field.undo();
+        }
+
+        for pos in marks {
+          empty_board[pos] = 0;
+        }
+      }
+      _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
+    }
+  }
+
+  moves
 }
