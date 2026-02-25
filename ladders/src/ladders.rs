@@ -42,12 +42,15 @@ fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) ->
 }
 
 fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Player, empty_board: &mut [u32]) -> bool {
-  if trajectory.points.iter().any(|&pos| !field.is_putting_allowed(pos)) {
-    return false;
+  let mut put = 0;
+  for &pos in &trajectory.points {
+    if field.put_point(pos, player) {
+      put += 1;
+    }
   }
 
-  for &pos in &trajectory.points {
-    field.put_point(pos, player);
+  if put == 0 {
+    return false;
   }
 
   let result = field.get_delta_score(player) > 0 || {
@@ -76,7 +79,7 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
     })
   };
 
-  for _ in 0..trajectory.points.len() {
+  for _ in 0..put {
     field.undo();
   }
 
