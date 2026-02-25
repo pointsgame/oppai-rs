@@ -9,7 +9,7 @@ const SEED: u64 = 7;
 
 #[test]
 fn field_features_square() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     d.c
@@ -17,8 +17,6 @@ fn field_features_square() {
     .aF
     ",
   );
-  let width = field.width();
-  let height = field.height();
 
   #[rustfmt::skip]
   let mask = array![
@@ -81,7 +79,7 @@ fn field_features_square() {
     [0., 0., 0.],
   ];
 
-  let features = field_features::<f64>(&mut field, Player::Red, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), red);
   assert_eq!(features.slice(s![2, .., ..]), black);
@@ -90,15 +88,13 @@ fn field_features_square() {
   assert_eq!(features.slice(s![5, .., ..]), empty);
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), grounded);
-  assert_eq!(features.slice(s![8, .., ..]), empty);
-  assert_eq!(features.slice(s![9, .., ..]), empty);
-  assert_eq!(features.slice(s![10, .., ..]), history_1);
-  assert_eq!(features.slice(s![11, .., ..]), history_2);
-  assert_eq!(features.slice(s![12, .., ..]), history_3);
-  assert_eq!(features.slice(s![13, .., ..]), history_4);
-  assert_eq!(features.slice(s![14, .., ..]), history_5);
+  assert_eq!(features.slice(s![8, .., ..]), history_1);
+  assert_eq!(features.slice(s![9, .., ..]), history_2);
+  assert_eq!(features.slice(s![10, .., ..]), history_3);
+  assert_eq!(features.slice(s![11, .., ..]), history_4);
+  assert_eq!(features.slice(s![12, .., ..]), history_5);
 
-  let features = field_features::<f64>(&mut field, Player::Black, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), black);
   assert_eq!(features.slice(s![2, .., ..]), red);
@@ -107,15 +103,13 @@ fn field_features_square() {
   assert_eq!(features.slice(s![5, .., ..]), empty);
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), grounded);
-  assert_eq!(features.slice(s![8, .., ..]), empty);
-  assert_eq!(features.slice(s![9, .., ..]), empty);
-  assert_eq!(features.slice(s![10, .., ..]), history_1);
-  assert_eq!(features.slice(s![11, .., ..]), history_2);
-  assert_eq!(features.slice(s![12, .., ..]), history_3);
-  assert_eq!(features.slice(s![13, .., ..]), history_4);
-  assert_eq!(features.slice(s![14, .., ..]), history_5);
+  assert_eq!(features.slice(s![8, .., ..]), history_1);
+  assert_eq!(features.slice(s![9, .., ..]), history_2);
+  assert_eq!(features.slice(s![10, .., ..]), history_3);
+  assert_eq!(features.slice(s![11, .., ..]), history_4);
+  assert_eq!(features.slice(s![12, .., ..]), history_5);
 
-  let features = field_features::<f64>(&mut field, Player::Red, width, height, 4);
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 4);
   assert_eq!(features.slice(s![0, .., ..]), mask.t());
   assert_eq!(features.slice(s![1, .., ..]), red.t());
   assert_eq!(features.slice(s![2, .., ..]), black.t());
@@ -124,15 +118,13 @@ fn field_features_square() {
   assert_eq!(features.slice(s![5, .., ..]), empty.t());
   assert_eq!(features.slice(s![6, .., ..]), empty.t());
   assert_eq!(features.slice(s![7, .., ..]), grounded.t());
-  assert_eq!(features.slice(s![8, .., ..]), empty.t());
-  assert_eq!(features.slice(s![9, .., ..]), empty.t());
-  assert_eq!(features.slice(s![10, .., ..]), history_1.t());
-  assert_eq!(features.slice(s![11, .., ..]), history_2.t());
-  assert_eq!(features.slice(s![12, .., ..]), history_3.t());
-  assert_eq!(features.slice(s![13, .., ..]), history_4.t());
-  assert_eq!(features.slice(s![14, .., ..]), history_5.t());
+  assert_eq!(features.slice(s![8, .., ..]), history_1.t());
+  assert_eq!(features.slice(s![9, .., ..]), history_2.t());
+  assert_eq!(features.slice(s![10, .., ..]), history_3.t());
+  assert_eq!(features.slice(s![11, .., ..]), history_4.t());
+  assert_eq!(features.slice(s![12, .., ..]), history_5.t());
 
-  let features = field_features::<f64>(&mut field, Player::Red, width, height, 5);
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 5);
   assert_eq!(features.slice(s![0, .., ..]), mask.slice(s![..; -1, ..]).t());
   assert_eq!(features.slice(s![1, .., ..]), red.slice(s![..; -1, ..]).t());
   assert_eq!(features.slice(s![2, .., ..]), black.slice(s![..; -1, ..]).t());
@@ -141,18 +133,16 @@ fn field_features_square() {
   assert_eq!(features.slice(s![5, .., ..]), empty.slice(s![..; -1, ..]).t());
   assert_eq!(features.slice(s![6, .., ..]), empty.slice(s![..; -1, ..]).t());
   assert_eq!(features.slice(s![7, .., ..]), grounded.slice(s![..; -1, ..]).t());
-  assert_eq!(features.slice(s![8, .., ..]), empty.slice(s![..; -1, ..]).t());
-  assert_eq!(features.slice(s![9, .., ..]), empty.slice(s![..; -1, ..]).t());
-  assert_eq!(features.slice(s![10, .., ..]), history_1.slice(s![..; -1, ..]).t());
-  assert_eq!(features.slice(s![11, .., ..]), history_2.slice(s![..; -1, ..]).t());
-  assert_eq!(features.slice(s![12, .., ..]), history_3.slice(s![..; -1, ..]).t());
-  assert_eq!(features.slice(s![13, .., ..]), history_4.slice(s![..; -1, ..]).t());
-  assert_eq!(features.slice(s![14, .., ..]), history_5.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![8, .., ..]), history_1.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![9, .., ..]), history_2.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![10, .., ..]), history_3.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![11, .., ..]), history_4.slice(s![..; -1, ..]).t());
+  assert_eq!(features.slice(s![12, .., ..]), history_5.slice(s![..; -1, ..]).t());
 }
 
 #[test]
 fn field_features_rectangle() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     aA
@@ -160,8 +150,6 @@ fn field_features_rectangle() {
     aA
     ",
   );
-  let width = field.width();
-  let height = field.height();
 
   #[rustfmt::skip]
   let mask = array![
@@ -188,7 +176,7 @@ fn field_features_rectangle() {
     [0., 0.],
   ];
 
-  let features = field_features::<f64>(&mut field, Player::Red, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), red);
   assert_eq!(features.slice(s![2, .., ..]), black);
@@ -198,7 +186,7 @@ fn field_features_rectangle() {
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), mask);
 
-  let features = field_features::<f64>(&mut field, Player::Black, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), black);
   assert_eq!(features.slice(s![2, .., ..]), red);
@@ -211,7 +199,7 @@ fn field_features_rectangle() {
 
 #[test]
 fn field_features_wide_rectangle() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     aA
@@ -219,8 +207,6 @@ fn field_features_wide_rectangle() {
     aA
     ",
   );
-  let width = field.width();
-  let height = field.height();
 
   #[rustfmt::skip]
   let mask = array![
@@ -251,7 +237,7 @@ fn field_features_wide_rectangle() {
     [0., 0., 0.],
   ];
 
-  let features = field_features::<f64>(&mut field, Player::Red, width + 1, height + 1, 0);
+  let features = field_features::<f64>(&field, Player::Red, field.width() + 1, field.height() + 1, 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), red);
   assert_eq!(features.slice(s![2, .., ..]), black);
@@ -261,7 +247,7 @@ fn field_features_wide_rectangle() {
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), mask);
 
-  let features = field_features::<f64>(&mut field, Player::Black, width + 1, height + 1, 0);
+  let features = field_features::<f64>(&field, Player::Black, field.width() + 1, field.height() + 1, 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), black);
   assert_eq!(features.slice(s![2, .., ..]), red);
@@ -274,7 +260,7 @@ fn field_features_wide_rectangle() {
 
 #[test]
 fn field_features_capture() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.
@@ -282,8 +268,6 @@ fn field_features_capture() {
     .a.
     ",
   );
-  let width = field.width();
-  let height = field.height();
 
   #[rustfmt::skip]
   let mask = array![
@@ -322,7 +306,7 @@ fn field_features_capture() {
     [0., 0., 0.],
   ];
 
-  let features = field_features::<f64>(&mut field, Player::Red, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), red);
   assert_eq!(features.slice(s![2, .., ..]), black);
@@ -332,7 +316,7 @@ fn field_features_capture() {
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), red_owner);
 
-  let features = field_features::<f64>(&mut field, Player::Black, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), black);
   assert_eq!(features.slice(s![2, .., ..]), red);
@@ -345,7 +329,7 @@ fn field_features_capture() {
 
 #[test]
 fn field_features_empty_base() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.
@@ -353,8 +337,6 @@ fn field_features_empty_base() {
     .a.
     ",
   );
-  let width = field.width();
-  let height = field.height();
 
   #[rustfmt::skip]
   let mask = array![
@@ -381,7 +363,7 @@ fn field_features_empty_base() {
     [0., 0., 0.],
   ];
 
-  let features = field_features::<f64>(&mut field, Player::Red, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), red);
   assert_eq!(features.slice(s![2, .., ..]), empty);
@@ -391,7 +373,7 @@ fn field_features_empty_base() {
   assert_eq!(features.slice(s![6, .., ..]), empty);
   assert_eq!(features.slice(s![7, .., ..]), red);
 
-  let features = field_features::<f64>(&mut field, Player::Black, width, height, 0);
+  let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
   assert_eq!(features.slice(s![0, .., ..]), mask);
   assert_eq!(features.slice(s![1, .., ..]), empty);
   assert_eq!(features.slice(s![2, .., ..]), red);
