@@ -14,6 +14,7 @@ pub fn field_features_len(width: u32, height: u32) -> usize {
   (width * height) as usize * CHANNELS
 }
 
+// TODO: KataGo has 2% chance of zeroing history during training
 fn push_history<N: Zero + One + Copy>(
   field: &Field,
   pos: Option<NonZeroPos>,

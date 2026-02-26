@@ -41,11 +41,15 @@ impl Visits {
     let (width, height) = rotate_sizes(width, height, rotation);
     let mut policies = Array2::zeros((height as usize, width as usize));
 
-    for &(pos, visits) in &self.0 {
-      let x = to_x(width + 1, pos);
-      let y = to_y(width + 1, pos);
-      let (x, y) = rotate(width, height, x, y, rotation);
-      policies[(y as usize, x as usize)] = N::from(visits).unwrap() / N::from(total).unwrap();
+    if total > 0 {
+      for &(pos, visits) in &self.0 {
+        let x = to_x(width + 1, pos);
+        let y = to_y(width + 1, pos);
+        let (x, y) = rotate(width, height, x, y, rotation);
+        policies[(y as usize, x as usize)] = N::from(visits).unwrap() / N::from(total).unwrap();
+      }
+    } else {
+      policies.fill(N::one() / N::from(width * height).unwrap());
     }
 
     policies
@@ -178,13 +182,20 @@ pub fn examples<N: Float + Zero + One>(
     field.update_grounded();
   }
 
-  for (&(pos, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
+  for (&(pos, player), (visits, opponent_visits)) in moves[initial_moves..].iter().zip(
+    visits
+      .iter()
+      .zip(visits.iter().skip(1).chain(iter::once(&Visits::default()))),
+  ) {
     if visits.1 {
       for rotation in 0..rotations {
         examples
           .inputs
           .push(field_features(&field, player, field.width(), field.height(), rotation));
         examples.policies.push(visits.policies(width, height, rotation));
+        examples
+          .opponent_policies
+          .push(opponent_visits.policies(width, height, rotation));
       }
     }
 

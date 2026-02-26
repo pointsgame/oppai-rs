@@ -7,8 +7,18 @@ use std::{iter, ops::Add};
 pub struct Examples<N> {
   pub inputs: Vec<Array3<N>>,
   pub policies: Vec<Array2<N>>,
+  pub opponent_policies: Vec<Array2<N>>,
   pub values: Vec<Array1<N>>,
   pub scores: Vec<Array1<N>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Batch<N> {
+  pub inputs: Array4<N>,
+  pub policies: Array3<N>,
+  pub opponent_policies: Array3<N>,
+  pub values: Array2<N>,
+  pub scores: Array2<N>,
 }
 
 impl<N> Default for Examples<N> {
@@ -16,6 +26,7 @@ impl<N> Default for Examples<N> {
     Self {
       inputs: Default::default(),
       policies: Default::default(),
+      opponent_policies: Default::default(),
       values: Default::default(),
       scores: Default::default(),
     }
@@ -27,6 +38,7 @@ impl<N> Add for Examples<N> {
   fn add(mut self, rhs: Self) -> Self::Output {
     self.inputs.extend(rhs.inputs);
     self.policies.extend(rhs.policies);
+    self.opponent_policies.extend(rhs.opponent_policies);
     self.values.extend(rhs.values);
     self.scores.extend(rhs.scores);
     self
@@ -69,6 +81,11 @@ impl<N: Clone> Examples<N> {
   }
 
   #[inline]
+  pub fn opponent_policies(&self) -> Array3<N> {
+    Examples::policies_array(&self.opponent_policies)
+  }
+
+  #[inline]
   pub fn values(&self) -> Array2<N> {
     Examples::values_array(&self.values)
   }
@@ -107,29 +124,30 @@ impl<N: Clone> Examples<N> {
     }
   }
 
-  pub fn batches(&self, size: usize) -> impl Iterator<Item = (Array4<N>, Array3<N>, Array2<N>, Array2<N>)> + '_ {
+  pub fn batches(&self, size: usize) -> impl Iterator<Item = Batch<N>> + '_ {
     if self.len() <= size {
-      Either::Left(iter::once((
-        self.inputs(),
-        self.policies(),
-        self.values(),
-        self.scores(),
-      )))
+      Either::Left(iter::once(Batch {
+        inputs: self.inputs(),
+        policies: self.policies(),
+        opponent_policies: self.opponent_policies(),
+        values: self.values(),
+        scores: self.scores(),
+      }))
     } else {
       Either::Right(
         itertools::izip!(
           self.inputs.chunks(size),
           self.policies.chunks(size),
+          self.opponent_policies.chunks(size),
           self.values.chunks(size),
           self.scores.chunks(size),
         )
-        .map(|(inputs, policies, values, scores)| {
-          (
-            Examples::inputs_array(inputs),
-            Examples::policies_array(policies),
-            Examples::values_array(values),
-            Examples::scores_array(scores),
-          )
+        .map(|(inputs, policies, opponent_policies, values, scores)| Batch {
+          inputs: Examples::inputs_array(inputs),
+          policies: Examples::policies_array(policies),
+          opponent_policies: Examples::policies_array(opponent_policies),
+          values: Examples::values_array(values),
+          scores: Examples::scores_array(scores),
         })
         .take(self.len() / size),
       )

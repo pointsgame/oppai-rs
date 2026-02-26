@@ -404,16 +404,14 @@ impl<B: Backend> PolicyHead<B> {
         .init(device),
       bias2: NormMask::new(device, P1_CHANNELS, false),
       act2: Gelu::new(),
-      conv2p: Conv2dConfig::new([P1_CHANNELS, 1], [1, 1])
+      conv2p: Conv2dConfig::new([P1_CHANNELS, 2], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
     }
   }
 
-  fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 3> {
-    let [batch, _, height, width] = inputs.dims();
-
+  fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
     let outp = self.conv1p.forward(inputs.clone());
     let outg = self.conv1g.forward(inputs);
     let outg = self.biasg.forward(outg, mask.clone());
@@ -425,8 +423,7 @@ impl<B: Backend> PolicyHead<B> {
     let outp = self.bias2.forward(outp, mask.clone());
     let outp = self.act2.forward(outp);
     let outp = self.conv2p.forward(outp);
-    let outp: Tensor<B, 4> = outp - (1.0 - mask) * 5000.0;
-    outp.reshape([batch, height, width])
+    outp - (1.0 - mask) * 5000.0
   }
 }
 
@@ -457,7 +454,7 @@ impl<B: Backend> Model<B> {
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>, Tensor<B, 2>) {
+  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>) {
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let mut x = self.initial_conv.forward(inputs);
@@ -471,7 +468,7 @@ impl<B: Backend> Model<B> {
     (policy, value, score)
   }
 
-  pub fn forward_no_score(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 3>, Tensor<B, 2>) {
+  pub fn forward_no_score(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 4>, Tensor<B, 2>) {
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let mut x = self.initial_conv.forward(inputs);
@@ -534,6 +531,8 @@ where
       &self.device,
     );
     let (policy_logists, value_logists) = self.model.forward_no_score(inputs);
+    // TODO: lightweight model that doesn't calculate second layer
+    let policy_logists: Tensor<B, 3> = policy_logists.slice(s![.., 0..1, .., ..]).squeeze_dim(1);
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
     let values = softmax(value_logists, 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
@@ -569,6 +568,7 @@ where
     mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
     policies: Array3<<B as Backend>::FloatElem>,
+    opponent_policies: Array3<<B as Backend>::FloatElem>,
     values: Array2<<B as Backend>::FloatElem>,
     scores: Array2<<B as Backend>::FloatElem>,
   ) -> Result<Self, Self::TE> {
@@ -581,6 +581,10 @@ where
       TensorData::new(into_data_vec(policies), [batch, height * width]),
       &self.predictor.device,
     );
+    let opponent_policies = Tensor::from_data(
+      TensorData::new(into_data_vec(opponent_policies), [batch, height * width]),
+      &self.predictor.device,
+    );
     let values = Tensor::from_data(
       TensorData::new(into_data_vec(values), [batch, 2]),
       &self.predictor.device,
@@ -591,7 +595,11 @@ where
     );
     let scores_cdf = scores.clone().cumsum(1);
     let (out_policy_logists, out_value_logists, out_score_logists) = self.predictor.model.forward(inputs);
-    let out_policies = log_softmax(out_policy_logists.reshape([0, -1]), 1);
+    let out_policies = log_softmax(
+      out_policy_logists.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
+      1,
+    );
+    let out_opponent_policies = log_softmax(out_policy_logists.slice(s![.., 1..2, .., ..]).reshape([0, -1]), 1);
     let out_values = log_softmax(out_value_logists, 1);
     let out_scores = log_softmax(out_score_logists.clone(), 1);
     let out_scores_cdf = softmax(out_score_logists, 1).cumsum(1);
@@ -600,18 +608,20 @@ where
     // TODO: KataGo uses different weight
     let values_loss = -(out_values * values).sum() * 1.5 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
+    let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
     let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
     let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
 
     log::info!(
-      "Loss: value {} policy {} pdf {} cdf {}",
+      "Loss: value {} policy {} opponent policy {} pdf {} cdf {}",
       values_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
       pdf_loss.clone().into_scalar(),
       cdf_loss.clone().into_scalar(),
+      opponent_policies_loss.clone().into_scalar()
     );
 
-    let loss = values_loss + policies_loss + pdf_loss + cdf_loss;
+    let loss = values_loss + policies_loss + opponent_policies_loss + pdf_loss + cdf_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(self.lr, self.predictor.model, grads);
@@ -696,12 +706,15 @@ mod tests {
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
+        let opponent_policies = Array3::from_elem((1, 4, 8), 0.7);
         let values = array![[1.0, 0.0]];
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOP_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();
-        let mut learner = learner.train(inputs.clone(), policies, values, scores).unwrap();
+        let mut learner = learner
+          .train(inputs.clone(), policies, opponent_policies, values, scores)
+          .unwrap();
         let (out_policies_2, out_values_2) = learner.predict(inputs).unwrap();
 
         assert!((out_policies_1 - out_policies_2).iter().all(|v| v.abs() > 0.0));

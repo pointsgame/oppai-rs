@@ -33,7 +33,8 @@ use sgf_parse::{GameTree, SimpleText, serialize, unknown_game::Prop};
 use std::{
   cmp::Ordering,
   fmt::{Debug, Display},
-  fs,
+  fs::{self, File},
+  io::Write,
   iter::{self, Sum},
   path::PathBuf,
   process::ExitCode,
@@ -192,8 +193,14 @@ where
   for epoch in 0..epochs {
     log::info!("Training {} epoch", epoch);
     examples.shuffle(rng);
-    for (inputs, policies, values, scores) in examples.batches(batch_size) {
-      learner = learner.train(inputs, policies, values, scores)?;
+    for batch in examples.batches(batch_size) {
+      learner = learner.train(
+        batch.inputs,
+        batch.policies,
+        batch.opponent_policies,
+        batch.values,
+        batch.scores,
+      )?;
     }
   }
 
@@ -249,7 +256,14 @@ where
   let player = Player::Red;
   let field = Field::new_from_rng(config.width, config.height, rng);
 
-  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng)? {
+  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng, &|field| {
+    if let Some(node) = to_sgf(&field.into()) {
+      let sgf = serialize(iter::once(&GameTree::Unknown(node)));
+      let filename = "/tmp/games.sgf";
+      let mut file = File::options().append(true).create(true).open(filename).unwrap();
+      writeln!(&mut file, "{sgf}").unwrap();
+    }
+  })? {
     ExitCode::SUCCESS
   } else {
     2.into()

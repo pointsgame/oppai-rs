@@ -60,12 +60,13 @@ fn win_rate(wins: u64, losses: u64, games: u64) -> f64 {
   }
 }
 
-pub fn pit<N, M, R>(
+pub fn pit<N, M, R, F: Fn(Field)>(
   field: &Field,
   player: Player,
   new_model: &mut M,
   old_model: &mut M,
   rng: &mut R,
+  callback: &F,
 ) -> Result<bool, M::E>
 where
   M: Model<N>,
@@ -78,10 +79,11 @@ where
   for i in 0..PIT_GAMES {
     log::info!("Game {}, win rate {}", i, win_rate(wins, losses, i));
 
+    let mut field = field.clone();
     let result = if i % 2 == 0 {
-      play(&mut field.clone(), player, new_model, old_model, rng)?
+      play(&mut field, player, new_model, old_model, rng)?
     } else {
-      -play(&mut field.clone(), player, old_model, new_model, rng)?
+      -play(&mut field, player, old_model, new_model, rng)?
     };
 
     match result.cmp(&0) {
@@ -89,6 +91,8 @@ where
       Ordering::Greater => wins += 1,
       Ordering::Equal => {}
     };
+
+    callback(field);
   }
 
   let win_rate = win_rate(wins, losses, PIT_GAMES);
