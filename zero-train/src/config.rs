@@ -24,6 +24,7 @@ pub enum Action {
   Pit {
     model: PathBuf,
     model_new: PathBuf,
+    games: Option<PathBuf>,
   },
 }
 
@@ -184,6 +185,14 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .required(true),
+    )
+    .arg(
+      Arg::new("games")
+        .long("games")
+        .short('g')
+        .help("Path where to save the played games")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf)),
     );
 
   let matches = Command::new(crate_name!())
@@ -274,7 +283,12 @@ pub fn cli_parse() -> (Config, Action) {
     Some(("pit", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
-      Action::Pit { model, model_new }
+      let games = matches.get_one("games").cloned();
+      Action::Pit {
+        model,
+        model_new,
+        games,
+      }
     }
     _ => panic!("no subcommand"),
   };

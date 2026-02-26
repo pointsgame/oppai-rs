@@ -224,6 +224,7 @@ fn pit<B, R: Rng>(
   config: Config,
   model_path: PathBuf,
   model_new_path: PathBuf,
+  games: Option<PathBuf>,
   device: B::Device,
   rng: &mut R,
 ) -> Result<ExitCode>
@@ -257,11 +258,13 @@ where
   let field = Field::new_from_rng(config.width, config.height, rng);
 
   let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng, &|field| {
-    if let Some(node) = to_sgf(&field.into()) {
+    if let Some(ref games) = games
+      && let Some(node) = to_sgf(&field.into())
+    {
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-      let filename = "/tmp/games.sgf";
-      let mut file = File::options().append(true).create(true).open(filename).unwrap();
-      writeln!(&mut file, "{sgf}").unwrap();
+      if let Ok(mut file) = File::options().append(true).create(true).open(games) {
+        writeln!(&mut file, "{sgf}").ok();
+      }
     }
   })? {
     ExitCode::SUCCESS
@@ -307,7 +310,11 @@ where
       device,
       &mut rng,
     ),
-    Action::Pit { model, model_new } => pit::<B, _>(config, model, model_new, device, &mut rng),
+    Action::Pit {
+      model,
+      model_new,
+      games,
+    } => pit::<B, _>(config, model, model_new, games, device, &mut rng),
   }
 }
 
