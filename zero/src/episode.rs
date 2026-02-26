@@ -52,6 +52,11 @@ impl Visits {
   }
 }
 
+fn interpolate_early<N: Float>(field: &Field, early_value: N, value: N) -> N {
+  let halflives = N::from(field.moves_count()).unwrap() / N::from(field.width() * field.height()).unwrap().sqrt();
+  value + (early_value - value) * N::from(0.5).unwrap().powf(halflives)
+}
+
 fn select_policy_move<N, R>(field: &Field, policy: Array3<N>, rng: &mut R) -> Option<NonZeroPos>
 where
   N: Float + Sum + SampleUniform,
@@ -65,15 +70,15 @@ where
       sum = sum + policy[(0, y as usize, x as usize)];
     }
   }
-  let r = rng.random_range(N::zero()..sum);
+  let mut sample = rng.random_range(N::zero()..sum);
   for pos in field.min_pos()..=field.max_pos() {
     if field.is_putting_allowed(pos) {
       let (x, y) = field.to_xy(pos);
       let policy = policy[(0, y as usize, x as usize)];
-      if policy > r {
+      if policy >= sample {
         return NonZeroPos::new(pos);
       } else {
-        sum = sum - policy;
+        sample = sample - policy;
       }
     }
   }
@@ -116,9 +121,7 @@ where
     let sims = if full_search {
       // TODO: does it scale to big sizes?
       let shape = N::from(0.03 * 19.0.powi(2)).unwrap() / N::from(field.width() * field.height()).unwrap();
-      // TODO: dynamically adjust temperature from 1.25 to 1.1?
-      // see Search::maybeAddPolicyNoiseAndTemp and interpolateEarly in KataGo
-      let temperature = N::from(1.1).unwrap();
+      let temperature = interpolate_early(field, N::from(1.25).unwrap(), N::from(1.1).unwrap());
       search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), shape, temperature);
       MCTS_FULL_SIMS
     } else {
@@ -134,7 +137,12 @@ where
       full_search,
     ));
 
-    let pos = search.next_best_root().unwrap();
+    let pos = search
+      .next_root_with_temperature(
+        interpolate_early(field, N::from(0.75).unwrap(), N::from(0.15).unwrap()),
+        rng,
+      )
+      .unwrap();
     search.compact();
     assert!(field.put_point(pos.get(), player));
     field.update_grounded();

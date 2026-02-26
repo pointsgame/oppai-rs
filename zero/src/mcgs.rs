@@ -9,6 +9,7 @@ use oppai_field::{
 };
 use rand::Rng;
 use rand::seq::SliceRandom;
+use rand_distr::uniform::SampleUniform;
 use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
 use std::cell::LazyCell;
 use std::collections::VecDeque;
@@ -411,6 +412,7 @@ impl<N: Float + Sum> Search<N> {
 
   /// Move the root to the best child
   pub fn next_best_root(&mut self) -> Option<NonZeroPos> {
+    self.dirichlet_noise = false;
     if let Some((edge_hash, edge_pos)) = self.nodes[self.root_idx]
       .children
       .iter()
@@ -418,7 +420,6 @@ impl<N: Float + Sum> Search<N> {
       .map(|edge| (edge.hash, edge.pos))
     {
       self.root_idx = self.add_node(edge_hash);
-      self.dirichlet_noise = false;
       NonZeroPos::new(edge_pos)
     } else {
       *self = Self::new();
@@ -428,6 +429,7 @@ impl<N: Float + Sum> Search<N> {
 
   /// Move the root to the child with the given position
   pub fn next_root(&mut self, pos: Pos) {
+    self.dirichlet_noise = false;
     if let Some(edge_hash) = self.nodes[self.root_idx]
       .children
       .iter()
@@ -435,7 +437,6 @@ impl<N: Float + Sum> Search<N> {
       .map(|edge| edge.hash)
     {
       self.root_idx = self.add_node(edge_hash);
-      self.dirichlet_noise = false;
     } else {
       *self = Self::new();
     }
@@ -485,6 +486,57 @@ impl<N: Float + Sum> Search<N> {
   /// Get the value of the root node
   pub fn value(&self) -> N {
     self.nodes[self.root_idx].value
+  }
+}
+
+impl<N: Float + Sum + SampleUniform> Search<N> {
+  /// Move the root to a random child based on visit counts
+  pub fn next_root_with_temperature<R: Rng>(&mut self, temperature: N, rng: &mut R) -> Option<NonZeroPos> {
+    let root = &self.nodes[self.root_idx];
+    let max_logit = N::from(
+      root
+        .children
+        .iter()
+        .map(|edge| edge.visits)
+        .max()
+        .filter(|&visits| visits > 0)?,
+    )
+    .unwrap()
+    .ln();
+    let sum_exp: N = root
+      .children
+      .iter()
+      .filter(|edge| edge.visits > 0)
+      .map(|edge| ((N::from(edge.visits).unwrap().ln() - max_logit) / temperature).exp())
+      .sum();
+
+    let mut sample = rng.random_range(N::zero()..sum_exp);
+    let mut chosen_edge = None;
+
+    for edge in root.children.iter() {
+      if edge.visits == 0 {
+        continue;
+      }
+
+      let logit = N::from(edge.visits).unwrap().ln() / temperature;
+      let prob = (logit - max_logit).exp();
+
+      if prob >= sample {
+        chosen_edge = Some((edge.hash, edge.pos));
+        break;
+      } else {
+        sample = sample - prob;
+      }
+    }
+
+    self.dirichlet_noise = false;
+    if let Some((hash, pos)) = chosen_edge {
+      self.root_idx = self.add_node(hash);
+      NonZeroPos::new(pos)
+    } else {
+      *self = Self::new();
+      None
+    }
   }
 }
 
