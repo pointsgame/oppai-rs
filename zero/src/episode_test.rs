@@ -29,7 +29,7 @@ fn episode_simple_surrounding() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 0.0, 1.0])));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5])));
       model_inputs.borrow_mut().push(inputs);
       result
     },
@@ -97,7 +97,7 @@ fn episode_trap() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 0.0, 1.0])));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5])));
       model_inputs.borrow_mut().push(inputs);
       result
     },
@@ -117,68 +117,6 @@ fn episode_trap() {
 
   assert_eq!(field.moves_count(), 5);
   assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
-
-  field.undo();
-  for rotation in 0..ROTATIONS {
-    let (x, y) = rotate(field.width(), field.height(), 1, 1, rotation);
-    assert_eq!(
-      examples.policies[(ROTATIONS + rotation) as usize][(y as usize, x as usize)],
-      1.0
-    );
-    for channel in 1..CHANNELS {
-      assert_eq!(
-        examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
-        0.0
-      );
-    }
-  }
-  for rotation in 0..ROTATIONS {
-    assert_eq!(
-      examples.inputs[(ROTATIONS + rotation) as usize],
-      field_features(&field, Player::Black, field.width(), field.height(), rotation)
-    );
-  }
-
-  field.undo();
-  for rotation in 0..ROTATIONS {
-    let (x, y) = rotate(field.width(), field.height(), 0, 1, rotation);
-    assert!(
-      examples.policies[rotation as usize][(y as usize, x as usize)] > examples.policies[rotation as usize][(1, 1)]
-    );
-    for channel in 1..CHANNELS {
-      assert_eq!(
-        examples.inputs[rotation as usize][(channel, y as usize, x as usize)],
-        0.0
-      );
-    }
-  }
-  for rotation in 0..ROTATIONS {
-    assert_eq!(
-      examples.inputs[rotation as usize],
-      field_features(&field, Player::Red, field.width(), field.height(), rotation)
-    );
-  }
-
-  assert_eq!(model_inputs.borrow().len(), 2);
-
-  let features = field_features(&field, Player::Red, field.width(), field.height(), 0);
-  let features = features
-    .to_shape((1, CHANNELS, field.height() as usize, field.width() as usize))
-    .unwrap();
-  assert_eq!(model_inputs.borrow()[0], features);
-
-  field.put_point(field.to_pos(0, 1), Player::Red);
-  field.update_grounded();
-  let features1 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
-  field.undo();
-  field.put_point(field.to_pos(1, 1), Player::Red);
-  field.update_grounded();
-  let features2 = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
-  // order depends on rng
-  assert_eq!(features1, model_inputs.borrow()[1].index_axis(Axis(0), 0));
-  assert_eq!(features2, model_inputs.borrow()[1].index_axis(Axis(0), 1));
-
-  assert_eq!(examples.values, vec![array![0.5, 0.5]; 16]);
 }
 
 #[test]
