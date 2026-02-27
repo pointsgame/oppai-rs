@@ -16,7 +16,7 @@ use derive_more::From;
 use ndarray::{Array, Array2, Array3, Array4, Dimension, ShapeError};
 use num_traits::{Float, NumCast};
 use oppai_zero::{
-  field_features::{CHANNELS, SCORE_ONE_HOP_SIZE},
+  field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
 };
 use thiserror::Error;
@@ -275,11 +275,11 @@ pub struct ValueHead<B: Backend> {
 
 impl<B: Backend> ValueHead<B> {
   pub fn new(device: &B::Device) -> Self {
-    let offset_bias_data: Vec<f32> = (0..SCORE_ONE_HOP_SIZE as i32)
-      .map(|i| 0.002 * ((i - (SCORE_ONE_HOP_SIZE - 1) as i32 / 2) as f32))
+    let offset_bias_data: Vec<f32> = (0..SCORE_ONE_HOT_SIZE as i32)
+      .map(|i| 0.002 * ((i - (SCORE_ONE_HOT_SIZE - 1) as i32 / 2) as f32))
       .collect();
     let offset_bias_tensor: Tensor<B, 1> =
-      Tensor::from_data(TensorData::new(offset_bias_data, [SCORE_ONE_HOP_SIZE]), device);
+      Tensor::from_data(TensorData::new(offset_bias_data, [SCORE_ONE_HOT_SIZE]), device);
 
     Self {
       conv1: Conv2dConfig::new([INNER_CHANNELS, V1_CHANNELS], [1, 1])
@@ -294,8 +294,8 @@ impl<B: Backend> ValueHead<B> {
 
       linear_s2: LinearConfig::new(3 * V1_CHANNELS, SBV2_SIZE).init(device),
       linear_s2off: LinearConfig::new(1, SBV2_SIZE).with_bias(false).init(device),
-      linear_s3: LinearConfig::new(SBV2_SIZE, SCORE_ONE_HOP_SIZE).init(device),
-      linear_smix: LinearConfig::new(3 * V1_CHANNELS, SCORE_ONE_HOP_SIZE).init(device),
+      linear_s3: LinearConfig::new(SBV2_SIZE, SCORE_ONE_HOT_SIZE).init(device),
+      linear_smix: LinearConfig::new(3 * V1_CHANNELS, SCORE_ONE_HOT_SIZE).init(device),
       act3: Gelu::new(),
       score_belief_offset_bias: Param::from_tensor(offset_bias_tensor).no_grad(),
     }
@@ -338,7 +338,7 @@ impl<B: Backend> ValueHead<B> {
     let s2_term = self.linear_s2.forward(outpooled.clone()).reshape([0, 1, -1]);
 
     // Term 2: Offset bias
-    let offset_bias = self.score_belief_offset_bias.val().reshape([1, SCORE_ONE_HOP_SIZE, 1]);
+    let offset_bias = self.score_belief_offset_bias.val().reshape([1, SCORE_ONE_HOT_SIZE, 1]);
     let s2off_term = self.linear_s2off.forward(offset_bias);
 
     let outsv2 = s2_term + s2off_term;
@@ -590,7 +590,7 @@ where
       &self.predictor.device,
     );
     let scores = Tensor::from_data(
-      TensorData::new(into_data_vec(scores), [batch, SCORE_ONE_HOP_SIZE]),
+      TensorData::new(into_data_vec(scores), [batch, SCORE_ONE_HOT_SIZE]),
       &self.predictor.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
@@ -640,7 +640,7 @@ mod tests {
   };
   use ndarray::{Array2, Array3, Array4, array};
   use oppai_zero::{
-    field_features::{CHANNELS, SCORE_ONE_HOP_SIZE},
+    field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
     model::{Model as OppaiModel, TrainableModel},
   };
 
@@ -708,7 +708,7 @@ mod tests {
         let policies = Array3::from_elem((1, 4, 8), 0.5);
         let opponent_policies = Array3::from_elem((1, 4, 8), 0.7);
         let values = array![[1.0, 0.0]];
-        let mut scores = Array2::from_elem((1, SCORE_ONE_HOP_SIZE), 0.0);
+        let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();

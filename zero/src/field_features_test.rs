@@ -1,4 +1,4 @@
-use crate::field_features::{SCORE_ONE_HOP_SIZE, field_features, score_one_hop};
+use crate::field_features::{SCORE_ONE_HOT_SIZE, field_features, score_one_hot};
 use ndarray::prelude::{array, s};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
@@ -385,7 +385,7 @@ fn field_features_empty_base() {
 }
 
 #[test]
-fn score_one_hop_center() {
+fn score_one_hot_center() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -395,13 +395,13 @@ fn score_one_hop_center() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Red, 0);
+  let score = score_one_hot::<f64>(&field, Player::Red, 0);
 
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2], 1.0);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2], 1.0);
 }
 
 #[test]
-fn score_one_hop_max() {
+fn score_one_hot_max() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -411,13 +411,13 @@ fn score_one_hop_max() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Red, SCORE_ONE_HOP_SIZE as i32 + 1);
+  let score = score_one_hot::<f64>(&field, Player::Red, SCORE_ONE_HOT_SIZE as i32 + 1);
 
   assert_eq!(*score.last().unwrap(), 1.0);
 }
 
 #[test]
-fn score_one_hop_min() {
+fn score_one_hot_min() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -427,13 +427,13 @@ fn score_one_hop_min() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Red, -(SCORE_ONE_HOP_SIZE as i32) - 1);
+  let score = score_one_hot::<f64>(&field, Player::Red, -(SCORE_ONE_HOT_SIZE as i32) - 1);
 
   assert_eq!(score[0], 1.0);
 }
 
 #[test]
-fn score_one_hop_one() {
+fn score_one_hot_one() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -443,13 +443,13 @@ fn score_one_hop_one() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Red, 0);
+  let score = score_one_hot::<f64>(&field, Player::Red, 0);
 
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2 + 1], 1.0);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 + 1], 1.0);
 }
 
 #[test]
-fn score_one_hop_minus_one() {
+fn score_one_hot_minus_one() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -459,13 +459,13 @@ fn score_one_hop_minus_one() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Red, 0);
+  let score = score_one_hot::<f64>(&field, Player::Red, 0);
 
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2 - 1], 1.0);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 1], 1.0);
 }
 
 #[test]
-fn score_one_hop_one_opposite() {
+fn score_one_hot_one_opposite() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -475,13 +475,13 @@ fn score_one_hop_one_opposite() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Black, 0);
+  let score = score_one_hot::<f64>(&field, Player::Black, 0);
 
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2 - 1], 1.0);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 1], 1.0);
 }
 
 #[test]
-fn score_one_hop_fractional_komi() {
+fn score_one_hot_fractional_komi() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -491,14 +491,14 @@ fn score_one_hop_fractional_komi() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Red, 3);
+  let score = score_one_hot::<f64>(&field, Player::Red, 3);
 
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2 + 1], 0.5);
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2 + 2], 0.5);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 + 1], 0.5);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 + 2], 0.5);
 }
 
 #[test]
-fn score_one_hop_fractional_negative_komi() {
+fn score_one_hot_fractional_negative_komi() {
   let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
@@ -508,8 +508,8 @@ fn score_one_hop_fractional_negative_komi() {
     ",
   );
 
-  let score = score_one_hop::<f64>(&field, Player::Red, -3);
+  let score = score_one_hot::<f64>(&field, Player::Red, -3);
 
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2 - 1], 0.5);
-  assert_eq!(score[SCORE_ONE_HOP_SIZE / 2 - 2], 0.5);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 1], 0.5);
+  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 2], 0.5);
 }

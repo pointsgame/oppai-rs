@@ -220,22 +220,22 @@ pub fn field_features<N: Float + Zero + One + Copy>(
     .unwrap()
 }
 
-pub const SCORE_ONE_HOP_SIZE: usize = 1001;
+pub const SCORE_ONE_HOT_SIZE: usize = 1001;
 
-pub fn score_one_hop<N: Float + Zero + One + Copy>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {
-  let mut score_one_hop = vec![N::zero(); SCORE_ONE_HOP_SIZE];
-  const CENTER: i32 = (SCORE_ONE_HOP_SIZE / 2) as i32;
+pub fn score_one_hot<N: Float + Zero + One + Copy>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {
+  let mut score_one_hot = vec![N::zero(); SCORE_ONE_HOT_SIZE];
+  const CENTER: i32 = (SCORE_ONE_HOT_SIZE / 2) as i32;
   let score = field.score(player) + komi_x_2.div_euclid(2);
   let lower_idx = CENTER + score;
   let upper_idx = CENTER + score + 1;
   if upper_idx <= 0 {
-    score_one_hop[0] = N::one();
-  } else if lower_idx >= SCORE_ONE_HOP_SIZE as i32 - 1 {
-    score_one_hop[SCORE_ONE_HOP_SIZE - 1] = N::one();
+    score_one_hot[0] = N::one();
+  } else if lower_idx >= SCORE_ONE_HOT_SIZE as i32 - 1 {
+    score_one_hot[SCORE_ONE_HOT_SIZE - 1] = N::one();
   } else {
     let lambda = N::from(komi_x_2.rem_euclid(2)).unwrap() / (N::one() + N::one());
-    score_one_hop[lower_idx as usize] = N::one() - lambda;
-    score_one_hop[upper_idx as usize] = lambda;
+    score_one_hot[lower_idx as usize] = N::one() - lambda;
+    score_one_hot[upper_idx as usize] = lambda;
   }
-  Array::from(score_one_hop)
+  Array::from(score_one_hot)
 }

@@ -1,5 +1,5 @@
 use crate::examples::Examples;
-use crate::field_features::{field_features, score_one_hop};
+use crate::field_features::{field_features, score_one_hot};
 use crate::mcgs::Search;
 use crate::model::Model;
 use log::info;
@@ -207,7 +207,7 @@ pub fn examples<N: Float + Zero + One>(
     if visits.1 {
       let value = game_result::<N>(&field, player);
       examples.values.extend(iter::repeat_n(value, rotations as usize));
-      let score = score_one_hop(&field, player, 0);
+      let score = score_one_hot(&field, player, 0);
       examples.scores.extend(iter::repeat_n(score, rotations as usize));
     }
   }
