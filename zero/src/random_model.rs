@@ -33,7 +33,7 @@ where
 {
   type E = ();
 
-  fn predict(&mut self, inputs: Array4<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  fn predict(&mut self, inputs: Array4<N>, _: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let (batch, _, height, width) = inputs.dim();
     let length = height * width;
 

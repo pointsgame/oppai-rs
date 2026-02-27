@@ -1,5 +1,5 @@
 use crate::examples::Examples;
-use crate::field_features::{field_features, score_one_hot};
+use crate::field_features::{field_features, global, score_one_hot};
 use crate::mcgs::Search;
 use crate::model::Model;
 use log::info;
@@ -106,7 +106,8 @@ where
 
   for _ in 0..raw_policy_moves {
     let features = field_features(field, player, field.width(), field.height(), 0);
-    let (policy, _) = model.predict(features.insert_axis(Axis(0)))?;
+    let global = global(field, player, 0);
+    let (policy, _) = model.predict(features.insert_axis(Axis(0)), global.insert_axis(Axis(0)))?;
     if let Some(pos) = select_policy_move(field, policy, rng) {
       assert!(field.put_point(pos.get(), player));
       field.update_grounded();

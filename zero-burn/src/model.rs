@@ -16,7 +16,7 @@ use derive_more::From;
 use ndarray::{Array, Array2, Array3, Array4, Dimension, ShapeError};
 use num_traits::{Float, NumCast};
 use oppai_zero::{
-  field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
+  field_features::{CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
 };
 use thiserror::Error;
@@ -429,7 +429,8 @@ impl<B: Backend> PolicyHead<B> {
 
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
-  initial_conv: Conv2d<B>,
+  conv_spatial: Conv2d<B>,
+  linear_global: Linear<B>,
   residuals: Vec<ResidualBlock<B>>,
   norm_trunkfinal: NormMask<B>,
   act_trunkfinal: Gelu,
@@ -440,10 +441,11 @@ pub struct Model<B: Backend> {
 impl<B: Backend> Model<B> {
   pub fn new(device: &B::Device) -> Self {
     Self {
-      initial_conv: Conv2dConfig::new([INPUT_CHANNELS, INNER_CHANNELS], [3, 3])
+      conv_spatial: Conv2dConfig::new([INPUT_CHANNELS, INNER_CHANNELS], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
+      linear_global: LinearConfig::new(GLOBAL_FEATURES, INNER_CHANNELS).init(device),
       residuals: (0..RESIDUAL_BLOCKS)
         .map(|i| ResidualBlock::new(device, (i + 1) % GPOOL_EVERY == 0))
         .collect(),
@@ -454,10 +456,12 @@ impl<B: Backend> Model<B> {
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>) {
-    let mask = inputs.clone().slice(s![.., 0..1]);
+  pub fn forward(&self, spatial: Tensor<B, 4>, global: Tensor<B, 2>) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>) {
+    let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let mut x = self.initial_conv.forward(inputs);
+    let x_spatial = self.conv_spatial.forward(spatial);
+    let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
+    let mut x = x_spatial + x_global;
     for residual in &self.residuals {
       x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
     }
@@ -468,10 +472,12 @@ impl<B: Backend> Model<B> {
     (policy, value, score)
   }
 
-  pub fn forward_no_score(&self, inputs: Tensor<B, 4>) -> (Tensor<B, 4>, Tensor<B, 2>) {
-    let mask = inputs.clone().slice(s![.., 0..1]);
+  pub fn forward_no_score(&self, spatial: Tensor<B, 4>, global: Tensor<B, 2>) -> (Tensor<B, 4>, Tensor<B, 2>) {
+    let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let mut x = self.initial_conv.forward(inputs);
+    let x_spatial = self.conv_spatial.forward(spatial);
+    let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
+    let mut x = x_spatial + x_global;
     for residual in &self.residuals {
       x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
     }
@@ -524,13 +530,18 @@ where
   fn predict(
     &mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
+    global: Array2<<B as Backend>::FloatElem>,
   ) -> Result<(Array3<<B as Backend>::FloatElem>, Array2<<B as Backend>::FloatElem>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
     );
-    let (policy_logists, value_logists) = self.model.forward_no_score(inputs);
+    let global = Tensor::from_data(
+      TensorData::new(into_data_vec(global), [batch, GLOBAL_FEATURES]),
+      &self.device,
+    );
+    let (policy_logists, value_logists) = self.model.forward_no_score(inputs, global);
     // TODO: lightweight model that doesn't calculate second layer
     let policy_logists: Tensor<B, 3> = policy_logists.slice(s![.., 0..1, .., ..]).squeeze_dim(1);
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
@@ -551,8 +562,9 @@ where
   fn predict(
     &mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
+    global: Array2<<B as Backend>::FloatElem>,
   ) -> Result<(Array3<<B as Backend>::FloatElem>, Array2<<B as Backend>::FloatElem>), Self::E> {
-    self.predictor.predict(inputs)
+    self.predictor.predict(inputs, global)
   }
 }
 
@@ -567,6 +579,7 @@ where
   fn train(
     mut self,
     inputs: Array4<<B as Backend>::FloatElem>,
+    global: Array2<<B as Backend>::FloatElem>,
     policies: Array3<<B as Backend>::FloatElem>,
     opponent_policies: Array3<<B as Backend>::FloatElem>,
     values: Array2<<B as Backend>::FloatElem>,
@@ -575,6 +588,10 @@ where
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
+      &self.predictor.device,
+    );
+    let global = Tensor::from_data(
+      TensorData::new(into_data_vec(global), [batch, GLOBAL_FEATURES]),
       &self.predictor.device,
     );
     let policies = Tensor::from_data(
@@ -594,7 +611,7 @@ where
       &self.predictor.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
-    let (out_policy_logists, out_value_logists, out_score_logists) = self.predictor.model.forward(inputs);
+    let (out_policy_logists, out_value_logists, out_score_logists) = self.predictor.model.forward(inputs, global);
     let out_policies = log_softmax(
       out_policy_logists.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
       1,
@@ -647,7 +664,10 @@ mod tests {
   #[test]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
-    let (policy_logists, values, _) = model.forward(Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu));
+    let (policy_logists, values, _) = model.forward(
+      Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu),
+      Tensor::ones([1, 1], &NdArrayDevice::Cpu),
+    );
     let policies = softmax(policy_logists.reshape([0, -1]), 1);
     assert!(
       policies
@@ -679,7 +699,7 @@ mod tests {
           device: $device,
         };
         predictor
-          .predict(Array4::from_elem((1, CHANNELS, 4, 8), 1.0))
+          .predict(Array4::from_elem((1, CHANNELS, 4, 8), 1.0), array![[0.2]])
           .unwrap();
       }
     };
@@ -705,17 +725,25 @@ mod tests {
         };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
+        let global = array![[0.2]];
         let policies = Array3::from_elem((1, 4, 8), 0.5);
         let opponent_policies = Array3::from_elem((1, 4, 8), 0.7);
         let values = array![[1.0, 0.0]];
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
 
-        let (out_policies_1, out_values_1) = learner.predict(inputs.clone()).unwrap();
+        let (out_policies_1, out_values_1) = learner.predict(inputs.clone(), global.clone()).unwrap();
         let mut learner = learner
-          .train(inputs.clone(), policies, opponent_policies, values, scores)
+          .train(
+            inputs.clone(),
+            global.clone(),
+            policies,
+            opponent_policies,
+            values,
+            scores,
+          )
           .unwrap();
-        let (out_policies_2, out_values_2) = learner.predict(inputs).unwrap();
+        let (out_policies_2, out_values_2) = learner.predict(inputs, global).unwrap();
 
         assert!((out_policies_1 - out_policies_2).iter().all(|v| v.abs() > 0.0));
         assert!((out_values_1 - out_values_2).iter().all(|v| v.abs() > 0.0));

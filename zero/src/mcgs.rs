@@ -1,4 +1,4 @@
-use crate::field_features::{CHANNELS, field_features_len, field_features_to_vec};
+use crate::field_features::{CHANNELS, GLOBAL_FEATURES, field_features_len, field_features_to_vec, global_to_vec};
 use crate::model::Model;
 use ndarray::{Array, ArrayView2, s};
 use num_traits::Float;
@@ -336,6 +336,7 @@ impl<N: Float + Sum> Search<N> {
 
     let features_len = field_features_len(field.width(), field.height());
     let mut features = Vec::with_capacity(features_len * leafs.len());
+    let mut global = Vec::with_capacity(GLOBAL_FEATURES * leafs.len());
 
     leafs.retain(|leaf| {
       Self::make_moves(field, leaf, player);
@@ -351,6 +352,7 @@ impl<N: Float + Sum> Search<N> {
         false
       } else {
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
+        global_to_vec(field, player, 0, &mut global);
         true
       };
 
@@ -375,8 +377,9 @@ impl<N: Float + Sum> Search<N> {
       features,
     )
     .unwrap();
+    let global = Array::from_shape_vec((global.len() / GLOBAL_FEATURES, GLOBAL_FEATURES), global).unwrap();
 
-    let (policies, values) = model.predict(features)?;
+    let (policies, values) = model.predict(features, global)?;
 
     for (i, leaf) in leafs.iter().enumerate() {
       Self::make_moves(field, leaf, player);

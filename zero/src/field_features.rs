@@ -239,3 +239,16 @@ pub fn score_one_hot<N: Float + Zero + One + Copy>(field: &Field, player: Player
   }
   Array::from(score_one_hot)
 }
+
+pub const GLOBAL_FEATURES: usize = 1;
+
+pub fn global_to_vec<N: Float + Zero + One + Copy>(field: &Field, player: Player, komi_x_2: i32, global: &mut Vec<N>) {
+  let score = N::from(field.score(player) * 2 + komi_x_2).unwrap() / N::from(40).unwrap();
+  global.push(score);
+}
+
+pub fn global<N: Float + Zero + One>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {
+  let mut features = Vec::with_capacity(GLOBAL_FEATURES);
+  global_to_vec(field, player, komi_x_2, &mut features);
+  Array::from(features)
+}

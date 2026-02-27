@@ -197,6 +197,7 @@ where
     for batch in examples.batches(batch_size) {
       learner = learner.train(
         batch.inputs,
+        batch.global,
         batch.policies,
         batch.opponent_policies,
         batch.values,
