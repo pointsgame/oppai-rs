@@ -114,7 +114,8 @@ where
       },
     }));
     let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-    fs::write(game_path, sgf)?;
+    let mut file = File::options().append(true).create(true).open(game_path)?;
+    writeln!(&mut file, "{sgf}")?;
   }
 
   Ok(ExitCode::SUCCESS)
@@ -262,9 +263,8 @@ where
       && let Some(node) = to_sgf(&field.into())
     {
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-      if let Ok(mut file) = File::options().append(true).create(true).open(games) {
-        writeln!(&mut file, "{sgf}").ok();
-      }
+      let mut file = File::options().append(true).create(true).open(games).unwrap();
+      writeln!(&mut file, "{sgf}").unwrap();
     }
   })? {
     ExitCode::SUCCESS
