@@ -83,33 +83,36 @@ where
     None => Either::Left(RandomModel(SmallRng::from_seed(rng.random()))),
   };
 
-  let player = Player::Red;
-  let mut field = Field::new_from_rng(params.width, params.height, rng);
+  let mut file = File::options().append(true).create(true).open(&params.game)?;
 
-  for (pos, player) in InitialPosition::Cross.points(params.width, params.height, player) {
-    // TODO: random shift
-    field.put_point(pos, player);
-  }
+  for _ in 0..params.count {
+    let player = Player::Red;
+    let mut field = Field::new_from_rng(params.width, params.height, rng);
 
-  let visits = episode(&mut field, player, &mut model, rng, komi_x_2)
-    .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
+    for (pos, player) in InitialPosition::Cross.points(params.width, params.height, player) {
+      // TODO: random shift
+      field.put_point(pos, player);
+    }
 
-  let field = field.into();
-  if let Some(mut node) = to_sgf(&field) {
-    visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
-    let score = field.field().score(Player::Red);
-    node.properties.push(Prop::RE(match score.cmp(&0) {
-      Ordering::Equal => "0".into(),
-      Ordering::Greater => SimpleText {
-        text: format!("W+{}", score),
-      },
-      Ordering::Less => SimpleText {
-        text: format!("B+{}", score.abs()),
-      },
-    }));
-    let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-    let mut file = File::options().append(true).create(true).open(params.game)?;
-    writeln!(&mut file, "{sgf}")?;
+    let visits = episode(&mut field, player, &mut model, rng, komi_x_2)
+      .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
+
+    let field = field.into();
+    if let Some(mut node) = to_sgf(&field) {
+      visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
+      let score = field.field().score(Player::Red);
+      node.properties.push(Prop::RE(match score.cmp(&0) {
+        Ordering::Equal => "0".into(),
+        Ordering::Greater => SimpleText {
+          text: format!("W+{}", score),
+        },
+        Ordering::Less => SimpleText {
+          text: format!("B+{}", score.abs()),
+        },
+      }));
+      let sgf = serialize(iter::once(&GameTree::Unknown(node)));
+      writeln!(&mut file, "{sgf}")?;
+    }
   }
 
   Ok(ExitCode::SUCCESS)

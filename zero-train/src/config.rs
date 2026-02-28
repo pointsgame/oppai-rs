@@ -13,6 +13,7 @@ pub struct PlayParams {
   pub komi_x_2: i32,
   pub model: Option<PathBuf>,
   pub game: PathBuf,
+  pub count: usize,
 }
 
 pub struct TrainParams {
@@ -147,6 +148,15 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .required(true),
+    )
+    .arg(
+      Arg::new("count")
+        .long("count")
+        .short('c')
+        .help("Number of games to play")
+        .num_args(1)
+        .value_parser(value_parser!(usize))
+        .default_value("1"),
     );
   let train = Command::new("train")
     .about("Train the neural network")
@@ -250,12 +260,14 @@ pub fn cli_parse() -> (Config, Action) {
       let komi_x_2 = matches.get_one("komi-x2").copied().unwrap();
       let model = matches.get_one("model").cloned();
       let game = matches.get_one("game").cloned().unwrap();
+      let count = matches.get_one("count").copied().unwrap();
       Action::Play(PlayParams {
         width,
         height,
         komi_x_2,
         model,
         game,
+        count,
       })
     }
     Some(("train", matches)) => {
