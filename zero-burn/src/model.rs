@@ -1,13 +1,13 @@
 use burn::{
   module::{Module, Param},
   nn::{
-    Gelu, Linear, LinearConfig, PaddingConfig2d,
+    Linear, LinearConfig, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
   },
   optim::{GradientsParams, LearningRate, Optimizer},
   tensor::{
     DataError, Tensor, TensorData,
-    activation::{log_softmax, softmax},
+    activation::{log_softmax, mish, softmax},
     backend::{AutodiffBackend, Backend},
     s,
   },
@@ -65,7 +65,6 @@ pub struct ConvAndGPool<B: Backend> {
   conv1r: Conv2d<B>,
   conv1g: Conv2d<B>,
   normg: NormMask<B>,
-  actg: Gelu,
   linearg: Linear<B>,
 }
 
@@ -84,7 +83,6 @@ impl<B: Backend> ConvAndGPool<B> {
         .with_bias(false)
         .init(device),
       normg: NormMask::new(device, GPOOL_CHANNELS, false),
-      actg: Gelu::new(),
       linearg: LinearConfig::new(3 * GPOOL_CHANNELS, RESIDUAL_INNER_CHANNELS - GPOOL_CHANNELS)
         .with_bias(false)
         .init(device),
@@ -110,7 +108,7 @@ impl<B: Backend> ConvAndGPool<B> {
     let outr = self.conv1r.forward(inputs.clone());
     let outg = self.conv1g.forward(inputs);
     let outg = self.normg.forward(outg, mask.clone());
-    let outg = self.actg.forward(outg);
+    let outg = mish(outg);
     let outg = Self::gpool(outg, mask, mask_sum_hw);
     let outg = self
       .linearg
@@ -158,7 +156,6 @@ impl<B: Backend> ConvOrGpool<B> {
 #[derive(Module, Debug)]
 pub struct NormActConv<B: Backend> {
   norm: NormMask<B>,
-  act: Gelu,
   convgpool: ConvOrGpool<B>,
 }
 
@@ -173,14 +170,13 @@ impl<B: Backend> NormActConv<B> {
   ) -> Self {
     Self {
       norm: NormMask::new(device, in_channels, gamma),
-      act: Gelu::new(),
       convgpool: ConvOrGpool::new(device, gpool, in_channels, out_channels, kernel_size),
     }
   }
 
   pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
     let out = self.norm.forward(inputs, mask.clone());
-    let out = self.act.forward(out);
+    let out = mish(out);
     self.convgpool.forward(out, mask, mask_sum_hw)
   }
 }
@@ -260,16 +256,13 @@ impl<B: Backend> ResidualBlock<B> {
 pub struct ValueHead<B: Backend> {
   conv1: Conv2d<B>,
   bias1: NormMask<B>,
-  act1: Gelu,
   linear2: Linear<B>,
-  act2: Gelu,
   linear_valuehead: Linear<B>,
   // Score belief components
   linear_s2: Linear<B>,
   linear_s2off: Linear<B>,
   linear_s3: Linear<B>,
   linear_smix: Linear<B>,
-  act3: Gelu,
   score_belief_offset_bias: Param<Tensor<B, 1>>,
 }
 
@@ -287,16 +280,13 @@ impl<B: Backend> ValueHead<B> {
         .with_bias(false)
         .init(device),
       bias1: NormMask::new(device, V1_CHANNELS, false),
-      act1: Gelu::new(),
       linear2: LinearConfig::new(3 * V1_CHANNELS, V2_SIZE).init(device),
-      act2: Gelu::new(),
       linear_valuehead: LinearConfig::new(V2_SIZE, 2).init(device),
 
       linear_s2: LinearConfig::new(3 * V1_CHANNELS, SBV2_SIZE).init(device),
       linear_s2off: LinearConfig::new(1, SBV2_SIZE).with_bias(false).init(device),
       linear_s3: LinearConfig::new(SBV2_SIZE, SCORE_ONE_HOT_SIZE).init(device),
       linear_smix: LinearConfig::new(3 * V1_CHANNELS, SCORE_ONE_HOT_SIZE).init(device),
-      act3: Gelu::new(),
       score_belief_offset_bias: Param::from_tensor(offset_bias_tensor).no_grad(),
     }
   }
@@ -323,13 +313,13 @@ impl<B: Backend> ValueHead<B> {
   ) -> (Tensor<B, 2>, Tensor<B, 2>) {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
-    let outv1 = self.act1.forward(outv1);
+    let outv1 = mish(outv1);
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
 
     // Main Value Head
 
     let outv2 = self.linear2.forward(outpooled.clone());
-    let outv2 = self.act2.forward(outv2);
+    let outv2 = mish(outv2);
     let out_value = self.linear_valuehead.forward(outv2);
 
     // Score Belief Head
@@ -342,7 +332,7 @@ impl<B: Backend> ValueHead<B> {
     let s2off_term = self.linear_s2off.forward(offset_bias);
 
     let outsv2 = s2_term + s2off_term;
-    let outsv2 = self.act3.forward(outsv2);
+    let outsv2 = mish(outsv2);
     let outsv3 = self.linear_s3.forward(outsv2);
 
     let outsmix = self.linear_smix.forward(outpooled);
@@ -363,13 +353,13 @@ impl<B: Backend> ValueHead<B> {
   pub fn forward_no_score(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 2> {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
-    let outv1 = self.act1.forward(outv1);
+    let outv1 = mish(outv1);
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
 
     // Main Value Head
 
     let outv2 = self.linear2.forward(outpooled.clone());
-    let outv2 = self.act2.forward(outv2);
+    let outv2 = mish(outv2);
     self.linear_valuehead.forward(outv2)
   }
 }
@@ -379,10 +369,8 @@ pub struct PolicyHead<B: Backend> {
   conv1p: Conv2d<B>,
   conv1g: Conv2d<B>,
   biasg: NormMask<B>,
-  actg: Gelu,
   linearg: Linear<B>,
   bias2: NormMask<B>,
-  act2: Gelu,
   conv2p: Conv2d<B>,
 }
 
@@ -398,12 +386,10 @@ impl<B: Backend> PolicyHead<B> {
         .with_bias(false)
         .init(device),
       biasg: NormMask::new(device, G1_CHANNELS, false),
-      actg: Gelu::new(),
       linearg: LinearConfig::new(3 * G1_CHANNELS, P1_CHANNELS)
         .with_bias(false)
         .init(device),
       bias2: NormMask::new(device, P1_CHANNELS, false),
-      act2: Gelu::new(),
       conv2p: Conv2dConfig::new([P1_CHANNELS, 2], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
@@ -415,13 +401,13 @@ impl<B: Backend> PolicyHead<B> {
     let outp = self.conv1p.forward(inputs.clone());
     let outg = self.conv1g.forward(inputs);
     let outg = self.biasg.forward(outg, mask.clone());
-    let outg = self.actg.forward(outg);
+    let outg = mish(outg);
     let outg = ConvAndGPool::<B>::gpool(outg, mask.clone(), mask_sum_hw).reshape([0, -1]);
     let outg = self.linearg.forward(outg).unsqueeze_dims(&[-1, -1]);
 
     let outp = outp + outg;
     let outp = self.bias2.forward(outp, mask.clone());
-    let outp = self.act2.forward(outp);
+    let outp = mish(outp);
     let outp = self.conv2p.forward(outp);
     outp - (1.0 - mask) * 5000.0
   }
@@ -433,7 +419,6 @@ pub struct Model<B: Backend> {
   linear_global: Linear<B>,
   residuals: Vec<ResidualBlock<B>>,
   norm_trunkfinal: NormMask<B>,
-  act_trunkfinal: Gelu,
   value_head: ValueHead<B>,
   policy_head: PolicyHead<B>,
 }
@@ -450,7 +435,6 @@ impl<B: Backend> Model<B> {
         .map(|i| ResidualBlock::new(device, (i + 1) % GPOOL_EVERY == 0))
         .collect(),
       norm_trunkfinal: NormMask::new(device, INNER_CHANNELS, false),
-      act_trunkfinal: Gelu::new(),
       value_head: ValueHead::new(device),
       policy_head: PolicyHead::new(device),
     }
@@ -466,7 +450,7 @@ impl<B: Backend> Model<B> {
       x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
-    x = self.act_trunkfinal.forward(x);
+    x = mish(x);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
     let (value, score) = self.value_head.forward(x, mask, mask_sum_hw);
     (policy, value, score)
@@ -482,7 +466,7 @@ impl<B: Backend> Model<B> {
       x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
-    x = self.act_trunkfinal.forward(x);
+    x = mish(x);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
     let value = self.value_head.forward_no_score(x, mask, mask_sum_hw);
     (policy, value)
