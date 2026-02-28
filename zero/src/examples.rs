@@ -132,7 +132,7 @@ impl<N: Clone> Examples<N> {
   pub fn shuffle<R: Rng>(&mut self, rng: &mut R) {
     let len = self.len();
     for i in 0..len {
-      let j = rng.random_range(0..len);
+      let j = rng.random_range(i..len);
       self.inputs.swap(i, j);
       self.global.swap(i, j);
       self.policies.swap(i, j);
