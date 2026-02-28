@@ -81,27 +81,51 @@ fn height_arg() -> Arg {
     .default_value("16")
 }
 
+fn model_arg() -> Arg {
+  Arg::new("model")
+    .long("model")
+    .short('m')
+    .help("Model path")
+    .num_args(1)
+    .value_parser(value_parser!(PathBuf))
+    .required(true)
+}
+
+fn optimizer_arg() -> Arg {
+  Arg::new("optimizer")
+    .long("optimizer")
+    .short('o')
+    .help("Optimizer state path")
+    .num_args(1)
+    .value_parser(value_parser!(PathBuf))
+    .required(true)
+}
+
+fn model_new_arg() -> Arg {
+  Arg::new("model-new")
+    .long("model-new")
+    .short('n')
+    .help("Trained model path")
+    .num_args(1)
+    .value_parser(value_parser!(PathBuf))
+    .required(true)
+}
+
+fn optimizer_new_arg() -> Arg {
+  Arg::new("optimizer-new")
+    .long("optimizer-new")
+    .short('p')
+    .help("New optimizer state path")
+    .num_args(1)
+    .value_parser(value_parser!(PathBuf))
+    .required(true)
+}
+
 pub fn cli_parse() -> (Config, Action) {
   let init = Command::new("init")
     .about("Initialize the neural network")
-    .arg(
-      Arg::new("model")
-        .long("model")
-        .short('m')
-        .help("Model path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    )
-    .arg(
-      Arg::new("optimizer")
-        .long("optimizer")
-        .short('o')
-        .help("Optimizer state path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    );
+    .arg(model_arg())
+    .arg(optimizer_arg());
   let play = Command::new("play")
     .about("Self-play a single game")
     .arg(width_arg())
@@ -114,14 +138,7 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(i32))
         .default_value("0"),
     )
-    .arg(
-      Arg::new("model")
-        .long("model")
-        .short('m')
-        .help("Model path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf)),
-    )
+    .arg(model_arg().required(false))
     .arg(
       Arg::new("game")
         .long("game")
@@ -135,47 +152,15 @@ pub fn cli_parse() -> (Config, Action) {
     .about("Train the neural network")
     .arg(width_arg())
     .arg(height_arg())
-    .arg(
-      Arg::new("model")
-        .long("model")
-        .short('m')
-        .help("Model path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    )
-    .arg(
-      Arg::new("optimizer")
-        .long("optimizer")
-        .short('o')
-        .help("Optimizer state path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    )
-    .arg(
-      Arg::new("model-new")
-        .long("model-new")
-        .short('n')
-        .help("Trained model path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    )
-    .arg(
-      Arg::new("optimizer-new")
-        .long("optimizer-new")
-        .short('p')
-        .help("New optimizer state path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    )
+    .arg(model_arg())
+    .arg(optimizer_arg())
+    .arg(model_new_arg())
+    .arg(optimizer_new_arg())
     .arg(
       Arg::new("games")
         .long("games")
         .short('g')
-        .help("Paths the played games")
+        .help("Paths to the played games")
         .num_args(1..)
         .value_parser(value_parser!(PathBuf))
         .required(true),
@@ -211,24 +196,8 @@ pub fn cli_parse() -> (Config, Action) {
     .about("Pit one neural network against another")
     .arg(width_arg())
     .arg(height_arg())
-    .arg(
-      Arg::new("model")
-        .long("model")
-        .short('m')
-        .help("Model path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    )
-    .arg(
-      Arg::new("model-new")
-        .long("model-new")
-        .short('n')
-        .help("Trained model path")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf))
-        .required(true),
-    )
+    .arg(model_arg())
+    .arg(model_new_arg())
     .arg(
       Arg::new("games")
         .long("games")
