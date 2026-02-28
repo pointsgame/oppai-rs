@@ -521,8 +521,7 @@ impl<N: Float + Sum + SampleUniform> Search<N> {
         continue;
       }
 
-      let logit = N::from(edge.visits).unwrap().ln() / temperature;
-      let prob = (logit - max_logit).exp();
+      let prob = ((N::from(edge.visits).unwrap().ln() - max_logit) / temperature).exp();
 
       if prob >= sample {
         chosen_edge = Some((edge.hash, edge.pos));
