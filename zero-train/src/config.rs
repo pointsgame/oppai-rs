@@ -8,9 +8,9 @@ pub struct InitParams {
 }
 
 pub struct PlayParams {
-  pub width: u32,
-  pub height: u32,
-  pub komi_x_2: i32,
+  pub width: Vec<u32>,
+  pub height: Vec<u32>,
+  pub komi_x_2: Vec<i32>,
   pub model: Option<PathBuf>,
   pub game: PathBuf,
   pub count: usize,
@@ -129,13 +129,27 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(optimizer_arg());
   let play = Command::new("play")
     .about("Self-play a single game")
-    .arg(width_arg())
-    .arg(height_arg())
+    .arg(
+      Arg::new("width")
+        .long("width")
+        .help("Field width")
+        .num_args(1..)
+        .value_parser(value_parser!(u32))
+        .default_value("16"),
+    )
+    .arg(
+      Arg::new("height")
+        .long("height")
+        .help("Field height")
+        .num_args(1..)
+        .value_parser(value_parser!(u32))
+        .default_value("16"),
+    )
     .arg(
       Arg::new("komi-x2")
         .long("komi-x2")
         .help("Komi multiplied by 2 (to allow half-integer komi values)")
-        .num_args(1)
+        .num_args(1..)
         .value_parser(value_parser!(i32))
         .default_value("0"),
     )
@@ -255,9 +269,9 @@ pub fn cli_parse() -> (Config, Action) {
       Action::Init(InitParams { model, optimizer })
     }
     Some(("play", matches)) => {
-      let width = matches.get_one("width").copied().unwrap();
-      let height = matches.get_one("height").copied().unwrap();
-      let komi_x_2 = matches.get_one("komi-x2").copied().unwrap();
+      let width = matches.get_many("width").unwrap().copied().collect();
+      let height = matches.get_many("height").unwrap().copied().collect();
+      let komi_x_2 = matches.get_many("komi-x2").unwrap().copied().collect();
       let model = matches.get_one("model").cloned();
       let game = matches.get_one("game").cloned().unwrap();
       let count = matches.get_one("count").copied().unwrap();

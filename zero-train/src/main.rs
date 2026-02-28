@@ -67,7 +67,6 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
-  let komi_x_2 = params.komi_x_2;
   let mut model = match params.model {
     Some(model_path) => {
       let model = BurnModel::<B>::new(&device);
@@ -84,10 +83,13 @@ where
   let mut file = File::options().append(true).create(true).open(&params.game)?;
 
   for _ in 0..params.count {
+    let width = params.width[rng.random_range(0..params.width.len())];
+    let height = params.height[rng.random_range(0..params.height.len())];
+    let komi_x_2 = params.komi_x_2[rng.random_range(0..params.komi_x_2.len())];
     let player = Player::Red;
-    let mut field = Field::new_from_rng(params.width, params.height, rng);
+    let mut field = Field::new_from_rng(width, height, rng);
 
-    for (pos, player) in InitialPosition::Cross.points(params.width, params.height, player) {
+    for (pos, player) in InitialPosition::Cross.points(width, height, player) {
       // TODO: random shift
       field.put_point(pos, player);
     }
