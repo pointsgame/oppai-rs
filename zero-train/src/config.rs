@@ -2,30 +2,44 @@ use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_ver
 use std::path::PathBuf;
 use strum::{EnumString, VariantNames};
 
+pub struct InitParams {
+  pub model: PathBuf,
+  pub optimizer: PathBuf,
+}
+
+pub struct PlayParams {
+  pub width: u32,
+  pub height: u32,
+  pub model: Option<PathBuf>,
+  pub game: PathBuf,
+}
+
+pub struct TrainParams {
+  pub width: u32,
+  pub height: u32,
+  pub model: PathBuf,
+  pub optimizer: PathBuf,
+  pub model_new: PathBuf,
+  pub optimizer_new: PathBuf,
+  pub games: Vec<PathBuf>,
+  pub learning_rate: f64,
+  pub batch_size: usize,
+  pub epochs: usize,
+}
+
+pub struct PitParams {
+  pub width: u32,
+  pub height: u32,
+  pub model: PathBuf,
+  pub model_new: PathBuf,
+  pub games: Option<PathBuf>,
+}
+
 pub enum Action {
-  Init {
-    model: PathBuf,
-    optimizer: PathBuf,
-  },
-  Play {
-    model: Option<PathBuf>,
-    game: PathBuf,
-  },
-  Train {
-    model: PathBuf,
-    optimizer: PathBuf,
-    model_new: PathBuf,
-    optimizer_new: PathBuf,
-    games: Vec<PathBuf>,
-    learning_rate: f64,
-    batch_size: usize,
-    epochs: usize,
-  },
-  Pit {
-    model: PathBuf,
-    model_new: PathBuf,
-    games: Option<PathBuf>,
-  },
+  Init(InitParams),
+  Play(PlayParams),
+  Train(TrainParams),
+  Pit(PitParams),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
@@ -35,8 +49,6 @@ pub enum Backend {
 }
 
 pub struct Config {
-  pub width: u32,
-  pub height: u32,
   pub backend: Backend,
   pub seed: Option<u64>,
 }
@@ -44,12 +56,28 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      width: 16,
-      height: 16,
       backend: Backend::Wgpu,
       seed: None,
     }
   }
+}
+
+fn width_arg() -> Arg {
+  Arg::new("width")
+    .long("width")
+    .help("Field width")
+    .num_args(1)
+    .value_parser(value_parser!(u32))
+    .default_value("16")
+}
+
+fn height_arg() -> Arg {
+  Arg::new("height")
+    .long("height")
+    .help("Field height")
+    .num_args(1)
+    .value_parser(value_parser!(u32))
+    .default_value("16")
 }
 
 pub fn cli_parse() -> (Config, Action) {
@@ -75,6 +103,8 @@ pub fn cli_parse() -> (Config, Action) {
     );
   let play = Command::new("play")
     .about("Self-play a single game")
+    .arg(width_arg())
+    .arg(height_arg())
     .arg(
       Arg::new("model")
         .long("model")
@@ -94,6 +124,8 @@ pub fn cli_parse() -> (Config, Action) {
     );
   let train = Command::new("train")
     .about("Train the neural network")
+    .arg(width_arg())
+    .arg(height_arg())
     .arg(
       Arg::new("model")
         .long("model")
@@ -124,7 +156,7 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(
       Arg::new("optimizer-new")
         .long("optimizer-new")
-        .short('m')
+        .short('p')
         .help("New optimizer state path")
         .num_args(1)
         .value_parser(value_parser!(PathBuf))
@@ -168,6 +200,8 @@ pub fn cli_parse() -> (Config, Action) {
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
+    .arg(width_arg())
+    .arg(height_arg())
     .arg(
       Arg::new("model")
         .long("model")
@@ -205,22 +239,6 @@ pub fn cli_parse() -> (Config, Action) {
     .subcommand(pit)
     .subcommand_required(true)
     .arg(
-      Arg::new("width")
-        .long("width")
-        .help("Field width")
-        .num_args(1)
-        .value_parser(value_parser!(u32))
-        .default_value("16"),
-    )
-    .arg(
-      Arg::new("height")
-        .long("height")
-        .help("Field height")
-        .num_args(1)
-        .value_parser(value_parser!(u32))
-        .default_value("16"),
-    )
-    .arg(
       Arg::new("backend")
         .long("backend")
         .help("Backend to use")
@@ -237,30 +255,32 @@ pub fn cli_parse() -> (Config, Action) {
     )
     .get_matches();
 
-  let width = matches.get_one("width").copied().unwrap();
-  let height = matches.get_one("height").copied().unwrap();
   let backend = matches.get_one("backend").copied().unwrap();
   let seed = matches.get_one("seed").copied();
 
-  let config = Config {
-    width,
-    height,
-    backend,
-    seed,
-  };
+  let config = Config { backend, seed };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
       let optimizer = matches.get_one("optimizer").cloned().unwrap();
-      Action::Init { model, optimizer }
+      Action::Init(InitParams { model, optimizer })
     }
     Some(("play", matches)) => {
+      let width = matches.get_one("width").copied().unwrap();
+      let height = matches.get_one("height").copied().unwrap();
       let model = matches.get_one("model").cloned();
       let game = matches.get_one("game").cloned().unwrap();
-      Action::Play { model, game }
+      Action::Play(PlayParams {
+        width,
+        height,
+        model,
+        game,
+      })
     }
     Some(("train", matches)) => {
+      let width = matches.get_one("width").copied().unwrap();
+      let height = matches.get_one("height").copied().unwrap();
       let model = matches.get_one("model").cloned().unwrap();
       let optimizer = matches.get_one("optimizer").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
@@ -269,7 +289,9 @@ pub fn cli_parse() -> (Config, Action) {
       let learning_rate = matches.get_one("learning-rate").cloned().unwrap();
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let epochs = matches.get_one("epochs").cloned().unwrap();
-      Action::Train {
+      Action::Train(TrainParams {
+        width,
+        height,
         model,
         optimizer,
         model_new,
@@ -278,17 +300,21 @@ pub fn cli_parse() -> (Config, Action) {
         learning_rate,
         batch_size,
         epochs,
-      }
+      })
     }
     Some(("pit", matches)) => {
+      let width = matches.get_one("width").copied().unwrap();
+      let height = matches.get_one("height").copied().unwrap();
       let model = matches.get_one("model").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let games = matches.get_one("games").cloned();
-      Action::Pit {
+      Action::Pit(PitParams {
+        width,
+        height,
         model,
         model_new,
         games,
-      }
+      })
     }
     _ => panic!("no subcommand"),
   };

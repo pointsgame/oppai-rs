@@ -10,7 +10,7 @@ use burn::{
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
   tensor::backend::{AutodiffBackend, Backend},
 };
-use config::{Action, Backend as ConfigBackend, Config, cli_parse};
+use config::{Action, Backend as ConfigBackend, Config, InitParams, PitParams, PlayParams, TrainParams, cli_parse};
 use either::Either;
 use num_traits::Float;
 use oppai_field::{any_field::AnyField, field::Field, player::Player};
@@ -36,16 +36,15 @@ use std::{
   fs::{self, File},
   io::Write,
   iter::{self, Sum},
-  path::PathBuf,
   process::ExitCode,
 };
 
-fn init<B>(model_path: PathBuf, optimizer_path: PathBuf, device: B::Device) -> Result<ExitCode>
+fn init<B>(params: InitParams, device: B::Device) -> Result<ExitCode>
 where
   B: AutodiffBackend,
 {
   let model = BurnModel::<B>::new(&device);
-  model.save_file(model_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  model.save_file(params.model, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let optimizer = SgdConfig::new()
     .with_weight_decay(Some(WeightDecayConfig::new(0.00003)))
@@ -56,19 +55,13 @@ where
   Recorder::<B>::save_item(
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     item,
-    optimizer_path,
+    params.optimizer,
   )?;
 
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<B, R: Rng>(
-  config: Config,
-  model_path: Option<PathBuf>,
-  game_path: PathBuf,
-  device: B::Device,
-  rng: &mut R,
-) -> Result<ExitCode>
+fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -76,7 +69,7 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
-  let mut model = match model_path {
+  let mut model = match params.model {
     Some(model_path) => {
       let model = BurnModel::<B>::new(&device);
       let model = model.load_file(
@@ -90,9 +83,9 @@ where
   };
 
   let player = Player::Red;
-  let mut field = Field::new_from_rng(config.width, config.height, rng);
+  let mut field = Field::new_from_rng(params.width, params.height, rng);
 
-  for (pos, player) in InitialPosition::Cross.points(config.width, config.height, player) {
+  for (pos, player) in InitialPosition::Cross.points(params.width, params.height, player) {
     // TODO: random shift
     field.put_point(pos, player);
   }
@@ -114,33 +107,21 @@ where
       },
     }));
     let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-    let mut file = File::options().append(true).create(true).open(game_path)?;
+    let mut file = File::options().append(true).create(true).open(params.game)?;
     writeln!(&mut file, "{sgf}")?;
   }
 
   Ok(ExitCode::SUCCESS)
 }
 
-fn train<B, R: Rng>(
-  config: Config,
-  model_path: PathBuf,
-  mut optimizer_path: PathBuf,
-  model_new_path: PathBuf,
-  optimizer_new_path: PathBuf,
-  games_paths: Vec<PathBuf>,
-  lr: f64,
-  batch_size: usize,
-  epochs: usize,
-  device: B::Device,
-  rng: &mut R,
-) -> Result<ExitCode>
+fn train<B, R: Rng>(params: TrainParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
 where
   B: AutodiffBackend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
   let model = BurnModel::<B>::new(&device);
   let model = model.load_file(
-    model_path,
+    params.model,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
@@ -150,7 +131,7 @@ where
     .init::<B, BurnModel<_>>();
   let item = Recorder::<B>::load_item(
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    &mut optimizer_path,
+    &mut params.optimizer.clone(),
   )?;
   let record = Record::from_item::<FullPrecisionSettings>(item, &device);
   let optimizer = optimizer.load_record(record);
@@ -158,11 +139,11 @@ where
   let mut learner = Learner {
     predictor,
     optimizer,
-    lr,
+    lr: params.learning_rate,
   };
 
   let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
-  for path in games_paths {
+  for path in params.games {
     let sgf = fs::read_to_string(path)?;
     let trees = sgf_parse::parse(&sgf)?;
     for node in trees.iter().filter_map(|tree| match tree {
@@ -172,7 +153,7 @@ where
       let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let visits = sgf_to_visits(node, field.stride);
 
-      if field.width() < config.width || field.height() < config.height {
+      if field.width() < params.width || field.height() < params.height {
         return Err(anyhow::anyhow!(
           "Game is bigger than config: {}:{}",
           field.width(),
@@ -182,8 +163,8 @@ where
 
       examples = examples
         + episode::examples(
-          config.width,
-          config.height,
+          params.width,
+          params.height,
           field.zobrist_arc(),
           &visits,
           &field.colored_moves().collect::<Vec<_>>(),
@@ -191,10 +172,10 @@ where
     }
   }
 
-  for epoch in 0..epochs {
+  for epoch in 0..params.epochs {
     log::info!("Training {} epoch", epoch);
     examples.shuffle(rng);
-    for batch in examples.batches(batch_size) {
+    for batch in examples.batches(params.batch_size) {
       learner = learner.train(
         batch.inputs,
         batch.global,
@@ -209,34 +190,27 @@ where
   learner
     .predictor
     .model
-    .save_file(model_new_path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+    .save_file(params.model_new, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let record = learner.optimizer.to_record();
   let item = record.into_item::<FullPrecisionSettings>();
   Recorder::<B>::save_item(
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     item,
-    optimizer_new_path,
+    params.optimizer_new,
   )?;
 
   Ok(ExitCode::SUCCESS)
 }
 
-fn pit<B, R: Rng>(
-  config: Config,
-  model_path: PathBuf,
-  model_new_path: PathBuf,
-  games: Option<PathBuf>,
-  device: B::Device,
-  rng: &mut R,
-) -> Result<ExitCode>
+fn pit<B, R: Rng>(params: PitParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
   let model = BurnModel::<B>::new(&device);
   let model = model.load_file(
-    model_path,
+    params.model,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
@@ -247,7 +221,7 @@ where
 
   let model_new = BurnModel::<B>::new(&device);
   let model_new = model_new.load_file(
-    model_new_path,
+    params.model_new,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
@@ -257,8 +231,9 @@ where
   };
 
   let player = Player::Red;
-  let field = Field::new_from_rng(config.width, config.height, rng);
+  let field = Field::new_from_rng(params.width, params.height, rng);
 
+  let games = params.games;
   let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng, &|field| {
     if let Some(ref games) = games
       && let Some(node) = to_sgf(&field.into())
@@ -287,35 +262,10 @@ where
   let mut rng = config.seed.map_or_else(SmallRng::from_os_rng, SmallRng::seed_from_u64);
 
   match action {
-    Action::Init { model, optimizer } => init::<Autodiff<B>>(model, optimizer, device),
-    Action::Play { model, game } => play::<B, _>(config, model, game, device, &mut rng),
-    Action::Train {
-      model,
-      optimizer,
-      model_new,
-      optimizer_new,
-      games,
-      learning_rate,
-      batch_size,
-      epochs,
-    } => train::<Autodiff<B>, _>(
-      config,
-      model,
-      optimizer,
-      model_new,
-      optimizer_new,
-      games,
-      learning_rate,
-      batch_size,
-      epochs,
-      device,
-      &mut rng,
-    ),
-    Action::Pit {
-      model,
-      model_new,
-      games,
-    } => pit::<B, _>(config, model, model_new, games, device, &mut rng),
+    Action::Init(params) => init::<Autodiff<B>>(params, device),
+    Action::Play(params) => play::<B, _>(params, device, &mut rng),
+    Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng),
+    Action::Pit(params) => pit::<B, _>(params, device, &mut rng),
   }
 }
 
