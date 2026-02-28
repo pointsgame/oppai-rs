@@ -33,8 +33,8 @@ fn episode_simple_surrounding() {
       model_inputs.borrow_mut().push(inputs);
       result
     },
-    &mut rng,
     0,
+    &mut rng,
   )
   .unwrap();
   for visits in &mut visits {
@@ -103,8 +103,8 @@ fn episode_trap() {
       model_inputs.borrow_mut().push(inputs);
       result
     },
-    &mut rng,
     0,
+    &mut rng,
   )
   .unwrap();
   for visits in &mut visits {
@@ -160,8 +160,8 @@ fn episode_winning_game() {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), values));
       result
     },
-    &mut rng,
     0,
+    &mut rng,
   )
   .unwrap();
   let examples = examples::<f64>(

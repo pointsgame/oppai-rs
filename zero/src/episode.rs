@@ -93,8 +93,8 @@ pub fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
   model: &mut M,
-  rng: &mut R,
   komi_x_2: i32,
+  rng: &mut R,
 ) -> Result<Vec<Visits>, M::E>
 where
   M: Model<N>,
@@ -140,7 +140,7 @@ where
     };
 
     for _ in 0..sims {
-      search.mcgs(field, player, model, rng)?;
+      search.mcgs(field, player, model, komi_x_2, rng)?;
     }
 
     visits.push(Visits(

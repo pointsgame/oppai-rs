@@ -42,6 +42,7 @@ fn mcts_first_iterations() {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0, 0.0])));
         result
       },
+      0,
       &mut rng,
     )
     .unwrap();
@@ -67,6 +68,7 @@ fn mcts_first_iterations() {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0, 0.0])));
         result
       },
+      0,
       &mut rng,
     )
     .unwrap();
@@ -126,6 +128,7 @@ fn mcts_last_iterations() {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 0.0, 1.0])));
         result
       },
+      0,
       &mut rng,
     )
     .unwrap();

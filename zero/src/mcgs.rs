@@ -322,6 +322,7 @@ impl<N: Float + Sum> Search<N> {
     field: &mut Field,
     player: Player,
     model: &mut M,
+    komi_x_2: i32,
     rng: &mut R,
   ) -> Result<(), M::E> {
     let mut leafs = iter::repeat_with(|| self.select_path())
@@ -352,7 +353,7 @@ impl<N: Float + Sum> Search<N> {
         false
       } else {
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
-        global_to_vec(field, player, 0, &mut global);
+        global_to_vec(field, player, komi_x_2, &mut global);
         true
       };
 

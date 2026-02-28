@@ -18,6 +18,7 @@ fn play<'a, N, M, R>(
   mut player: Player,
   mut model1: &'a mut M,
   mut model2: &'a mut M,
+  komi_x_2: i32,
   rng: &mut R,
 ) -> Result<i32, M::E>
 where
@@ -31,7 +32,7 @@ where
 
   while !field.is_game_over() {
     for _ in 0..MCTS_SIMS {
-      search1.mcgs(field, player, model1, rng)?;
+      search1.mcgs(field, player, model1, komi_x_2, rng)?;
     }
 
     let pos = search1.next_best_root().unwrap();
@@ -65,6 +66,7 @@ pub fn pit<N, M, R, F: Fn(Field)>(
   player: Player,
   new_model: &mut M,
   old_model: &mut M,
+  komi_x_2: i32,
   rng: &mut R,
   callback: &F,
 ) -> Result<bool, M::E>
@@ -81,9 +83,9 @@ where
 
     let mut field = field.clone();
     let result = if i % 2 == 0 {
-      play(&mut field, player, new_model, old_model, rng)?
+      play(&mut field, player, new_model, old_model, komi_x_2, rng)?
     } else {
-      -play(&mut field, player, old_model, new_model, rng)?
+      -play(&mut field, player, old_model, new_model, komi_x_2, rng)?
     };
 
     match result.cmp(&0) {

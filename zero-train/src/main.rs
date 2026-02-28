@@ -94,7 +94,7 @@ where
       field.put_point(pos, player);
     }
 
-    let visits = episode(&mut field, player, &mut model, rng, komi_x_2)
+    let visits = episode(&mut field, player, &mut model, komi_x_2, rng)
       .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
 
     let field = field.into();
@@ -239,7 +239,7 @@ where
   let field = Field::new_from_rng(params.width, params.height, rng);
 
   let games = params.games;
-  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, rng, &|field| {
+  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, 0, rng, &|field| {
     if let Some(ref games) = games
       && let Some(node) = to_sgf(&field.into())
     {
