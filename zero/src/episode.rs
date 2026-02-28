@@ -89,7 +89,13 @@ where
   None
 }
 
-pub fn episode<N, M, R>(field: &mut Field, mut player: Player, model: &mut M, rng: &mut R) -> Result<Vec<Visits>, M::E>
+pub fn episode<N, M, R>(
+  field: &mut Field,
+  mut player: Player,
+  model: &mut M,
+  rng: &mut R,
+  komi_x_2: i32,
+) -> Result<Vec<Visits>, M::E>
 where
   M: Model<N>,
   N: Float + Sum + SampleUniform + Display + Debug,
@@ -106,7 +112,7 @@ where
 
   for _ in 0..raw_policy_moves {
     let features = field_features(field, player, field.width(), field.height(), 0);
-    let global = global(field, player, 0);
+    let global = global(field, player, komi_x_2);
     let (policy, _) = model.predict(features.insert_axis(Axis(0)), global.insert_axis(Axis(0)))?;
     if let Some(pos) = select_policy_move(field, policy, rng) {
       assert!(field.put_point(pos.get(), player));
@@ -168,6 +174,7 @@ fn game_result<N: Float>(field: &Field, player: Player) -> Array1<N> {
 pub fn examples<N: Float + Zero + One>(
   width: u32,
   height: u32,
+  komi_x_2: i32,
   zobrist: Arc<Zobrist<u64>>,
   visits: &[Visits],
   moves: &[(Pos, Player)],
@@ -193,7 +200,7 @@ pub fn examples<N: Float + Zero + One>(
         examples
           .inputs
           .push(field_features(&field, player, field.width(), field.height(), rotation));
-        examples.global.push(global(&field, player, 0));
+        examples.global.push(global(&field, player, komi_x_2));
         examples.policies.push(visits.policies(width, height, rotation));
         examples
           .opponent_policies
@@ -209,7 +216,7 @@ pub fn examples<N: Float + Zero + One>(
     if visits.1 {
       let value = game_result::<N>(&field, player);
       examples.values.extend(iter::repeat_n(value, rotations as usize));
-      let score = score_one_hot(&field, player, 0);
+      let score = score_one_hot(&field, player, komi_x_2);
       examples.scores.extend(iter::repeat_n(score, rotations as usize));
     }
   }

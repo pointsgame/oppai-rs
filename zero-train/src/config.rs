@@ -10,6 +10,7 @@ pub struct InitParams {
 pub struct PlayParams {
   pub width: u32,
   pub height: u32,
+  pub komi_x_2: i32,
   pub model: Option<PathBuf>,
   pub game: PathBuf,
 }
@@ -105,6 +106,14 @@ pub fn cli_parse() -> (Config, Action) {
     .about("Self-play a single game")
     .arg(width_arg())
     .arg(height_arg())
+    .arg(
+      Arg::new("komi-x2")
+        .long("komi-x2")
+        .help("Komi multiplied by 2 (to allow half-integer komi values)")
+        .num_args(1)
+        .value_parser(value_parser!(i32))
+        .default_value("0"),
+    )
     .arg(
       Arg::new("model")
         .long("model")
@@ -269,11 +278,13 @@ pub fn cli_parse() -> (Config, Action) {
     Some(("play", matches)) => {
       let width = matches.get_one("width").copied().unwrap();
       let height = matches.get_one("height").copied().unwrap();
+      let komi_x_2 = matches.get_one("komi-x2").copied().unwrap();
       let model = matches.get_one("model").cloned();
       let game = matches.get_one("game").cloned().unwrap();
       Action::Play(PlayParams {
         width,
         height,
+        komi_x_2,
         model,
         game,
       })

@@ -69,6 +69,7 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
+  let komi_x_2 = params.komi_x_2;
   let mut model = match params.model {
     Some(model_path) => {
       let model = BurnModel::<B>::new(&device);
@@ -90,7 +91,7 @@ where
     field.put_point(pos, player);
   }
 
-  let visits = episode(&mut field, player, &mut model, rng)
+  let visits = episode(&mut field, player, &mut model, rng, komi_x_2)
     .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
 
   let field = field.into();
@@ -165,6 +166,7 @@ where
         + episode::examples(
           params.width,
           params.height,
+          0,
           field.zobrist_arc(),
           &visits,
           &field.colored_moves().collect::<Vec<_>>(),

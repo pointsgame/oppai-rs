@@ -34,6 +34,7 @@ fn episode_simple_surrounding() {
       result
     },
     &mut rng,
+    0,
   )
   .unwrap();
   for visits in &mut visits {
@@ -42,6 +43,7 @@ fn episode_simple_surrounding() {
   let examples = examples::<f64>(
     field.width(),
     field.height(),
+    0,
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),
@@ -102,6 +104,7 @@ fn episode_trap() {
       result
     },
     &mut rng,
+    0,
   )
   .unwrap();
   for visits in &mut visits {
@@ -110,6 +113,7 @@ fn episode_trap() {
   let examples = examples::<f64>(
     field.width(),
     field.height(),
+    0,
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),
@@ -157,11 +161,13 @@ fn episode_winning_game() {
       result
     },
     &mut rng,
+    0,
   )
   .unwrap();
   let examples = examples::<f64>(
     field.width(),
     field.height(),
+    0,
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),
@@ -196,6 +202,7 @@ fn visits_to_examples() {
   let examples = examples::<f32>(
     field.width(),
     field.height(),
+    0,
     field.zobrist_arc(),
     &visits,
     &field.colored_moves().collect::<Vec<_>>(),
