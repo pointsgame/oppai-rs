@@ -193,6 +193,7 @@ pub fn examples<N: Float + Zero + One>(
         examples
           .inputs
           .push(field_features(&field, player, field.width(), field.height(), rotation));
+        examples.global.push(global(&field, player, 0));
         examples.policies.push(visits.policies(width, height, rotation));
         examples
           .opponent_policies
