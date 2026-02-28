@@ -21,9 +21,10 @@ sgf-parse.workspace = true
 strum.workspace = true
 oppai-field = { path = "../field" }
 oppai-initial = { path = "../initial" }
-oppai-sgf = { path = "../sgf", features = [ "zero" ] }
+oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
 oppai-zero-burn = { path = "../zero-burn" }
+oppai-zero-sgf = { path = "../zero-sgf" }
 
 [dev-dependencies]
 rand_xoshiro.workspace = true

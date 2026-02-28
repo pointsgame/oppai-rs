@@ -22,9 +22,9 @@ use oppai_field::field::{NonZeroPos, Pos};
 use oppai_field::player::Player;
 #[cfg(not(target_arch = "wasm32"))]
 use oppai_patterns::patterns::Patterns;
-use oppai_sgf::visits::sgf_to_visits;
 use oppai_sgf::{from_sgf, to_sgf_str};
 use oppai_zero::episode::Visits;
+use oppai_zero_sgf::sgf_to_visits;
 #[cfg(not(target_arch = "wasm32"))]
 use rand::Rng;
 use rand::SeedableRng;

@@ -11,6 +11,7 @@ members = [
   "patterns",
   "zero",
   "zero-burn",
+  "zero-sgf",
   "zero-train",
   "initial",
   "iced",

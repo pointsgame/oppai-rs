@@ -22,8 +22,9 @@ oppai-initial = { path = "../initial" }
 oppai-patterns = { path = "../patterns" }
 oppai-ai = { path = "../ai" }
 oppai-ais = { path = "../ais", default-features = false }
-oppai-sgf = { path = "../sgf", features = ["zero"] }
+oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
+oppai-zero-sgf = { path = "../zero-sgf" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger.workspace = true

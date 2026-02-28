@@ -5819,6 +5819,7 @@ dependencies = [
  "oppai-patterns",
  "oppai-sgf",
  "oppai-zero",
+ "oppai-zero-sgf",
  "postcard",
  "rand 0.9.2",
  "rfd",
@@ -5934,7 +5935,6 @@ dependencies = [
  "env_logger",
  "log",
  "oppai-field",
- "oppai-zero",
  "rand 0.9.2",
  "rand_xoshiro",
  "sgf-parse",
@@ -6055,6 +6055,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "oppai-zero-sgf"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "oppai-field",
+ "oppai-sgf",
+ "oppai-zero",
+ "rand 0.9.2",
+ "rand_xoshiro",
+ "sgf-parse",
+]
+
+[[package]]
 name = "oppai-zero-train"
 version = "0.1.0"
 dependencies = [
@@ -6071,6 +6084,7 @@ dependencies = [
  "oppai-sgf",
  "oppai-zero",
  "oppai-zero-burn",
+ "oppai-zero-sgf",
  "rand 0.9.2",
  "rand_distr",
  "rand_xoshiro",

@@ -15,10 +15,7 @@ use either::Either;
 use num_traits::Float;
 use oppai_field::{any_field::AnyField, field::Field, player::Player};
 use oppai_initial::initial::InitialPosition;
-use oppai_sgf::{
-  from_sgf, to_sgf,
-  visits::{sgf_to_visits, visits_to_sgf},
-};
+use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   episode::{self, episode},
   examples::Examples,
@@ -27,6 +24,7 @@ use oppai_zero::{
   random_model::RandomModel,
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
+use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
 use rand::{Rng, SeedableRng, distr::uniform::SampleUniform, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use sgf_parse::{GameTree, SimpleText, serialize, unknown_game::Prop};
