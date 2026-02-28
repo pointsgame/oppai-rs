@@ -157,7 +157,7 @@ where
       let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let visits = sgf_to_visits(node, field.stride);
 
-      if field.width() < params.width || field.height() < params.height {
+      if field.width() > params.width || field.height() > params.height {
         return Err(anyhow::anyhow!(
           "Game is bigger than config: {}:{}",
           field.width(),
