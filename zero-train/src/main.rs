@@ -183,6 +183,8 @@ where
         + episode::examples(
           params.width,
           params.height,
+          field.width(),
+          field.height(),
           komi_x_2,
           field.zobrist_arc(),
           &visits,

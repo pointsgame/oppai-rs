@@ -3,7 +3,7 @@ use crate::field_features::{field_features, global, score_one_hot};
 use crate::mcgs::Search;
 use crate::model::Model;
 use log::info;
-use ndarray::{Array1, Array2, Array3, Axis, array};
+use ndarray::{Array1, Array2, Array3, Axis, array, s};
 use num_traits::{Float, One, Zero};
 use oppai_field::field::{to_x, to_y};
 use oppai_field::zobrist::Zobrist;
@@ -11,7 +11,7 @@ use oppai_field::{
   field::{Field, NonZeroPos, Pos},
   player::Player,
 };
-use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate, rotate_sizes};
+use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate};
 use rand::Rng;
 use rand::distr::uniform::SampleUniform;
 use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
@@ -36,20 +36,28 @@ impl Visits {
   }
 
   /// Improved stochastic policy values.
-  pub fn policies<N: Float>(&self, width: u32, height: u32, rotation: u8) -> Array2<N> {
+  pub fn policies<N: Float>(
+    &self,
+    width: u32,
+    height: u32,
+    field_width: u32,
+    field_height: u32,
+    rotation: u8,
+  ) -> Array2<N> {
     let total = self.total();
-    let (width, height) = rotate_sizes(width, height, rotation);
     let mut policies = Array2::zeros((height as usize, width as usize));
 
     if total > 0 {
       for &(pos, visits) in &self.0 {
-        let x = to_x(width + 1, pos);
-        let y = to_y(width + 1, pos);
-        let (x, y) = rotate(width, height, x, y, rotation);
+        let x = to_x(field_width + 1, pos);
+        let y = to_y(field_width + 1, pos);
+        let (x, y) = rotate(field_width, field_height, x, y, rotation);
         policies[(y as usize, x as usize)] = N::from(visits).unwrap() / N::from(total).unwrap();
       }
     } else {
-      policies.fill(N::one() / N::from(width * height).unwrap());
+      policies
+        .slice_mut(s![0..field_height as usize, 0..field_width as usize])
+        .fill(N::one() / N::from(field_width * field_height).unwrap());
     }
 
     policies
@@ -176,13 +184,15 @@ fn game_result<N: Float>(field: &Field, player: Player) -> Array1<N> {
 pub fn examples<N: Float + Zero + One>(
   width: u32,
   height: u32,
+  field_width: u32,
+  field_height: u32,
   komi_x_2: i32,
   zobrist: Arc<Zobrist<u64>>,
   visits: &[Visits],
   moves: &[(Pos, Player)],
 ) -> Examples<N> {
   let mut examples = Examples::<N>::default();
-  let mut field = Field::new(width, height, zobrist);
+  let mut field = Field::new(field_width, field_height, zobrist);
 
   let initial_moves = moves.len() - visits.len();
   let rotations = if width == height { ROTATIONS } else { MIRRORS };
@@ -202,12 +212,14 @@ pub fn examples<N: Float + Zero + One>(
       for rotation in 0..rotations {
         examples
           .inputs
-          .push(field_features(&field, player, field.width(), field.height(), rotation));
+          .push(field_features(&field, player, width, height, rotation));
         examples.global.push(global(&field, player, komi_x_2));
-        examples.policies.push(visits.policies(width, height, rotation));
+        examples
+          .policies
+          .push(visits.policies(width, height, field_width, field_height, rotation));
         examples
           .opponent_policies
-          .push(opponent_visits.policies(width, height, rotation));
+          .push(opponent_visits.policies(width, height, field_width, field_height, rotation));
       }
     }
 

@@ -43,6 +43,8 @@ fn episode_simple_surrounding() {
   let examples = examples::<f64>(
     field.width(),
     field.height(),
+    field.width(),
+    field.height(),
     0,
     field.zobrist_arc(),
     &visits,
@@ -113,6 +115,8 @@ fn episode_trap() {
   let examples = examples::<f64>(
     field.width(),
     field.height(),
+    field.width(),
+    field.height(),
     0,
     field.zobrist_arc(),
     &visits,
@@ -167,6 +171,8 @@ fn episode_winning_game() {
   let examples = examples::<f64>(
     field.width(),
     field.height(),
+    field.width(),
+    field.height(),
     0,
     field.zobrist_arc(),
     &visits,
@@ -185,6 +191,144 @@ fn episode_winning_game() {
 }
 
 #[test]
+fn policies() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ...
+    ...
+    ...
+    ",
+  );
+  let visits = Visits(vec![(field.to_pos(1, 1), 2), (field.to_pos(2, 2), 3)], true);
+  let policies = visits.policies::<f64>(field.width(), field.height(), field.width(), field.height(), 0);
+  #[rustfmt::skip]
+  let expected = array![
+    [0.0, 0.0, 0.0],
+    [0.0, 0.4, 0.0],
+    [0.0, 0.0, 0.6],
+  ];
+  assert_eq!(policies, expected);
+}
+
+#[test]
+fn policies_empty() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ...
+    ...
+    ...
+    ",
+  );
+  let visits = Visits(vec![], true);
+  let policies = visits.policies::<f64>(field.width(), field.height(), field.width(), field.height(), 0);
+  let v = 1.0 / 9.0;
+  #[rustfmt::skip]
+  let expected = array![
+    [v, v, v],
+    [v, v, v],
+    [v, v, v],
+  ];
+  assert_eq!(policies, expected);
+}
+
+#[test]
+fn policies_wide() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ...
+    ...
+    ...
+    ",
+  );
+  let visits = Visits(vec![(field.to_pos(1, 1), 2), (field.to_pos(2, 2), 3)], true);
+  let policies = visits.policies::<f64>(field.width() + 1, field.height() + 1, field.width(), field.height(), 0);
+  #[rustfmt::skip]
+  let expected = array![
+    [0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.4, 0.0, 0.0],
+    [0.0, 0.0, 0.6, 0.0],
+    [0.0, 0.0, 0.0, 0.0],
+  ];
+  assert_eq!(policies, expected);
+}
+
+#[test]
+fn policies_empty_wide() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ...
+    ...
+    ...
+    ",
+  );
+  let visits = Visits(vec![], true);
+  let policies = visits.policies::<f64>(field.width() + 1, field.height() + 1, field.width(), field.height(), 0);
+  let v = 1.0 / 9.0;
+  #[rustfmt::skip]
+  let expected = array![
+    [v,   v,   v,   0.0],
+    [v,   v,   v,   0.0],
+    [v,   v,   v,   0.0],
+    [0.0, 0.0, 0.0, 0.0],
+  ];
+  assert_eq!(policies, expected);
+}
+
+#[test]
+fn policies_rotate() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ...
+    ...
+    ...
+    ",
+  );
+  let visits = Visits(vec![(field.to_pos(1, 1), 2), (field.to_pos(2, 2), 3)], true);
+  let policies = visits.policies::<f64>(field.width(), field.height(), field.width(), field.height(), 1);
+  #[rustfmt::skip]
+  let expected = array![
+    [0.0, 0.0, 0.0],
+    [0.0, 0.4, 0.0],
+    [0.6, 0.0, 0.0],
+  ];
+  assert_eq!(policies, expected);
+}
+
+#[test]
+fn policies_rotate_rectangle() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    ...
+    ...
+    ...
+    ...
+    ",
+  );
+  let visits = Visits(vec![(field.to_pos(1, 1), 2), (field.to_pos(2, 3), 3)], true);
+  let policies = visits.policies::<f64>(field.width() + 1, field.height(), field.width(), field.height(), 4);
+  #[rustfmt::skip]
+  let expected = array![
+    [0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.4, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 0.6],
+    [0.0, 0.0, 0.0, 0.0],
+  ];
+  assert_eq!(policies, expected);
+}
+
+#[test]
 fn visits_to_examples() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let field = construct_field(
@@ -200,6 +344,8 @@ fn visits_to_examples() {
     Visits(vec![(field.to_pos(0, 0), 8)], true),
   ];
   let examples = examples::<f32>(
+    field.width(),
+    field.height(),
     field.width(),
     field.height(),
     0,
