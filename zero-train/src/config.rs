@@ -151,7 +151,8 @@ pub fn cli_parse() -> (Config, Action) {
         .help("Komi multiplied by 2 (to allow half-integer komi values)")
         .num_args(1..)
         .value_parser(value_parser!(i32))
-        .default_value("0"),
+        .default_value("0")
+        .allow_hyphen_values(true),
     )
     .arg(model_arg().required(false))
     .arg(
