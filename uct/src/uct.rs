@@ -631,7 +631,7 @@ impl UctRoot {
         );
         moves.push((pos, uct_value));
       }
-      (root.get_wins() as f64 + root.get_draws() as f64 / 2.0) / root.get_visits() as f64
+      1.0 - (root.get_wins() as f64 + root.get_draws() as f64 / 2.0) / root.get_visits() as f64
     } else {
       0.0
     };
