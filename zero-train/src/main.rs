@@ -110,6 +110,9 @@ where
           text: format!("B+{}", score.abs()),
         },
       }));
+      node
+        .properties
+        .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
       writeln!(&mut file, "{sgf}")?;
     }
@@ -156,6 +159,17 @@ where
     }) {
       let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let visits = sgf_to_visits(node, field.stride);
+      let komi_x_2 = node
+        .properties
+        .iter()
+        .find_map(|prop| match prop {
+          Prop::Unknown(name, values) if name == "KM" => values.first().map(|value| {
+            let value = value.parse::<f32>().unwrap();
+            (value * 2.0).round() as i32
+          }),
+          _ => None,
+        })
+        .unwrap_or(0);
 
       if field.width() > params.width || field.height() > params.height {
         return Err(anyhow::anyhow!(
@@ -169,7 +183,7 @@ where
         + episode::examples(
           params.width,
           params.height,
-          0,
+          komi_x_2,
           field.zobrist_arc(),
           &visits,
           &field.colored_moves().collect::<Vec<_>>(),

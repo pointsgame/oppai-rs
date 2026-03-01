@@ -93,7 +93,7 @@ pub fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
   model: &mut M,
-  komi_x_2: i32,
+  mut komi_x_2: i32,
   rng: &mut R,
 ) -> Result<Vec<Visits>, M::E>
 where
@@ -118,6 +118,7 @@ where
       assert!(field.put_point(pos.get(), player));
       field.update_grounded();
       player = player.next();
+      komi_x_2 = -komi_x_2;
     } else {
       break;
     }
@@ -158,6 +159,7 @@ where
     assert!(field.put_point(pos.get(), player));
     field.update_grounded();
     player = player.next();
+    komi_x_2 = -komi_x_2;
   }
 
   Ok(visits)
@@ -196,6 +198,7 @@ pub fn examples<N: Float + Zero + One>(
       .zip(visits.iter().skip(1).chain(iter::once(&Visits::default()))),
   ) {
     if visits.1 {
+      let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
       for rotation in 0..rotations {
         examples
           .inputs
@@ -214,6 +217,7 @@ pub fn examples<N: Float + Zero + One>(
 
   for (&(_, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
     if visits.1 {
+      let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
       let value = game_result::<N>(&field, player);
       examples.values.extend(iter::repeat_n(value, rotations as usize));
       let score = score_one_hot(&field, player, komi_x_2);

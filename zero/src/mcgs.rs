@@ -352,6 +352,11 @@ impl<N: Float + Sum> Search<N> {
         self.add_result(leaf, game_result(field, player), Vec::new());
         false
       } else {
+        let komi_x_2 = if leaf.len().is_multiple_of(2) {
+          komi_x_2
+        } else {
+          -komi_x_2
+        };
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
         global_to_vec(field, player, komi_x_2, &mut global);
         true

@@ -18,7 +18,7 @@ fn play<'a, N, M, R>(
   mut player: Player,
   mut model1: &'a mut M,
   mut model2: &'a mut M,
-  komi_x_2: i32,
+  mut komi_x_2: i32,
   rng: &mut R,
 ) -> Result<i32, M::E>
 where
@@ -45,6 +45,7 @@ where
     mem::swap(&mut model1, &mut model2);
     mem::swap(&mut search1, &mut search2);
     player = player.next();
+    komi_x_2 = -komi_x_2;
     moves_count += 1;
   }
 
