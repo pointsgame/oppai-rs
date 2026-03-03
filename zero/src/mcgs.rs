@@ -206,10 +206,11 @@ impl<N: Float + Sum> Search<N> {
     best
   }
 
-  fn select_path(&mut self) -> Vec<Pos> {
-    let mut moves = Vec::new();
+  fn select_path(&mut self) -> (Vec<Pos>, bool) {
     let mut idx = self.root_idx;
     let mut noise = self.dirichlet_noise;
+    let mut moves = Vec::new();
+    let mut terminal = self.nodes[idx].visits > 0;
 
     while let Some(edge_idx) = self.select_edge(idx, noise) {
       noise = false;
@@ -218,11 +219,12 @@ impl<N: Float + Sum> Search<N> {
       if let Some(&child_idx) = self.map.get(&self.nodes[idx].children[edge_idx].hash) {
         idx = child_idx;
       } else {
+        terminal = false;
         break;
       }
     }
 
-    moves
+    (moves, terminal)
   }
 
   fn revert_virtual_loss(&mut self, moves: &[Pos]) {
@@ -328,7 +330,7 @@ impl<N: Float + Sum> Search<N> {
     let mut leafs = iter::repeat_with(|| self.select_path())
       .take(Self::PARALLEL_READOUTS)
       .collect::<Vec<_>>();
-    for moves in &leafs {
+    for (moves, _) in &leafs {
       self.revert_virtual_loss(moves);
     }
 
@@ -339,7 +341,7 @@ impl<N: Float + Sum> Search<N> {
     let mut features = Vec::with_capacity(features_len * leafs.len());
     let mut global = Vec::with_capacity(GLOBAL_FEATURES * leafs.len());
 
-    leafs.retain(|leaf| {
+    leafs.retain(|(leaf, terminal)| {
       Self::make_moves(field, leaf, player);
 
       let player = if leaf.len().is_multiple_of(2) {
@@ -348,7 +350,7 @@ impl<N: Float + Sum> Search<N> {
         player.next()
       };
 
-      let result = if field.is_game_over() {
+      let result = if *terminal || field.is_game_over() {
         self.add_result(leaf, game_result(field, player), Vec::new());
         false
       } else {
@@ -387,7 +389,7 @@ impl<N: Float + Sum> Search<N> {
 
     let (policies, values) = model.predict(features, global)?;
 
-    for (i, leaf) in leafs.iter().enumerate() {
+    for (i, (leaf, _)) in leafs.iter().enumerate() {
       Self::make_moves(field, leaf, player);
 
       let player = if (leaf.len()).is_multiple_of(2) {

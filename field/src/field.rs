@@ -1352,14 +1352,9 @@ impl Field {
   pub fn is_game_over(&mut self) -> bool {
     let score = self.score(Player::Red);
     let non_grounded_points = self.non_grounded_points();
-    score > non_grounded_points.0 as i32
+    non_grounded_points == (0, 0) && self.moves_count() > 0
+      || score > non_grounded_points.0 as i32
       || score < -(non_grounded_points.1 as i32)
-      || self
-        .points
-        .0
-        .iter()
-        .enumerate()
-        .all(|(pos, cell)| !cell.is_putting_allowed() || cell.is_empty_base() || self.is_corner(pos))
   }
 
   pub fn clear(&mut self) {

@@ -157,12 +157,15 @@ where
       full_search,
     ));
 
-    let pos = search
-      .next_root_with_temperature(
-        interpolate_early(field, N::from(0.75).unwrap(), N::from(0.15).unwrap()),
-        rng,
-      )
-      .unwrap();
+    let pos = if let Some(pos) = search.next_root_with_temperature(
+      interpolate_early(field, N::from(0.75).unwrap(), N::from(0.15).unwrap()),
+      rng,
+    ) {
+      pos
+    } else {
+      break;
+    };
+
     search.compact();
     assert!(field.put_point(pos.get(), player));
     field.update_grounded();

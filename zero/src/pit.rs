@@ -32,7 +32,12 @@ where
       search1.mcgs(field, player, model1, komi_x_2, rng)?;
     }
 
-    let pos = search1.next_best_root().unwrap();
+    let pos = if let Some(pos) = search1.next_best_root() {
+      pos
+    } else {
+      break;
+    };
+
     search1.compact();
     search2.next_root(pos.get());
     search2.compact();
