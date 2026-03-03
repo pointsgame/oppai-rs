@@ -35,6 +35,8 @@ pub struct PitParams {
   pub model: PathBuf,
   pub model_new: PathBuf,
   pub games: Option<PathBuf>,
+  pub count: u64,
+  pub win_rate_threshold: f64,
 }
 
 pub enum Action {
@@ -230,6 +232,24 @@ pub fn cli_parse() -> (Config, Action) {
         .help("Path where to save the played games")
         .num_args(1)
         .value_parser(value_parser!(PathBuf)),
+    )
+    .arg(
+      Arg::new("count")
+        .long("count")
+        .short('c')
+        .help("Number of games to play per side (total games will be twice this)")
+        .num_args(1)
+        .value_parser(value_parser!(u64))
+        .default_value("50"),
+    )
+    .arg(
+      Arg::new("win-rate-threshold")
+        .long("win-rate-threshold")
+        .short('t')
+        .help("Win rate threshold to accept the new model")
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("0.55"),
     );
 
   let matches = Command::new(crate_name!())
@@ -315,12 +335,16 @@ pub fn cli_parse() -> (Config, Action) {
       let model = matches.get_one("model").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let games = matches.get_one("games").cloned();
+      let count = matches.get_one("count").copied().unwrap();
+      let win_rate_threshold = matches.get_one("win-rate-threshold").copied().unwrap();
       Action::Pit(PitParams {
         width,
         height,
         model,
         model_new,
         games,
+        count,
+        win_rate_threshold,
       })
     }
     _ => panic!("no subcommand"),

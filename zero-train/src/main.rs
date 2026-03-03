@@ -229,14 +229,14 @@ where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model = BurnModel::<B>::new(&device);
-  let model = model.load_file(
+  let model_old = BurnModel::<B>::new(&device);
+  let model_old = model_old.load_file(
     params.model,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let mut predictor = Predictor {
-    model,
+  let mut model_old = Predictor {
+    model: model_old,
     device: device.clone(),
   };
 
@@ -246,7 +246,7 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let mut predictor_new = Predictor {
+  let mut model_new = Predictor {
     model: model_new,
     device,
   };
@@ -254,22 +254,69 @@ where
   let player = Player::Red;
   let field = Field::new_from_rng(params.width, params.height, rng);
 
-  let games = params.games;
-  let result = if pit::pit(&field, player, &mut predictor_new, &mut predictor, 0, rng, &|field| {
-    if let Some(ref games) = games
+  let total_games = params.count * 2;
+
+  // Returns the win rate assuming all remaining games go best/worst case.
+  // best=true: remaining games are all wins; best=false: remaining games are all losses.
+  #[inline]
+  fn win_rate_bound(wins: u64, losses: u64, played: u64, total: u64, best: bool) -> f64 {
+    let draws = played - wins - losses;
+    let remaining = total - played;
+    let best_wins = if best { wins + remaining } else { wins };
+    (best_wins as f64 + draws as f64 / 2.0) / total as f64
+  }
+
+  let mut wins = 0u64;
+  let mut losses = 0u64;
+
+  let mut i = 0u64;
+  let outcome = loop {
+    // Check early exit: outcome is already determined regardless of remaining games.
+    if i > 0 {
+      if win_rate_bound(wins, losses, i, total_games, true) <= params.win_rate_threshold {
+        break false;
+      }
+      if win_rate_bound(wins, losses, i, total_games, false) > params.win_rate_threshold {
+        break true;
+      }
+    }
+
+    if i == total_games {
+      // All games played, no early exit triggered; do final evaluation.
+      let draws = i - wins - losses;
+      let win_rate = (wins as f64 + draws as f64 / 2.0) / total_games as f64;
+      break win_rate > params.win_rate_threshold;
+    }
+
+    log::info!("Game {}, result {}/{}/{}", i, wins, i - wins - losses, losses);
+
+    let mut field = field.clone();
+    let result = if i.is_multiple_of(2) {
+      pit::play(&mut field, player, &mut model_new, &mut model_old, 0, rng)?
+    } else {
+      -pit::play(&mut field, player, &mut model_old, &mut model_new, 0, rng)?
+    };
+
+    match result.cmp(&0) {
+      Ordering::Less => losses += 1,
+      Ordering::Greater => wins += 1,
+      Ordering::Equal => {}
+    };
+
+    if let Some(ref games) = params.games
       && let Some(node) = to_sgf(&field.into())
     {
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
       let mut file = File::options().append(true).create(true).open(games).unwrap();
       writeln!(&mut file, "{sgf}").unwrap();
     }
-  })? {
-    ExitCode::SUCCESS
-  } else {
-    2.into()
+
+    i += 1;
   };
 
-  Ok(result)
+  log::info!("Result {}/{}/{}", wins, i - wins - losses, losses);
+
+  Ok(if outcome { ExitCode::SUCCESS } else { 2.into() })
 }
 
 fn run<B>(config: Config, action: Action, device: B::Device) -> Result<ExitCode>
