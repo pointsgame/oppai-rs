@@ -647,6 +647,7 @@ fn undo_check() {
         field.undo();
         assert_eq!(field_before.points, field.points);
         field.put_point(pos, player);
+        field.update_grounded();
         player = player.next();
       }
     }
