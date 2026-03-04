@@ -268,10 +268,12 @@ impl<N: Float + Sum> Search<N> {
 
   const PARALLEL_READOUTS: usize = 8;
 
-  fn make_moves(field: &mut Field, moves: &[Pos], mut player: Player) {
+  fn make_moves(field: &mut Field, moves: &[Pos], mut player: Player, ground: bool) {
     for &pos in moves {
       assert!(field.put_point(pos, player), "can't put point, likely a collision");
-      field.update_grounded();
+      if ground {
+        field.update_grounded();
+      }
       player = player.next();
     }
   }
@@ -342,7 +344,7 @@ impl<N: Float + Sum> Search<N> {
     let mut global = Vec::with_capacity(GLOBAL_FEATURES * leafs.len());
 
     leafs.retain(|(leaf, terminal)| {
-      Self::make_moves(field, leaf, player);
+      Self::make_moves(field, leaf, player, true);
 
       let player = if leaf.len().is_multiple_of(2) {
         player
@@ -390,7 +392,7 @@ impl<N: Float + Sum> Search<N> {
     let (policies, values) = model.predict(features, global)?;
 
     for (i, (leaf, _)) in leafs.iter().enumerate() {
-      Self::make_moves(field, leaf, player);
+      Self::make_moves(field, leaf, player, false);
 
       let player = if (leaf.len()).is_multiple_of(2) {
         player
