@@ -1070,7 +1070,7 @@ impl Field {
       .into_iter()
       .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
     {
-      if !self.points[pos].is_empty_base() {
+      if !self.points[pos].is_empty_base() && !self.points[pos].is_grounded() {
         self.points[pos].set_tag();
         self.q.push_back(pos);
       }
@@ -1105,7 +1105,7 @@ impl Field {
         .into_iter()
         .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
       {
-        if !self.points[pos].is_empty_base() {
+        if !self.points[pos].is_empty_base() && !self.points[pos].is_grounded() {
           self.points[pos].clear_tag();
           self.points[pos].set_grounded();
         }
