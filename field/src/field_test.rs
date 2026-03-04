@@ -350,6 +350,8 @@ fn game_over_1() {
     ",
   );
   assert_eq!(field.score(Player::Red), 2);
+  assert_eq!(field.non_grounded_red, 1);
+  assert_eq!(field.non_grounded_black, 0);
   assert!(field.is_game_over());
 }
 
@@ -367,6 +369,8 @@ fn game_over_2() {
     ",
   );
   assert_eq!(field.score(Player::Black), 2);
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 1);
   assert!(field.is_game_over());
 }
 
@@ -385,6 +389,8 @@ fn game_over_3() {
     ",
   );
   assert_eq!(field.score(Player::Red), 6);
+  assert_eq!(field.non_grounded_red, 5);
+  assert_eq!(field.non_grounded_black, 0);
   assert!(field.is_game_over());
 }
 
@@ -403,6 +409,8 @@ fn game_over_4() {
     ",
   );
   assert_eq!(field.score(Player::Black), 6);
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 5);
   assert!(field.is_game_over());
 }
 
@@ -417,6 +425,8 @@ fn game_over_5() {
     ",
   );
   assert_eq!(field.score(Player::Red), 0);
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 0);
   assert!(field.is_game_over());
 }
 
@@ -434,6 +444,8 @@ fn game_not_over_1() {
     ",
   );
   assert_eq!(field.score(Player::Red), 1);
+  assert_eq!(field.non_grounded_red, 1);
+  assert_eq!(field.non_grounded_black, 0);
   assert!(!field.is_game_over());
 }
 
@@ -451,6 +463,8 @@ fn game_not_over_2() {
     ",
   );
   assert_eq!(field.score(Player::Black), 1);
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 1);
   assert!(!field.is_game_over());
 }
 
@@ -469,6 +483,8 @@ fn game_not_over_3() {
     ",
   );
   assert_eq!(field.score(Player::Red), 5);
+  assert_eq!(field.non_grounded_red, 5);
+  assert_eq!(field.non_grounded_black, 0);
   assert!(!field.is_game_over());
 }
 
@@ -487,6 +503,8 @@ fn game_not_over_4() {
     ",
   );
   assert_eq!(field.score(Player::Black), 5);
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 5);
   assert!(!field.is_game_over());
 }
 
@@ -505,6 +523,8 @@ fn grounded() {
   assert!(field.cell(field.to_pos(2, 1)).is_grounded());
   assert!(field.cell(field.to_pos(3, 1)).is_grounded());
   assert!(!field.cell(field.to_pos(2, 2)).is_grounded());
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 1);
 }
 
 #[test]
@@ -522,6 +542,8 @@ fn grounded_surrounding() {
   for (x, y) in [(2, 1), (3, 1), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (2, 3), (3, 3)] {
     assert!(field.cell(field.to_pos(x, y)).is_grounded());
   }
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 0);
 }
 
 #[test]
@@ -539,6 +561,8 @@ fn grounded_control_surrounding() {
   for (x, y) in [(2, 1), (3, 1), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (2, 3), (3, 3)] {
     assert!(field.cell(field.to_pos(x, y)).is_grounded());
   }
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 0);
 }
 
 #[test]
@@ -585,6 +609,8 @@ fn grounded_hole() {
       .count(),
     81
   );
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 0);
 }
 
 #[test]

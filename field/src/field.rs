@@ -56,6 +56,8 @@ impl Neighbor {
 struct FieldChange {
   score_red: i32,
   score_black: i32,
+  non_grounded_red: u32,
+  non_grounded_black: u32,
   hash: u64,
   cell_changes: usize,
   #[cfg(feature = "dsu")]
@@ -77,6 +79,8 @@ pub struct Field {
   pub stride: u32,
   pub score_red: i32,
   pub score_black: i32,
+  pub non_grounded_red: u32,
+  pub non_grounded_black: u32,
   pub moves: Vec<Pos>,
   pub points: PointsVec<Cell>,
   neighbor_offsets: [isize; 8],
@@ -665,6 +669,8 @@ impl Field {
       stride,
       score_red: 0,
       score_black: 0,
+      non_grounded_red: 0,
+      non_grounded_black: 0,
       moves: Vec::with_capacity(length),
       points: vec![Cell::new(false); length].into(),
       neighbor_offsets,
@@ -688,6 +694,8 @@ impl Field {
       stride: width + 1,
       score_red: 0,
       score_black: 0,
+      non_grounded_red: 0,
+      non_grounded_black: 0,
       moves: Vec::with_capacity(length),
       points: vec![Cell::new(false); length].into(),
       neighbor_offsets,
@@ -979,6 +987,8 @@ impl Field {
       let change = FieldChange {
         score_red: self.score_red,
         score_black: self.score_black,
+        non_grounded_red: self.non_grounded_red,
+        non_grounded_black: self.non_grounded_black,
         hash: self.hash,
         cell_changes: self.cell_changes.len(),
         dsu_changes: self.dsu_changes.len(),
@@ -988,6 +998,8 @@ impl Field {
       let change = FieldChange {
         score_red: self.score_red,
         score_black: self.score_black,
+        non_grounded_red: self.non_grounded_red,
+        non_grounded_black: self.non_grounded_black,
         hash: self.hash,
         cell_changes: self.cell_changes.len(),
       };
@@ -1059,6 +1071,21 @@ impl Field {
     } else {
       return;
     };
+
+    let player = self.cell(pos).get_player();
+
+    let delta_score = self.get_delta_score(player);
+    match player {
+      Player::Red => {
+        self.non_grounded_red = (self.non_grounded_red as i32 + delta_score + 1) as u32;
+        self.non_grounded_black = (self.non_grounded_black as i32 - delta_score) as u32;
+      }
+      Player::Black => {
+        self.non_grounded_black = (self.non_grounded_black as i32 + delta_score + 1) as u32;
+        self.non_grounded_red = (self.non_grounded_red as i32 - delta_score) as u32;
+      }
+    }
+
     let player = self.cell(pos).get_owner().unwrap();
 
     self.buffer.clear();
@@ -1108,6 +1135,12 @@ impl Field {
         if !self.points[pos].is_empty_base() && !self.points[pos].is_grounded() {
           self.points[pos].clear_tag();
           self.points[pos].set_grounded();
+          if self.points[pos].is_put() {
+            match player {
+              Player::Red => self.non_grounded_red -= 1,
+              Player::Black => self.non_grounded_black -= 1,
+            }
+          }
         }
       }
 
@@ -1115,6 +1148,12 @@ impl Field {
         self.points[pos].clear_tag();
         self.cell_changes.push((pos, self.cell(pos)));
         self.points[pos].set_grounded();
+        if self.points[pos].is_put() {
+          match player {
+            Player::Red => self.non_grounded_red -= 1,
+            Player::Black => self.non_grounded_black -= 1,
+          }
+        }
       }
     } else {
       for pos in self
@@ -1134,6 +1173,8 @@ impl Field {
       self.moves.pop();
       self.score_red = change.score_red;
       self.score_black = change.score_black;
+      self.non_grounded_red = change.non_grounded_red;
+      self.non_grounded_black = change.non_grounded_black;
       self.hash = change.hash;
       for &(pos, cell) in self.cell_changes[change.cell_changes..].iter().rev() {
         self.points[pos] = cell;
@@ -1322,39 +1363,11 @@ impl Field {
     is_corner(self.width(), self.height(), pos)
   }
 
-  fn non_grounded_points(&mut self) -> (u32, u32) {
-    let mut result = (0, 0);
-    for &pos in &self.moves {
-      if self.points[pos].is_grounded() {
-        continue;
-      }
-      let player = self.cell(pos).get_player();
-      match player {
-        Player::Red => {
-          if self.points[pos].is_captured() {
-            result.1 += 1
-          } else {
-            result.0 += 1
-          }
-        }
-        Player::Black => {
-          if self.points[pos].is_captured() {
-            result.0 += 1
-          } else {
-            result.1 += 1
-          }
-        }
-      }
-    }
-    result
-  }
-
   pub fn is_game_over(&mut self) -> bool {
     let score = self.score(Player::Red);
-    let non_grounded_points = self.non_grounded_points();
-    non_grounded_points == (0, 0) && self.moves_count() > 0
-      || score > non_grounded_points.0 as i32
-      || score < -(non_grounded_points.1 as i32)
+    self.non_grounded_red == 0 && self.non_grounded_black == 0 && self.moves_count() > 0
+      || score > self.non_grounded_red as i32
+      || score < -(self.non_grounded_black as i32)
   }
 
   pub fn clear(&mut self) {
@@ -1368,6 +1381,8 @@ impl Field {
       self.moves.clear();
       self.score_red = 0;
       self.score_black = 0;
+      self.non_grounded_red = 0;
+      self.non_grounded_black = 0;
       self.hash = 0;
       #[cfg(feature = "dsu")]
       {
