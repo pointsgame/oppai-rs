@@ -1082,7 +1082,7 @@ impl Field {
       }
 
       if self.points[pos].is_owner(player) {
-        if (self.points[pos].0 & (Cell::GROUNDED_BIT | Cell::BAD_BIT)) != 0 {
+        if self.points[pos].is_grounded() {
           grounded = true;
           false
         } else {
