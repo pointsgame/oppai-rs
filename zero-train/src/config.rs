@@ -30,8 +30,8 @@ pub struct TrainParams {
 }
 
 pub struct PitParams {
-  pub width: u32,
-  pub height: u32,
+  pub width: Vec<u32>,
+  pub height: Vec<u32>,
   pub model: PathBuf,
   pub model_new: PathBuf,
   pub games: Option<PathBuf>,
@@ -131,22 +131,8 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(optimizer_arg());
   let play = Command::new("play")
     .about("Self-play a single game")
-    .arg(
-      Arg::new("width")
-        .long("width")
-        .help("Field width")
-        .num_args(1..)
-        .value_parser(value_parser!(u32))
-        .default_value("16"),
-    )
-    .arg(
-      Arg::new("height")
-        .long("height")
-        .help("Field height")
-        .num_args(1..)
-        .value_parser(value_parser!(u32))
-        .default_value("16"),
-    )
+    .arg(width_arg().num_args(1..))
+    .arg(height_arg().num_args(1..))
     .arg(
       Arg::new("komi-x2")
         .long("komi-x2")
@@ -221,8 +207,8 @@ pub fn cli_parse() -> (Config, Action) {
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
-    .arg(width_arg())
-    .arg(height_arg())
+    .arg(width_arg().num_args(1..))
+    .arg(height_arg().num_args(1..))
     .arg(model_arg())
     .arg(model_new_arg())
     .arg(
@@ -330,8 +316,8 @@ pub fn cli_parse() -> (Config, Action) {
       })
     }
     Some(("pit", matches)) => {
-      let width = matches.get_one("width").copied().unwrap();
-      let height = matches.get_one("height").copied().unwrap();
+      let width = matches.get_many("width").unwrap().copied().collect();
+      let height = matches.get_many("height").unwrap().copied().collect();
       let model = matches.get_one("model").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let games = matches.get_one("games").cloned();

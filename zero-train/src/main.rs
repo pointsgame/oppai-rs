@@ -252,8 +252,6 @@ where
   };
 
   let player = Player::Red;
-  let field = Field::new_from_rng(params.width, params.height, rng);
-
   let total_games = params.count * 2;
 
   // Returns the win rate assuming all remaining games go best/worst case.
@@ -266,31 +264,15 @@ where
     (best_wins as f64 + draws as f64 / 2.0) / total as f64
   }
 
+  let mut width = params.width[rng.random_range(0..params.width.len())];
+  let mut height = params.height[rng.random_range(0..params.height.len())];
+  let mut field = Field::new_from_rng(width, height, rng);
+
   let mut wins = 0u64;
   let mut losses = 0u64;
 
   let mut i = 0u64;
   let outcome = loop {
-    // Check early exit: outcome is already determined regardless of remaining games.
-    if i > 0 {
-      if win_rate_bound(wins, losses, i, total_games, true) <= params.win_rate_threshold {
-        break false;
-      }
-      if win_rate_bound(wins, losses, i, total_games, false) > params.win_rate_threshold {
-        break true;
-      }
-    }
-
-    if i == total_games {
-      // All games played, no early exit triggered; do final evaluation.
-      let draws = i - wins - losses;
-      let win_rate = (wins as f64 + draws as f64 / 2.0) / total_games as f64;
-      break win_rate > params.win_rate_threshold;
-    }
-
-    log::info!("Game {}, result {}/{}/{}", i, wins, i - wins - losses, losses);
-
-    let mut field = field.clone();
     let result = if i.is_multiple_of(2) {
       pit::play(&mut field, player, &mut model_new, &mut model_old, 0, rng)?
     } else {
@@ -312,9 +294,28 @@ where
     }
 
     i += 1;
-  };
 
-  log::info!("Result {}/{}/{}", wins, i - wins - losses, losses);
+    log::info!("Game {}, result {}/{}/{}", i, wins, i - wins - losses, losses);
+
+    // Check early exit: outcome is already determined regardless of remaining games.
+    if win_rate_bound(wins, losses, i, total_games, true) <= params.win_rate_threshold {
+      break false;
+    }
+    if win_rate_bound(wins, losses, i, total_games, false) > params.win_rate_threshold {
+      break true;
+    }
+
+    if i == total_games {
+      // All games played, no early exit triggered; do final evaluation.
+      let draws = i - wins - losses;
+      let win_rate = (wins as f64 + draws as f64 / 2.0) / total_games as f64;
+      break win_rate > params.win_rate_threshold;
+    }
+
+    width = params.width[rng.random_range(0..params.width.len())];
+    height = params.height[rng.random_range(0..params.height.len())];
+    field = Field::new_from_rng(width, height, rng);
+  };
 
   Ok(if outcome { ExitCode::SUCCESS } else { 2.into() })
 }
