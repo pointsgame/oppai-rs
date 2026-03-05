@@ -92,6 +92,7 @@ where
     for (pos, player) in InitialPosition::Cross.points(width, height, player) {
       // TODO: random shift
       field.put_point(pos, player);
+      field.update_grounded();
     }
 
     let visits = episode(&mut field, player, &mut model, komi_x_2, rng)
@@ -267,6 +268,11 @@ where
   let mut width = params.width[rng.random_range(0..params.width.len())];
   let mut height = params.height[rng.random_range(0..params.height.len())];
   let mut field = Field::new_from_rng(width, height, rng);
+  for (pos, player) in InitialPosition::Cross.points(width, height, player) {
+    // TODO: random shift
+    field.put_point(pos, player);
+    field.update_grounded();
+  }
 
   let mut wins = 0u64;
   let mut losses = 0u64;
@@ -315,6 +321,11 @@ where
     width = params.width[rng.random_range(0..params.width.len())];
     height = params.height[rng.random_range(0..params.height.len())];
     field = Field::new_from_rng(width, height, rng);
+    for (pos, player) in InitialPosition::Cross.points(width, height, player) {
+      // TODO: random shift
+      field.put_point(pos, player);
+      field.update_grounded();
+    }
   };
 
   Ok(if outcome { ExitCode::SUCCESS } else { 2.into() })
