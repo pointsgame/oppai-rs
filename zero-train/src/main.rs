@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 mod config;
 
 use anyhow::{Error, Result};
