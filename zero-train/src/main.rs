@@ -90,7 +90,7 @@ where
     let op = opening(width, height, rng);
     for (x, y) in op {
       let pos = field.to_pos(x, y);
-      field.put_point(pos, player);
+      assert!(field.put_point(pos, player));
       field.update_grounded();
       player = player.next();
     }
@@ -272,7 +272,7 @@ where
   let mut op = opening(width, height, rng);
   for (x, y) in op {
     let pos = field.to_pos(x, y);
-    field.put_point(pos, player);
+    assert!(field.put_point(pos, player));
     field.update_grounded();
     player = player.next();
   }
@@ -328,7 +328,7 @@ where
     op = opening(width, height, rng);
     for (x, y) in op {
       let pos = field.to_pos(x, y);
-      field.put_point(pos, player);
+      assert!(field.put_point(pos, player));
       field.update_grounded();
       player = player.next();
     }
