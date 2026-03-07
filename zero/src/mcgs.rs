@@ -180,12 +180,13 @@ impl<N: Float + Sum> Search<N> {
       let c_puct = N::from(1.1).unwrap();
       let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
 
-      // Child value is from child's perspective.
-      // Parent wants to maximize own value, which is -child.value
-      let q = if edge.visits > 0 {
+      let total_visits = edge.visits + edge.virtual_losses;
+      let q = if total_visits > 0 {
         let visits = N::from(edge.visits).unwrap();
         let virtual_losses = N::from(edge.virtual_losses).unwrap();
-        (-child_value * visits - virtual_losses) / (visits + virtual_losses)
+        // Child value is from child's perspective.
+        // Parent wants to maximize own value, which is -child.value
+        (-child_value * visits - virtual_losses) / N::from(total_visits).unwrap()
       } else {
         // FPU
         node.value - c_fpu * *prior_visited
