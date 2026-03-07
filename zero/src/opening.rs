@@ -53,10 +53,9 @@ fn crosses<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
     let (x, y) = loop {
       let x = rng.random_range(PADDING..width - PADDING - 1);
       let y = rng.random_range(PADDING..height - PADDING - 1);
-      if !result
-        .iter()
-        .any(|&(x_, y_)| x_ == x || y_ == y || x_ == x + 1 || y_ == y + 1)
-      {
+      if !result.iter().any(|&(x1, y1)| {
+        (x, y) == (x1, y1) || (x + 1, y) == (x1, y1) || (x, y + 1) == (x1, y1) || (x + 1, y + 1) == (x1, y1)
+      }) {
         break (x, y);
       }
     };
