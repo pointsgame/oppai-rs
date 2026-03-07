@@ -12,12 +12,12 @@ use config::{Action, Backend as ConfigBackend, Config, InitParams, PitParams, Pl
 use either::Either;
 use num_traits::Float;
 use oppai_field::{any_field::AnyField, field::Field, player::Player};
-use oppai_initial::initial::InitialPosition;
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   episode::{self, episode},
   examples::Examples,
   model::TrainableModel,
+  opening::opening,
   pit,
   random_model::RandomModel,
 };
@@ -84,13 +84,15 @@ where
     let width = params.width[rng.random_range(0..params.width.len())];
     let height = params.height[rng.random_range(0..params.height.len())];
     let komi_x_2 = params.komi_x_2[rng.random_range(0..params.komi_x_2.len())];
-    let player = Player::Red;
+    let mut player = Player::Red;
     let mut field = Field::new_from_rng(width, height, rng);
 
-    for (pos, player) in InitialPosition::Cross.points(width, height, player) {
-      // TODO: random shift
+    let op = opening(width, height, rng);
+    for (x, y) in op {
+      let pos = field.to_pos(x, y);
       field.put_point(pos, player);
       field.update_grounded();
+      player = player.next();
     }
 
     let visits = episode(&mut field, player, &mut model, komi_x_2, rng)
@@ -250,7 +252,7 @@ where
     device,
   };
 
-  let player = Player::Red;
+  let mut player = Player::Red;
   let total_games = params.count * 2;
 
   // Returns the win rate assuming all remaining games go best/worst case.
@@ -266,10 +268,13 @@ where
   let mut width = params.width[rng.random_range(0..params.width.len())];
   let mut height = params.height[rng.random_range(0..params.height.len())];
   let mut field = Field::new_from_rng(width, height, rng);
-  for (pos, player) in InitialPosition::Cross.points(width, height, player) {
-    // TODO: random shift
+
+  let mut op = opening(width, height, rng);
+  for (x, y) in op {
+    let pos = field.to_pos(x, y);
     field.put_point(pos, player);
     field.update_grounded();
+    player = player.next();
   }
 
   let mut wins = 0u64;
@@ -319,10 +324,13 @@ where
     width = params.width[rng.random_range(0..params.width.len())];
     height = params.height[rng.random_range(0..params.height.len())];
     field = Field::new_from_rng(width, height, rng);
-    for (pos, player) in InitialPosition::Cross.points(width, height, player) {
-      // TODO: random shift
+
+    op = opening(width, height, rng);
+    for (x, y) in op {
+      let pos = field.to_pos(x, y);
       field.put_point(pos, player);
       field.update_grounded();
+      player = player.next();
     }
   };
 

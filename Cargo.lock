@@ -6080,7 +6080,6 @@ dependencies = [
  "ndarray",
  "num-traits",
  "oppai-field",
- "oppai-initial",
  "oppai-sgf",
  "oppai-zero",
  "oppai-zero-burn",

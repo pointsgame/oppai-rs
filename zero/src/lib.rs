@@ -9,6 +9,7 @@ pub mod mcgs;
 #[cfg(test)]
 pub mod mcgs_test;
 pub mod model;
+pub mod opening;
 pub mod pit;
 pub mod random_model;
 pub mod zero;
