@@ -1,7 +1,23 @@
 use rand::Rng;
-use rand_distr::{Distribution, weighted::WeightedIndex};
+use rand_distr::{Distribution, Normal, weighted::WeightedIndex};
 
 const PADDING: u32 = 4;
+
+fn normal_range<R: Rng>(min: u32, max: u32, rng: &mut R) -> u32 {
+  if min >= max {
+    return min;
+  }
+  let mean = (min + max) as f64 / 2.0;
+  let std_dev = (max - min) as f64 / 6.0;
+  let distr = Normal::new(mean, std_dev).unwrap();
+
+  loop {
+    let val = rng.sample(distr).round() as i64;
+    if val >= min as i64 && val < max as i64 {
+      return val as u32;
+    }
+  }
+}
 
 fn random<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
   let weigths = WeightedIndex::new([1, 2]).unwrap();
@@ -13,8 +29,8 @@ fn random<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
 
   for _ in 0..count {
     let (x, y) = loop {
-      let x = rng.random_range(PADDING..width - PADDING);
-      let y = rng.random_range(PADDING..height - PADDING);
+      let x = normal_range(PADDING, width - PADDING, rng);
+      let y = normal_range(PADDING, height - PADDING, rng);
       if !result.contains(&(x, y)) {
         break (x, y);
       }
@@ -103,8 +119,8 @@ fn double_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)>
 
   let (w, h) = if rotation < 2 { (4, 2) } else { (2, 4) };
 
-  let x_offset = rng.random_range(PADDING..width - PADDING - w + 1);
-  let y_offset = rng.random_range(PADDING..height - PADDING - h + 1);
+  let x_offset = normal_range(PADDING, width - PADDING - w + 1, rng);
+  let y_offset = normal_range(PADDING, height - PADDING - h + 1, rng);
 
   let mut result = Vec::new();
 
@@ -157,8 +173,8 @@ fn triple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)>
 
   let (w, h) = if rotation < 2 { (3, 4) } else { (4, 3) };
 
-  let x_offset = rng.random_range(PADDING..width - PADDING - w + 1);
-  let y_offset = rng.random_range(PADDING..height - PADDING - h + 1);
+  let x_offset = normal_range(PADDING, width - PADDING - w + 1, rng);
+  let y_offset = normal_range(PADDING, height - PADDING - h + 1, rng);
 
   let mut result = Vec::new();
   for i in 0..4 {
