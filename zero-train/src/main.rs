@@ -11,7 +11,12 @@ use burn::{
 use config::{Action, Backend as ConfigBackend, Config, InitParams, PitParams, PlayParams, TrainParams, cli_parse};
 use either::Either;
 use num_traits::Float;
-use oppai_field::{any_field::AnyField, field::Field, player::Player};
+use oppai_field::{
+  any_field::AnyField,
+  field::{Field, length},
+  player::Player,
+  zobrist::Zobrist,
+};
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   episode::{self, episode},
@@ -33,6 +38,7 @@ use std::{
   io::Write,
   iter::{self, Sum},
   process::ExitCode,
+  sync::Arc,
 };
 
 fn init<B>(params: InitParams, device: B::Device) -> Result<ExitCode>
@@ -269,12 +275,20 @@ where
     (best_wins as f64 + draws as f64 / 2.0) / total as f64
   }
 
+  let zobrist = Arc::new(Zobrist::new(
+    length(
+      *params.width.iter().max().unwrap(),
+      *params.height.iter().max().unwrap(),
+    ) * 3,
+    rng,
+  ));
+
   let mut width = params.width[rng.random_range(0..params.width.len())];
   let mut height = params.height[rng.random_range(0..params.height.len())];
-  let mut field = Field::new_from_rng(width, height, rng);
+  let mut field = Field::new(width, height, zobrist.clone());
 
   let mut op = opening(width, height, rng);
-  for (x, y) in op {
+  for &(x, y) in op.iter() {
     let pos = field.to_pos(x, y);
     assert!(field.put_point(pos, player));
     field.update_grounded();
@@ -325,12 +339,14 @@ where
       break win_rate > params.win_rate_threshold;
     }
 
-    width = params.width[rng.random_range(0..params.width.len())];
-    height = params.height[rng.random_range(0..params.height.len())];
-    field = Field::new_from_rng(width, height, rng);
+    if i.is_multiple_of(2) {
+      width = params.width[rng.random_range(0..params.width.len())];
+      height = params.height[rng.random_range(0..params.height.len())];
+      op = opening(width, height, rng);
+    }
 
-    op = opening(width, height, rng);
-    for (x, y) in op {
+    field = Field::new(width, height, zobrist.clone());
+    for &(x, y) in op.iter() {
       let pos = field.to_pos(x, y);
       assert!(field.put_point(pos, player));
       field.update_grounded();
