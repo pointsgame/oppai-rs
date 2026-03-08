@@ -33,6 +33,7 @@ const P1_CHANNELS: usize = 32;
 const G1_CHANNELS: usize = 32;
 const V2_SIZE: usize = 80;
 const SBV2_SIZE: usize = 80;
+const NUM_SCOREBELIEFS: usize = 6;
 
 #[derive(Module, Debug)]
 pub struct NormMask<B: Backend> {
@@ -285,8 +286,8 @@ impl<B: Backend> ValueHead<B> {
 
       linear_s2: LinearConfig::new(3 * V1_CHANNELS, SBV2_SIZE).init(device),
       linear_s2off: LinearConfig::new(1, SBV2_SIZE).with_bias(false).init(device),
-      linear_s3: LinearConfig::new(SBV2_SIZE, SCORE_ONE_HOT_SIZE).init(device),
-      linear_smix: LinearConfig::new(3 * V1_CHANNELS, SCORE_ONE_HOT_SIZE).init(device),
+      linear_s3: LinearConfig::new(SBV2_SIZE, NUM_SCOREBELIEFS).init(device),
+      linear_smix: LinearConfig::new(3 * V1_CHANNELS, NUM_SCOREBELIEFS).init(device),
       score_belief_offset_bias: Param::from_tensor(offset_bias_tensor).no_grad(),
     }
   }
