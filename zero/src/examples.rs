@@ -142,6 +142,11 @@ impl<N: Clone> Examples<N> {
     }
   }
 
+  #[inline]
+  pub fn batches_count(&self, size: usize) -> usize {
+    (self.len() / size).max(1)
+  }
+
   pub fn batches(&self, size: usize) -> impl Iterator<Item = Batch<N>> + '_ {
     if self.len() <= size {
       Either::Left(iter::once(Batch {

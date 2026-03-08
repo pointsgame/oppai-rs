@@ -197,7 +197,11 @@ where
   for epoch in 0..params.epochs {
     log::info!("Training {} epoch", epoch);
     examples.shuffle(rng);
-    for batch in examples.batches(params.batch_size) {
+    let batches_count = examples.batches_count(params.batch_size);
+    for (i, batch) in examples.batches(params.batch_size).enumerate() {
+      if i.is_multiple_of(64) {
+        log::info!("Batch {} out of {}", i, batches_count);
+      }
       learner = learner.train(
         batch.inputs,
         batch.global,
