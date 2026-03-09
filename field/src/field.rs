@@ -9,6 +9,7 @@ use std::{collections::VecDeque, fmt, num::NonZeroUsize, sync::Arc};
 
 pub type Pos = usize;
 pub type NonZeroPos = NonZeroUsize;
+pub type Hash = u64;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -58,7 +59,7 @@ struct FieldChange {
   score_black: i32,
   non_grounded_red: u32,
   non_grounded_black: u32,
-  hash: u64,
+  hash: Hash,
   cell_changes: usize,
   #[cfg(feature = "dsu")]
   dsu_changes: usize,
@@ -92,8 +93,8 @@ pub struct Field {
   #[cfg(feature = "dsu")]
   dsu_changes: Vec<(Pos, Pos)>,
   changes: Vec<FieldChange>,
-  zobrist: Arc<Zobrist<u64>>,
-  hash: u64,
+  zobrist: Arc<Zobrist<Hash>>,
+  hash: Hash,
   chains: [(Vec<Pos>, Pos); 3],
   buffer: Vec<Pos>,
   pub q: VecDeque<Pos>,
@@ -649,7 +650,7 @@ impl Field {
     }
   }
 
-  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist<u64>>) -> Field {
+  pub fn new(width: u32, height: u32, zobrist: Arc<Zobrist<Hash>>) -> Field {
     let length = length(width, height);
     debug_assert!(zobrist.hashes.0.len() >= 3 * length);
     let stride = width + 1;
@@ -1286,17 +1287,17 @@ impl Field {
   }
 
   #[inline]
-  pub fn hash(&self) -> u64 {
+  pub fn hash(&self) -> Hash {
     self.hash
   }
 
   #[inline]
-  pub fn colored_hash(&self, player: Player) -> u64 {
-    self.hash() ^ player as u64
+  pub fn colored_hash(&self, player: Player) -> Hash {
+    self.hash() ^ player as Hash
   }
 
   #[inline]
-  pub fn hash_at(&self, move_number: usize) -> Option<u64> {
+  pub fn hash_at(&self, move_number: usize) -> Option<Hash> {
     use std::cmp::Ordering;
     let moves_count = self.moves_count();
     match move_number.cmp(&moves_count) {
@@ -1342,12 +1343,12 @@ impl Field {
   }
 
   #[inline]
-  pub fn zobrist(&self) -> &Zobrist<u64> {
+  pub fn zobrist(&self) -> &Zobrist<Hash> {
     &self.zobrist
   }
 
   #[inline]
-  pub fn zobrist_arc(&self) -> Arc<Zobrist<u64>> {
+  pub fn zobrist_arc(&self) -> Arc<Zobrist<Hash>> {
     self.zobrist.clone()
   }
 

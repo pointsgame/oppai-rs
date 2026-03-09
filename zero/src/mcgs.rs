@@ -4,7 +4,7 @@ use ndarray::{Array, ArrayView2, s};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
 use oppai_field::{
-  field::{Field, NonZeroPos, Pos},
+  field::{Field, Hash, NonZeroPos, Pos},
   player::Player,
 };
 use rand::seq::SliceRandom;
@@ -21,7 +21,7 @@ use std::{collections::HashMap, iter, iter::Sum};
 pub struct Edge<N: Float> {
   pub pos: Pos,
   /// Zobrist hash of the child state
-  pub hash: u64,
+  pub hash: Hash,
   /// Number of times this specific edge was traversed (N(n, a))
   pub visits: u64,
   /// The raw policy prediction P(a)
@@ -109,7 +109,7 @@ pub struct Search<N: Float> {
   /// Arena allocation for nodes
   pub nodes: Vec<Node<N>>,
   /// Maps Zobrist hash -> index in `nodes`
-  pub map: HashMap<u64, usize>,
+  pub map: HashMap<Hash, usize>,
   /// Whether dirichlet noise was added to the root node
   pub dirichlet_noise: bool,
 }
@@ -130,7 +130,7 @@ impl<N: Float> Search<N> {
 }
 
 impl<N: Float + Sum> Search<N> {
-  fn add_node(&mut self, hash: u64) -> usize {
+  fn add_node(&mut self, hash: Hash) -> usize {
     *self.map.entry(hash).or_insert_with(|| {
       let idx = self.nodes.len();
       let node = Node::new();
@@ -139,7 +139,7 @@ impl<N: Float + Sum> Search<N> {
     })
   }
 
-  fn update_node(map: &HashMap<u64, usize>, nodes: &mut [Node<N>], node_idx: usize) {
+  fn update_node(map: &HashMap<Hash, usize>, nodes: &mut [Node<N>], node_idx: usize) {
     let mut sum_values = N::zero();
     let mut sum_visits = 0;
 

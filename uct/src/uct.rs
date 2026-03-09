@@ -1,6 +1,6 @@
 use crate::wave_pruning::WavePruning;
 use oppai_common::common;
-use oppai_field::field::{Field, Pos};
+use oppai_field::field::{Field, Hash, Pos};
 use oppai_field::player::Player;
 use rand::distr::{Distribution, StandardUniform};
 use rand::seq::SliceRandom;
@@ -188,7 +188,7 @@ pub struct UctRoot {
   node: Option<UctNode>,
   player: Player,
   moves_count: usize,
-  hash: u64,
+  hash: Hash,
   wave_pruning: WavePruning,
   komi: AtomicIsize,
   komi_visits: AtomicUsize,

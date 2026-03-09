@@ -8,7 +8,7 @@ use num_traits::{Float, One, Zero};
 use oppai_field::field::{to_x, to_y};
 use oppai_field::zobrist::Zobrist;
 use oppai_field::{
-  field::{Field, NonZeroPos, Pos},
+  field::{Field, Hash, NonZeroPos, Pos},
   player::Player,
 };
 use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate};
@@ -190,7 +190,7 @@ pub fn examples<N: Float + Zero + One>(
   field_width: u32,
   field_height: u32,
   komi_x_2: i32,
-  zobrist: Arc<Zobrist<u64>>,
+  zobrist: Arc<Zobrist<Hash>>,
   visits: &[Visits],
   moves: &[(Pos, Player)],
 ) -> Examples<N> {

@@ -1,4 +1,4 @@
-use oppai_field::field::{Field, Pos, euclidean, wave_diag};
+use oppai_field::field::{Field, Hash, Pos, euclidean, wave_diag};
 use oppai_field::player::Player;
 use smallvec::{Array, SmallVec};
 use std::ops::Index;
@@ -46,7 +46,7 @@ where
   [Pos; N]: Array<Item = Pos>,
 {
   pub points: SmallVec<[Pos; N]>,
-  pub hash: u64,
+  pub hash: Hash,
   pub score: i32,
 }
 
@@ -54,7 +54,7 @@ impl<const N: usize> Trajectory<N>
 where
   [Pos; N]: Array<Item = Pos>,
 {
-  pub fn new(points: SmallVec<[Pos; N]>, hash: u64, score: i32) -> Trajectory<N> {
+  pub fn new(points: SmallVec<[Pos; N]>, hash: Hash, score: i32) -> Trajectory<N> {
     Trajectory { points, hash, score }
   }
 }
@@ -68,7 +68,7 @@ fn add_trajectory<const N: usize, C: VecLike<Trajectory<N>>>(
   [Pos; N]: Array<Item = Pos>,
 {
   let zobrist = field.zobrist();
-  let mut hash = 0u64;
+  let mut hash = 0;
   for &pos in points {
     if !field.cell(pos).is_bound() || field.number_near_groups(pos, player) < 2 {
       return;
