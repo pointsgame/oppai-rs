@@ -8,7 +8,7 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
-resvg = { version = "0.45" }
+resvg = { version = "0.47" }
 image = { version = "0.25" }
 viuer = { version = "0.11" }
 oppai-field = { path = "../field" }
