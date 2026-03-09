@@ -12,8 +12,8 @@ use oppai_field::{
   player::Player,
 };
 use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate};
-use rand::Rng;
 use rand::distr::uniform::SampleUniform;
+use rand::{Rng, RngExt};
 use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display};

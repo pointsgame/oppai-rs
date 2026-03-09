@@ -1,6 +1,6 @@
 use anyhow::Result;
 use oppai_field::player::Player as OppaiPlayer;
-use rand::{Rng, distr::Alphanumeric};
+use rand::{Rng, RngExt, distr::Alphanumeric};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 

@@ -1,9 +1,9 @@
 use anyhow::Result;
 use oppai_field::{field::Field, player::Player};
-use rand::{SeedableRng, rngs::SmallRng};
+use rand::{make_rng, rngs::SmallRng};
 
 fn main() -> Result<()> {
-  let mut rng = SmallRng::from_os_rng();
+  let mut rng = make_rng::<SmallRng>();
   let mut field = Field::new_from_rng(20, 20, &mut rng);
   let mut player = Player::Red;
   let mut s = String::new();

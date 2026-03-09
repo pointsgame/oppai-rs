@@ -13,7 +13,7 @@ use oppai_ais::{
 use oppai_field::field::Field;
 use oppai_patterns::patterns::Patterns;
 use oppai_protocol::{Constraint, Coords, Move, Request, Response};
-use rand::{SeedableRng, rngs::SmallRng};
+use rand::{make_rng, rngs::SmallRng};
 use std::{
   default::Default,
   fs::File,
@@ -75,7 +75,7 @@ fn main() -> Result<()> {
 
     let response = match request {
       Request::Init { width, height } => {
-        let mut rng = SmallRng::from_os_rng();
+        let mut rng = make_rng::<SmallRng>();
         state_option = Some(State {
           field: Field::new_from_rng(width, height, &mut rng),
           rng,

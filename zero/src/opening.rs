@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rand_distr::{Distribution, Normal, weighted::WeightedIndex};
 
 const PADDING: u32 = 4;

@@ -28,7 +28,7 @@ use oppai_zero::{
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
-use rand::{Rng, SeedableRng, distr::uniform::SampleUniform, rngs::SmallRng};
+use rand::{Rng, RngExt, SeedableRng, distr::uniform::SampleUniform, make_rng, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use sgf_parse::{GameTree, SimpleText, serialize, unknown_game::Prop};
 use std::{
@@ -365,7 +365,7 @@ where
   Exp1: Distribution<<B as Backend>::FloatElem>,
   Open01: Distribution<<B as Backend>::FloatElem>,
 {
-  let mut rng = config.seed.map_or_else(SmallRng::from_os_rng, SmallRng::seed_from_u64);
+  let mut rng = config.seed.map_or_else(make_rng, SmallRng::seed_from_u64);
 
   match action {
     Action::Init(params) => init::<Autodiff<B>>(params, device),

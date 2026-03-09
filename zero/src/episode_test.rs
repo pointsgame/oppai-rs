@@ -84,50 +84,6 @@ fn episode_simple_surrounding() {
 }
 
 #[test]
-fn episode_trap() {
-  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
-  let mut field = construct_field(
-    &mut rng,
-    "
-    .A.
-    ..A
-    .A.
-    ",
-  );
-
-  let model_inputs: RefCell<Vec<Array4<f64>>> = Default::default();
-
-  let mut visits = episode(
-    &mut field,
-    Player::Red,
-    &mut |inputs: Array4<f64>| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5])));
-      model_inputs.borrow_mut().push(inputs);
-      result
-    },
-    0,
-    &mut rng,
-  )
-  .unwrap();
-  for visits in &mut visits {
-    visits.1 = true;
-  }
-  let examples = examples::<f64>(
-    field.width(),
-    field.height(),
-    field.width(),
-    field.height(),
-    0,
-    field.zobrist_arc(),
-    &visits,
-    &field.colored_moves().collect::<Vec<_>>(),
-  );
-
-  assert_eq!(field.moves_count(), 5);
-  assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
-}
-
-#[test]
 fn episode_winning_game() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(

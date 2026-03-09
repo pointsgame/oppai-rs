@@ -7,8 +7,8 @@ use oppai_field::{
   field::{Field, NonZeroPos, Pos},
   player::Player,
 };
-use rand::Rng;
 use rand::seq::SliceRandom;
+use rand::{Rng, RngExt};
 use rand_distr::uniform::SampleUniform;
 use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
 use std::cell::LazyCell;

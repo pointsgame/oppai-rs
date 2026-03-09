@@ -22,7 +22,7 @@ use oppai_field::player::Player;
 use oppai_initial::initial::InitialPosition;
 #[cfg(feature = "term-render")]
 use oppai_term_render::render;
-use rand::SeedableRng;
+use rand::make_rng;
 use rand::rngs::SmallRng;
 
 const WIDTH: u32 = 10;
@@ -210,7 +210,7 @@ fn main() -> Result<()> {
 
   let config = cli_parse();
 
-  let mut rng = SmallRng::from_os_rng();
+  let mut rng = make_rng::<SmallRng>();
   let mut game = Game {
     field: ExtendedField::new_from_rng(WIDTH, HEIGHT, &mut rng),
     client1: Client::spawn(config.ai1, config.ai1_args)?,

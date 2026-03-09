@@ -26,9 +26,9 @@ use oppai_sgf::{from_sgf, to_sgf_str};
 use oppai_zero::episode::Visits;
 use oppai_zero_sgf::sgf_to_visits;
 #[cfg(not(target_arch = "wasm32"))]
-use rand::Rng;
-use rand::SeedableRng;
+use rand::RngExt;
 use rand::rngs::SmallRng;
+use rand::{SeedableRng, make_rng};
 use rfd::AsyncFileDialog;
 #[cfg(not(target_arch = "wasm32"))]
 use rfd::FileHandle;
@@ -63,7 +63,7 @@ pub fn main() -> iced::Result {
 
   iced::application(
     move || {
-      let mut rng = SmallRng::from_os_rng();
+      let mut rng = make_rng::<SmallRng>();
       let mut extended_field = ExtendedField::new_from_rng(config.width, config.height, &mut rng);
       // TODO: store patterns to use them when new Oppai is created
       #[cfg(not(target_arch = "wasm32"))]

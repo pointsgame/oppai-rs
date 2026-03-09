@@ -9,7 +9,7 @@ default-run = "oppai-iced"
 
 [dependencies]
 iced = { version = "0.14", features = ["canvas", "image"] }
-rand = { workspace = true, features = ["small_rng"] }
+rand.workspace = true
 log.workspace = true
 strum.workspace = true
 clap = { workspace = true, features = ["cargo"] }

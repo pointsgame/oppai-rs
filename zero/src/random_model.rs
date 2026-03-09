@@ -5,7 +5,7 @@ use std::{
 
 use ndarray::{Array2, Array3, Array4};
 use num_traits::{Float, One};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
 
 use crate::model::Model;

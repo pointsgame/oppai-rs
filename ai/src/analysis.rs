@@ -1,6 +1,6 @@
 use either::Either;
 use oppai_field::field::{NonZeroPos, Pos};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::{any::TypeId, cmp::Ordering, iter};
 
 pub trait Analysis {

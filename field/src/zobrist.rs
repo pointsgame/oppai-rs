@@ -1,6 +1,6 @@
 use crate::{field::Pos, points_vec::PointsVec};
 use rand::{
-  Rng,
+  Rng, RngExt,
   distr::{Distribution, StandardUniform},
 };
 use std::{iter, ops::BitXor};

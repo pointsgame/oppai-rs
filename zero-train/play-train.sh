@@ -2,20 +2,21 @@
 
 set -Euo pipefail
 
-export RUSTFLAGS="-C target-cpu=native"
 export RUST_LOG="oppai_zero=info,oppai_zero_burn=info,oppai_zero_train=info"
-export BURN_WGPU_MAX_TASKS=4
 BIN=(cargo run --release --quiet --)
 
 EXTENSION=.mpk
 MODELS=./models
 GAMES=./games
+
+# How many games are played in parallel for the first checkpoint
+PARALLEL_GAMES_INITIAL=32
 # How many games are played in parallel
-PARALLEL_GAMES=2
+PARALLEL_GAMES=1
 # How many games are played before training
-PLAY_GAMES=64
+PLAY_GAMES=1024
 # How many games are used for training
-TRAIN_GAMES=128
+TRAIN_GAMES=4096
 
 mkdir -p "$MODELS"
 
@@ -39,18 +40,22 @@ while true; do
 
     mkdir -p "$GAMES/$CHECKPOINT"
 
-    parallel --semaphore -u -j "$PARALLEL_GAMES" "
-      echo \"Playing game $i with timestamp $TIMESTAMP\"
-      if [ \"$CHECKPOINT\" -eq 0 ]; then
-        ${BIN[*]} --seed $TIMESTAMP play --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf
-      else
-        ${BIN[*]} --seed $TIMESTAMP play --model $MODELS/model_$CHECKPOINT --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf
-      fi
-    "
+    if [ "$CHECKPOINT" -eq 0 ]; then
+      parallel --semaphore -u -j "$PARALLEL_GAMES_INITIAL" "
+        echo \"Playing game $i with timestamp $TIMESTAMP\"
+        ${BIN[*]} --seed $TIMESTAMP play --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf --width 14 15 16 17 18 --height 14 15 16 17 18 --komi-x2 0 1 '-1' 2 '-2' 3 '-3'
+      "
+    else
+      parallel --semaphore -u -j "$PARALLEL_GAMES" "
+        echo \"Playing game $i with timestamp $TIMESTAMP\"
+        ${BIN[*]} --seed $TIMESTAMP play --model $MODELS/model_$CHECKPOINT --game $GAMES/$CHECKPOINT/$TIMESTAMP.sgf --width 14 15 16 17 18 --height 14 15 16 17 18 --komi-x2 0 1 -1 2 -2 3 -3
+      "
+    fi
   done
 
   parallel --wait
 
+  # learning-rate 0.001
   echo "Training checkpoint $((CHECKPOINT + 1))"
   fd '\d+\.sgf' "$GAMES" |
     sort -rn |
@@ -60,12 +65,16 @@ while true; do
       --optimizer "$MODELS/optimizer_$CHECKPOINT" \
       --model-new "$MODELS/model_$((CHECKPOINT + 1))" \
       --optimizer-new "$MODELS/optimizer_$((CHECKPOINT + 1))" \
+      --batch-size 512 \
+      --learning-rate 0.002 \
+      --width 18 \
+      --height 18 \
       --games
 
   echo "Pit checkpoint $((CHECKPOINT + 1))"
 
   ret=0
-  "${BIN[@]}" pit --model "$MODELS/model_$CHECKPOINT" --model-new "$MODELS/model_$((CHECKPOINT + 1))" || ret=$?
+  "${BIN[@]}" pit --width 14 15 16 17 18 --height 14 15 16 17 18 --model "$MODELS/model_$CHECKPOINT" --model-new "$MODELS/model_$((CHECKPOINT + 1))" || ret=$?
   if [ "$ret" -eq 0 ]; then
     echo "Accepting the new model"
     ((CHECKPOINT++))

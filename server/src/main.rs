@@ -12,7 +12,8 @@ use openidconnect::{
   core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
 };
 use oppai_field::{field::Field, player::Player};
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::make_rng;
+use rand::{Rng, RngExt, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 #[cfg(not(feature = "in-memory"))]
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -1516,7 +1517,7 @@ async fn main() -> Result<()> {
   let listener = TcpListener::bind("127.0.0.1:8080").await?;
   let state = Arc::new(State::default());
 
-  let mut rng = StdRng::from_os_rng();
+  let mut rng = make_rng::<StdRng>();
 
   #[cfg(not(feature = "in-memory"))]
   let options = PgConnectOptions::new_without_pgpass().socket(&config.postgres_socket);

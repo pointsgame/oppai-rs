@@ -1,6 +1,6 @@
 use either::Either;
 use ndarray::{Array1, Array2, Array3, Array4, Axis};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::{iter, ops::Add};
 
 #[derive(Clone, Debug)]

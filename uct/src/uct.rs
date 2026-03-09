@@ -4,7 +4,7 @@ use oppai_field::field::{Field, Pos};
 use oppai_field::player::Player;
 use rand::distr::{Distribution, StandardUniform};
 use rand::seq::SliceRandom;
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use std::{
   mem::{self, ManuallyDrop},
   ptr,
