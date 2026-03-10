@@ -51,7 +51,7 @@ fn mcts_first_iterations() {
   // corner moves are not considered
   assert_eq!(
     search.nodes[0].children.len(),
-    (field.width() * field.height()) as usize - 6
+    (field.width() * field.height()) as usize - 2
   );
   assert!(
     search.nodes[0]
@@ -81,7 +81,7 @@ fn mcts_first_iterations() {
       .iter()
       .flat_map(|edge| search.map.get(&edge.hash))
       .copied()
-      .filter(|&edge_idx| search.nodes[edge_idx].children.len() == (field.width() * field.height()) as usize - 7)
+      .filter(|&edge_idx| search.nodes[edge_idx].children.len() == (field.width() * field.height()) as usize - 3)
       .count(),
     8
   );

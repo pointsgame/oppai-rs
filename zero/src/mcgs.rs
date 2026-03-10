@@ -290,7 +290,7 @@ impl<N: Float + Sum> Search<N> {
     let mut children = Vec::new();
 
     for pos in field.min_pos()..=field.max_pos() {
-      if !field.is_putting_allowed(pos) || field.is_corner(pos) {
+      if !field.is_putting_allowed(pos) {
         continue;
       }
 

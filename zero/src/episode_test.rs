@@ -17,9 +17,9 @@ fn episode_simple_surrounding() {
   let mut field = construct_field(
     &mut rng,
     "
-    .a.
+    aaa
     .Aa
-    .a.
+    aaa
     ",
   );
 
@@ -51,7 +51,7 @@ fn episode_simple_surrounding() {
     &field.colored_moves().collect::<Vec<_>>(),
   );
 
-  assert_eq!(field.moves_count(), 5);
+  assert_eq!(field.moves_count(), 9);
   assert!(examples.policies.iter().all(|p| (p.sum() - 1.0).abs() < 0.001));
 
   field.undo();

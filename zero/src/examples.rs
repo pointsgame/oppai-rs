@@ -1,7 +1,28 @@
 use either::Either;
 use ndarray::{Array1, Array2, Array3, Array4, Axis};
+use oppai_field::{field::Pos, player::Player};
 use rand::{Rng, RngExt};
 use std::{iter, ops::Add};
+
+#[derive(Clone, Debug)]
+pub struct Example {
+  pub width: u32,
+  pub height: u32,
+  pub moves: Vec<(Pos, Player)>,
+  pub komi_x_2: i32,
+  pub visits: Vec<(Pos, u64)>,
+  pub rotation: u8,
+}
+
+#[derive(Clone, Debug)]
+pub struct Example1<N> {
+  pub inputs: Array3<N>,
+  pub global: Array1<N>,
+  pub policies: Array2<N>,
+  pub opponent_policies: Array2<N>,
+  pub values: Array1<N>,
+  pub scores: Array1<N>,
+}
 
 #[derive(Clone, Debug)]
 pub struct Examples<N> {
