@@ -26,7 +26,7 @@ pub struct TrainParams {
   pub games: Vec<PathBuf>,
   pub learning_rate: f64,
   pub batch_size: usize,
-  pub epochs: usize,
+  pub skip: usize,
 }
 
 pub struct PitParams {
@@ -197,13 +197,13 @@ pub fn cli_parse() -> (Config, Action) {
         .default_value("512"),
     )
     .arg(
-      Arg::new("epochs")
-        .long("epochs")
-        .short('e')
-        .help("Number of epochs to train")
+      Arg::new("skip")
+        .long("skip")
+        .short('s')
+        .help("Skip the first N batches")
         .num_args(1)
         .value_parser(value_parser!(usize))
-        .default_value("1"),
+        .default_value("0"),
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
@@ -301,7 +301,7 @@ pub fn cli_parse() -> (Config, Action) {
       let games = matches.get_many("games").unwrap().cloned().collect();
       let learning_rate = matches.get_one("learning-rate").cloned().unwrap();
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
-      let epochs = matches.get_one("epochs").cloned().unwrap();
+      let skip = matches.get_one("skip").copied().unwrap();
       Action::Train(TrainParams {
         width,
         height,
@@ -312,7 +312,7 @@ pub fn cli_parse() -> (Config, Action) {
         games,
         learning_rate,
         batch_size,
-        epochs,
+        skip,
       })
     }
     Some(("pit", matches)) => {

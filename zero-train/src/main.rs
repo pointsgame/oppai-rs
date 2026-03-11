@@ -38,7 +38,7 @@ use std::{
   io::Write,
   iter::{self, Sum},
   process::ExitCode,
-  sync::Arc,
+  sync::{Arc, atomic::AtomicBool},
 };
 
 fn init<B>(params: InitParams, device: B::Device) -> Result<ExitCode>
@@ -128,7 +128,12 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn train<B, R: Rng>(params: TrainParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
+fn train<B, R: Rng>(
+  params: TrainParams,
+  device: B::Device,
+  rng: &mut R,
+  should_stop: Arc<AtomicBool>,
+) -> Result<ExitCode>
 where
   B: AutodiffBackend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -200,23 +205,24 @@ where
     }
   }
 
-  for epoch in 0..params.epochs {
-    log::info!("Training {} epoch", epoch);
-    examples.shuffle(rng);
-    let batches_count = examples.batches_count(params.batch_size);
-    for (i, batch) in examples.batches(params.batch_size).enumerate() {
-      if i.is_multiple_of(64) {
-        log::info!("Batch {} out of {}", i, batches_count);
-      }
-      learner = learner.train(
-        batch.inputs,
-        batch.global,
-        batch.policies,
-        batch.opponent_policies,
-        batch.values,
-        batch.scores,
-      )?;
+  examples.shuffle(rng);
+  let batches_count = examples.batches_count(params.batch_size);
+  for (i, batch) in examples.batches(params.batch_size).enumerate().skip(params.skip) {
+    if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+      log::info!("Stopping training after {} batches", i);
+      break;
     }
+    if i.is_multiple_of(64) {
+      log::info!("Batch {} out of {}", i, batches_count);
+    }
+    learner = learner.train(
+      batch.inputs,
+      batch.global,
+      batch.policies,
+      batch.opponent_policies,
+      batch.values,
+      batch.scores,
+    )?;
   }
 
   learner
@@ -357,7 +363,7 @@ where
   Ok(if outcome { ExitCode::SUCCESS } else { 2.into() })
 }
 
-fn run<B>(config: Config, action: Action, device: B::Device) -> Result<ExitCode>
+fn run<B>(config: Config, action: Action, device: B::Device, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
   <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
@@ -370,7 +376,7 @@ where
   match action {
     Action::Init(params) => init::<Autodiff<B>>(params, device),
     Action::Play(params) => play::<B, _>(params, device, &mut rng),
-    Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng),
+    Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
     Action::Pit(params) => pit::<B, _>(params, device, &mut rng),
   }
 }
@@ -379,10 +385,20 @@ fn main() -> Result<ExitCode> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
 
+  let should_stop = Arc::new(AtomicBool::new(false));
+  let should_stop_c = should_stop.clone();
+  ctrlc::set_handler(move || {
+    if should_stop_c.load(std::sync::atomic::Ordering::Relaxed) {
+      log::info!("Stopping immediatelly");
+      std::process::exit(1);
+    }
+    should_stop_c.store(true, std::sync::atomic::Ordering::Relaxed);
+  })?;
+
   let (config, action) = cli_parse();
 
   match config.backend {
-    ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu),
-    ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::DefaultDevice),
+    ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu, should_stop),
+    ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::DefaultDevice, should_stop),
   }
 }

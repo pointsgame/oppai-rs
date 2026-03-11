@@ -19,6 +19,7 @@ clap = { workspace = true, features = [ "cargo" ] }
 anyhow.workspace = true
 sgf-parse.workspace = true
 strum.workspace = true
+ctrlc = "3.5"
 oppai-field = { path = "../field" }
 oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
