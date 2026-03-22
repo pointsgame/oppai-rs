@@ -38,7 +38,7 @@ pub struct Node<N: Float> {
   pub visits: u64,
   /// Q(n): Expected utility.
   /// Calculated recursively: (U(n) + sum(edge.visits * child.Q)) / N(n)
-  pub value: N, // utilityAvg
+  pub value: N,
   /// U(n): Raw utility from the neural net for this state.
   pub raw_value: N,
   /// Edges to children.
