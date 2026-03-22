@@ -351,6 +351,7 @@ where
       op = opening(width, height, rng);
     }
 
+    player = Player::Red;
     field = Field::new(width, height, zobrist.clone());
     for &(x, y) in op.iter() {
       let pos = field.to_pos(x, y);
