@@ -618,9 +618,9 @@ where
       "Loss: value {} policy {} opponent policy {} pdf {} cdf {}",
       values_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
+      opponent_policies_loss.clone().into_scalar(),
       pdf_loss.clone().into_scalar(),
       cdf_loss.clone().into_scalar(),
-      opponent_policies_loss.clone().into_scalar()
     );
 
     let loss = values_loss + policies_loss + opponent_policies_loss + pdf_loss + cdf_loss;
