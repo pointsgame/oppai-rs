@@ -40,7 +40,7 @@ pub fn cli_parse() -> Config {
     .arg(
       Arg::new("ai2-args")
         .long("ai2-args")
-        .help("Args for the first AI, separated by ','")
+        .help("Args for the second AI, separated by ','")
         .num_args(1..)
         .value_delimiter(','),
     );
