@@ -390,7 +390,7 @@ fn main() -> Result<ExitCode> {
   let should_stop_c = should_stop.clone();
   ctrlc::set_handler(move || {
     if should_stop_c.load(std::sync::atomic::Ordering::Relaxed) {
-      log::info!("Stopping immediatelly");
+      log::info!("Stopping immediately");
       std::process::exit(1);
     }
     should_stop_c.store(true, std::sync::atomic::Ordering::Relaxed);
