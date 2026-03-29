@@ -494,6 +494,7 @@ pub enum ModelError {
 }
 
 fn into_data_vec<A: Clone, D: Dimension>(array: Array<A, D>) -> Vec<A> {
+  let len = array.len();
   let (mut vec, offset) = if array.is_standard_layout() {
     array.into_raw_vec_and_offset()
   } else {
@@ -502,6 +503,7 @@ fn into_data_vec<A: Clone, D: Dimension>(array: Array<A, D>) -> Vec<A> {
   if let Some(offset) = offset {
     vec.drain(0..offset);
   }
+  vec.truncate(len);
   vec
 }
 
