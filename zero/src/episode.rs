@@ -153,7 +153,14 @@ where
     }
 
     visits.push(Visits(
-      search.visits().filter(|(_, visits)| *visits > 0).collect(),
+      if full_search {
+        // Use pruned visits for full searches with Dirichlet noise.
+        // This removes the extra forced playouts from the policy target,
+        // producing a cleaner training signal.
+        search.pruned_visits()
+      } else {
+        search.visits().filter(|(_, visits)| *visits > 0).collect()
+      },
       full_search,
     ));
 

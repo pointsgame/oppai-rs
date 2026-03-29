@@ -154,9 +154,16 @@ impl<N: Float + Sum> Search<N> {
     nodes[node_idx].value = (nodes[node_idx].raw_value + sum_values) / N::from(nodes[node_idx].visits).unwrap();
   }
 
+  /// Hyperparameter for forced playouts at the root with Dirichlet noise.
+  /// nforced(c) = sqrt(k * P(c) * total_visits)
+  /// When a root child has visits > 0 but visits < nforced(c), its PUCT score
+  /// is set to infinity to ensure it receives enough exploration.
+  const FORCED_PLAYOUTS_K: u32 = 2;
+
   fn select_edge(&self, node_idx: usize, noise: bool) -> Option<usize> {
     let node = &self.nodes[node_idx];
-    let total_n_sqrt = N::from(node.visits).unwrap().sqrt();
+    let total_n = N::from(node.visits).unwrap();
+    let total_n_sqrt = total_n.sqrt();
 
     let mut best_score = -N::infinity();
     let mut best = None;
@@ -180,13 +187,13 @@ impl<N: Float + Sum> Search<N> {
       let c_puct = N::from(1.1).unwrap();
       let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
 
-      let total_visits = edge.visits + edge.virtual_losses;
-      let q = if total_visits > 0 {
+      let total_edge_visits = edge.visits + edge.virtual_losses;
+      let q = if total_edge_visits > 0 {
         let visits = N::from(edge.visits).unwrap();
         let virtual_losses = N::from(edge.virtual_losses).unwrap();
         // Child value is from child's perspective.
         // Parent wants to maximize own value, which is -child.value
-        (-child_value * visits - virtual_losses) / N::from(total_visits).unwrap()
+        (-child_value * visits - virtual_losses) / N::from(total_edge_visits).unwrap()
       } else {
         // FPU
         node.value - c_fpu * *prior_visited
@@ -197,6 +204,18 @@ impl<N: Float + Sum> Search<N> {
       // PUCT formula
       // Score = Q(a) + C * P(a) * sqrt(sum(N)) / (N(a) + 1)
       let score = q + c_puct * p * total_n_sqrt / N::from(n + 1).unwrap();
+
+      // Forced playouts
+      let score = if noise && edge.visits > 0 {
+        let nforced = (N::from(Self::FORCED_PLAYOUTS_K).unwrap() * p * total_n).sqrt();
+        if N::from(edge.visits).unwrap() < nforced {
+          N::infinity()
+        } else {
+          score
+        }
+      } else {
+        score
+      };
 
       if score > best_score {
         best_score = score;
@@ -502,6 +521,100 @@ impl<N: Float + Sum> Search<N> {
       .children
       .iter()
       .map(|edge| (edge.pos, edge.visits))
+  }
+
+  /// Get pruned visits for the policy target.
+  ///
+  /// This implements policy target pruning:
+  /// 1. Find the best child c* (most visits).
+  /// 2. Compute PUCT(c*) using final utility estimates.
+  /// 3. For each other child c, reduce its visits so that PUCT(c) does not
+  ///    exceed PUCT(c*).
+  /// 4. Prune children reduced to <= 1 visit.
+  ///
+  /// This decouples the policy training target from the forced exploration
+  /// playouts used during search, producing a cleaner training signal.
+  pub fn pruned_visits(&self) -> Vec<(Pos, u64)> {
+    let root = &self.nodes[self.root_idx];
+    let children = &root.children;
+
+    // Find the best child (most visits)
+    let (best_idx, best_edge) = if let Some(result) = children.iter().enumerate().max_by_key(|(_, edge)| edge.visits) {
+      result
+    } else {
+      return Vec::new();
+    };
+
+    if best_edge.visits == 0 {
+      return Vec::new();
+    }
+
+    let c_puct = N::from(1.1).unwrap();
+    let total_n = N::from(root.visits).unwrap();
+    let total_n_sqrt = total_n.sqrt();
+
+    let best_child_value = self
+      .map
+      .get(&best_edge.hash)
+      .map_or(N::zero(), |&child_idx| self.nodes[child_idx].value);
+    let best_q = -best_child_value;
+
+    // Compute PUCT(c*) for the best child
+    let best_puct = best_q + c_puct * best_edge.prior * total_n_sqrt / N::from(best_edge.visits + 1).unwrap();
+
+    let mut result = Vec::with_capacity(children.len());
+
+    for (idx, edge) in children.iter().enumerate() {
+      if edge.visits == 0 {
+        continue;
+      }
+
+      if idx == best_idx {
+        result.push((edge.pos, edge.visits));
+        continue;
+      }
+
+      let child_value = self
+        .map
+        .get(&edge.hash)
+        .map_or(N::zero(), |&child_idx| self.nodes[child_idx].value);
+      let child_q = -child_value;
+
+      // Calculate nforced just like in select_edge
+      let nforced = (N::from(Self::FORCED_PLAYOUTS_K).unwrap() * edge.prior * total_n)
+        .sqrt()
+        .ceil()
+        .to_u64()
+        .unwrap_or(0);
+
+      // Compute the weight PUCT would have naturally allocated to this child
+      // by inverting the PUCT formula:
+      //   best_puct = child_q + c_puct * P(c) * sqrt(N_parent) / (N(c) + 1)
+      //   N(c) = c_puct * P(c) * sqrt(N_parent) / (best_puct - child_q) - 1
+      let explore_component = best_puct - child_q;
+
+      let retrospective_visits = if explore_component <= N::zero() {
+        edge.visits
+      } else {
+        let max_n = c_puct * edge.prior * total_n_sqrt / explore_component - N::one();
+        if max_n < N::zero() {
+          0u64
+        } else {
+          max_n.ceil().to_u64().unwrap_or(edge.visits)
+        }
+      };
+
+      // Cap the visits to what PUCT would have allocated
+      let min_allowed_visits = edge.visits.saturating_sub(nforced);
+      let reduced = retrospective_visits.clamp(min_allowed_visits, edge.visits);
+
+      // Prune children reduced to <= 1 visit
+      if reduced > 1 {
+        result.push((edge.pos, reduced));
+      }
+    }
+
+    result
   }
 
   /// Get the value of the root node
