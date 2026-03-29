@@ -42,7 +42,7 @@ impl<N: Float> Model<N> for () {
     let width = inputs.len_of(Axis(3));
     let policy = N::one() / N::from(width * height).unwrap();
     let policies = Array::from_elem((batch_size, height, width), policy);
-    let values = Array::from_elem((batch_size, 3), N::one() / (N::one() + N::one()));
+    let values = Array::from_elem((batch_size, 2), N::one() / (N::one() + N::one()));
     Ok((policies, values))
   }
 }

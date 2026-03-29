@@ -38,7 +38,7 @@ where
     let length = height * width;
 
     let mut values = iter::repeat_with(|| self.0.sample(StandardNormal) * N::from(0.2).unwrap())
-      .take(batch * 3)
+      .take(batch * 2)
       .collect::<Vec<N>>();
     let mut policies = iter::repeat_with(|| self.0.sample(StandardNormal))
       .take(batch * height * width)
@@ -46,10 +46,10 @@ where
 
     for i in 0..batch {
       softmax(&mut policies[i * length..(i + 1) * length])?;
-      softmax(&mut values[i * 3..(i + 1) * 3])?;
+      softmax(&mut values[i * 2..(i + 1) * 2])?;
     }
     let policies = Array3::from_shape_vec((batch, height, width), policies).map_err(|_| ())?;
-    let values = Array2::from_shape_vec((batch, 3), values).map_err(|_| ())?;
+    let values = Array2::from_shape_vec((batch, 2), values).map_err(|_| ())?;
 
     Ok((policies, values))
   }
