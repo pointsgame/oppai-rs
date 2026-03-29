@@ -313,8 +313,15 @@ impl<N: Float + Sum> Search<N> {
 
     // renormalize
     let sum: N = children.iter().map(|child| child.prior).sum();
-    for child in children.iter_mut() {
-      child.prior = child.prior / sum;
+    if sum > N::zero() {
+      for child in children.iter_mut() {
+        child.prior = child.prior / sum;
+      }
+    } else if !children.is_empty() {
+      let uniform = N::one() / N::from(children.len()).unwrap();
+      for child in children.iter_mut() {
+        child.prior = uniform;
+      }
     }
 
     children.shuffle(rng);
