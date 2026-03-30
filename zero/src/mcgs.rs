@@ -98,8 +98,8 @@ impl<N: Float> Default for Node<N> {
   }
 }
 
-pub fn game_result<N: Float>(field: &Field, player: Player) -> N {
-  N::from(field.score(player).signum()).unwrap()
+pub fn game_result<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> N {
+  N::from((field.score(player) * 2 + komi_x_2).signum()).unwrap()
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -379,15 +379,16 @@ impl<N: Float + Sum> Search<N> {
         player.next()
       };
 
+      let komi_x_2 = if leaf.len().is_multiple_of(2) {
+        komi_x_2
+      } else {
+        -komi_x_2
+      };
+
       let result = if *terminal || field.is_game_over() {
-        self.add_result(leaf, game_result(field, player), Vec::new());
+        self.add_result(leaf, game_result(field, player, komi_x_2), Vec::new());
         false
       } else {
-        let komi_x_2 = if leaf.len().is_multiple_of(2) {
-          komi_x_2
-        } else {
-          -komi_x_2
-        };
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
         global_to_vec(field, player, komi_x_2, &mut global);
         true

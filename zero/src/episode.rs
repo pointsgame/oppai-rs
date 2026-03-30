@@ -183,8 +183,8 @@ where
   Ok(visits)
 }
 
-fn game_result<N: Float>(field: &Field, player: Player) -> Array1<N> {
-  match field.score(player).cmp(&0) {
+fn game_result<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {
+  match (field.score(player) * 2 + komi_x_2).cmp(&0) {
     Ordering::Less => array![N::zero(), N::one()],
     Ordering::Equal => array![N::one() / (N::one() + N::one()), N::one() / (N::one() + N::one())],
     Ordering::Greater => array![N::one(), N::zero()],
@@ -240,7 +240,7 @@ pub fn examples<N: Float + Zero + One>(
   for (&(_, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
     if visits.1 {
       let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
-      let value = game_result::<N>(&field, player);
+      let value = game_result::<N>(&field, player, komi_x_2);
       examples.values.extend(iter::repeat_n(value, rotations as usize));
       let score = score_one_hot(&field, player, komi_x_2);
       examples.scores.extend(iter::repeat_n(score, rotations as usize));
