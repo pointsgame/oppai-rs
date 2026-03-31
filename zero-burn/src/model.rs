@@ -528,11 +528,11 @@ where
       TensorData::new(into_data_vec(global), [batch, GLOBAL_FEATURES]),
       &self.device,
     );
-    let (policy_logists, value_logists) = self.model.forward_no_score(inputs, global);
+    let (policy_logits, value_logits) = self.model.forward_no_score(inputs, global);
     // TODO: lightweight model that doesn't calculate second layer
-    let policy_logists: Tensor<B, 3> = policy_logists.slice(s![.., 0..1, .., ..]).squeeze_dim(1);
-    let policies = softmax(policy_logists.reshape([0, -1]), 1);
-    let values = softmax(value_logists, 1);
+    let policy_logits: Tensor<B, 3> = policy_logits.slice(s![.., 0..1, .., ..]).squeeze_dim(1);
+    let policies = softmax(policy_logits.reshape([0, -1]), 1);
+    let values = softmax(value_logits, 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
     let values = Array2::from_shape_vec((batch, 2), values.into_data().into_vec()?)?;
     Ok((policies, values))
@@ -598,15 +598,15 @@ where
       &self.predictor.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
-    let (out_policy_logists, out_value_logists, out_score_logists) = self.predictor.model.forward(inputs, global);
+    let (out_policy_logits, out_value_logits, out_score_logits) = self.predictor.model.forward(inputs, global);
     let out_policies = log_softmax(
-      out_policy_logists.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
+      out_policy_logits.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
       1,
     );
-    let out_opponent_policies = log_softmax(out_policy_logists.slice(s![.., 1..2, .., ..]).reshape([0, -1]), 1);
-    let out_values = log_softmax(out_value_logists, 1);
-    let out_scores = log_softmax(out_score_logists.clone(), 1);
-    let out_scores_cdf = softmax(out_score_logists, 1).cumsum(1);
+    let out_opponent_policies = log_softmax(out_policy_logits.slice(s![.., 1..2, .., ..]).reshape([0, -1]), 1);
+    let out_values = log_softmax(out_value_logits, 1);
+    let out_scores = log_softmax(out_score_logits.clone(), 1);
+    let out_scores_cdf = softmax(out_score_logits, 1).cumsum(1);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
     // TODO: KataGo uses different weight
@@ -651,11 +651,11 @@ mod tests {
   #[test]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
-    let (policy_logists, values, _) = model.forward(
+    let (policy_logits, values, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu),
       Tensor::ones([1, 1], &NdArrayDevice::Cpu),
     );
-    let policies = softmax(policy_logists.reshape([0, -1]), 1);
+    let policies = softmax(policy_logits.reshape([0, -1]), 1);
     assert!(
       policies
         .clone()
