@@ -342,6 +342,8 @@ impl<B: Backend> ValueHead<B> {
     let out_scorebelief_logprobs = log_softmax(outsv3, 1);
 
     // Take the mixture distribution weighted by outsmix_logweights
+    // TODO: might be numerically unstable, but burn doesn't have LogSumExp operator
+    // See https://en.wikipedia.org/wiki/LogSumExp
     let out_score_log_dist = (out_scorebelief_logprobs + outsmix_logweights.unsqueeze_dim(1))
       .exp()
       .sum_dim(2)
