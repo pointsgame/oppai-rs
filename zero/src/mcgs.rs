@@ -1,5 +1,6 @@
 use crate::field_features::{CHANNELS, GLOBAL_FEATURES, field_features_len, field_features_to_vec, global_to_vec};
 use crate::model::Model;
+use either::Either;
 use ndarray::{Array, ArrayView2, s};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
@@ -129,7 +130,7 @@ impl<N: Float> Search<N> {
   }
 }
 
-impl<N: Float + Sum> Search<N> {
+impl<N: Float + Sum + Copy> Search<N> {
   fn add_node(&mut self, hash: Hash) -> usize {
     *self.map.entry(hash).or_insert_with(|| {
       let idx = self.nodes.len();
@@ -522,6 +523,7 @@ impl<N: Float + Sum> Search<N> {
       .children
       .iter()
       .map(|edge| (edge.pos, edge.visits))
+      .filter(|(_, visits)| *visits > 0)
   }
 
   /// Get pruned visits for the policy target.
@@ -535,7 +537,7 @@ impl<N: Float + Sum> Search<N> {
   ///
   /// This decouples the policy training target from the forced exploration
   /// playouts used during search, producing a cleaner training signal.
-  pub fn pruned_visits(&self) -> Vec<(Pos, u64)> {
+  pub fn pruned_visits(&self) -> impl Iterator<Item = (Pos, u64)> + '_ {
     let root = &self.nodes[self.root_idx];
     let children = &root.children;
 
@@ -543,11 +545,11 @@ impl<N: Float + Sum> Search<N> {
     let (best_idx, best_edge) = if let Some(result) = children.iter().enumerate().max_by_key(|(_, edge)| edge.visits) {
       result
     } else {
-      return Vec::new();
+      return Either::Left(iter::empty());
     };
 
     if best_edge.visits == 0 {
-      return Vec::new();
+      return Either::Left(iter::empty());
     }
 
     let c_puct = N::from(1.1).unwrap();
@@ -563,16 +565,13 @@ impl<N: Float + Sum> Search<N> {
     // Compute PUCT(c*) for the best child
     let best_puct = best_q + c_puct * best_edge.prior * total_n_sqrt / N::from(best_edge.visits + 1).unwrap();
 
-    let mut result = Vec::with_capacity(children.len());
-
-    for (idx, edge) in children.iter().enumerate() {
+    let result = children.iter().enumerate().filter_map(move |(idx, edge)| {
       if edge.visits == 0 {
-        continue;
+        return None;
       }
 
       if idx == best_idx {
-        result.push((edge.pos, edge.visits));
-        continue;
+        return Some((edge.pos, edge.visits));
       }
 
       let child_value = self
@@ -610,12 +609,10 @@ impl<N: Float + Sum> Search<N> {
       let reduced = retrospective_visits.clamp(min_allowed_visits, edge.visits);
 
       // Prune children reduced to <= 1 visit
-      if reduced > 1 {
-        result.push((edge.pos, reduced));
-      }
-    }
+      if reduced > 1 { Some((edge.pos, reduced)) } else { None }
+    });
 
-    result
+    Either::Right(result)
   }
 
   /// Get the value of the root node
