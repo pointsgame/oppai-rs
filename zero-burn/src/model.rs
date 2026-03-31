@@ -600,15 +600,14 @@ where
       &self.predictor.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
-    let (out_policy_logits, out_value_logits, out_score_logits) = self.predictor.model.forward(inputs, global);
+    let (out_policy_logits, out_value_logits, out_scores) = self.predictor.model.forward(inputs, global);
     let out_policies = log_softmax(
       out_policy_logits.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
       1,
     );
     let out_opponent_policies = log_softmax(out_policy_logits.slice(s![.., 1..2, .., ..]).reshape([0, -1]), 1);
     let out_values = log_softmax(out_value_logits, 1);
-    let out_scores = log_softmax(out_score_logits.clone(), 1);
-    let out_scores_cdf = softmax(out_score_logits, 1).cumsum(1);
+    let out_scores_cdf = out_scores.clone().exp().cumsum(1);
 
     let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
     // TODO: KataGo uses different weight
