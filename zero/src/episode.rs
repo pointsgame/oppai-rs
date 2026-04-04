@@ -1,24 +1,20 @@
-use crate::examples::Examples;
-use crate::field_features::{field_features, global, score_one_hot};
+use crate::field_features::{field_features, global};
 use crate::mcgs::Search;
 use crate::model::Model;
 use log::info;
-use ndarray::{Array1, Array2, Array3, Axis, array, s};
-use num_traits::{Float, One, Zero};
+use ndarray::{Array2, Array3, Axis};
+use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
-use oppai_field::zobrist::Zobrist;
 use oppai_field::{
-  field::{Field, Hash, NonZeroPos, Pos},
+  field::{Field, NonZeroPos, Pos},
   player::Player,
 };
-use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate};
+use oppai_rotate::rotate::rotate;
 use rand::distr::uniform::SampleUniform;
 use rand::{Rng, RngExt};
 use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
-use std::cmp::Ordering;
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
-use std::sync::Arc;
 
 const MCTS_SIMS: u32 = 200;
 const MCTS_FULL_SIMS: u32 = 1000;
@@ -35,6 +31,41 @@ impl Visits {
     self.0.iter().map(|&(_, v)| v).max().unwrap_or_default()
   }
 
+  /// Improved stochastic policy values, pushed into an existing vector.
+  pub fn policies_to_vec<N: Float + Copy>(
+    &self,
+    width: u32,
+    height: u32,
+    field_width: u32,
+    field_height: u32,
+    rotation: u8,
+    policies: &mut Vec<N>,
+  ) {
+    let total = self.total();
+    let start_idx = policies.len();
+
+    policies.extend(iter::repeat_n(N::zero(), (width * height) as usize));
+
+    if total > 0 {
+      for &(pos, visits) in &self.0 {
+        let x = to_x(field_width + 1, pos);
+        let y = to_y(field_width + 1, pos);
+        let (x, y) = rotate(field_width, field_height, x, y, rotation);
+
+        let idx = start_idx + (y as usize) * (width as usize) + (x as usize);
+        policies[idx] = N::from(visits).unwrap() / N::from(total).unwrap();
+      }
+    } else {
+      let uniform_prob = N::one() / N::from(field_width * field_height).unwrap();
+      for y in 0..field_height as usize {
+        for x in 0..field_width as usize {
+          let idx = start_idx + y * (width as usize) + x;
+          policies[idx] = uniform_prob;
+        }
+      }
+    }
+  }
+
   /// Improved stochastic policy values.
   pub fn policies<N: Float>(
     &self,
@@ -44,23 +75,11 @@ impl Visits {
     field_height: u32,
     rotation: u8,
   ) -> Array2<N> {
-    let total = self.total();
-    let mut policies = Array2::zeros((height as usize, width as usize));
+    let mut vec = Vec::with_capacity((width * height) as usize);
 
-    if total > 0 {
-      for &(pos, visits) in &self.0 {
-        let x = to_x(field_width + 1, pos);
-        let y = to_y(field_width + 1, pos);
-        let (x, y) = rotate(field_width, field_height, x, y, rotation);
-        policies[(y as usize, x as usize)] = N::from(visits).unwrap() / N::from(total).unwrap();
-      }
-    } else {
-      policies
-        .slice_mut(s![0..field_height as usize, 0..field_width as usize])
-        .fill(N::one() / N::from(field_width * field_height).unwrap());
-    }
+    self.policies_to_vec(width, height, field_width, field_height, rotation, &mut vec);
 
-    policies
+    Array2::from_shape_vec((height as usize, width as usize), vec).unwrap()
   }
 }
 
@@ -181,71 +200,4 @@ where
   }
 
   Ok(visits)
-}
-
-fn game_result<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {
-  match (field.score(player) * 2 + komi_x_2).cmp(&0) {
-    Ordering::Less => array![N::zero(), N::one()],
-    Ordering::Equal => array![N::one() / (N::one() + N::one()), N::one() / (N::one() + N::one())],
-    Ordering::Greater => array![N::one(), N::zero()],
-  }
-}
-
-pub fn examples<N: Float + Zero + One>(
-  width: u32,
-  height: u32,
-  field_width: u32,
-  field_height: u32,
-  komi_x_2: i32,
-  zobrist: Arc<Zobrist<Hash>>,
-  visits: &[Visits],
-  moves: &[(Pos, Player)],
-) -> Examples<N> {
-  let mut examples = Examples::<N>::default();
-  let mut field = Field::new(field_width, field_height, zobrist);
-
-  let initial_moves = moves.len() - visits.len();
-  let rotations = if width == height { ROTATIONS } else { MIRRORS };
-
-  for &(pos, player) in &moves[0..initial_moves] {
-    assert!(field.put_point(pos, player), "invalid moves sequence");
-    field.update_grounded();
-  }
-
-  for (&(pos, player), (visits, opponent_visits)) in moves[initial_moves..].iter().zip(
-    visits
-      .iter()
-      .zip(visits.iter().skip(1).chain(iter::once(&Visits::default()))),
-  ) {
-    if visits.1 {
-      let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
-      for rotation in 0..rotations {
-        examples
-          .inputs
-          .push(field_features(&field, player, width, height, rotation));
-        examples.global.push(global(&field, player, komi_x_2));
-        examples
-          .policies
-          .push(visits.policies(width, height, field_width, field_height, rotation));
-        examples
-          .opponent_policies
-          .push(opponent_visits.policies(width, height, field_width, field_height, rotation));
-      }
-    }
-
-    assert!(field.put_point(pos, player), "invalid moves sequence");
-    field.update_grounded();
-  }
-
-  for (&(_, player), visits) in moves[initial_moves..].iter().zip(visits.iter()) {
-    if visits.1 {
-      let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
-      let value = game_result::<N>(&field, player, komi_x_2);
-      examples.values.extend(iter::repeat_n(value, rotations as usize));
-      let score = score_one_hot(&field, player, komi_x_2);
-      examples.scores.extend(iter::repeat_n(score, rotations as usize));
-    }
-  }
-
-  examples
 }

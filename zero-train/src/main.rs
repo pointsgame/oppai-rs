@@ -19,12 +19,7 @@ use oppai_field::{
 };
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
-  episode::{self, episode},
-  examples::Examples,
-  model::TrainableModel,
-  opening::opening,
-  pit,
-  random_model::RandomModel,
+  episode::episode, examples::Examples, model::TrainableModel, opening::opening, pit, random_model::RandomModel,
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
@@ -161,7 +156,7 @@ where
     lr: params.learning_rate,
   };
 
-  let mut examples: Examples<<B as Backend>::FloatElem> = Default::default();
+  let mut examples = Examples::default();
   for path in params.games {
     let sgf = fs::read_to_string(path)?;
     let trees = sgf_parse::parse(&sgf)?;
@@ -191,23 +186,23 @@ where
         ));
       }
 
-      examples = examples
-        + episode::examples(
-          params.width,
-          params.height,
-          field.width(),
-          field.height(),
-          komi_x_2,
-          field.zobrist_arc(),
-          &visits,
-          &field.colored_moves().collect::<Vec<_>>(),
-        );
+      examples.add(
+        komi_x_2,
+        visits,
+        &field,
+        field.width() <= params.height && field.height() <= params.width,
+      );
     }
   }
 
   examples.shuffle(rng);
   let batches_count = examples.batches_count(params.batch_size);
-  for (i, batch) in examples.batches(params.batch_size).enumerate().skip(params.skip) {
+  let zobrist = Arc::new(Zobrist::new(length(params.width, params.height) * 3, rng));
+  for (i, batch) in examples
+    .batches(params.width, params.height, zobrist, params.batch_size)
+    .enumerate()
+    .skip(params.skip)
+  {
     if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
       log::info!("Stopping training after {} batches", i);
       break;

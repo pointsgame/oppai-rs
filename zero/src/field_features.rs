@@ -221,21 +221,27 @@ pub fn field_features<N: Float + Zero + One + Copy>(
 
 pub const SCORE_ONE_HOT_SIZE: usize = 1001;
 
-pub fn score_one_hot<N: Float + Zero + One + Copy>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {
-  let mut score_one_hot = vec![N::zero(); SCORE_ONE_HOT_SIZE];
+pub fn score_one_hot_to_vec<N: Float + Zero + One + Copy>(score: i32, komi_x_2: i32, scores: &mut Vec<N>) {
+  let start_idx = scores.len();
+  scores.extend(iter::repeat_n(N::zero(), SCORE_ONE_HOT_SIZE));
   const CENTER: i32 = (SCORE_ONE_HOT_SIZE / 2) as i32;
-  let score = field.score(player) + komi_x_2.div_euclid(2);
+  let score = score + komi_x_2.div_euclid(2);
   let lower_idx = CENTER + score;
   let upper_idx = CENTER + score + 1;
   if upper_idx <= 0 {
-    score_one_hot[0] = N::one();
+    scores[start_idx] = N::one();
   } else if lower_idx >= SCORE_ONE_HOT_SIZE as i32 - 1 {
-    score_one_hot[SCORE_ONE_HOT_SIZE - 1] = N::one();
+    scores[start_idx + SCORE_ONE_HOT_SIZE - 1] = N::one();
   } else {
     let lambda = N::from(komi_x_2.rem_euclid(2)).unwrap() / (N::one() + N::one());
-    score_one_hot[lower_idx as usize] = N::one() - lambda;
-    score_one_hot[upper_idx as usize] = lambda;
+    scores[start_idx + lower_idx as usize] = N::one() - lambda;
+    scores[start_idx + upper_idx as usize] = lambda;
   }
+}
+
+pub fn score_one_hot<N: Float + Zero + One + Copy>(score: i32, komi_x_2: i32) -> Array1<N> {
+  let mut score_one_hot = Vec::with_capacity(SCORE_ONE_HOT_SIZE);
+  score_one_hot_to_vec(score, komi_x_2, &mut score_one_hot);
   Array::from(score_one_hot)
 }
 

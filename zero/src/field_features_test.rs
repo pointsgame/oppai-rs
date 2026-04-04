@@ -386,112 +386,42 @@ fn field_features_empty_base() {
 
 #[test]
 fn score_one_hot_center() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    ...
-    ...
-    ...
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Red, 0);
+  let score = score_one_hot::<f64>(0, 0);
 
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2], 1.0);
 }
 
 #[test]
 fn score_one_hot_max() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    ...
-    ...
-    ...
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Red, SCORE_ONE_HOT_SIZE as i32 + 1);
+  let score = score_one_hot::<f64>(0, SCORE_ONE_HOT_SIZE as i32 + 1);
 
   assert_eq!(*score.last().unwrap(), 1.0);
 }
 
 #[test]
 fn score_one_hot_min() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    ...
-    ...
-    ...
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Red, -(SCORE_ONE_HOT_SIZE as i32) - 1);
+  let score = score_one_hot::<f64>(0, -(SCORE_ONE_HOT_SIZE as i32) - 1);
 
   assert_eq!(score[0], 1.0);
 }
 
 #[test]
 fn score_one_hot_one() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    .a.
-    aAa
-    .a.
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Red, 0);
+  let score = score_one_hot::<f64>(1, 0);
 
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 + 1], 1.0);
 }
 
 #[test]
 fn score_one_hot_minus_one() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    .A.
-    AaA
-    .A.
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Red, 0);
-
-  assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 1], 1.0);
-}
-
-#[test]
-fn score_one_hot_one_opposite() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    .a.
-    aAa
-    .a.
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Black, 0);
+  let score = score_one_hot::<f64>(-1, 0);
 
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 1], 1.0);
 }
 
 #[test]
 fn score_one_hot_fractional_komi() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    ...
-    ...
-    ...
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Red, 3);
+  let score = score_one_hot::<f64>(0, 3);
 
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 + 1], 0.5);
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 + 2], 0.5);
@@ -499,16 +429,7 @@ fn score_one_hot_fractional_komi() {
 
 #[test]
 fn score_one_hot_fractional_negative_komi() {
-  let field = construct_field(
-    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
-    "
-    ...
-    ...
-    ...
-    ",
-  );
-
-  let score = score_one_hot::<f64>(&field, Player::Red, -3);
+  let score = score_one_hot::<f64>(0, -3);
 
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 1], 0.5);
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 2], 0.5);
