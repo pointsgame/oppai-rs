@@ -84,11 +84,23 @@ where
   for _ in 0..params.count {
     let width = params.width[rng.random_range(0..params.width.len())];
     let height = params.height[rng.random_range(0..params.height.len())];
-    let komi_x_2 = params.komi_x_2[rng.random_range(0..params.komi_x_2.len())];
     let mut player = Player::Red;
     let mut field = Field::new_from_rng(width, height, rng);
 
     let op = opening(width, height, rng);
+    let komi_x_2_count = params
+      .komi_x_2
+      .iter()
+      .copied()
+      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
+      .count();
+    let komi_x_2 = params
+      .komi_x_2
+      .iter()
+      .copied()
+      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
+      .nth(rng.random_range(0..komi_x_2_count))
+      .unwrap();
     for (x, y) in op {
       let pos = field.to_pos(x, y);
       assert!(field.put_point(pos, player));
