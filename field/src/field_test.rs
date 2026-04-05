@@ -352,7 +352,7 @@ fn game_over_1() {
   assert_eq!(field.score(Player::Red), 2);
   assert_eq!(field.non_grounded_red, 1);
   assert_eq!(field.non_grounded_black, 0);
-  assert!(field.is_game_over());
+  assert!(field.is_game_over(0));
 }
 
 #[test]
@@ -371,7 +371,7 @@ fn game_over_2() {
   assert_eq!(field.score(Player::Black), 2);
   assert_eq!(field.non_grounded_red, 0);
   assert_eq!(field.non_grounded_black, 1);
-  assert!(field.is_game_over());
+  assert!(field.is_game_over(0));
 }
 
 #[test]
@@ -391,7 +391,7 @@ fn game_over_3() {
   assert_eq!(field.score(Player::Red), 6);
   assert_eq!(field.non_grounded_red, 5);
   assert_eq!(field.non_grounded_black, 0);
-  assert!(field.is_game_over());
+  assert!(field.is_game_over(0));
 }
 
 #[test]
@@ -411,7 +411,7 @@ fn game_over_4() {
   assert_eq!(field.score(Player::Black), 6);
   assert_eq!(field.non_grounded_red, 0);
   assert_eq!(field.non_grounded_black, 5);
-  assert!(field.is_game_over());
+  assert!(field.is_game_over(0));
 }
 
 #[test]
@@ -427,7 +427,7 @@ fn game_over_5() {
   assert_eq!(field.score(Player::Red), 0);
   assert_eq!(field.non_grounded_red, 0);
   assert_eq!(field.non_grounded_black, 0);
-  assert!(field.is_game_over());
+  assert!(field.is_game_over(0));
 }
 
 #[test]
@@ -446,7 +446,7 @@ fn game_not_over_1() {
   assert_eq!(field.score(Player::Red), 1);
   assert_eq!(field.non_grounded_red, 1);
   assert_eq!(field.non_grounded_black, 0);
-  assert!(!field.is_game_over());
+  assert!(!field.is_game_over(0));
 }
 
 #[test]
@@ -465,7 +465,7 @@ fn game_not_over_2() {
   assert_eq!(field.score(Player::Black), 1);
   assert_eq!(field.non_grounded_red, 0);
   assert_eq!(field.non_grounded_black, 1);
-  assert!(!field.is_game_over());
+  assert!(!field.is_game_over(0));
 }
 
 #[test]
@@ -485,7 +485,7 @@ fn game_not_over_3() {
   assert_eq!(field.score(Player::Red), 5);
   assert_eq!(field.non_grounded_red, 5);
   assert_eq!(field.non_grounded_black, 0);
-  assert!(!field.is_game_over());
+  assert!(!field.is_game_over(0));
 }
 
 #[test]
@@ -505,7 +505,7 @@ fn game_not_over_4() {
   assert_eq!(field.score(Player::Black), 5);
   assert_eq!(field.non_grounded_red, 0);
   assert_eq!(field.non_grounded_black, 5);
-  assert!(!field.is_game_over());
+  assert!(!field.is_game_over(0));
 }
 
 #[test]

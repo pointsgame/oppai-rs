@@ -154,7 +154,7 @@ where
   let mut search = Search::new();
   let mut visits = Vec::new();
 
-  while !field.is_game_over() {
+  while !field.is_game_over(komi_x_2) {
     let full_search = rng.random::<f64>() <= 0.25;
 
     let sims = if full_search {

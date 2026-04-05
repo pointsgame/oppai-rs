@@ -1034,7 +1034,7 @@ impl<R: Rng> Session<R> {
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
     let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
 
-    let result = if game_state.field.is_game_over() {
+    let result = if game_state.field.is_game_over(0) {
       state.games.pin().remove(&game_id);
 
       let (db_result, result) = if game_state.field.score_red != game_state.field.score_black {

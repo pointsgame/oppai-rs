@@ -27,7 +27,7 @@ where
   let mut search1 = Search::new();
   let mut search2 = Search::new();
 
-  while !field.is_game_over() {
+  while !field.is_game_over(komi_x_2) {
     for _ in 0..MCTS_SIMS {
       search1.mcgs(field, player, model1, komi_x_2, rng)?;
     }

@@ -116,7 +116,7 @@ impl Game {
   }
 
   fn is_game_over(&mut self) -> bool {
-    self.field.field.is_game_over()
+    self.field.field.is_game_over(0)
   }
 
   fn stats(&self, swap: bool) -> Stats {

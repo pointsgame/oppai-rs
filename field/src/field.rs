@@ -1364,11 +1364,11 @@ impl Field {
     is_corner(self.width(), self.height(), pos)
   }
 
-  pub fn is_game_over(&mut self) -> bool {
-    let score = self.score(Player::Red);
+  pub fn is_game_over(&mut self, komi_x_2: i32) -> bool {
+    let score_x_2 = self.score(Player::Red) * 2 + komi_x_2;
     self.non_grounded_red == 0 && self.non_grounded_black == 0 && self.moves_count() > 0
-      || score > self.non_grounded_red as i32
-      || score < -(self.non_grounded_black as i32)
+      || score_x_2 > self.non_grounded_red as i32 * 2
+      || score_x_2 < -(self.non_grounded_black as i32 * 2)
   }
 
   pub fn clear(&mut self) {

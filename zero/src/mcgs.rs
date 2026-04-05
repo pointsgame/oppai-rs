@@ -386,7 +386,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         -komi_x_2
       };
 
-      let result = if *terminal || field.is_game_over() {
+      let result = if *terminal || field.is_game_over(komi_x_2) {
         self.add_result(leaf, game_result(field, player, komi_x_2), Vec::new());
         false
       } else {
