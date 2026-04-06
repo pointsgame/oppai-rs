@@ -48,6 +48,8 @@ pub enum Action {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum Backend {
+  #[cfg(feature = "cuda")]
+  Cuda,
   Wgpu,
   Ndarray,
 }

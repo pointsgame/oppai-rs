@@ -1,6 +1,8 @@
 mod config;
 
 use anyhow::{Error, Result};
+#[cfg(feature = "cuda")]
+use burn::backend::{Cuda, cuda::CudaDevice};
 use burn::{
   backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
   module::Module,
@@ -408,5 +410,7 @@ fn main() -> Result<ExitCode> {
   match config.backend {
     ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu, should_stop),
     ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::DefaultDevice, should_stop),
+    #[cfg(feature = "cuda")]
+    ConfigBackend::Cuda => run::<Cuda>(config, action, CudaDevice::default(), should_stop),
   }
 }

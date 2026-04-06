@@ -32,3 +32,4 @@ rand_xoshiro.workspace = true
 [features]
 default = ["dsu"]
 dsu = ["oppai-field/dsu"]
+cuda = ["burn/cuda"]
