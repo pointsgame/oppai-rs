@@ -131,6 +131,7 @@ where
         .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
       writeln!(&mut file, "{sgf}")?;
+      file.flush()?;
     }
   }
 
@@ -333,6 +334,7 @@ where
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
       let mut file = File::options().append(true).create(true).open(games).unwrap();
       writeln!(&mut file, "{sgf}").unwrap();
+      file.flush().unwrap();
     }
 
     i += 1;
