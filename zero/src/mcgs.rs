@@ -370,6 +370,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let features_len = field_features_len(field.width(), field.height());
     let mut features = Vec::with_capacity(features_len * leafs.len());
     let mut global = Vec::with_capacity(GLOBAL_FEATURES * leafs.len());
+    let red_komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
 
     leafs.retain(|(leaf, terminal)| {
       Self::make_moves(field, leaf, player, true);
@@ -380,18 +381,18 @@ impl<N: Float + Sum + Copy> Search<N> {
         player.next()
       };
 
-      let komi_x_2 = if leaf.len().is_multiple_of(2) {
+      let leaf_komi_x_2 = if leaf.len().is_multiple_of(2) {
         komi_x_2
       } else {
         -komi_x_2
       };
 
-      let result = if *terminal || field.is_game_over(komi_x_2) {
-        self.add_result(leaf, game_result(field, player, komi_x_2), Vec::new());
+      let result = if *terminal || field.is_game_over(red_komi_x_2) {
+        self.add_result(leaf, game_result(field, player, leaf_komi_x_2), Vec::new());
         false
       } else {
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
-        global_to_vec(field, player, komi_x_2, &mut global);
+        global_to_vec(field, player, leaf_komi_x_2, &mut global);
         true
       };
 
