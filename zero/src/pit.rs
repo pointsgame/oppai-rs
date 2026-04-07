@@ -51,5 +51,6 @@ where
     moves_count += 1;
   }
 
-  Ok(field.score(if moves_count % 2 == 0 { player } else { player.next() }))
+  let score = field.score(player) * 2 + komi_x_2;
+  Ok(if moves_count % 2 == 0 { score } else { -score })
 }
