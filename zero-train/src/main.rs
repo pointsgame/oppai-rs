@@ -10,7 +10,9 @@ use burn::{
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
   tensor::backend::{AutodiffBackend, Backend},
 };
-use config::{Action, Backend as ConfigBackend, Config, InitParams, PitParams, PlayParams, TrainParams, cli_parse};
+use config::{
+  Action, Backend as ConfigBackend, Config, CountParams, InitParams, PitParams, PlayParams, TrainParams, cli_parse,
+};
 use either::Either;
 use num_traits::Float;
 use oppai_field::{
@@ -375,6 +377,29 @@ where
   Ok(if outcome { ExitCode::SUCCESS } else { 2.into() })
 }
 
+fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
+  let mut games = 0u32;
+  let mut examples = 0u32;
+
+  for path in params.games {
+    let sgf = fs::read_to_string(path)?;
+    let trees = sgf_parse::parse(&sgf)?;
+    for node in trees.iter().filter_map(|tree| match tree {
+      GameTree::Unknown(node) => Some(node),
+      GameTree::GoGame(_) => None,
+    }) {
+      let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+      let visits = sgf_to_visits(node, field.stride);
+      games += 1;
+      examples += visits.iter().filter(|v| v.1).count() as u32;
+    }
+  }
+
+  println!("Games: {games}; examples: {examples}");
+
+  Ok(ExitCode::SUCCESS)
+}
+
 fn run<B>(config: Config, action: Action, device: B::Device, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
@@ -390,6 +415,7 @@ where
     Action::Play(params) => play::<B, _>(params, device, &mut rng),
     Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
     Action::Pit(params) => pit::<B, _>(params, device, &mut rng),
+    Action::Count(params) => count(params, &mut rng),
   }
 }
 

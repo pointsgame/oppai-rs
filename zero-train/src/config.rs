@@ -39,11 +39,16 @@ pub struct PitParams {
   pub win_rate_threshold: f64,
 }
 
+pub struct CountParams {
+  pub games: Vec<PathBuf>,
+}
+
 pub enum Action {
   Init(InitParams),
   Play(PlayParams),
   Train(TrainParams),
   Pit(PitParams),
+  Count(CountParams),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
@@ -239,6 +244,15 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(f64))
         .default_value("0.55"),
     );
+  let count = Command::new("count").about("Count games and trainable examples").arg(
+    Arg::new("games")
+      .long("games")
+      .short('g')
+      .help("Paths to the played games")
+      .num_args(1..)
+      .value_parser(value_parser!(PathBuf))
+      .required(true),
+  );
 
   let matches = Command::new(crate_name!())
     .version(crate_version!())
@@ -248,6 +262,7 @@ pub fn cli_parse() -> (Config, Action) {
     .subcommand(play)
     .subcommand(train)
     .subcommand(pit)
+    .subcommand(count)
     .subcommand_required(true)
     .arg(
       Arg::new("backend")
@@ -334,6 +349,10 @@ pub fn cli_parse() -> (Config, Action) {
         count,
         win_rate_threshold,
       })
+    }
+    Some(("count", matches)) => {
+      let games = matches.get_many("games").unwrap().cloned().collect();
+      Action::Count(CountParams { games })
     }
     _ => panic!("no subcommand"),
   };
