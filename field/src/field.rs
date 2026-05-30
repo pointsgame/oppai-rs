@@ -49,7 +49,7 @@ impl Neighbor {
 
   #[inline(always)]
   fn apply(self, neighbor_offsets: &[isize; 8], pos: Pos) -> Pos {
-    pos.overflowing_add_signed(neighbor_offsets[self.0]).0
+    pos.wrapping_add_signed(neighbor_offsets[self.0])
   }
 }
 
