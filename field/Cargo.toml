@@ -8,7 +8,6 @@ edition = "2024"
 
 [dependencies]
 rand.workspace = true
-smallvec.workspace = true
 serde = { workspace = true, features = ["derive"], optional = true }
 
 [dev-dependencies]

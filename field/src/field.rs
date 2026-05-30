@@ -1,11 +1,10 @@
 use rand::Rng;
-use smallvec::SmallVec;
 
 use crate::cell::Cell;
 use crate::player::Player;
 use crate::points_vec::PointsVec;
 use crate::zobrist::Zobrist;
-use std::{collections::VecDeque, fmt, num::NonZeroUsize, sync::Arc};
+use std::{collections::VecDeque, fmt, num::NonZeroUsize, ops::Index, sync::Arc};
 
 pub type Pos = usize;
 pub type NonZeroPos = NonZeroUsize;
@@ -312,13 +311,52 @@ pub fn euclidean(stride: u32, pos1: Pos, pos2: Pos) -> u32 {
   (a * a + b * b) as u32
 }
 
-fn get_input_points(
-  stride: u32,
-  points: &PointsVec<Cell>,
-  center_pos: Pos,
-  player: Player,
-) -> SmallVec<[(Neighbor, Pos); 4]> {
-  let mut inp_points = SmallVec::new();
+struct InputPoints {
+  points: [(Neighbor, Pos); 4],
+  len: u8,
+}
+
+impl InputPoints {
+  #[inline(always)]
+  fn new() -> Self {
+    Self {
+      points: [(Neighbor::N, 0); 4],
+      len: 0,
+    }
+  }
+
+  #[inline(always)]
+  fn push(&mut self, item: (Neighbor, Pos)) {
+    self.points[self.len as usize] = item;
+    self.len += 1;
+  }
+
+  #[inline(always)]
+  fn len(&self) -> usize {
+    self.len as usize
+  }
+
+  #[inline(always)]
+  fn first(&self) -> Option<&(Neighbor, Pos)> {
+    if self.len > 0 { Some(&self.points[0]) } else { None }
+  }
+
+  #[inline(always)]
+  fn as_slice(&self) -> &[(Neighbor, Pos)] {
+    &self.points[..self.len as usize]
+  }
+}
+
+impl Index<usize> for InputPoints {
+  type Output = (Neighbor, Pos);
+  #[inline(always)]
+  fn index(&self, index: usize) -> &Self::Output {
+    &self.points[index]
+  }
+}
+
+fn get_input_points(stride: u32, points: &PointsVec<Cell>, center_pos: Pos, player: Player) -> InputPoints {
+  let mut inp_points = InputPoints::new();
 
   let pos_w = center_pos - 1;
   let pos_e = center_pos + 1;
@@ -856,22 +894,24 @@ impl Field {
     let input_points_count = input_points.len();
     if input_points_count > 1 {
       let mut total_chains_count = 0;
-      let sets: SmallVec<[_; 4]> = input_points
-        .iter()
-        .map(|&(chain_neighbor, _)| self.find_dsu_set(chain_neighbor.apply(&self.neighbor_offsets, pos)))
-        .collect();
+      let mut sets = [0usize; 4];
+      for i in 0..input_points_count {
+        let (chain_neighbor, _) = input_points[i];
+        sets[i] = self.find_dsu_set(chain_neighbor.apply(&self.neighbor_offsets, pos));
+      }
       let mut result = false;
-      for (i, &set) in sets.iter().enumerate() {
-        let mut group: SmallVec<[_; 4]> = SmallVec::new();
+      for i in 0..input_points_count {
+        let set = sets[i];
+        let mut group = InputPoints::new();
         for j in i..input_points_count {
           if sets[j] == set {
             group.push(input_points[j]);
           }
         }
-        let mut group_points_count = group.len().saturating_sub(1) as u32;
+        let mut group_points_count = group.len().saturating_sub(1);
         if group_points_count > 0 {
-          let mut chains_count = 0u32;
-          for &(chain_neighbor, captured_pos) in &group {
+          let mut chains_count = 0usize;
+          for &(chain_neighbor, captured_pos) in group.as_slice() {
             if build_chain(
               &self.neighbor_offsets,
               self.stride,
@@ -910,7 +950,7 @@ impl Field {
       for chain_index in 0..total_chains_count {
         self.capture(chain_index, self.chains[chain_index].1, player);
       }
-      let parent = self.union_dsu_sets(&sets);
+      let parent = self.union_dsu_sets(&sets[..input_points_count]);
       self.save_dsu_value(pos);
       self.dsu[pos] = parent;
       self.dsu_size[parent] += 1;
@@ -933,7 +973,7 @@ impl Field {
     let mut input_points_count = input_points.len().saturating_sub(1);
     if input_points_count > 0 {
       let mut chains_count = 0;
-      for (chain_neighbor, captured_pos) in input_points {
+      for &(chain_neighbor, captured_pos) in input_points.as_slice() {
         if build_chain(
           &self.neighbor_offsets,
           self.stride,
@@ -1036,7 +1076,7 @@ impl Field {
                 bound_pos = self.w(bound_pos);
               }
               let input_points = get_input_points(self.stride, &self.points, bound_pos, next_player);
-              for (chain_pos, captured_pos) in input_points {
+              for &(chain_pos, captured_pos) in input_points.as_slice() {
                 if build_chain(
                   &self.neighbor_offsets,
                   self.stride,
@@ -1212,7 +1252,7 @@ impl Field {
         let input_points = get_input_points(self.stride, &self.points, pos, player);
         let input_points_count = input_points.len().saturating_sub(1);
         let mut chains_count = 0;
-        for (chain_neighbor, captured_pos) in input_points {
+        for &(chain_neighbor, captured_pos) in input_points.as_slice() {
           if !(self.cell(captured_pos).is_captured()
             && self.cell(chain_neighbor.apply(&self.neighbor_offsets, pos)).is_bound())
           {
@@ -1245,7 +1285,7 @@ impl Field {
             bound_pos = self.w(bound_pos);
           }
           let input_points = get_input_points(self.stride, &self.points, bound_pos, next_player);
-          for (chain_neighbor, _) in input_points {
+          for &(chain_neighbor, _) in input_points.as_slice() {
             if !self
               .cell(chain_neighbor.apply(&self.neighbor_offsets, bound_pos))
               .is_bound()
