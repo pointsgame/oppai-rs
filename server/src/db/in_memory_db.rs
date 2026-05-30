@@ -43,6 +43,9 @@ impl Db for InMemoryDb {
     let player = Player {
       id,
       nickname: oidc_player.sanitized_nickname(rng),
+      rating: 1500.0,
+      deviation: 350.0,
+      volatility: 0.06,
     };
 
     state.oidc_lookup.insert(oidc_player.subject.clone(), id);
@@ -60,7 +63,13 @@ impl Db for InMemoryDb {
     }
 
     let id = Uuid::new_v4();
-    let player = Player { id, nickname: name };
+    let player = Player {
+      id,
+      nickname: name,
+      rating: 1500.0,
+      deviation: 350.0,
+      volatility: 0.06,
+    };
 
     state.players.insert(id, player.clone());
 
@@ -199,5 +208,37 @@ impl Db for InMemoryDb {
     } else {
       Err(anyhow!("Game with ID {} not found", game_id))
     }
+  }
+
+  async fn update_ratings(
+    &self,
+    player1_id: Uuid,
+    player1_rating: f64,
+    player1_deviation: f64,
+    player1_volatility: f64,
+    player2_id: Uuid,
+    player2_rating: f64,
+    player2_deviation: f64,
+    player2_volatility: f64,
+  ) -> Result<()> {
+    let mut state = self.state.write().await;
+
+    if let Some(player) = state.players.get_mut(&player1_id) {
+      player.rating = player1_rating;
+      player.deviation = player1_deviation;
+      player.volatility = player1_volatility;
+    } else {
+      return Err(anyhow!("Player with ID {} not found", player1_id));
+    }
+
+    if let Some(player) = state.players.get_mut(&player2_id) {
+      player.rating = player2_rating;
+      player.deviation = player2_deviation;
+      player.volatility = player2_volatility;
+    } else {
+      return Err(anyhow!("Player with ID {} not found", player2_id));
+    }
+
+    Ok(())
   }
 }

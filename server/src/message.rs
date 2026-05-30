@@ -79,13 +79,15 @@ pub struct Move {
   pub player: Color,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
   pub nickname: String,
+  pub rating: f64,
+  pub deviation: f64,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenGame {
   pub player_id: PlayerId,
@@ -93,7 +95,7 @@ pub struct OpenGame {
   pub config: GameConfig,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Game {
   pub red_player_id: PlayerId,
@@ -184,7 +186,7 @@ pub enum Request {
 }
 
 #[serde_as]
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
 #[serde(rename_all_fields = "camelCase")]
 pub enum Response {

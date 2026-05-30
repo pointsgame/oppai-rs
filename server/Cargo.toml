@@ -30,6 +30,7 @@ reqwest = { version = "0.12", default-features = false, features = [ "rustls-tls
 openidconnect = "4.0"
 cookie = { version = "0.18", features = [ "private" ] }
 hex = "0.4"
+skillratings = "0.29"
 oppai-field = { path = "../field", features = ["serde"] }
 
 [features]

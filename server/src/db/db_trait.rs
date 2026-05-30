@@ -30,10 +30,13 @@ impl From<OppaiPlayer> for Color {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct Player {
   pub id: Uuid,
   pub nickname: String,
+  pub rating: f64,
+  pub deviation: f64,
+  pub volatility: f64,
 }
 
 pub struct OidcPlayer {
@@ -143,4 +146,15 @@ pub trait Db {
   async fn update_player_nickname(&self, player_id: Uuid, nickname: String) -> Result<()>;
   async fn is_nickname_available(&self, nickname: String) -> Result<bool>;
   async fn get_game(&self, game_id: Uuid) -> Result<GameWithMoves>;
+  async fn update_ratings(
+    &self,
+    player1_id: Uuid,
+    player1_rating: f64,
+    player1_deviation: f64,
+    player1_volatility: f64,
+    player2_id: Uuid,
+    player2_rating: f64,
+    player2_deviation: f64,
+    player2_volatility: f64,
+  ) -> Result<()>;
 }

@@ -15,6 +15,10 @@ use oppai_field::{field::Field, player::Player};
 use rand::make_rng;
 use rand::{Rng, RngExt, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
+use skillratings::{
+  Outcomes,
+  glicko2::{Glicko2Config, Glicko2Rating, glicko2},
+};
 #[cfg(not(feature = "in-memory"))]
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use state::{FieldSize, Game, GameConfig, GameState, GameTime, OpenGame, State};
@@ -63,6 +67,52 @@ struct SessionShared {
   http_client: reqwest::Client,
   cookie_key: Key,
   oidc: config::OidcConfig,
+}
+
+impl SessionShared {
+  async fn update_ratings(&self, red_player_id: PlayerId, black_player_id: PlayerId, outcome: Outcomes) -> Result<()> {
+    let [player_1, player_2] = self
+      .db
+      .get_players(&[red_player_id.0, black_player_id.0])
+      .await?
+      .try_into()
+      .map_err(|_| anyhow::anyhow!("can't find players {} and {}", red_player_id, black_player_id))?;
+    let [red_player, black_player] = if player_1.id == red_player_id.0 {
+      [player_1, player_2]
+    } else {
+      [player_2, player_1]
+    };
+
+    let red_rating = Glicko2Rating {
+      rating: red_player.rating,
+      deviation: red_player.deviation,
+      volatility: red_player.volatility,
+    };
+    let black_rating = Glicko2Rating {
+      rating: black_player.rating,
+      deviation: black_player.deviation,
+      volatility: black_player.volatility,
+    };
+
+    let config = Glicko2Config::default();
+    let (new_red, new_black) = glicko2(&red_rating, &black_rating, &outcome, &config);
+
+    self
+      .db
+      .update_ratings(
+        red_player_id.0,
+        new_red.rating,
+        new_red.deviation,
+        new_red.volatility,
+        black_player_id.0,
+        new_black.rating,
+        new_black.deviation,
+        new_black.volatility,
+      )
+      .await?;
+
+    Ok(())
+  }
 }
 
 struct Session<R: Rng> {
@@ -210,6 +260,8 @@ impl<R: Rng> Session<R> {
         player_id,
         player: message::Player {
           nickname: player.nickname,
+          rating: player.rating,
+          deviation: player.deviation,
         },
       })
       .await;
@@ -263,9 +315,7 @@ impl<R: Rng> Session<R> {
     state
       .send_to_all(message::Response::PlayerJoined {
         player_id,
-        player: message::Player {
-          nickname: player.nickname,
-        },
+        player: message::Player::new(player.nickname, player.rating, player.deviation),
       })
       .await;
 
@@ -322,6 +372,8 @@ impl<R: Rng> Session<R> {
             player_id,
             player: message::Player {
               nickname: player.nickname,
+              rating: player.rating,
+              deviation: player.deviation,
             },
           },
         )
@@ -354,6 +406,8 @@ impl<R: Rng> Session<R> {
           player.id,
           message::Player {
             nickname: player.nickname,
+            rating: player.rating,
+            deviation: player.deviation,
           },
         )
       })
@@ -373,6 +427,8 @@ impl<R: Rng> Session<R> {
                 player_id: open_game.player_id,
                 player: message::Player {
                   nickname: player.nickname.clone(),
+                  rating: player.rating,
+                  deviation: player.deviation,
                 },
                 config: message::GameConfig {
                   size: message::FieldSize {
@@ -406,9 +462,13 @@ impl<R: Rng> Session<R> {
                 black_player_id: game.black_player_id,
                 red_player: message::Player {
                   nickname: red_player.nickname.clone(),
+                  rating: red_player.rating,
+                  deviation: red_player.deviation,
                 },
                 black_player: message::Player {
                   nickname: black_player.nickname.clone(),
+                  rating: black_player.rating,
+                  deviation: black_player.deviation,
                 },
                 config: message::GameConfig {
                   size: message::FieldSize {
@@ -525,6 +585,8 @@ impl<R: Rng> Session<R> {
           player_id,
           player: message::Player {
             nickname: player.nickname,
+            rating: player.rating,
+            deviation: player.deviation,
           },
           config,
         },
@@ -643,9 +705,13 @@ impl<R: Rng> Session<R> {
           black_player_id: PlayerId(black_player.id),
           red_player: message::Player {
             nickname: red_player.nickname,
+            rating: red_player.rating,
+            deviation: red_player.deviation,
           },
           black_player: message::Player {
             nickname: black_player.nickname,
+            rating: black_player.rating,
+            deviation: black_player.deviation,
           },
           config: message::GameConfig {
             size: message::FieldSize {
@@ -744,9 +810,13 @@ impl<R: Rng> Session<R> {
           black_player_id,
           red_player: message::Player {
             nickname: red_player.nickname,
+            rating: red_player.rating,
+            deviation: red_player.deviation,
           },
           black_player: message::Player {
             nickname: black_player.nickname,
+            rating: black_player.rating,
+            deviation: black_player.deviation,
           },
           config: message::GameConfig {
             size: message::FieldSize {
@@ -877,9 +947,13 @@ impl<R: Rng> Session<R> {
           black_player_id,
           red_player: message::Player {
             nickname: red_player.nickname,
+            rating: red_player.rating,
+            deviation: red_player.deviation,
           },
           black_player: message::Player {
             nickname: black_player.nickname,
+            rating: black_player.rating,
+            deviation: black_player.deviation,
           },
           config: message::GameConfig {
             size: message::FieldSize {
@@ -927,8 +1001,8 @@ impl<R: Rng> Session<R> {
 
       // We attempt to remove the game. If it's already gone (resigned, drawn, or finished),
       // this returns None and we do nothing.
-      let game_state = if let Some(game) = state.games.pin().remove(&game_id) {
-        game.state.clone()
+      let (game_state, red_player_id, black_player_id) = if let Some(game) = state.games.pin().remove(&game_id) {
+        (game.state.clone(), game.red_player_id, game.black_player_id)
       } else {
         return;
       };
@@ -961,6 +1035,15 @@ impl<R: Rng> Session<R> {
         log::error!("Failed to set game result on timeout: {}", e);
       }
 
+      // The timed-out player loses
+      let outcome = match player {
+        Player::Red => Outcomes::LOSS,
+        Player::Black => Outcomes::WIN,
+      };
+      if let Err(e) = shared.update_ratings(red_player_id, black_player_id, outcome).await {
+        log::error!("Failed to update ratings on timeout: {}", e);
+      }
+
       state
         .send_to_watchers(
           game_id,
@@ -980,26 +1063,33 @@ impl<R: Rng> Session<R> {
   async fn put_point(&self, state: &Arc<State>, game_id: GameId, coordinate: message::Coordinate) -> Result<()> {
     let player_id = self.player_id()?;
 
-    let (game_state, player, increment) = if let Some(game) = state.games.pin().get(&game_id) {
-      let player = if let Some(player) = game.color(player_id) {
-        player
+    let (game_state, player, increment, red_player_id, black_player_id) =
+      if let Some(game) = state.games.pin().get(&game_id) {
+        let player = if let Some(player) = game.color(player_id) {
+          player
+        } else {
+          anyhow::bail!(
+            "player {} attempted to put point in a wrong game {}",
+            player_id,
+            game_id,
+          );
+        };
+        (
+          game.state.clone(),
+          player,
+          game.config.time.increment,
+          game.red_player_id,
+          game.black_player_id,
+        )
       } else {
-        anyhow::bail!(
-          "player {} attempted to put point in a wrong game {}",
+        log::warn!(
+          "player {} attempted to put point in a game {} that don't exist",
           player_id,
           game_id,
         );
-      };
-      (game.state.clone(), player, game.config.time.increment)
-    } else {
-      log::warn!(
-        "player {} attempted to put point in a game {} that don't exist",
-        player_id,
-        game_id,
-      );
 
-      return Ok(());
-    };
+        return Ok(());
+      };
 
     let mut game_state = game_state.write().await;
     let pos = game_state.field.to_pos(coordinate.x, coordinate.y);
@@ -1037,7 +1127,7 @@ impl<R: Rng> Session<R> {
     let result = if game_state.field.is_game_over(0) {
       state.games.pin().remove(&game_id);
 
-      let (db_result, result) = if game_state.field.score_red != game_state.field.score_black {
+      let (db_result, result, outcome) = if game_state.field.score_red != game_state.field.score_black {
         (
           match player {
             Player::Red => db::GameResult::GroundedRed,
@@ -1047,6 +1137,10 @@ impl<R: Rng> Session<R> {
             winner: player,
             reason: message::WinReason::Grounded,
           },
+          match player {
+            Player::Red => Outcomes::WIN,
+            Player::Black => Outcomes::LOSS,
+          },
         )
       } else {
         (
@@ -1054,6 +1148,7 @@ impl<R: Rng> Session<R> {
           message::GameResult::Draw {
             reason: message::DrawReason::Grounded,
           },
+          Outcomes::DRAW,
         )
       };
 
@@ -1075,6 +1170,11 @@ impl<R: Rng> Session<R> {
         .inspect_err(|_| {
           game_state.field.undo();
         })?;
+
+      self
+        .shared
+        .update_ratings(red_player_id, black_player_id, outcome)
+        .await?;
 
       Some(result)
     } else {
@@ -1161,14 +1261,14 @@ impl<R: Rng> Session<R> {
   async fn resign(&self, state: &State, game_id: GameId) -> Result<()> {
     let player_id = self.player_id()?;
 
-    let (player, game_state) = {
+    let (player, red_player_id, black_player_id, game_state) = {
       let pin = state.games.pin();
 
-      let player = if let Some(game) = pin.get(&game_id) {
+      let (player, red_player_id, black_player_id) = if let Some(game) = pin.get(&game_id) {
         if player_id == game.red_player_id {
-          Player::Red
+          (Player::Red, game.red_player_id, game.black_player_id)
         } else if player_id == game.black_player_id {
-          Player::Black
+          (Player::Black, game.red_player_id, game.black_player_id)
         } else {
           anyhow::bail!("player {} attempted to resign in a wrong game {}", player_id, game_id,)
         }
@@ -1189,7 +1289,7 @@ impl<R: Rng> Session<R> {
         return Ok(());
       };
 
-      (player, game_state)
+      (player, red_player_id, black_player_id, game_state)
     };
 
     let now = SystemTime::now();
@@ -1225,6 +1325,16 @@ impl<R: Rng> Session<R> {
       )
       .await?;
 
+    // The player who resigned loses
+    let outcome = match player {
+      Player::Red => Outcomes::LOSS,
+      Player::Black => Outcomes::WIN,
+    };
+    self
+      .shared
+      .update_ratings(red_player_id, black_player_id, outcome)
+      .await?;
+
     state
       .send_to_watchers(
         game_id,
@@ -1245,13 +1355,13 @@ impl<R: Rng> Session<R> {
   async fn draw(&self, state: &State, game_id: GameId) -> Result<()> {
     let player_id = self.player_id()?;
 
-    let (game_state, player) = if let Some(game) = state.games.pin().get(&game_id) {
+    let (game_state, player, red_player_id, black_player_id) = if let Some(game) = state.games.pin().get(&game_id) {
       let player = if let Some(player) = game.color(player_id) {
         player
       } else {
         anyhow::bail!("player {} attempted to draw in a wrong game {}", player_id, game_id,);
       };
-      (game.state.clone(), player)
+      (game.state.clone(), player, game.red_player_id, game.black_player_id)
     } else {
       log::warn!(
         "player {} attempted to draw in a game {} that don't exist",
@@ -1321,6 +1431,11 @@ impl<R: Rng> Session<R> {
             .set_result(game_id.0, now_primitive, db::GameResult::DrawAgreement)
             .await?;
 
+          self
+            .shared
+            .update_ratings(red_player_id, black_player_id, Outcomes::DRAW)
+            .await?;
+
           state
             .send_to_watchers(
               game_id,
@@ -1365,10 +1480,16 @@ impl<R: Rng> Session<R> {
       .update_player_nickname(player_id.0, nickname.clone())
       .await?;
 
+    let player = self.shared.db.get_player(player_id.0).await?;
+
     state
       .send_to_all(message::Response::NicknameChanged {
         player_id,
-        player: message::Player { nickname },
+        player: message::Player {
+          nickname: player.nickname,
+          rating: player.rating,
+          deviation: player.deviation,
+        },
       })
       .await;
 

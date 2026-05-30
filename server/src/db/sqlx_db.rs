@@ -24,7 +24,7 @@ WITH updated AS (
   WHERE subject = $6
   RETURNING player_id
 )
-SELECT players.id, players.nickname FROM updated
+SELECT players.id, players.nickname, players.rating, players.deviation, players.volatility FROM updated
 JOIN players ON updated.player_id = players.id
 ",
     )
@@ -46,7 +46,7 @@ JOIN players ON updated.player_id = players.id
       if oidc_player.email_verified == Some(true) {
         sqlx::query_as(
           "
-SELECT players.id, players.nickname FROM oidc_players
+SELECT players.id, players.nickname, players.rating, players.deviation, players.volatility FROM oidc_players
 JOIN players ON oidc_players.player_id = players.id
 WHERE oidc_players.email = $1
 LIMIT 1
@@ -71,7 +71,7 @@ LIMIT 1
         "
 INSERT INTO players (id, nickname, registration_time)
 VALUES (gen_random_uuid(), unique_nickname($1), now())
-RETURNING id, nickname
+RETURNING id, nickname, rating, deviation, volatility
 ",
       )
       .bind(nickname)
@@ -125,7 +125,7 @@ ON CONFLICT DO NOTHING
   async fn get_player(&self, player_id: Uuid) -> Result<Player> {
     sqlx::query_as(
       "
-SELECT id, nickname
+SELECT id, nickname, rating, deviation, volatility
 FROM players
 WHERE id = $1
 ",
@@ -139,7 +139,7 @@ WHERE id = $1
   async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>> {
     sqlx::query_as(
       "
-SELECT id, nickname
+SELECT id, nickname, rating, deviation, volatility
 FROM players
 WHERE id IN (SELECT unnest($1::uuid[]))
 ",
@@ -301,5 +301,39 @@ SELECT COUNT(*) FROM players WHERE nickname = $1
     .await?;
 
     Ok(GameWithMoves { game, moves })
+  }
+
+  async fn update_ratings(
+    &self,
+    player1_id: Uuid,
+    player1_rating: f64,
+    player1_deviation: f64,
+    player1_volatility: f64,
+    player2_id: Uuid,
+    player2_rating: f64,
+    player2_deviation: f64,
+    player2_volatility: f64,
+  ) -> Result<()> {
+    let mut tx = self.pool.begin().await?;
+
+    sqlx::query("UPDATE players SET rating = $1, deviation = $2, volatility = $3 WHERE id = $4")
+      .bind(player1_rating)
+      .bind(player1_deviation)
+      .bind(player1_volatility)
+      .bind(player1_id)
+      .execute(&mut *tx)
+      .await?;
+
+    sqlx::query("UPDATE players SET rating = $1, deviation = $2, volatility = $3 WHERE id = $4")
+      .bind(player2_rating)
+      .bind(player2_deviation)
+      .bind(player2_volatility)
+      .bind(player2_id)
+      .execute(&mut *tx)
+      .await?;
+
+    tx.commit().await?;
+
+    Ok(())
   }
 }
