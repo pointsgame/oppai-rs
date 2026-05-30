@@ -1373,9 +1373,7 @@ impl Field {
 
   pub fn clear(&mut self) {
     if self.moves_count() > self.width() as usize * self.height() as usize / 8 {
-      for cell in self.min_to_max_mut() {
-        *cell = Cell::new(false);
-      }
+      self.min_to_max_mut().fill(Cell::new(false));
       self.set_padding();
       self.cell_changes.clear();
       self.changes.clear();
@@ -1391,9 +1389,7 @@ impl Field {
         for (i, dsu) in self.dsu.0.iter_mut().enumerate() {
           *dsu = i;
         }
-        for dsu in self.dsu_size.0.iter_mut() {
-          *dsu = 1;
-        }
+        self.dsu_size.0.fill(1);
       }
     } else {
       while self.undo() {}
