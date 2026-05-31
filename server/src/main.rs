@@ -50,9 +50,8 @@ struct CookieData {
 type OidcClient =
   CoreClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointMaybeSet, EndpointMaybeSet>;
 
-#[derive(Debug)]
-struct AuthState {
-  oidc_client: OidcClient,
+#[derive(Debug, Serialize, Deserialize)]
+struct AuthStateCookie {
   pkce_verifier: PkceCodeVerifier,
   nonce: Nonce,
   csrf_state: CsrfToken,
@@ -139,7 +138,6 @@ struct Session<R: Rng> {
   connection_id: ConnectionId,
   player_id: Option<PlayerId>,
   watching: HashSet<GameId>,
-  auth_state: Option<AuthState>,
 }
 
 impl<R: Rng> Session<R> {
@@ -151,7 +149,6 @@ impl<R: Rng> Session<R> {
       connection_id,
       player_id: None,
       watching: HashSet::new(),
-      auth_state: None,
     }
   }
 
@@ -188,38 +185,49 @@ impl<R: Rng> Session<R> {
       .set_pkce_challenge(pkce_challenge)
       .url();
 
+    let mut jar = CookieJar::new();
+    let auth_state_cookie = Cookie::build((
+      "kropki_auth",
+      serde_json::to_string(&AuthStateCookie {
+        pkce_verifier,
+        nonce,
+        csrf_state,
+        remember_me,
+      })?,
+    ))
+    .build();
+    jar.private_mut(&self.shared.cookie_key).add(auth_state_cookie);
+    let auth_cookie = jar.get("kropki_auth").unwrap().value().to_string();
+
     state
       .send_to_connection(
         self.connection_id,
         message::Response::AuthUrl {
           url: auth_url.to_string(),
+          auth_cookie,
         },
       )
       .await?;
 
-    self.auth_state = Some(AuthState {
-      oidc_client,
-      pkce_verifier,
-      nonce,
-      csrf_state,
-      remember_me,
-    });
-
     Ok(())
   }
 
-  async fn auth(&mut self, state: &State, oidc_code: String, oidc_state: String) -> Result<()> {
-    let auth_state = self
-      .auth_state
-      .take()
-      .ok_or_else(|| anyhow::anyhow!("no auth state forconnection {}", self.connection_id))?;
+  async fn auth(&mut self, state: &State, oidc_code: String, oidc_state: String, auth_cookie: String) -> Result<()> {
+    let mut jar = CookieJar::new();
+    jar.add(Cookie::new("kropki_auth", auth_cookie));
+    let auth_state = jar
+      .private(&self.shared.cookie_key)
+      .get("kropki_auth")
+      .and_then(|cookie| serde_json::from_str::<AuthStateCookie>(cookie.value()).ok())
+      .ok_or_else(|| anyhow::anyhow!("invalid auth cookie for connection {}", self.connection_id))?;
 
     if auth_state.csrf_state.secret() != CsrfToken::new(oidc_state).secret() {
       anyhow::bail!("invalid csrf token for connection {}", self.connection_id);
     }
 
-    let token_response = auth_state
-      .oidc_client
+    let oidc_client = self.oidc_client().await?;
+
+    let token_response = oidc_client
       .exchange_code(AuthorizationCode::new(oidc_code))?
       .set_pkce_verifier(auth_state.pkce_verifier)
       .request_async(&self.shared.http_client)
@@ -231,7 +239,7 @@ impl<R: Rng> Session<R> {
         self.connection_id
       )
     })?;
-    let id_token_verifier = auth_state.oidc_client.id_token_verifier();
+    let id_token_verifier = oidc_client.id_token_verifier();
     let claims = id_token.claims(&id_token_verifier, &auth_state.nonce)?;
 
     if let Some(expected_access_token_hash) = claims.access_token_hash() {
@@ -1676,7 +1684,8 @@ impl<R: Rng> Session<R> {
             message::Request::Auth {
               code: oidc_code,
               state: oidc_state,
-            } => self.auth(&state, oidc_code, oidc_state).await?,
+              auth_cookie,
+            } => self.auth(&state, oidc_code, oidc_state, auth_cookie).await?,
             #[cfg(feature = "test")]
             message::Request::AuthTest { name } => self.auth_test(&state, name).await?,
             message::Request::SignOut => self.sign_out(&state).await,

@@ -137,6 +137,7 @@ pub enum Request {
   Auth {
     code: String,
     state: String,
+    auth_cookie: String,
   },
   #[cfg(feature = "test")]
   AuthTest {
@@ -211,6 +212,7 @@ pub enum Response {
   },
   AuthUrl {
     url: String,
+    auth_cookie: String,
   },
   Auth {
     player_id: PlayerId,
