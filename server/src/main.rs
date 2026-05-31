@@ -315,7 +315,11 @@ impl<R: Rng> Session<R> {
     state
       .send_to_all(message::Response::PlayerJoined {
         player_id,
-        player: message::Player::new(player.nickname, player.rating, player.deviation),
+        player: message::Player {
+          nickname: player.nickname,
+          rating: player.rating,
+          deviation: player.deviation,
+        },
       })
       .await;
 
