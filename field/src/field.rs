@@ -336,6 +336,7 @@ impl InputPoints {
     self.len as usize
   }
 
+  #[cfg(feature = "dsu")]
   #[inline(always)]
   fn first(&self) -> Option<&(Neighbor, Pos)> {
     if self.len > 0 { Some(&self.points[0]) } else { None }
