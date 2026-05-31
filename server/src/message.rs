@@ -85,6 +85,7 @@ pub struct Player {
   pub nickname: String,
   pub rating: f64,
   pub deviation: f64,
+  pub volatility: f64,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]

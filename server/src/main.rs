@@ -120,11 +120,13 @@ impl SessionShared {
       nickname: red_player.nickname,
       rating: new_red.rating,
       deviation: new_red.deviation,
+      volatility: new_red.volatility,
     };
     let updated_black = message::Player {
       nickname: black_player.nickname,
       rating: new_black.rating,
       deviation: new_black.deviation,
+      volatility: new_black.volatility,
     };
 
     Ok((updated_red, updated_black))
@@ -278,6 +280,7 @@ impl<R: Rng> Session<R> {
           nickname: player.nickname,
           rating: player.rating,
           deviation: player.deviation,
+          volatility: player.volatility,
         },
       })
       .await;
@@ -335,6 +338,7 @@ impl<R: Rng> Session<R> {
           nickname: player.nickname,
           rating: player.rating,
           deviation: player.deviation,
+          volatility: player.volatility,
         },
       })
       .await;
@@ -394,6 +398,7 @@ impl<R: Rng> Session<R> {
               nickname: player.nickname,
               rating: player.rating,
               deviation: player.deviation,
+              volatility: player.volatility,
             },
           },
         )
@@ -428,6 +433,7 @@ impl<R: Rng> Session<R> {
             nickname: player.nickname,
             rating: player.rating,
             deviation: player.deviation,
+            volatility: player.volatility,
           },
         )
       })
@@ -449,6 +455,7 @@ impl<R: Rng> Session<R> {
                   nickname: player.nickname.clone(),
                   rating: player.rating,
                   deviation: player.deviation,
+                  volatility: player.volatility,
                 },
                 config: message::GameConfig {
                   size: message::FieldSize {
@@ -484,11 +491,13 @@ impl<R: Rng> Session<R> {
                   nickname: red_player.nickname.clone(),
                   rating: red_player.rating,
                   deviation: red_player.deviation,
+                  volatility: red_player.volatility,
                 },
                 black_player: message::Player {
                   nickname: black_player.nickname.clone(),
                   rating: black_player.rating,
                   deviation: black_player.deviation,
+                  volatility: black_player.volatility,
                 },
                 config: message::GameConfig {
                   size: message::FieldSize {
@@ -607,6 +616,7 @@ impl<R: Rng> Session<R> {
             nickname: player.nickname,
             rating: player.rating,
             deviation: player.deviation,
+            volatility: player.volatility,
           },
           config,
         },
@@ -727,11 +737,13 @@ impl<R: Rng> Session<R> {
             nickname: red_player.nickname,
             rating: red_player.rating,
             deviation: red_player.deviation,
+            volatility: red_player.volatility,
           },
           black_player: message::Player {
             nickname: black_player.nickname,
             rating: black_player.rating,
             deviation: black_player.deviation,
+            volatility: black_player.volatility,
           },
           config: message::GameConfig {
             size: message::FieldSize {
@@ -832,11 +844,13 @@ impl<R: Rng> Session<R> {
             nickname: red_player.nickname,
             rating: red_player.rating,
             deviation: red_player.deviation,
+            volatility: red_player.volatility,
           },
           black_player: message::Player {
             nickname: black_player.nickname,
             rating: black_player.rating,
             deviation: black_player.deviation,
+            volatility: black_player.volatility,
           },
           config: message::GameConfig {
             size: message::FieldSize {
@@ -969,11 +983,13 @@ impl<R: Rng> Session<R> {
             nickname: red_player.nickname,
             rating: red_player.rating,
             deviation: red_player.deviation,
+            volatility: red_player.volatility,
           },
           black_player: message::Player {
             nickname: black_player.nickname,
             rating: black_player.rating,
             deviation: black_player.deviation,
+            volatility: black_player.volatility,
           },
           config: message::GameConfig {
             size: message::FieldSize {
@@ -1587,6 +1603,7 @@ impl<R: Rng> Session<R> {
           nickname: player.nickname,
           rating: player.rating,
           deviation: player.deviation,
+          volatility: player.volatility,
         },
       })
       .await;
