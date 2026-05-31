@@ -70,7 +70,12 @@ struct SessionShared {
 }
 
 impl SessionShared {
-  async fn update_ratings(&self, red_player_id: PlayerId, black_player_id: PlayerId, outcome: Outcomes) -> Result<()> {
+  async fn update_ratings(
+    &self,
+    red_player_id: PlayerId,
+    black_player_id: PlayerId,
+    outcome: Outcomes,
+  ) -> Result<(message::Player, message::Player)> {
     let [player_1, player_2] = self
       .db
       .get_players(&[red_player_id.0, black_player_id.0])
@@ -111,7 +116,18 @@ impl SessionShared {
       )
       .await?;
 
-    Ok(())
+    let updated_red = message::Player {
+      nickname: red_player.nickname,
+      rating: new_red.rating,
+      deviation: new_red.deviation,
+    };
+    let updated_black = message::Player {
+      nickname: black_player.nickname,
+      rating: new_black.rating,
+      deviation: new_black.deviation,
+    };
+
+    Ok((updated_red, updated_black))
   }
 }
 
@@ -1044,9 +1060,7 @@ impl<R: Rng> Session<R> {
         Player::Red => Outcomes::LOSS,
         Player::Black => Outcomes::WIN,
       };
-      if let Err(e) = shared.update_ratings(red_player_id, black_player_id, outcome).await {
-        log::error!("Failed to update ratings on timeout: {}", e);
-      }
+      let ratings = shared.update_ratings(red_player_id, black_player_id, outcome).await;
 
       state
         .send_to_watchers(
@@ -1061,6 +1075,21 @@ impl<R: Rng> Session<R> {
           },
         )
         .await;
+
+      match ratings {
+        Ok((red_player, black_player)) => {
+          state
+            .send_to_all(message::Response::RatingsUpdated {
+              game_id,
+              red_player_id,
+              red_player,
+              black_player_id,
+              black_player,
+            })
+            .await;
+        }
+        Err(e) => log::error!("Failed to update ratings on timeout: {}", e),
+      }
     })
   }
 
@@ -1175,12 +1204,12 @@ impl<R: Rng> Session<R> {
           game_state.field.undo();
         })?;
 
-      self
+      let ratings = self
         .shared
         .update_ratings(red_player_id, black_player_id, outcome)
         .await?;
 
-      Some(result)
+      Some((result, ratings))
     } else {
       let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
       match player {
@@ -1246,7 +1275,7 @@ impl<R: Rng> Session<R> {
       )
       .await;
 
-    if let Some(result) = result {
+    if let Some((result, (red_player, black_player))) = result {
       state
         .send_to_watchers(
           game_id,
@@ -1256,6 +1285,16 @@ impl<R: Rng> Session<R> {
             result,
           },
         )
+        .await;
+
+      state
+        .send_to_all(message::Response::RatingsUpdated {
+          game_id,
+          red_player_id,
+          red_player,
+          black_player_id,
+          black_player,
+        })
         .await;
     }
 
@@ -1334,7 +1373,7 @@ impl<R: Rng> Session<R> {
       Player::Red => Outcomes::LOSS,
       Player::Black => Outcomes::WIN,
     };
-    self
+    let (red_player, black_player) = self
       .shared
       .update_ratings(red_player_id, black_player_id, outcome)
       .await?;
@@ -1351,6 +1390,16 @@ impl<R: Rng> Session<R> {
           },
         },
       )
+      .await;
+
+    state
+      .send_to_all(message::Response::RatingsUpdated {
+        game_id,
+        red_player_id,
+        red_player,
+        black_player_id,
+        black_player,
+      })
       .await;
 
     Ok(())
@@ -1470,7 +1519,7 @@ impl<R: Rng> Session<R> {
             .set_result(game_id.0, now_primitive, db::GameResult::DrawAgreement)
             .await?;
 
-          self
+          let (red_player, black_player) = self
             .shared
             .update_ratings(red_player_id, black_player_id, Outcomes::DRAW)
             .await?;
@@ -1486,6 +1535,16 @@ impl<R: Rng> Session<R> {
                 },
               },
             )
+            .await;
+
+          state
+            .send_to_all(message::Response::RatingsUpdated {
+              game_id,
+              red_player_id,
+              red_player,
+              black_player_id,
+              black_player,
+            })
             .await;
         }
       }

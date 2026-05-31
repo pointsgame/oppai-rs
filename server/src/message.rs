@@ -266,4 +266,12 @@ pub enum Response {
     nickname: String,
     available: bool,
   },
+  /// Ratings updated after a game is played.
+  RatingsUpdated {
+    game_id: GameId,
+    red_player_id: PlayerId,
+    red_player: Player,
+    black_player_id: PlayerId,
+    black_player: Player,
+  },
 }
