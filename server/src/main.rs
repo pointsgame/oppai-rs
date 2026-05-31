@@ -1398,11 +1398,46 @@ impl<R: Rng> Session<R> {
           })
           .await?;
         state
-          .send_to_watchers(game_id, message::Response::Draw { game_id, player })
+          .send_to_watchers(
+            game_id,
+            message::Response::Draw {
+              game_id,
+              player,
+              offer: true,
+            },
+          )
           .await;
       }
       Some(draw_offer) => {
-        if draw_offer == player.next() {
+        if draw_offer == player {
+          game_state.draw_offer = None;
+          drop(game_state);
+
+          let now = SystemTime::now();
+          let now_offset = OffsetDateTime::from(now);
+          let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
+
+          self
+            .shared
+            .db
+            .create_draw_offer(db::DrawOffer {
+              game_id: game_id.0,
+              player: player.into(),
+              offer: false,
+              timestamp: now_primitive,
+            })
+            .await?;
+          state
+            .send_to_watchers(
+              game_id,
+              message::Response::Draw {
+                game_id,
+                player,
+                offer: false,
+              },
+            )
+            .await;
+        } else if draw_offer == player.next() {
           if state.games.pin().remove(&game_id).is_none() {
             log::warn!("Game {} is already finished", game_id);
             return Ok(());

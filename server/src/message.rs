@@ -245,10 +245,11 @@ pub enum Response {
     putting_time: Duration,
     time_left: TimeLeft,
   },
-  /// Offer a draw.
+  /// Offer or cancel a draw.
   Draw {
     game_id: GameId,
     player: Color,
+    offer: bool,
   },
   GameResult {
     game_id: GameId,
