@@ -1144,17 +1144,14 @@ impl<R: Rng> Session<R> {
       let ratings = shared.update_ratings(red_player_id, black_player_id, outcome).await;
 
       state
-        .send_to_watchers(
+        .send_to_all(message::Response::GameResult {
           game_id,
-          message::Response::GameResult {
-            game_id,
-            time_left,
-            result: message::GameResult::Win {
-              winner: player.next(),
-              reason: message::WinReason::TimeOut,
-            },
+          time_left,
+          result: message::GameResult::Win {
+            winner: player.next(),
+            reason: message::WinReason::TimeOut,
           },
-        )
+        })
         .await;
 
       match ratings {
