@@ -1,4 +1,7 @@
-use crate::{ids::*, message::Response};
+use crate::{
+  ids::*,
+  message::{Opening, Response},
+};
 use anyhow::Result;
 use futures::channel::mpsc::Sender;
 use imbl::HashSet as ImHashSet;
@@ -29,6 +32,7 @@ pub struct GameTime {
 pub struct GameConfig {
   pub size: FieldSize,
   pub time: GameTime,
+  pub opening: Opening,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -6025,6 +6025,7 @@ dependencies = [
  "log",
  "openidconnect",
  "oppai-field",
+ "oppai-initial",
  "papaya",
  "rand 0.10.0",
  "reqwest",

@@ -5,6 +5,15 @@ use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "opening")]
+#[sqlx(rename_all = "snake_case")]
+pub enum Opening {
+  Cross,
+  TwoCrosses,
+  TripleCross,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "provider")]
 #[sqlx(rename_all = "lowercase")]
 pub enum Color {
@@ -104,6 +113,7 @@ pub struct Game {
   pub height: i32,
   pub total_time_ms: i64,
   pub increment_ms: i64,
+  pub opening: Opening,
   pub finish_time: Option<PrimitiveDateTime>,
   pub result: Option<GameResult>,
 }
@@ -138,7 +148,7 @@ pub trait Db {
   async fn get_or_create_test_player(&self, name: String) -> Result<Player>;
   async fn get_player(&self, player_id: Uuid) -> Result<Player>;
   async fn get_players(&self, player_ids: &[Uuid]) -> Result<Vec<Player>>;
-  async fn create_game(&self, game: Game) -> Result<()>;
+  async fn create_game(&self, game: Game, opening_moves: Vec<Move>) -> Result<()>;
   async fn create_move(&self, m: Move) -> Result<()>;
   async fn create_move_and_set_result(&self, m: Move, result: GameResult) -> Result<()>;
   async fn create_draw_offer(&self, draw_offer: DrawOffer) -> Result<()>;

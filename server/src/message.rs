@@ -54,11 +54,19 @@ impl GameTime {
   }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Opening {
+  Cross,
+  TwoCrosses,
+  TripleCross,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameConfig {
   pub size: FieldSize,
   pub time: GameTime,
+  pub opening: Opening,
 }
 
 impl GameConfig {

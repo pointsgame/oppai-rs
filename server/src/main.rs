@@ -12,6 +12,7 @@ use openidconnect::{
   core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
 };
 use oppai_field::{field::Field, player::Player};
+use oppai_initial::initial::InitialPosition;
 use rand::make_rng;
 use rand::{Rng, RngExt, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
@@ -40,6 +41,34 @@ mod db;
 mod ids;
 mod message;
 mod state;
+
+impl From<message::Opening> for db::Opening {
+  fn from(opening: message::Opening) -> Self {
+    match opening {
+      message::Opening::Cross => db::Opening::Cross,
+      message::Opening::TwoCrosses => db::Opening::TwoCrosses,
+      message::Opening::TripleCross => db::Opening::TripleCross,
+    }
+  }
+}
+
+impl From<db::Opening> for message::Opening {
+  fn from(opening: db::Opening) -> Self {
+    match opening {
+      db::Opening::Cross => message::Opening::Cross,
+      db::Opening::TwoCrosses => message::Opening::TwoCrosses,
+      db::Opening::TripleCross => message::Opening::TripleCross,
+    }
+  }
+}
+
+fn to_initial_position(opening: message::Opening) -> InitialPosition {
+  match opening {
+    message::Opening::Cross => InitialPosition::Cross,
+    message::Opening::TwoCrosses => InitialPosition::TwoCrosses,
+    message::Opening::TripleCross => InitialPosition::TripleCross,
+  }
+}
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 struct CookieData {
@@ -474,6 +503,7 @@ impl<R: Rng> Session<R> {
                     total: open_game.config.time.total,
                     increment: open_game.config.time.increment,
                   },
+                  opening: open_game.config.opening,
                 },
               },
             )
@@ -516,6 +546,7 @@ impl<R: Rng> Session<R> {
                     total: game.config.time.total,
                     increment: game.config.time.increment,
                   },
+                  opening: game.config.opening,
                 },
               },
             )
@@ -608,6 +639,7 @@ impl<R: Rng> Session<R> {
           total: config.time.total,
           increment: config.time.increment,
         },
+        opening: config.opening,
       },
     };
 
@@ -678,24 +710,46 @@ impl<R: Rng> Session<R> {
     let now_offset = OffsetDateTime::from(now);
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
 
+    // Create the field and play opening moves.
+    let mut field = Field::new_from_rng(open_game.config.size.width, open_game.config.size.height, &mut self.rng);
+    let initial_position = to_initial_position(open_game.config.opening);
+    let mut opening_db_moves = Vec::new();
+    for (i, (pos, player)) in initial_position
+      .points(open_game.config.size.width, open_game.config.size.height, Player::Red)
+      .enumerate()
+    {
+      if field.put_point(pos, player) {
+        opening_db_moves.push(db::Move {
+          game_id: game_id.0,
+          player: player.into(),
+          number: i as i16,
+          x: field.to_x(pos) as i16,
+          y: field.to_y(pos) as i16,
+          timestamp: now_primitive,
+        });
+      }
+    }
+
     self
       .shared
       .db
-      .create_game(db::Game {
-        id: game_id.0,
-        red_player_id: open_game.player_id.0,
-        black_player_id: player_id.0,
-        start_time: now_primitive,
-        width: open_game.config.size.width as i32,
-        height: open_game.config.size.height as i32,
-        total_time_ms: open_game.config.time.total.as_millis() as i64,
-        increment_ms: open_game.config.time.increment.as_millis() as i64,
-        finish_time: None,
-        result: None,
-      })
+      .create_game(
+        db::Game {
+          id: game_id.0,
+          red_player_id: open_game.player_id.0,
+          black_player_id: player_id.0,
+          start_time: now_primitive,
+          width: open_game.config.size.width as i32,
+          height: open_game.config.size.height as i32,
+          total_time_ms: open_game.config.time.total.as_millis() as i64,
+          increment_ms: open_game.config.time.increment.as_millis() as i64,
+          opening: open_game.config.opening.into(),
+          finish_time: None,
+          result: None,
+        },
+        opening_db_moves,
+      )
       .await?;
-
-    let field = Field::new_from_rng(open_game.config.size.width, open_game.config.size.height, &mut self.rng);
 
     let timer = Self::spawn_timeout_task(
       state.clone(),
@@ -762,6 +816,7 @@ impl<R: Rng> Session<R> {
               total: open_game.config.time.total,
               increment: open_game.config.time.increment,
             },
+            opening: open_game.config.opening,
           },
         },
       })
@@ -869,6 +924,7 @@ impl<R: Rng> Session<R> {
               total: config.time.total,
               increment: config.time.increment,
             },
+            opening: config.opening,
           },
         },
         moves,
@@ -1008,6 +1064,7 @@ impl<R: Rng> Session<R> {
               total: Duration::from_millis(game_with_moves.game.total_time_ms as u64),
               increment: Duration::from_millis(game_with_moves.game.increment_ms as u64),
             },
+            opening: game_with_moves.game.opening.into(),
           },
         },
         moves,

@@ -150,11 +150,13 @@ WHERE id IN (SELECT unnest($1::uuid[]))
     .map_err(From::from)
   }
 
-  async fn create_game(&self, game: Game) -> Result<()> {
+  async fn create_game(&self, game: Game, opening_moves: Vec<Move>) -> Result<()> {
+    let mut tx = self.pool.begin().await?;
+
     sqlx::query(
       "
-INSERT INTO games (id, red_player_id, black_player_id, start_time, width, height, total_time_ms, increment_ms)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO games (id, red_player_id, black_player_id, start_time, width, height, total_time_ms, increment_ms, opening)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ",
     )
     .bind(game.id)
@@ -165,10 +167,30 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     .bind(game.height)
     .bind(game.total_time_ms)
     .bind(game.increment_ms)
-    .execute(&self.pool)
-    .await
-    .map_err(From::from)
-    .map(|_| ())
+    .bind(game.opening)
+    .execute(&mut *tx)
+    .await?;
+
+    for m in opening_moves {
+      sqlx::query(
+        "
+INSERT INTO moves (game_id, player, \"number\", x, y, \"timestamp\")
+VALUES ($1, $2, $3, $4, $5, $6)
+",
+      )
+      .bind(m.game_id)
+      .bind(m.player)
+      .bind(m.number)
+      .bind(m.x)
+      .bind(m.y)
+      .bind(m.timestamp)
+      .execute(&mut *tx)
+      .await?;
+    }
+
+    tx.commit().await?;
+
+    Ok(())
   }
 
   async fn create_move_and_set_result(&self, m: Move, result: GameResult) -> Result<()> {
@@ -287,7 +309,7 @@ SELECT COUNT(*) FROM players WHERE nickname = $1
 
   async fn get_game(&self, game_id: Uuid) -> Result<GameWithMoves> {
     let game = sqlx::query_as::<_, Game>(
-      "SELECT id, red_player_id, black_player_id, start_time, width, height, total_time_ms, increment_ms, result, finish_time FROM games WHERE id = $1"
+      "SELECT id, red_player_id, black_player_id, start_time, width, height, total_time_ms, increment_ms, opening, result, finish_time FROM games WHERE id = $1"
     )
     .bind(game_id)
     .fetch_one(&self.pool)

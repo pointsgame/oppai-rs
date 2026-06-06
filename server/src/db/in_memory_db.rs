@@ -98,14 +98,14 @@ impl Db for InMemoryDb {
     Ok(results)
   }
 
-  async fn create_game(&self, game: Game) -> Result<()> {
+  async fn create_game(&self, game: Game, opening_moves: Vec<Move>) -> Result<()> {
     let mut state = self.state.write().await;
 
     if state.games.contains_key(&game.id) {
       return Err(anyhow!("Game with ID {} already exists", game.id));
     }
 
-    state.moves.insert(game.id, Vec::new());
+    state.moves.insert(game.id, opening_moves);
     state.draw_offers.insert(game.id, Vec::new());
 
     state.games.insert(game.id, game);

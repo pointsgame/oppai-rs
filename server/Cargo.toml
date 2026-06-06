@@ -32,6 +32,7 @@ cookie = { version = "0.18", features = [ "private" ] }
 hex = "0.4"
 skillratings = "0.29"
 oppai-field = { path = "../field", features = ["serde"] }
+oppai-initial = { path = "../initial" }
 
 [features]
 test = [ "uuid/v5" ]
