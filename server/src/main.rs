@@ -1668,6 +1668,8 @@ impl<R: Rng> Session<R> {
       .update_player_nickname(player_id.0, nickname.clone())
       .await?;
 
+    log::info!("Player {} changed nickname to '{}'", player_id.0, nickname);
+
     let player = self.shared.db.get_player(player_id.0).await?;
 
     state
