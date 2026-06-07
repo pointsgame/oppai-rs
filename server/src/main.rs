@@ -1011,13 +1011,22 @@ impl<R: Rng> Session<R> {
       let mut black_time = start_total;
       let mut last_move_timestamp = game_with_moves.game.start_time;
 
-      for m in &game_with_moves.moves {
+      // Opening moves are pre-placed before the clocks start; skip them.
+      let opening_moves_count = match game_with_moves.game.opening {
+        db::Opening::Cross => 4,
+        db::Opening::TwoCrosses | db::Opening::TripleCross => 8,
+      };
+
+      for (i, m) in game_with_moves.moves.iter().enumerate() {
         let elapsed = m.timestamp - last_move_timestamp;
+        last_move_timestamp = m.timestamp;
+        if i < opening_moves_count {
+          continue;
+        }
         match m.player {
           db::Color::Red => red_time = (red_time - elapsed).max(time::Duration::ZERO) + increment,
           db::Color::Black => black_time = (black_time - elapsed).max(time::Duration::ZERO) + increment,
         }
-        last_move_timestamp = m.timestamp;
       }
 
       if let Some(finish_time) = game_with_moves.game.finish_time {
@@ -1235,6 +1244,12 @@ impl<R: Rng> Session<R> {
     let now_primitive = PrimitiveDateTime::new(now_offset.date(), now_offset.time());
     let now_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
 
+    let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
+    match player {
+      Player::Red => game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment,
+      Player::Black => game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment,
+    }
+
     let result = if game_state.field.is_game_over(0) {
       state.games.pin().remove(&game_id);
 
@@ -1289,10 +1304,8 @@ impl<R: Rng> Session<R> {
 
       Some((result, ratings))
     } else {
-      let elapsed = now.duration_since(game_state.last_move_time).unwrap_or_default();
       match player {
         Player::Red => {
-          game_state.red_time = game_state.red_time.saturating_sub(elapsed) + increment;
           game_state.timer = Self::spawn_timeout_task(
             state.clone(),
             self.shared.clone(),
@@ -1302,7 +1315,6 @@ impl<R: Rng> Session<R> {
           );
         }
         Player::Black => {
-          game_state.black_time = game_state.black_time.saturating_sub(elapsed) + increment;
           game_state.timer = Self::spawn_timeout_task(
             state.clone(),
             self.shared.clone(),
