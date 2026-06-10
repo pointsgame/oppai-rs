@@ -158,6 +158,10 @@ where
     let full_search = rng.random::<f64>() <= 0.25;
 
     let sims = if full_search {
+      // The root has to be expanded before the noise can be applied to its children priors.
+      if search.nodes[search.root_idx].children.is_empty() {
+        search.mcgs(field, player, model, komi_x_2, rng)?;
+      }
       // TODO: does it scale to big sizes?
       let shape = N::from(0.03 * 19.0.powi(2)).unwrap() / N::from(field.width() * field.height()).unwrap();
       let temperature = interpolate_early(field, N::from(1.25).unwrap(), N::from(1.1).unwrap());
