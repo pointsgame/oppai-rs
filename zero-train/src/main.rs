@@ -44,7 +44,8 @@ fn init<B>(params: InitParams, device: B::Device) -> Result<ExitCode>
 where
   B: AutodiffBackend,
 {
-  let model = BurnModel::<B>::new(&device);
+  let mut model = BurnModel::<B>::new(&device);
+  model.initialize(&device);
   model.save_file(params.model, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let optimizer = SgdConfig::new()

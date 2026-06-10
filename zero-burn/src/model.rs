@@ -1,5 +1,5 @@
 use burn::{
-  module::{Module, Param},
+  module::{Initializer, Module, Param},
   nn::{
     Linear, LinearConfig, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
@@ -34,6 +34,52 @@ const G1_CHANNELS: usize = 32;
 const V2_SIZE: usize = 80;
 const SBV2_SIZE: usize = 80;
 const NUM_SCOREBELIEFS: usize = 6;
+
+// Activation gain for mish, used to keep activation variance stable through the deep residual trunk.
+fn mish_gain() -> f64 {
+  2.210277_f64.sqrt()
+}
+
+/// Reinitialize a weight tensor:
+/// sample from `N(0, (scale * gain / sqrt(fan_in))^2)`, or fill with zeros when `scale == 0`.
+/// Zero scale is how Fixup makes a residual branch start as the identity function.
+fn init_weight<B: Backend, const D: usize>(
+  shape: [usize; D],
+  fan_in: usize,
+  scale: f64,
+  gain: f64,
+  device: &B::Device,
+) -> Param<Tensor<B, D>> {
+  if scale <= 0.0 {
+    Initializer::Zeros.init(shape, device)
+  } else {
+    let std = scale * gain / (fan_in as f64).sqrt();
+    Initializer::Normal { mean: 0.0, std }.init(shape, device)
+  }
+}
+
+/// Reinitialize a convolution's weights. `fan_in = in_channels * kernel_h * kernel_w`.
+fn init_conv<B: Backend>(conv: &mut Conv2d<B>, scale: f64, gain: f64, device: &B::Device) {
+  let [out_c, in_c, kh, kw] = conv.weight.val().dims();
+  conv.weight = init_weight([out_c, in_c, kh, kw], in_c * kh * kw, scale, gain, device);
+}
+
+/// Reinitialize a linear layer's weights (and bias, if present). The burn weight layout is
+/// `[d_input, d_output]`, so `fan_in = d_input`.
+fn init_linear<B: Backend>(
+  linear: &mut Linear<B>,
+  weight_scale: f64,
+  weight_gain: f64,
+  bias_scale: f64,
+  bias_gain: f64,
+  device: &B::Device,
+) {
+  let [d_in, d_out] = linear.weight.val().dims();
+  linear.weight = init_weight([d_in, d_out], d_in, weight_scale, weight_gain, device);
+  if linear.bias.is_some() {
+    linear.bias = Some(init_weight([d_out], d_in, bias_scale, bias_gain, device));
+  }
+}
 
 #[derive(Module, Debug)]
 pub struct NormMask<B: Backend> {
@@ -88,6 +134,25 @@ impl<B: Backend> ConvAndGPool<B> {
         .with_bias(false)
         .init(device),
     }
+  }
+
+  /// Splits the input variance between the regular (`r`) and global-pooling (`g`) branches
+  /// so they add back up to roughly `scale`.
+  fn initialize(&mut self, scale: f64, device: &B::Device) {
+    let gain = mish_gain();
+    let r_scale = 0.8_f64;
+    let g_scale = 0.6_f64;
+    init_conv(&mut self.conv1r, scale * r_scale, gain, device);
+    init_conv(&mut self.conv1g, scale.sqrt() * g_scale.sqrt(), gain, device);
+    init_linear(
+      &mut self.linearg,
+      scale.sqrt() * g_scale.sqrt(),
+      gain,
+      0.0,
+      gain,
+      device,
+    );
+    // `normg` stays a learnable affine (fixup uses no fixed scale here).
   }
 
   fn gpool(inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
@@ -175,6 +240,15 @@ impl<B: Backend> NormActConv<B> {
     }
   }
 
+  /// only the convolution is rescaled; the norm stays a learnable affine
+  /// since fixup applies no fixed scale to it.
+  fn initialize(&mut self, scale: f64, device: &B::Device) {
+    match &mut self.convgpool {
+      ConvOrGpool::Conv(conv) => init_conv(conv, scale, mish_gain(), device),
+      ConvOrGpool::Gpool(gpool) => gpool.initialize(scale, device),
+    }
+  }
+
   pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
     let out = self.norm.forward(inputs, mask.clone());
     let out = mish(out);
@@ -214,6 +288,13 @@ impl<B: Backend> InnerResidualBlock<B> {
     }
   }
 
+  /// Scale the first conv, and zero-initialize the second conv so the block starts
+  /// as the identity and only gradually learns a residual.
+  fn initialize(&mut self, fixup_scale: f64, device: &B::Device) {
+    self.normactconv1.initialize(fixup_scale, device);
+    self.normactconv2.initialize(0.0, device);
+  }
+
   pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
     let out = self
       .normactconv1
@@ -239,6 +320,18 @@ impl<B: Backend> ResidualBlock<B> {
         .collect(),
       normactconvq: NormActConv::new(device, true, false, RESIDUAL_INNER_CHANNELS, INNER_CHANNELS, [1, 1]),
     }
+  }
+
+  /// Each of the `1 + RESIDUAL_SIZE` stages gets the geometric share
+  /// `fixup_scale^(1/(1+RESIDUAL_SIZE))` of the block's scale, and the final `1x1`
+  /// conv is zero-initialized so the whole nested block starts as the identity.
+  fn initialize(&mut self, fixup_scale: f64, device: &B::Device) {
+    let inner_scale = fixup_scale.powf(1.0 / (1.0 + RESIDUAL_SIZE as f64));
+    self.normactconvp.initialize(inner_scale, device);
+    for inner in &mut self.inner {
+      inner.initialize(inner_scale, device);
+    }
+    self.normactconvq.initialize(0.0, device);
   }
 
   pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
@@ -290,6 +383,35 @@ impl<B: Backend> ValueHead<B> {
       linear_smix: LinearConfig::new(3 * V1_CHANNELS, NUM_SCOREBELIEFS).init(device),
       score_belief_offset_bias: Param::from_tensor(offset_bias_tensor).no_grad(),
     }
+  }
+
+  /// Pre-pooling layers keep unit-ish variance while the output
+  /// projections are scaled down so the head starts near-neutral.
+  fn initialize(&mut self, device: &B::Device) {
+    let gain = mish_gain();
+    let bias_scale = 0.2_f64;
+    let scorebelief_output_scale = 0.5_f64;
+
+    init_conv(&mut self.conv1, 1.0, gain, device);
+    init_linear(&mut self.linear2, 1.0, gain, bias_scale, gain, device);
+    // Identity gain (1.0) for output projections.
+    init_linear(&mut self.linear_valuehead, 1.0, 1.0, bias_scale, 1.0, device);
+
+    init_linear(&mut self.linear_s2, 1.0, gain, 1.0, gain, device);
+    // `linear_s2off` has a single input feature, so KataGo borrows `linear_s2`'s fan-in to avoid a
+    // huge std; it has no bias.
+    let s2off_dims = self.linear_s2off.weight.val().dims();
+    self.linear_s2off.weight = init_weight(s2off_dims, 3 * V1_CHANNELS, 1.0, gain, device);
+    init_linear(
+      &mut self.linear_s3,
+      scorebelief_output_scale,
+      1.0,
+      scorebelief_output_scale * bias_scale,
+      1.0,
+      device,
+    );
+    init_linear(&mut self.linear_smix, 1.0, 1.0, bias_scale, 1.0, device);
+    // `bias1` stays a learnable affine.
   }
 
   fn gpool(inputs: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
@@ -400,6 +522,18 @@ impl<B: Backend> PolicyHead<B> {
     }
   }
 
+  /// Split variance between the regular and global-pool branches,
+  /// and scale down the final policy conv (identity gain) so initial logits are small.
+  fn initialize(&mut self, device: &B::Device) {
+    let gain = mish_gain();
+    let scale_output = 0.3_f64;
+    init_conv(&mut self.conv1p, 0.8, gain, device);
+    init_conv(&mut self.conv1g, 1.0, gain, device);
+    init_linear(&mut self.linearg, 0.6, gain, 0.0, gain, device);
+    init_conv(&mut self.conv2p, scale_output, 1.0, device);
+    // `biasg` and `bias2` stay learnable affines.
+  }
+
   fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
     let outp = self.conv1p.forward(inputs.clone());
     let outg = self.conv1g.forward(inputs);
@@ -441,6 +575,29 @@ impl<B: Backend> Model<B> {
       value_head: ValueHead::new(device),
       policy_head: PolicyHead::new(device),
     }
+  }
+
+  /// Fixup initialization for the residual trunk and heads. Every residual branch is
+  /// zero-initialized so the network starts as a shallow function and each block's first conv
+  /// is scaled by `1/sqrt(num_blocks)`, keeping activation and gradient variance stable
+  /// through depth without any explicit normalization. Must be called once on a freshly
+  /// created model before training; it is a no-op to call again before loading weights.
+  pub fn initialize(&mut self, device: &B::Device) {
+    let gain = mish_gain();
+    init_conv(&mut self.conv_spatial, 0.8, gain, device);
+    {
+      let dims = self.linear_global.weight.val().dims();
+      self.linear_global.weight = init_weight(dims, dims[0], 0.6, gain, device);
+    }
+
+    let fixup_scale = 1.0 / (RESIDUAL_BLOCKS as f64).sqrt();
+    for residual in &mut self.residuals {
+      residual.initialize(fixup_scale, device);
+    }
+    // `norm_trunkfinal` stays a learnable affine (fixup applies no fixed scale).
+
+    self.policy_head.initialize(device);
+    self.value_head.initialize(device);
   }
 
   pub fn forward(&self, spatial: Tensor<B, 4>, global: Tensor<B, 2>) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>) {
@@ -637,7 +794,7 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::{Learner, Model, Predictor};
+  use super::{ConvOrGpool, Learner, Model, Predictor};
   use burn::{
     backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
     optim::SgdConfig,
@@ -674,6 +831,50 @@ mod tests {
         .unwrap()
         .iter()
         .all(|v| (-1.0..=1.0).contains(v))
+    );
+  }
+
+  // Verifies the core Fixup invariant: after `initialize`, every residual branch ends in a
+  // zero-initialized conv so each block starts as the identity, and the model still produces a
+  // valid, finite policy distribution.
+  #[test]
+  fn initialize_zeroes_residual_branches() {
+    let device = NdArrayDevice::Cpu;
+    let mut model = Model::<NdArray>::new(&device);
+    model.initialize(&device);
+
+    let assert_zero = |convgpool: &ConvOrGpool<NdArray>| match convgpool {
+      ConvOrGpool::Conv(conv) => {
+        let abs_sum = conv.weight.val().abs().sum().into_scalar();
+        assert_eq!(abs_sum, 0.0, "residual branch output conv must be zero-initialized");
+      }
+      ConvOrGpool::Gpool(_) => panic!("residual branch output should be a plain conv"),
+    };
+
+    for residual in &model.residuals {
+      assert_zero(&residual.normactconvq.convgpool);
+      for inner in &residual.inner {
+        assert_zero(&inner.normactconv2.convgpool);
+      }
+    }
+
+    let (policy_logits, values, _) = model.forward(
+      Tensor::ones([1, CHANNELS, 4, 8], &device),
+      Tensor::ones([1, 1], &device),
+    );
+    let policies = softmax(policy_logits.reshape([0, -1]), 1);
+    assert!(
+      policies
+        .iter_dim(0)
+        .all(|p| (p.sum().into_scalar() - 1.0).abs() < 0.001)
+    );
+    assert!(
+      values
+        .into_data()
+        .to_vec::<f32>()
+        .unwrap()
+        .iter()
+        .all(|v| v.is_finite())
     );
   }
 
