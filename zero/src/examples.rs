@@ -132,7 +132,7 @@ impl Examples {
         assert!(field.put_point(pos, player));
         field.update_grounded();
       }
-      let player = game.moves[example.position - 1].1.next();
+      let player = game.moves[example.position].1;
       let (score, komi_x_2) = if player == Player::Red {
         (game.score, game.komi_x_2)
       } else {
