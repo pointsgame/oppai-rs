@@ -175,7 +175,7 @@ where
       search.mcgs(field, player, model, komi_x_2, rng)?;
     }
 
-    visits.push(Visits(
+    let current_visits = Visits(
       if full_search {
         // Use pruned visits for full searches with Dirichlet noise.
         // This removes the extra forced playouts from the policy target,
@@ -185,7 +185,7 @@ where
         search.visits().collect()
       },
       full_search,
-    ));
+    );
 
     let pos = if let Some(pos) = search.next_root_with_temperature(
       interpolate_early(field, N::from(0.75).unwrap(), N::from(0.15).unwrap()),
@@ -196,6 +196,7 @@ where
       break;
     };
 
+    visits.push(current_visits);
     search.compact();
     assert!(field.put_point(pos.get(), player));
     field.update_grounded();
