@@ -192,7 +192,13 @@ impl Examples {
     zobrist: Arc<Zobrist<u64>>,
     size: usize,
   ) -> impl Iterator<Item = Batch<N>> + '_ {
-    (0..self.batches_count(size))
-      .map(move |i| self.batch::<N>(i * size..(i + 1) * size, width, height, zobrist.clone()))
+    (0..self.batches_count(size)).map(move |i| {
+      self.batch::<N>(
+        i * size..((i + 1) * size).min(self.len()),
+        width,
+        height,
+        zobrist.clone(),
+      )
+    })
   }
 }
