@@ -9,7 +9,7 @@ use oppai_field::{
   field::{Field, NonZeroPos, Pos},
   player::Player,
 };
-use oppai_rotate::rotate::rotate;
+use oppai_rotate::rotate::{rotate, rotate_sizes};
 use rand::distr::uniform::SampleUniform;
 use rand::{Rng, RngExt};
 use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
@@ -56,9 +56,10 @@ impl Visits {
         policies[idx] = N::from(visits).unwrap() / N::from(total).unwrap();
       }
     } else {
+      let (rotated_width, rotated_height) = rotate_sizes(field_width, field_height, rotation);
       let uniform_prob = N::one() / N::from(field_width * field_height).unwrap();
-      for y in 0..field_height as usize {
-        for x in 0..field_width as usize {
+      for y in 0..rotated_height as usize {
+        for x in 0..rotated_width as usize {
           let idx = start_idx + y * (width as usize) + x;
           policies[idx] = uniform_prob;
         }
