@@ -55,7 +55,6 @@ while true; do
 
   parallel --wait
 
-  # learning-rate 0.001
   echo "Training checkpoint $((CHECKPOINT + 1))"
   fd '\d+\.sgf' "$GAMES" |
     sort -rn |
@@ -66,7 +65,7 @@ while true; do
       --model-new "$MODELS/model_$((CHECKPOINT + 1))" \
       --optimizer-new "$MODELS/optimizer_$((CHECKPOINT + 1))" \
       --batch-size 512 \
-      --learning-rate 0.002 \
+      --learning-rate 0.0001 \
       --width 18 \
       --height 18 \
       --games
