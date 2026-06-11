@@ -48,6 +48,7 @@
             wasm-bindgen-cli
             trunk
             wasmtime
+            wasm-pack
           ];
 
           buildInputs = with pkgs; [

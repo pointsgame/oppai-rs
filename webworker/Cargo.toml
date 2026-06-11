@@ -1,0 +1,37 @@
+[package]
+name = "oppai-webworker"
+version = "0.1.0"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
+edition = "2024"
+
+[dependencies]
+rand.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+oppai-field = { path = "../field" }
+oppai-patterns = { path = "../patterns" }
+oppai-ai = { path = "../ai" }
+oppai-ais = { path = "../ais" }
+oppai-protocol = { path = "../protocol" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = [
+  "MessageEvent",
+  "DedicatedWorkerGlobalScope",
+  "console"
+] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+# for wasm_js feature
+getrandom = { version = "0.4", features = ["wasm_js"] }
+
+[features]
+default = ["dsu"]
+dsu = ["oppai-ais/dsu"]
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
