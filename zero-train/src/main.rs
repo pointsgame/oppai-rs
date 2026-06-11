@@ -8,7 +8,10 @@ use burn::{
   module::Module,
   optim::{Optimizer, SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
-  tensor::backend::{AutodiffBackend, Backend},
+  tensor::{
+    backend::{AutodiffBackend, Backend},
+    ops::FloatElem,
+  },
 };
 use config::{
   Action, Backend as ConfigBackend, Config, CountParams, InitParams, PitParams, PlayParams, TrainParams, cli_parse,
@@ -66,10 +69,10 @@ where
 fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
 where
   B: Backend,
-  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
-  StandardNormal: Distribution<<B as Backend>::FloatElem>,
-  Exp1: Distribution<<B as Backend>::FloatElem>,
-  Open01: Distribution<<B as Backend>::FloatElem>,
+  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
+  StandardNormal: Distribution<FloatElem<B>>,
+  Exp1: Distribution<FloatElem<B>>,
+  Open01: Distribution<FloatElem<B>>,
 {
   let mut model = match params.model {
     Some(model_path) => {
@@ -149,7 +152,7 @@ fn train<B, R: Rng>(
 ) -> Result<ExitCode>
 where
   B: AutodiffBackend,
-  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
 {
   let model = BurnModel::<B>::new(&device);
   let model = model.load_file(
@@ -257,7 +260,7 @@ where
 fn pit<B, R: Rng>(params: PitParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
 where
   B: Backend,
-  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
+  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
 {
   let model_old = BurnModel::<B>::new(&device);
   let model_old = model_old.load_file(
@@ -296,8 +299,8 @@ where
 
   let zobrist = Arc::new(Zobrist::new(
     length(
-      *params.width.iter().max().unwrap(),
-      *params.height.iter().max().unwrap(),
+      *Iterator::max(params.width.iter()).unwrap(),
+      *Iterator::max(params.height.iter()).unwrap(),
     ) * 3,
     rng,
   ));
@@ -404,10 +407,10 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
 fn run<B>(config: Config, action: Action, device: B::Device, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
-  <B as Backend>::FloatElem: Float + Sum + SampleUniform + Display + Debug,
-  StandardNormal: Distribution<<B as Backend>::FloatElem>,
-  Exp1: Distribution<<B as Backend>::FloatElem>,
-  Open01: Distribution<<B as Backend>::FloatElem>,
+  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
+  StandardNormal: Distribution<FloatElem<B>>,
+  Exp1: Distribution<FloatElem<B>>,
+  Open01: Distribution<FloatElem<B>>,
 {
   let mut rng = config.seed.map_or_else(make_rng, SmallRng::seed_from_u64);
 

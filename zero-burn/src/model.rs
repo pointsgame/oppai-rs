@@ -9,12 +9,13 @@ use burn::{
     DataError, Tensor, TensorData,
     activation::{log_softmax, mish, softmax},
     backend::{AutodiffBackend, Backend},
+    ops::FloatElem,
     s,
   },
 };
 use derive_more::From;
 use ndarray::{Array, Array2, Array3, Array4, Dimension, ShapeError};
-use num_traits::{Float, NumCast};
+use num_traits::Float;
 use oppai_zero::{
   field_features::{CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
@@ -666,18 +667,18 @@ fn into_data_vec<A: Clone, D: Dimension>(array: Array<A, D>) -> Vec<A> {
   vec
 }
 
-impl<B> OppaiModel<<B as Backend>::FloatElem> for Predictor<B>
+impl<B> OppaiModel<FloatElem<B>> for Predictor<B>
 where
   B: Backend,
-  <B as Backend>::FloatElem: Float,
+  FloatElem<B>: Float,
 {
   type E = ModelError;
 
   fn predict(
     &mut self,
-    inputs: Array4<<B as Backend>::FloatElem>,
-    global: Array2<<B as Backend>::FloatElem>,
-  ) -> Result<(Array3<<B as Backend>::FloatElem>, Array2<<B as Backend>::FloatElem>), Self::E> {
+    inputs: Array4<FloatElem<B>>,
+    global: Array2<FloatElem<B>>,
+  ) -> Result<(Array3<FloatElem<B>>, Array2<FloatElem<B>>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
@@ -698,38 +699,38 @@ where
   }
 }
 
-impl<B, O> OppaiModel<<B as Backend>::FloatElem> for Learner<B, O>
+impl<B, O> OppaiModel<FloatElem<B>> for Learner<B, O>
 where
   B: Backend + AutodiffBackend,
-  <B as Backend>::FloatElem: Float,
+  FloatElem<B>: Float,
 {
   type E = ModelError;
 
   fn predict(
     &mut self,
-    inputs: Array4<<B as Backend>::FloatElem>,
-    global: Array2<<B as Backend>::FloatElem>,
-  ) -> Result<(Array3<<B as Backend>::FloatElem>, Array2<<B as Backend>::FloatElem>), Self::E> {
+    inputs: Array4<FloatElem<B>>,
+    global: Array2<FloatElem<B>>,
+  ) -> Result<(Array3<FloatElem<B>>, Array2<FloatElem<B>>), Self::E> {
     self.predictor.predict(inputs, global)
   }
 }
 
-impl<B, O> OppaiTrainableModel<<B as Backend>::FloatElem> for Learner<B, O>
+impl<B, O> OppaiTrainableModel<FloatElem<B>> for Learner<B, O>
 where
   B: Backend + AutodiffBackend,
-  <B as Backend>::FloatElem: Float,
+  FloatElem<B>: Float,
   O: Optimizer<Model<B>, B>,
 {
   type TE = ModelError;
 
   fn train(
     mut self,
-    inputs: Array4<<B as Backend>::FloatElem>,
-    global: Array2<<B as Backend>::FloatElem>,
-    policies: Array3<<B as Backend>::FloatElem>,
-    opponent_policies: Array3<<B as Backend>::FloatElem>,
-    values: Array2<<B as Backend>::FloatElem>,
-    scores: Array2<<B as Backend>::FloatElem>,
+    inputs: Array4<FloatElem<B>>,
+    global: Array2<FloatElem<B>>,
+    policies: Array3<FloatElem<B>>,
+    opponent_policies: Array3<FloatElem<B>>,
+    values: Array2<FloatElem<B>>,
+    scores: Array2<FloatElem<B>>,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
@@ -766,7 +767,7 @@ where
     let out_values = log_softmax(out_value_logits, 1);
     let out_scores_cdf = out_scores.clone().exp().cumsum(1);
 
-    let batch = <<B as Backend>::FloatElem as NumCast>::from(batch).unwrap();
+    let batch = <FloatElem<B> as num_traits::NumCast>::from(batch).unwrap();
     // TODO: KataGo uses different weight
     let values_loss = -(out_values * values).sum() * 1.5 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
