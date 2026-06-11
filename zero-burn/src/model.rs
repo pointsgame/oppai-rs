@@ -793,12 +793,17 @@ where
   }
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "ndarray", feature = "vulkan", feature = "webgpu")))]
 mod tests {
-  use super::{ConvOrGpool, Learner, Model, Predictor};
+  #[cfg(feature = "ndarray")]
+  use super::ConvOrGpool;
+  use super::{Learner, Model, Predictor};
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
+  use burn::backend::{Wgpu, wgpu::WgpuDevice};
+  use burn::{backend::Autodiff, optim::SgdConfig};
+  #[cfg(feature = "ndarray")]
   use burn::{
-    backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
-    optim::SgdConfig,
+    backend::{NdArray, ndarray::NdArrayDevice},
     tensor::{Tensor, activation::softmax},
   };
   use ndarray::{Array2, Array3, Array4, array};
@@ -808,6 +813,7 @@ mod tests {
   };
 
   #[test]
+  #[cfg(feature = "ndarray")]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
     let (policy_logits, values, _) = model.forward(
@@ -839,6 +845,7 @@ mod tests {
   // zero-initialized conv so each block starts as the identity, and the model still produces a
   // valid, finite policy distribution.
   #[test]
+  #[cfg(feature = "ndarray")]
   fn initialize_zeroes_residual_branches() {
     let device = NdArrayDevice::Cpu;
     let mut model = Model::<NdArray>::new(&device);
@@ -895,7 +902,9 @@ mod tests {
     };
   }
 
+  #[cfg(feature = "ndarray")]
   predict_test!(predict_ndarray, NdArray, NdArrayDevice::Cpu);
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   predict_test!(predict_wgpu, Wgpu, WgpuDevice::DefaultDevice);
 
   macro_rules! train_test {
@@ -941,6 +950,8 @@ mod tests {
     };
   }
 
+  #[cfg(feature = "ndarray")]
   train_test!(train_ndarray, NdArray, NdArrayDevice::Cpu);
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   train_test!(train_wgpu, Wgpu, WgpuDevice::DefaultDevice);
 }

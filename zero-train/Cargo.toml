@@ -10,7 +10,7 @@ edition = "2024"
 ndarray.workspace = true
 num-traits.workspace = true
 either.workspace = true
-burn = { workspace = true, features = ["autodiff", "autotune", "ndarray", "vulkan", "fusion"] }
+burn = { workspace = true, features = ["autodiff", "autotune", "fusion"] }
 rand.workspace = true
 rand_distr.workspace = true
 log.workspace = true
@@ -30,7 +30,10 @@ oppai-zero-sgf = { path = "../zero-sgf" }
 rand_xoshiro.workspace = true
 
 [features]
-default = ["dsu"]
+default = ["dsu", "ndarray", "vulkan"]
 dsu = ["oppai-field/dsu"]
 cuda = ["burn/cuda"]
 rocm = ["burn/rocm"]
+ndarray = ["burn/ndarray"]
+vulkan = ["burn/vulkan"]
+webgpu = ["burn/webgpu"]

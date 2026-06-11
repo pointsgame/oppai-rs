@@ -16,5 +16,8 @@ log.workspace = true
 oppai-zero = { path = "../zero" }
 derive_more = { workspace = true, features = ["from"] }
 
-[dev-dependencies]
-burn = { workspace = true, features = ["autodiff", "autotune", "ndarray", "vulkan"] }
+[features]
+ndarray = ["burn/ndarray"]
+vulkan = ["burn/vulkan"]
+webgpu = ["burn/webgpu"]
+default = ["ndarray", "vulkan"]

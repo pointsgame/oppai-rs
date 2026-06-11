@@ -55,24 +55,17 @@ pub enum Action {
 pub enum Backend {
   #[cfg(feature = "cuda")]
   Cuda,
+  #[cfg(feature = "ndarray")]
+  Ndarray,
   #[cfg(feature = "rocm")]
   Rocm,
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   Wgpu,
-  Ndarray,
 }
 
 pub struct Config {
   pub backend: Backend,
   pub seed: Option<u64>,
-}
-
-impl Default for Config {
-  fn default() -> Self {
-    Self {
-      backend: Backend::Wgpu,
-      seed: None,
-    }
-  }
 }
 
 fn width_arg() -> Arg {
@@ -272,7 +265,7 @@ pub fn cli_parse() -> (Config, Action) {
         .help("Backend to use")
         .num_args(1)
         .value_parser(value_parser!(Backend))
-        .default_value("Wgpu"),
+        .required(true),
     )
     .arg(
       Arg::new("seed")

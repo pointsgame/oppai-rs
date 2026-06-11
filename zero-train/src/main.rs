@@ -3,10 +3,14 @@ mod config;
 use anyhow::{Error, Result};
 #[cfg(feature = "cuda")]
 use burn::backend::{Cuda, cuda::CudaDevice};
+#[cfg(feature = "ndarray")]
+use burn::backend::{NdArray, ndarray::NdArrayDevice};
 #[cfg(feature = "rocm")]
 use burn::backend::{Rocm, rocm::RocmDevice};
+#[cfg(any(feature = "vulkan", feature = "webgpu"))]
+use burn::backend::{Wgpu, wgpu::WgpuDevice};
 use burn::{
-  backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
+  backend::Autodiff,
   module::Module,
   optim::{Optimizer, SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
@@ -442,7 +446,9 @@ fn main() -> Result<ExitCode> {
   let (config, action) = cli_parse();
 
   match config.backend {
+    #[cfg(feature = "ndarray")]
     ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu, should_stop),
+    #[cfg(any(feature = "vulkan", feature = "webgpu"))]
     ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::DefaultDevice, should_stop),
     #[cfg(feature = "cuda")]
     ConfigBackend::Cuda => run::<Cuda>(config, action, CudaDevice::default(), should_stop),
