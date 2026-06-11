@@ -55,6 +55,8 @@ pub enum Action {
 pub enum Backend {
   #[cfg(feature = "cuda")]
   Cuda,
+  #[cfg(feature = "rocm")]
+  Rocm,
   Wgpu,
   Ndarray,
 }

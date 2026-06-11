@@ -3,6 +3,8 @@ mod config;
 use anyhow::{Error, Result};
 #[cfg(feature = "cuda")]
 use burn::backend::{Cuda, cuda::CudaDevice};
+#[cfg(feature = "rocm")]
+use burn::backend::{Rocm, rocm::RocmDevice};
 use burn::{
   backend::{Autodiff, NdArray, Wgpu, ndarray::NdArrayDevice, wgpu::WgpuDevice},
   module::Module,
@@ -444,5 +446,7 @@ fn main() -> Result<ExitCode> {
     ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::DefaultDevice, should_stop),
     #[cfg(feature = "cuda")]
     ConfigBackend::Cuda => run::<Cuda>(config, action, CudaDevice::default(), should_stop),
+    #[cfg(feature = "rocm")]
+    ConfigBackend::Rocm => run::<Rocm>(config, action, RocmDevice::default(), should_stop),
   }
 }

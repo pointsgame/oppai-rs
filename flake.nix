@@ -21,14 +21,17 @@
     };
   };
 
-  outputs = inputs:
-    inputs.flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import inputs.nixpkgs {
           inherit system;
           overlays = [ inputs.fenix.overlays.default ];
         };
-      in {
+      in
+      {
         devShell = pkgs.mkShell rec {
           nativeBuildInputs = with pkgs; [
             cmake
@@ -67,6 +70,11 @@
 
             perf
 
+            # ROCm
+            rocmPackages.clr
+            rocmPackages.hipblas
+            rocmPackages.rocblas
+
             # for rfd
             dbus
 
@@ -85,5 +93,6 @@
             "${pkgs.gtk3}/share/gsettings-schemas/gtk+3-${pkgs.gtk3.version}:"
             + "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/gsettings-desktop-schemas-${pkgs.gsettings-desktop-schemas.version}";
         };
-      });
+      }
+    );
 }
