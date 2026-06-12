@@ -11,13 +11,6 @@ rand.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 log.workspace = true
-oppai-field = { path = "../field" }
-oppai-patterns = { path = "../patterns" }
-oppai-ai = { path = "../ai" }
-oppai-ais = { path = "../ais" }
-oppai-protocol = { path = "../protocol" }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = [
   "MessageEvent",
   "DedicatedWorkerGlobalScope",
@@ -29,6 +22,11 @@ wasm-logger = "0.2"
 console_error_panic_hook = "0.1"
 # for wasm_js feature
 getrandom = { version = "0.4", features = ["wasm_js"] }
+oppai-field = { path = "../field" }
+oppai-patterns = { path = "../patterns" }
+oppai-ai = { path = "../ai" }
+oppai-ais = { path = "../ais" }
+oppai-protocol = { path = "../protocol" }
 
 [features]
 default = ["dsu"]

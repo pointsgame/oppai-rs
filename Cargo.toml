@@ -30,35 +30,6 @@ members = [
   "verify",
   "verify-child"
 ]
-default-members = [
-  "field",
-  "common",
-  "rotate",
-  "ladders",
-  "test-images",
-  "uct",
-  "minimax",
-  "patterns",
-  "zero",
-  "zero-burn",
-  "zero-sgf",
-  "zero-train",
-  "initial",
-  "iced",
-  "svg",
-  "sgf",
-  "ai",
-  "ais",
-  "protocol",
-  "cli",
-  "client",
-  "term-render",
-  "versus",
-  "server",
-  "bench",
-  "verify",
-  "verify-child"
-]
 
 [workspace.dependencies]
 rand = "0.10"
