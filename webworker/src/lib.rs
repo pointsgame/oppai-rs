@@ -50,7 +50,7 @@ fn handle(state_option: &mut Option<State>, patterns: &Arc<Patterns>, request: R
       let state = state_option.as_mut().ok_or(anyhow!("Not initialized"))?;
       let mut oppai = TimeLimitedAI(time, &mut state.oppai);
       let analysis = oppai.analyze(&mut state.rng, &mut state.field, player, None, &|| false);
-      let moves = analysis
+      let mut moves: Vec<Move> = analysis
         .moves()
         .map(|(pos, weight)| Move {
           coords: Coords {
@@ -60,6 +60,7 @@ fn handle(state_option: &mut Option<State>, patterns: &Arc<Patterns>, request: R
           weight: weight.to_f64().unwrap_or_default(),
         })
         .collect();
+      moves.sort_unstable_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
       Response::Analyze { moves }
     }
     Request::Analyze {
@@ -75,7 +76,7 @@ fn handle(state_option: &mut Option<State>, patterns: &Arc<Patterns>, request: R
       let analysis = state
         .oppai
         .analyze(&mut state.rng, &mut state.field, player, Some(confidence), &|| false);
-      let moves = analysis
+      let mut moves: Vec<Move> = analysis
         .moves()
         .map(|(pos, weight)| Move {
           coords: Coords {
@@ -85,6 +86,7 @@ fn handle(state_option: &mut Option<State>, patterns: &Arc<Patterns>, request: R
           weight: weight.to_f64().unwrap_or_default(),
         })
         .collect();
+      moves.sort_unstable_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
       Response::Analyze { moves }
     }
   })
