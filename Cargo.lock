@@ -6459,6 +6459,7 @@ dependencies = [
  "console_error_panic_hook",
  "getrandom 0.4.2",
  "js-sys",
+ "log",
  "oppai-ai",
  "oppai-ais",
  "oppai-field",
@@ -6467,6 +6468,7 @@ dependencies = [
  "rand 0.10.1",
  "serde_json",
  "wasm-bindgen",
+ "wasm-logger",
  "web-sys",
 ]
 

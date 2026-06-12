@@ -10,6 +10,7 @@ edition = "2024"
 rand.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+log.workspace = true
 oppai-field = { path = "../field" }
 oppai-patterns = { path = "../patterns" }
 oppai-ai = { path = "../ai" }
@@ -24,6 +25,7 @@ web-sys = { version = "0.3", features = [
 ] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
+wasm-logger = "0.2"
 console_error_panic_hook = "0.1"
 # for wasm_js feature
 getrandom = { version = "0.4", features = ["wasm_js"] }

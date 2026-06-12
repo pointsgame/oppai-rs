@@ -95,7 +95,9 @@ fn handle(state_option: &mut Option<State>, patterns: &Arc<Patterns>, request: R
 #[wasm_bindgen(start)]
 pub fn run() {
   console_error_panic_hook::set_once();
-  web_sys::console::log_1(&"Initializing OpPAI worker".into());
+  wasm_logger::init(wasm_logger::Config::default());
+
+  log::info!("Initializing OpPAI worker");
 
   let scope = DedicatedWorkerGlobalScope::from(JsValue::from(js_sys::global()));
   let scope_clone = scope.clone();
