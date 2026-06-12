@@ -319,6 +319,10 @@ impl UctRoot {
             self.init(field, player);
             break;
           }
+        } else {
+          self.clear();
+          self.init(field, player);
+          break;
         }
       }
     }
