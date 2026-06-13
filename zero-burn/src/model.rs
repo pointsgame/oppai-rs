@@ -4,7 +4,7 @@ use burn::{
     Linear, LinearConfig, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
   },
-  optim::{GradientsParams, LearningRate, Optimizer},
+  optim::{GradientsParams, Optimizer},
   tensor::{
     DataError, Tensor, TensorData,
     activation::{log_softmax, mish, softmax},
@@ -642,7 +642,6 @@ pub struct Predictor<B: Backend> {
 pub struct Learner<B: AutodiffBackend, O> {
   pub predictor: Predictor<B>,
   pub optimizer: O,
-  pub lr: LearningRate,
 }
 
 #[derive(Error, Debug, From)]
@@ -754,6 +753,7 @@ where
     opponent_policies: Array3<FloatElem<B>>,
     values: Array2<FloatElem<B>>,
     scores: Array2<FloatElem<B>>,
+    learning_rate: f64,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
@@ -815,7 +815,7 @@ where
     let loss = values_loss + policies_loss + opponent_policies_loss + pdf_loss + cdf_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
-    self.predictor.model = self.optimizer.step(self.lr, self.predictor.model, grads);
+    self.predictor.model = self.optimizer.step(learning_rate, self.predictor.model, grads);
 
     Ok(self)
   }
@@ -945,11 +945,7 @@ mod tests {
           device: $device,
         };
         let optimizer = SgdConfig::new().init::<Autodiff<$backend>, Model<_>>();
-        let mut learner = Learner {
-          predictor,
-          optimizer,
-          lr: 0.01,
-        };
+        let mut learner = Learner { predictor, optimizer };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let global = array![[0.2]];
@@ -968,6 +964,7 @@ mod tests {
             opponent_policies,
             values,
             scores,
+            0.01,
           )
           .unwrap();
         let (out_policies_2, out_values_2) = learner.predict(inputs, global).unwrap();

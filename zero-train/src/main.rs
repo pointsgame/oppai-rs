@@ -177,11 +177,7 @@ where
   let record = Record::from_item::<FullPrecisionSettings>(item, &device);
   let optimizer = optimizer.load_record(record);
   let predictor = Predictor { model, device };
-  let mut learner = Learner {
-    predictor,
-    optimizer,
-    lr: params.learning_rate,
-  };
+  let mut learner = Learner { predictor, optimizer };
 
   let mut examples = Examples::default();
   for path in params.games {
@@ -237,6 +233,12 @@ where
     if i.is_multiple_of(64) {
       log::info!("Batch {} out of {}", i, batches_count);
     }
+    let progress = if batches_count > 1 {
+      i as f64 / (batches_count - 1) as f64
+    } else {
+      0.0
+    };
+    let learning_rate = params.learning_rate_start + (params.learning_rate_end - params.learning_rate_start) * progress;
     learner = learner.train(
       batch.inputs,
       batch.global,
@@ -244,6 +246,7 @@ where
       batch.opponent_policies,
       batch.values,
       batch.scores,
+      learning_rate,
     )?;
   }
 

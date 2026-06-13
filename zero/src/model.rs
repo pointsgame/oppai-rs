@@ -19,6 +19,7 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
     opponent_policies: Array3<N>,
     values: Array2<N>,
     scores: Array2<N>,
+    learning_rate: f64,
   ) -> Result<Self, Self::TE>;
 }
 

@@ -25,7 +25,8 @@ pub struct TrainParams {
   pub model_new: PathBuf,
   pub optimizer_new: PathBuf,
   pub games: Vec<PathBuf>,
-  pub learning_rate: f64,
+  pub learning_rate_start: f64,
+  pub learning_rate_end: f64,
   pub weight_decay: f32,
   pub batch_size: usize,
   pub skip: usize,
@@ -194,10 +195,19 @@ pub fn cli_parse() -> (Config, Action) {
         .required(true),
     )
     .arg(
-      Arg::new("learning-rate")
-        .long("learning-rate")
+      Arg::new("learning-rate-start")
+        .long("learning-rate-start")
         .short('l')
-        .help("Learning rate")
+        .help("Learning rate at the first batch")
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("0.00001"),
+    )
+    .arg(
+      Arg::new("learning-rate-end")
+        .long("learning-rate-end")
+        .short('e')
+        .help("Learning rate at the last batch")
         .num_args(1)
         .value_parser(value_parser!(f64))
         .default_value("0.00001"),
@@ -330,7 +340,8 @@ pub fn cli_parse() -> (Config, Action) {
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
       let games = matches.get_many("games").unwrap().cloned().collect();
-      let learning_rate = matches.get_one("learning-rate").cloned().unwrap();
+      let learning_rate_start = matches.get_one("learning-rate-start").cloned().unwrap();
+      let learning_rate_end = matches.get_one("learning-rate-end").cloned().unwrap();
       let weight_decay = matches.get_one("weight-decay").copied().unwrap();
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
@@ -342,7 +353,8 @@ pub fn cli_parse() -> (Config, Action) {
         model_new,
         optimizer_new,
         games,
-        learning_rate,
+        learning_rate_start,
+        learning_rate_end,
         weight_decay,
         batch_size,
         skip,
