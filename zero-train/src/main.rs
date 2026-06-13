@@ -58,7 +58,7 @@ where
   model.save_file(params.model, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let optimizer = SgdConfig::new()
-    .with_weight_decay(Some(WeightDecayConfig::new(0.00003)))
+    .with_weight_decay(Some(WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
     .init::<B, BurnModel<_>>();
   let record = optimizer.to_record();
@@ -167,7 +167,7 @@ where
     &device,
   )?;
   let optimizer = SgdConfig::new()
-    .with_weight_decay(Some(WeightDecayConfig::new(0.00003)))
+    .with_weight_decay(Some(WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
     .init::<B, BurnModel<_>>();
   let item = Recorder::<B>::load_item(

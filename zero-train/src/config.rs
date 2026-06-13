@@ -5,6 +5,7 @@ use strum::{EnumString, VariantNames};
 pub struct InitParams {
   pub model: PathBuf,
   pub optimizer: PathBuf,
+  pub weight_decay: f32,
 }
 
 pub struct PlayParams {
@@ -25,6 +26,7 @@ pub struct TrainParams {
   pub optimizer_new: PathBuf,
   pub games: Vec<PathBuf>,
   pub learning_rate: f64,
+  pub weight_decay: f32,
   pub batch_size: usize,
   pub skip: usize,
 }
@@ -126,11 +128,22 @@ fn optimizer_new_arg() -> Arg {
     .required(true)
 }
 
+fn weight_decay_arg() -> Arg {
+  Arg::new("weight-decay")
+    .long("weight-decay")
+    .short('w')
+    .help("Weight decay (L2 penalty)")
+    .num_args(1)
+    .value_parser(value_parser!(f32))
+    .default_value("0.00003")
+}
+
 pub fn cli_parse() -> (Config, Action) {
   let init = Command::new("init")
     .about("Initialize the neural network")
     .arg(model_arg())
-    .arg(optimizer_arg());
+    .arg(optimizer_arg())
+    .arg(weight_decay_arg());
   let play = Command::new("play")
     .about("Self-play a single game")
     .arg(width_arg().num_args(1..))
@@ -189,6 +202,7 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(f64))
         .default_value("0.00001"),
     )
+    .arg(weight_decay_arg())
     .arg(
       Arg::new("batch-size")
         .long("batch-size")
@@ -285,7 +299,12 @@ pub fn cli_parse() -> (Config, Action) {
     Some(("init", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
       let optimizer = matches.get_one("optimizer").cloned().unwrap();
-      Action::Init(InitParams { model, optimizer })
+      let weight_decay = matches.get_one("weight-decay").copied().unwrap();
+      Action::Init(InitParams {
+        model,
+        optimizer,
+        weight_decay,
+      })
     }
     Some(("play", matches)) => {
       let width = matches.get_many("width").unwrap().copied().collect();
@@ -312,6 +331,7 @@ pub fn cli_parse() -> (Config, Action) {
       let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
       let games = matches.get_many("games").unwrap().cloned().collect();
       let learning_rate = matches.get_one("learning-rate").cloned().unwrap();
+      let weight_decay = matches.get_one("weight-decay").copied().unwrap();
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
       Action::Train(TrainParams {
@@ -323,6 +343,7 @@ pub fn cli_parse() -> (Config, Action) {
         optimizer_new,
         games,
         learning_rate,
+        weight_decay,
         batch_size,
         skip,
       })
