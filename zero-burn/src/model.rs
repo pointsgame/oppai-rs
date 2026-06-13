@@ -1,5 +1,5 @@
 use burn::{
-  module::{Initializer, Module, Param},
+  module::{Initializer, Module, ModuleVisitor, Param},
   nn::{
     Linear, LinearConfig, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
@@ -715,6 +715,29 @@ where
   }
 }
 
+struct ParamNormVisitor<B: Backend> {
+  sum_sq: Tensor<B, 1>,
+}
+
+impl<B: Backend> ParamNormVisitor<B> {
+  fn new(device: &B::Device) -> Self {
+    Self {
+      sum_sq: Tensor::zeros([1], device),
+    }
+  }
+
+  fn l2_norm(self) -> FloatElem<B> {
+    self.sum_sq.sqrt().into_scalar()
+  }
+}
+
+impl<B: Backend> ModuleVisitor<B> for ParamNormVisitor<B> {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
+    let tensor = param.val();
+    self.sum_sq = self.sum_sq.clone() + (tensor.clone() * tensor).sum();
+  }
+}
+
 impl<B, O> OppaiTrainableModel<FloatElem<B>> for Learner<B, O>
 where
   B: Backend + AutodiffBackend,
@@ -775,13 +798,18 @@ where
     let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
     let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
 
+    let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
+    self.predictor.model.visit(&mut norm_visitor);
+    let param_l2_norm = norm_visitor.l2_norm();
+
     log::info!(
-      "Loss: value {} policy {} opponent policy {} pdf {} cdf {}",
+      "Loss: value {} policy {} opponent policy {} pdf {} cdf {} L2 norm {}",
       values_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
       opponent_policies_loss.clone().into_scalar(),
       pdf_loss.clone().into_scalar(),
       cdf_loss.clone().into_scalar(),
+      param_l2_norm,
     );
 
     let loss = values_loss + policies_loss + opponent_policies_loss + pdf_loss + cdf_loss;
