@@ -87,7 +87,7 @@ where
     for eta in dirichlet.iter_mut() {
       *eta = *eta / sum;
     }
-    for (child, eta) in self.children.iter_mut().zip(dirichlet.into_iter()) {
+    for (child, eta) in self.children.iter_mut().zip(dirichlet) {
       child.prior = child.prior * (N::one() - epsilon) + epsilon * eta;
     }
   }

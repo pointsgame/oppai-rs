@@ -102,13 +102,9 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
             }
           }
           mouse::Event::CursorMoved { .. } => {}
-          mouse::Event::CursorLeft => {
-            if state.is_some() {
-              *state = None;
-              return Some(canvas::Action::publish(CanvasMessage::ClearCoordinates).and_capture());
-            } else {
-              return None;
-            }
+          mouse::Event::CursorLeft if state.is_some() => {
+            *state = None;
+            return Some(canvas::Action::publish(CanvasMessage::ClearCoordinates).and_capture());
           }
           _ => return None,
         }
