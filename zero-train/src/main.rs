@@ -72,7 +72,7 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
+fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
@@ -95,7 +95,12 @@ where
 
   let mut file = File::options().append(true).create(true).open(&params.game)?;
 
-  for _ in 0..params.count {
+  for i in 0..params.count {
+    if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+      log::info!("Stopping after {} games", i);
+      break;
+    }
+
     let width = params.width[rng.random_range(0..params.width.len())];
     let height = params.height[rng.random_range(0..params.height.len())];
     let mut player = Player::Red;
@@ -266,7 +271,7 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn pit<B, R: Rng>(params: PitParams, device: B::Device, rng: &mut R) -> Result<ExitCode>
+fn pit<B, R: Rng>(params: PitParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
@@ -331,6 +336,11 @@ where
 
   let mut i = 0u64;
   let outcome = loop {
+    if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+      log::info!("Stopping after {} games", i);
+      break false;
+    }
+
     let result = if i.is_multiple_of(2) {
       pit::play(&mut field, player, &mut model_new, &mut model_old, 0, rng)?
     } else {
@@ -425,9 +435,9 @@ where
 
   match action {
     Action::Init(params) => init::<Autodiff<B>>(params, device),
-    Action::Play(params) => play::<B, _>(params, device, &mut rng),
+    Action::Play(params) => play::<B, _>(params, device, &mut rng, should_stop),
     Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
-    Action::Pit(params) => pit::<B, _>(params, device, &mut rng),
+    Action::Pit(params) => pit::<B, _>(params, device, &mut rng, should_stop),
     Action::Count(params) => count(params, &mut rng),
   }
 }
