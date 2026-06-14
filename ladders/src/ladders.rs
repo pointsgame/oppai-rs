@@ -41,7 +41,17 @@ fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) ->
   moves
 }
 
-fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Player, empty_board: &mut [u32]) -> bool {
+fn is_trajectoty_alive<SS: Fn() -> bool>(
+  field: &mut Field,
+  trajectory: &Trajectory<2>,
+  player: Player,
+  empty_board: &mut [u32],
+  should_stop: &SS,
+) -> bool {
+  if should_stop() {
+    return false;
+  }
+
   let mut put = 0;
   for &pos in &trajectory.points {
     if field.put_point(pos, player) {
@@ -70,7 +80,7 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
         field.undo();
       }
       field.put_point(pos, player);
-      let result = is_trajectoty_viable(field, trajectory, player, empty_board);
+      let result = is_trajectoty_viable(field, trajectory, player, empty_board, should_stop);
       field.undo();
       for &pos in &trajectory.points {
         field.put_point(pos, player);
@@ -86,14 +96,19 @@ fn is_trajectoty_alive(field: &mut Field, trajectory: &Trajectory<2>, player: Pl
   result
 }
 
-fn is_trajectoty_viable(
+fn is_trajectoty_viable<SS: Fn() -> bool>(
   field: &mut Field,
   trajectory: &Trajectory<2>,
   player: Player,
   empty_board: &mut [u32],
+  should_stop: &SS,
 ) -> bool {
   if trajectory.points.len() == 1 {
     return true;
+  }
+
+  if should_stop() {
+    return false;
   }
 
   let enemy = player.next();
@@ -110,7 +125,7 @@ fn is_trajectoty_viable(
       return true;
     }
 
-    let result = is_trajectoty_alive(field, trajectory, player, empty_board);
+    let result = is_trajectoty_alive(field, trajectory, player, empty_board, should_stop);
 
     field.undo();
 
@@ -239,7 +254,7 @@ fn ladders_rec<SS: Fn() -> bool>(
         best_move,
         alpha,
         capture_depth,
-        best_move.is_some() && (viable || is_trajectoty_viable(field, trajectory, player, empty_board)),
+        best_move.is_some() && (viable || is_trajectoty_viable(field, trajectory, player, empty_board, should_stop)),
       )
     }
     _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
@@ -409,7 +424,7 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
             if cur_score > alpha
               && cur_viable
               && (next_trajectory.points.len() > 1
-                || is_trajectoty_viable(field, &trajectory, player, &mut empty_board))
+                || is_trajectoty_viable(field, &trajectory, player, &mut empty_board, should_stop))
             {
               moves.insert(our_pos);
               break;
