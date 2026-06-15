@@ -28,6 +28,7 @@ pub struct TrainParams {
   pub learning_rate_start: f64,
   pub learning_rate_end: f64,
   pub weight_decay: f32,
+  pub gradient_clipping: Option<f32>,
   pub batch_size: usize,
   pub skip: usize,
 }
@@ -198,7 +199,7 @@ pub fn cli_parse() -> (Config, Action) {
       Arg::new("learning-rate-start")
         .long("learning-rate-start")
         .short('l')
-        .help("Learning rate at the first batch")
+        .help("Learning rate at the first batch (kept low to warm up momentum)")
         .num_args(1)
         .value_parser(value_parser!(f64))
         .default_value("0.00001"),
@@ -210,9 +211,17 @@ pub fn cli_parse() -> (Config, Action) {
         .help("Learning rate at the last batch")
         .num_args(1)
         .value_parser(value_parser!(f64))
-        .default_value("0.00001"),
+        .default_value("0.0001"),
     )
     .arg(weight_decay_arg())
+    .arg(
+      Arg::new("gradient-clipping")
+        .long("gradient-clipping")
+        .short('c')
+        .help("Clip each parameter's gradient L2 norm to this value")
+        .num_args(1)
+        .value_parser(value_parser!(f32)),
+    )
     .arg(
       Arg::new("batch-size")
         .long("batch-size")
@@ -343,6 +352,7 @@ pub fn cli_parse() -> (Config, Action) {
       let learning_rate_start = matches.get_one("learning-rate-start").cloned().unwrap();
       let learning_rate_end = matches.get_one("learning-rate-end").cloned().unwrap();
       let weight_decay = matches.get_one("weight-decay").copied().unwrap();
+      let gradient_clipping = matches.get_one::<f32>("gradient-clipping").copied();
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
       Action::Train(TrainParams {
@@ -356,6 +366,7 @@ pub fn cli_parse() -> (Config, Action) {
         learning_rate_start,
         learning_rate_end,
         weight_decay,
+        gradient_clipping,
         batch_size,
         skip,
       })

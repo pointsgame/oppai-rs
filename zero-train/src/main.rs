@@ -11,6 +11,7 @@ use burn::backend::{Rocm, rocm::RocmDevice};
 use burn::backend::{Wgpu, wgpu::WgpuDevice};
 use burn::{
   backend::Autodiff,
+  grad_clipping::GradientClippingConfig,
   module::Module,
   optim::{Optimizer, SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
@@ -174,6 +175,7 @@ where
   let optimizer = SgdConfig::new()
     .with_weight_decay(Some(WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
+    .with_gradient_clipping(params.gradient_clipping.map(GradientClippingConfig::Norm))
     .init::<B, BurnModel<_>>();
   let item = Recorder::<B>::load_item(
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
