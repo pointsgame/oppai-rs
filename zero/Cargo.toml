@@ -18,4 +18,10 @@ oppai-field = { path = "../field" }
 oppai-rotate = { path = "../rotate" }
 
 [dev-dependencies]
+criterion.workspace = true
 rand_xoshiro.workspace = true
+
+[[bench]]
+name = "mcgs_benchmark"
+path = "src/mcgs_benchmark.rs"
+harness = false
