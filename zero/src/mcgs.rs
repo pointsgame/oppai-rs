@@ -259,17 +259,23 @@ impl<N: Float + Sum + Copy> Search<N> {
     best
   }
 
-  fn select_path(&mut self) -> (Vec<Pos>, bool) {
+  /// Selects a path from the root to a leaf, returning the traversed edges as
+  /// `(node_idx, edge_idx)` pairs and whether the leaf is terminal. The edge
+  /// references let later steps update the tree (and replay the moves) by direct
+  /// indexing instead of re-scanning each node's children by position.
+  fn select_path(&mut self) -> (Vec<(usize, usize)>, bool) {
     let mut idx = self.root_idx;
     let mut noise = self.dirichlet_noise;
-    let mut moves = Vec::new();
+    let mut path = Vec::new();
     let mut terminal = self.nodes[idx].visits > 0;
 
     while let Some(edge_idx) = self.select_edge(idx, noise) {
       noise = false;
-      self.nodes[idx].children[edge_idx].virtual_losses += 1;
-      moves.push(self.nodes[idx].children[edge_idx].pos);
-      if let Some(&child_idx) = self.map.get(&self.nodes[idx].children[edge_idx].hash) {
+      let edge = &mut self.nodes[idx].children[edge_idx];
+      edge.virtual_losses += 1;
+      path.push((idx, edge_idx));
+      let hash = edge.hash;
+      if let Some(&child_idx) = self.map.get(&hash) {
         idx = child_idx;
       } else {
         terminal = false;
@@ -277,52 +283,41 @@ impl<N: Float + Sum + Copy> Search<N> {
       }
     }
 
-    (moves, terminal)
+    (path, terminal)
   }
 
-  fn revert_virtual_loss(&mut self, moves: &[Pos]) {
-    let mut idx = self.root_idx;
-    for &pos in moves {
-      let edge_idx = self.nodes[idx]
-        .children
-        .iter()
-        .position(|edge| edge.pos == pos)
-        .unwrap();
-      self.nodes[idx].children[edge_idx].virtual_losses -= 1;
-      if let Some(&child_idx) = self.map.get(&self.nodes[idx].children[edge_idx].hash) {
-        idx = child_idx;
-      } else {
-        break;
-      }
+  fn revert_virtual_loss(&mut self, path: &[(usize, usize)]) {
+    for &(node_idx, edge_idx) in path {
+      self.nodes[node_idx].children[edge_idx].virtual_losses -= 1;
     }
   }
 
-  fn add_result(&mut self, moves: &[Pos], result: N, children: Vec<Edge<N>>) {
-    let mut indices = Vec::new();
-    let mut idx = self.root_idx;
-    for &pos in moves {
-      indices.push(idx);
-      let edge_idx = self.nodes[idx]
-        .children
-        .iter()
-        .position(|edge| edge.pos == pos)
-        .unwrap();
-      self.nodes[idx].children[edge_idx].visits += 1;
-      idx = self.add_node(self.nodes[idx].children[edge_idx].hash);
+  fn add_result(&mut self, path: &[(usize, usize)], result: N, children: Vec<Edge<N>>) {
+    for &(node_idx, edge_idx) in path {
+      self.nodes[node_idx].children[edge_idx].visits += 1;
     }
-    self.nodes[idx].value = result;
-    self.nodes[idx].raw_value = result;
-    self.nodes[idx].visits = 1;
-    self.nodes[idx].children = children;
-    while let Some(idx) = indices.pop() {
-      Self::update_node(&self.map, &mut self.nodes, idx);
+    // All non-leaf nodes on the path are already in the map (that is how
+    // `select_path` advanced through them); only the leaf may be new.
+    let leaf_idx = if let Some(&(node_idx, edge_idx)) = path.last() {
+      let hash = self.nodes[node_idx].children[edge_idx].hash;
+      self.add_node(hash)
+    } else {
+      self.root_idx
+    };
+    self.nodes[leaf_idx].value = result;
+    self.nodes[leaf_idx].raw_value = result;
+    self.nodes[leaf_idx].visits = 1;
+    self.nodes[leaf_idx].children = children;
+    for &(node_idx, _) in path.iter().rev() {
+      Self::update_node(&self.map, &mut self.nodes, node_idx);
     }
   }
 
   const PARALLEL_READOUTS: usize = 8;
 
-  fn make_moves(field: &mut Field, moves: &[Pos], mut player: Player, ground: bool) {
-    for &pos in moves {
+  fn make_moves(nodes: &[Node<N>], field: &mut Field, path: &[(usize, usize)], mut player: Player, ground: bool) {
+    for &(node_idx, edge_idx) in path {
+      let pos = nodes[node_idx].children[edge_idx].pos;
       assert!(field.put_point(pos, player), "can't put point, likely a collision");
       if ground {
         field.update_grounded();
@@ -392,8 +387,8 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut leafs = iter::repeat_with(|| self.select_path())
       .take(Self::PARALLEL_READOUTS)
       .collect::<Vec<_>>();
-    for (moves, _) in &leafs {
-      self.revert_virtual_loss(moves);
+    for (path, _) in &leafs {
+      self.revert_virtual_loss(path);
     }
 
     leafs.sort_unstable();
@@ -404,23 +399,23 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut global = Vec::with_capacity(GLOBAL_FEATURES * leafs.len());
     let red_komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
 
-    leafs.retain(|(leaf, terminal)| {
-      Self::make_moves(field, leaf, player, true);
+    leafs.retain(|(path, terminal)| {
+      Self::make_moves(&self.nodes, field, path, player, true);
 
-      let player = if leaf.len().is_multiple_of(2) {
+      let player = if path.len().is_multiple_of(2) {
         player
       } else {
         player.next()
       };
 
-      let leaf_komi_x_2 = if leaf.len().is_multiple_of(2) {
+      let leaf_komi_x_2 = if path.len().is_multiple_of(2) {
         komi_x_2
       } else {
         -komi_x_2
       };
 
       let result = if *terminal || field.is_game_over(red_komi_x_2) {
-        self.add_result(leaf, game_result(field, player, leaf_komi_x_2), Vec::new());
+        self.add_result(path, game_result(field, player, leaf_komi_x_2), Vec::new());
         false
       } else {
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
@@ -428,7 +423,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         true
       };
 
-      for _ in 0..leaf.len() {
+      for _ in 0..path.len() {
         field.undo();
       }
 
@@ -453,10 +448,10 @@ impl<N: Float + Sum + Copy> Search<N> {
 
     let (policies, values) = model.predict(features, global)?;
 
-    for (i, (leaf, _)) in leafs.iter().enumerate() {
-      Self::make_moves(field, leaf, player, false);
+    for (i, (path, _)) in leafs.iter().enumerate() {
+      Self::make_moves(&self.nodes, field, path, player, false);
 
-      let player = if (leaf.len()).is_multiple_of(2) {
+      let player = if path.len().is_multiple_of(2) {
         player
       } else {
         player.next()
@@ -466,9 +461,9 @@ impl<N: Float + Sum + Copy> Search<N> {
       let value = values[(i, 0)] - values[(i, 1)];
 
       let children = self.create_children(field, player, &policy, rng);
-      self.add_result(leaf, value, children);
+      self.add_result(path, value, children);
 
-      for _ in 0..leaf.len() {
+      for _ in 0..path.len() {
         field.undo();
       }
     }
