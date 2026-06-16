@@ -172,6 +172,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut sum_visits = 0;
 
     for edge in nodes[node_idx].children.iter() {
+      // Unvisited edges contribute nothing (zero weight in both sums), so skip
+      // them to avoid the hash lookup and conversion for the (often many)
+      // children that have never been traversed.
+      if edge.visits == 0 {
+        continue;
+      }
       if let Some(&child_idx) = map.get(&edge.hash) {
         sum_values = sum_values - N::from(edge.visits).unwrap() * nodes[child_idx].value;
       }
