@@ -202,6 +202,11 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut best_score = -N::infinity();
     let mut best = None;
 
+    let c_puct = N::from(1.1).unwrap();
+    let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
+    let forced_k = N::from(Self::FORCED_PLAYOUTS_K).unwrap();
+    let puct_coeff = c_puct * total_n_sqrt;
+
     let prior_visited = LazyCell::new(|| {
       node
         .children
@@ -212,17 +217,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     });
 
     for (idx, edge) in node.children.iter().enumerate() {
-      let child_value = self
-        .map
-        .get(&edge.hash)
-        .map_or(N::zero(), |&child_idx| self.nodes[child_idx].value);
-
-      // Hyperparameter for PUCT
-      let c_puct = N::from(1.1).unwrap();
-      let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
-
       let total_edge_visits = edge.visits + edge.virtual_losses;
       let q = if total_edge_visits > 0 {
+        let child_value = self
+          .map
+          .get(&edge.hash)
+          .map_or(N::zero(), |&child_idx| self.nodes[child_idx].value);
         let visits = N::from(edge.visits).unwrap();
         let virtual_losses = N::from(edge.virtual_losses).unwrap();
         // Child value is from child's perspective.
@@ -232,16 +232,15 @@ impl<N: Float + Sum + Copy> Search<N> {
         // FPU
         node.value - c_fpu * *prior_visited
       };
-      let n = edge.visits + edge.virtual_losses;
       let p = edge.prior;
 
       // PUCT formula
       // Score = Q(a) + C * P(a) * sqrt(sum(N)) / (N(a) + 1)
-      let score = q + c_puct * p * total_n_sqrt / N::from(n + 1).unwrap();
+      let score = q + puct_coeff * p / N::from(total_edge_visits + 1).unwrap();
 
       // Forced playouts
       let score = if noise && edge.visits > 0 {
-        let nforced = (N::from(Self::FORCED_PLAYOUTS_K).unwrap() * p * total_n).sqrt();
+        let nforced = (forced_k * p * total_n).sqrt();
         if N::from(edge.visits).unwrap() < nforced {
           N::infinity()
         } else {
