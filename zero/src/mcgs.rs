@@ -14,8 +14,35 @@ use rand_distr::uniform::SampleUniform;
 use rand_distr::{Distribution, Exp1, Gamma, Open01, StandardNormal};
 use std::cell::LazyCell;
 use std::collections::VecDeque;
+use std::hash::{BuildHasherDefault, Hasher};
 use std::mem;
-use std::{collections::HashMap, iter, iter::Sum};
+use std::{iter, iter::Sum};
+
+/// Pass-through hasher for the transposition table.
+///
+/// The keys are Zobrist hashes, which are already uniformly distributed 64-bit
+/// values, so there is nothing to gain from running them through a general
+/// purpose hash function.
+#[derive(Default)]
+pub struct IdentityHasher(u64);
+
+impl Hasher for IdentityHasher {
+  fn finish(&self) -> u64 {
+    self.0
+  }
+
+  fn write(&mut self, bytes: &[u8]) {
+    for &byte in bytes {
+      self.0 = (self.0 << 8) | byte as u64;
+    }
+  }
+
+  fn write_u64(&mut self, i: u64) {
+    self.0 = i;
+  }
+}
+
+type HashMap<K, V> = std::collections::HashMap<K, V, BuildHasherDefault<IdentityHasher>>;
 
 /// Represents an edge from a parent to a child in the graph.
 #[derive(Clone, PartialEq, Debug)]
@@ -120,7 +147,7 @@ impl<N: Float> Search<N> {
     let mut search = Search {
       root_idx: 0,
       nodes: Vec::new(),
-      map: HashMap::new(),
+      map: HashMap::default(),
       dirichlet_noise: false,
     };
 
@@ -490,7 +517,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut new_search = Self {
       root_idx: 0,
       nodes: Vec::with_capacity(self.nodes.len()),
-      map: HashMap::with_capacity(self.map.len()),
+      map: HashMap::with_capacity_and_hasher(self.map.len(), BuildHasherDefault::default()),
       dirichlet_noise: self.dirichlet_noise,
     };
 
