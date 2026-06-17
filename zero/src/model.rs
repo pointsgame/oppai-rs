@@ -25,12 +25,12 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
 
 impl<T, E, N: Float> Model<N> for T
 where
-  T: Fn(Array4<N>) -> Result<(Array3<N>, Array2<N>), E>,
+  T: Fn(Array4<N>, Array2<N>) -> Result<(Array3<N>, Array2<N>), E>,
 {
   type E = E;
 
-  fn predict(&mut self, inputs: Array4<N>, _: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
-    self(inputs)
+  fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+    self(inputs, global)
   }
 }
 
