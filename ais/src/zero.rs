@@ -1,12 +1,16 @@
 use num_traits::Float;
 use oppai_ai::{ai::AI, analysis::SimpleAnalysis};
 use oppai_field::{field::Field, player::Player};
-use oppai_zero::{model::Model, zero::Zero as InnerZero};
+use oppai_zero::{
+  model::Model,
+  zero::{Zero as InnerZero, policy_moves},
+};
 use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 use std::{
   any::TypeId,
   fmt::{Debug, Display},
   iter::Sum,
+  marker::PhantomData,
 };
 
 pub struct Zero<N: Float + Sum + Display + Debug, M: Model<N>>(pub InnerZero<N, M>);
@@ -37,6 +41,57 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
         moves,
         estimation,
         confidence,
+        origin: TypeId::of::<Self>(),
+      }
+    } else {
+      SimpleAnalysis {
+        moves: Vec::new(),
+        estimation: N::zero(),
+        confidence: 0,
+        origin: TypeId::of::<Self>(),
+      }
+    }
+  }
+}
+
+/// AI that plays the raw neural network policy directly, without running any
+/// Monte Carlo search.
+pub struct ZeroPolicy<N: Float + Sum + Display + Debug, M: Model<N>> {
+  pub model: M,
+  phantom: PhantomData<N>,
+}
+
+impl<N: Float + Sum + Display + Debug, M: Model<N>> ZeroPolicy<N, M> {
+  pub fn new(model: M) -> Self {
+    ZeroPolicy {
+      model,
+      phantom: PhantomData,
+    }
+  }
+}
+
+impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'static> AI for ZeroPolicy<N, M> {
+  type Analysis = SimpleAnalysis<N, N, usize>;
+  type Confidence = usize;
+
+  fn analyze<S, R, SS>(
+    &mut self,
+    _rng: &mut R,
+    field: &mut Field,
+    player: Player,
+    _confidence: Option<Self::Confidence>,
+    _should_stop: &SS,
+  ) -> Self::Analysis
+  where
+    R: Rng + SeedableRng<Seed = S>,
+    StandardUniform: Distribution<S>,
+    SS: Fn() -> bool + Sync,
+  {
+    if let Ok((moves, estimation)) = policy_moves(&mut self.model, field, player) {
+      SimpleAnalysis {
+        moves,
+        estimation,
+        confidence: 1,
         origin: TypeId::of::<Self>(),
       }
     } else {

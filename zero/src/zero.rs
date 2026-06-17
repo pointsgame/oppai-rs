@@ -1,7 +1,12 @@
-use crate::{mcgs::Search, model::Model};
+use crate::{
+  field_features::{field_features, global},
+  mcgs::Search,
+  model::Model,
+};
+use ndarray::Axis;
 use num_traits::Float;
 use oppai_field::{
-  field::{Field, Pos},
+  field::{Field, Pos, to_x, to_y},
   player::Player,
 };
 use rand::Rng;
@@ -11,6 +16,8 @@ use std::{
 };
 
 type Analysis<N> = (Vec<(Pos, u64)>, usize, N);
+
+type PolicyAnalysis<N> = (Vec<(Pos, N)>, N);
 
 #[derive(Clone)]
 pub struct Zero<N: Float, M: Model<N>> {
@@ -54,4 +61,51 @@ where
 
     Ok((self.search.visits().collect(), iterations, self.search.value()))
   }
+}
+
+/// Returns the raw neural network policy for the current position, without
+/// running any Monte Carlo search. A single forward pass produces the policy
+/// and value; the legal moves are returned weighted by their policy priors
+/// (renormalized over the legal moves) and the value is the estimation.
+pub fn policy_moves<N, M>(model: &mut M, field: &Field, player: Player) -> Result<PolicyAnalysis<N>, <M as Model<N>>::E>
+where
+  N: Float + Sum,
+  M: Model<N>,
+{
+  // The raw policy carries no notion of komi, matching the search which is
+  // driven with a zero komi here.
+  let komi_x_2 = 0;
+  let features = field_features::<N>(field, player, field.width(), field.height(), 0).insert_axis(Axis(0));
+  let global = global::<N>(field, player, komi_x_2).insert_axis(Axis(0));
+
+  let (policies, values) = model.predict(features, global)?;
+
+  let policy = policies.index_axis(Axis(0), 0);
+  let value = values[(0, 0)] - values[(0, 1)];
+
+  let stride = field.stride;
+  let mut moves = Vec::new();
+  for pos in field.min_pos()..=field.max_pos() {
+    if !field.is_putting_allowed(pos) {
+      continue;
+    }
+    let x = to_x(stride, pos);
+    let y = to_y(stride, pos);
+    moves.push((pos, policy[(y as usize, x as usize)]));
+  }
+
+  // Renormalize the priors over the legal moves.
+  let sum: N = moves.iter().map(|&(_, prior)| prior).sum();
+  if sum > N::zero() {
+    for (_, prior) in moves.iter_mut() {
+      *prior = *prior / sum;
+    }
+  } else if !moves.is_empty() {
+    let uniform = N::one() / N::from(moves.len()).unwrap();
+    for (_, prior) in moves.iter_mut() {
+      *prior = uniform;
+    }
+  }
+
+  Ok((moves, value))
 }
