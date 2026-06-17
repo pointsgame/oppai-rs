@@ -104,10 +104,64 @@ where
     }
   }
 
-  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N) {
-    let gamma = Gamma::<N>::new(N::from(shape).unwrap(), N::one()).unwrap();
-    let mut dirichlet = gamma.sample_iter(rng).take(self.children.len()).collect::<Vec<_>>();
-    let sum = dirichlet.iter().cloned().sum::<N>();
+  /// Adds shaped Dirichlet noise to the children priors.
+  ///
+  /// `total_concentration` is the sum of the Dirichlet alphas. Instead of spreading it
+  /// uniformly across the legal moves, half of it is spread uniformly and the other
+  /// half is concentrated on the moves whose (clamped) log policy is above the
+  /// average - i.e. the moves that still stand out from the field. Such "blind spot"
+  /// moves usually have a much higher prior than most arbitrary moves on the board even
+  /// when their absolute prior is tiny, so this raises the chance that they get noised
+  /// and explored.
+  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, total_concentration: N) {
+    if self.children.is_empty() {
+      return;
+    }
+    let legal_count = N::from(self.children.len()).unwrap();
+
+    // Shape the alpha distribution based on the log of the policy prior. Priors are
+    // clamped at 0.01 so any sufficiently likely move is treated equally, and the small
+    // additive constant avoids `ln(0)` for moves with a zero prior.
+    let cap = N::from(0.01).unwrap();
+    let offset = N::from(1e-20).unwrap();
+    let mut alpha = self
+      .children
+      .iter()
+      .map(|edge| (edge.prior.min(cap) + offset).ln())
+      .collect::<Vec<_>>();
+    let log_mean = alpha.iter().copied().sum::<N>() / legal_count;
+    let mut prop_sum = N::zero();
+    for a in alpha.iter_mut() {
+      *a = (*a - log_mean).max(N::zero());
+      prop_sum = prop_sum + *a;
+    }
+    let uniform = N::one() / legal_count;
+    if prop_sum <= N::zero() {
+      // All priors equal: fall back to symmetric Dirichlet.
+      for a in alpha.iter_mut() {
+        *a = uniform;
+      }
+    } else {
+      let half = N::from(0.5).unwrap();
+      for a in alpha.iter_mut() {
+        *a = half * (*a / prop_sum + uniform);
+      }
+    }
+
+    // Draw an independent Gamma per move with the shaped alpha and normalize to get the
+    // Dirichlet sample, reusing `alpha` in place. The shaped alphas sum to 1, so they sum
+    // to `total_concentration` once scaled.
+    let mut dirichlet = alpha;
+    let mut sum = N::zero();
+    for eta in dirichlet.iter_mut() {
+      let shape = *eta * total_concentration;
+      *eta = if shape > N::zero() {
+        Gamma::<N>::new(shape, N::one()).unwrap().sample(rng)
+      } else {
+        N::zero()
+      };
+      sum = sum + *eta;
+    }
     if sum == N::zero() {
       return;
     }
@@ -706,9 +760,9 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
-  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, shape: N, temperature: N) {
+  pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, epsilon: N, total_concentration: N, temperature: N) {
     self.nodes[self.root_idx].apply_temperature(temperature);
-    self.nodes[self.root_idx].add_dirichlet_noise(rng, epsilon, shape);
+    self.nodes[self.root_idx].add_dirichlet_noise(rng, epsilon, total_concentration);
     self.dirichlet_noise = true;
   }
 }

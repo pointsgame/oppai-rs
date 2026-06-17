@@ -163,10 +163,12 @@ where
       if search.nodes[search.root_idx].children.is_empty() {
         search.mcgs(field, player, model, komi_x_2, rng)?;
       }
-      // TODO: does it scale to big sizes?
-      let shape = N::from(0.03 * 19.0.powi(2)).unwrap() / N::from(field.width() * field.height()).unwrap();
+      // Total Dirichlet alpha, matching AlphaZero's 0.03 per move on an empty 19x19 board
+      // (0.03 * 361 = 10.83). Kept constant across board sizes and through the game, with
+      // the shaping in `add_dirichlet_noise` deciding how it is spread across the moves.
+      let total_concentration = N::from(0.03 * 19.0.powi(2)).unwrap();
       let temperature = interpolate_early(field, N::from(1.25).unwrap(), N::from(1.1).unwrap());
-      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), shape, temperature);
+      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), total_concentration, temperature);
       MCTS_FULL_SIMS
     } else {
       MCTS_SIMS
