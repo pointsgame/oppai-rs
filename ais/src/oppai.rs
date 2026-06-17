@@ -66,15 +66,14 @@ pub struct InConfidence {
   pub zero_iterations: usize,
 }
 
+type SolverAi<N, M> = Either<Either<Heuristic, (Minimax, Heuristic)>, Either<Uct, Zero<N, M>>>;
+
 pub struct Oppai<N: Float + Sum + Display + Debug, M: Model<N>> {
   config: Config,
   initial: Initial,
   patterns: Patterns,
   ladders: Ladders,
-  heuristic: Heuristic,
-  minimax: Minimax,
-  uct: Uct,
-  zero: Zero<N, M>,
+  ai: SolverAi<N, M>,
 }
 
 type InnerAnalysis<N> = Either<
@@ -186,12 +185,7 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
     StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
-    let ai = match self.config.solver {
-      Solver::Heuristic => Either::Left(Either::Left(&mut self.heuristic)),
-      Solver::Minimax => Either::Left(Either::Right((&mut self.minimax, &mut self.heuristic))),
-      Solver::Uct => Either::Right(Either::Left(&mut self.uct)),
-      Solver::Zero => Either::Right(Either::Right(&mut self.zero)),
-    };
+    let ai = &mut self.ai;
     let ai = if self.config.ladders {
       Either::Left((TimeLimitedAI(self.config.ladders_time_limit, self.ladders), ai))
     } else {
@@ -220,17 +214,24 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
 
 impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> Oppai<N, M> {
   pub fn new(width: u32, height: u32, config: Config, patterns: Arc<InnerPatterns>, model: M) -> Self {
-    let minimax_config = config.minimax.clone();
-    let uct_config = config.uct.clone();
+    let ai = match config.solver {
+      Solver::Heuristic => Either::Left(Either::Left(Heuristic)),
+      Solver::Minimax => Either::Left(Either::Right((
+        Minimax(InnerMinimax::new(config.minimax.clone())),
+        Heuristic,
+      ))),
+      Solver::Uct => Either::Right(Either::Left(Uct(UctRoot::new(
+        config.uct.clone(),
+        length(width, height),
+      )))),
+      Solver::Zero => Either::Right(Either::Right(Zero(InnerZero::new(model)))),
+    };
     Oppai {
       config,
       initial: Initial,
       patterns: Patterns(patterns),
       ladders: Ladders,
-      heuristic: Heuristic,
-      minimax: Minimax(InnerMinimax::new(minimax_config)),
-      uct: Uct(UctRoot::new(uct_config, length(width, height))),
-      zero: Zero(InnerZero::new(model)),
+      ai,
     }
   }
 
