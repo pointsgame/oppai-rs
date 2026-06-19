@@ -2,12 +2,27 @@ use clap::{Arg, Command, value_parser};
 use oppai_ais::cli::*;
 use oppai_ais::oppai::Config as AIConfig;
 use std::time::Duration;
+use strum::{EnumString, VariantNames};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
+pub enum Backend {
+  #[cfg(feature = "cuda")]
+  Cuda,
+  #[cfg(feature = "ndarray")]
+  Ndarray,
+  #[cfg(feature = "rocm")]
+  Rocm,
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
+  Wgpu,
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Config {
   pub ai: AIConfig,
   pub patterns: Vec<String>,
   pub patterns_cache: Option<String>,
+  pub model: Option<String>,
+  pub backend: Backend,
   pub uct_iterations: usize,
   pub minimax_depth: u32,
   pub time_gap: Duration,
@@ -33,6 +48,21 @@ pub fn cli_parse() -> Config {
         .long("patterns-cache-file")
         .help("Patterns cache file to use")
         .num_args(1),
+    )
+    .arg(
+      Arg::new("model")
+        .short('m')
+        .long("model")
+        .help("Neural network model file to use for the zero solver")
+        .num_args(1),
+    )
+    .arg(
+      Arg::new("backend")
+        .long("backend")
+        .help("Backend to use for neural network inference")
+        .num_args(1)
+        .value_parser(value_parser!(Backend))
+        .required(true),
     )
     .arg(
       Arg::new("minimax-depth")
@@ -72,6 +102,8 @@ pub fn cli_parse() -> Config {
       .get_many("patterns-file")
       .map_or_else(Vec::new, |patterns| patterns.cloned().collect()),
     patterns_cache: matches.get_one("patterns-cache-file").cloned(),
+    model: matches.get_one("model-file").cloned(),
+    backend: matches.get_one("backend").copied().unwrap(),
     uct_iterations: matches.get_one("uct-iterations").copied().unwrap(),
     minimax_depth: matches.get_one("minimax-depth").copied().unwrap(),
     time_gap: matches

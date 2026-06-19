@@ -6175,10 +6175,13 @@ name = "oppai-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "burn",
  "clap",
  "crossbeam",
+ "either",
  "env_logger",
  "humantime",
+ "num-traits",
  "oppai-ai",
  "oppai-ais",
  "oppai-common",
@@ -6188,9 +6191,12 @@ dependencies = [
  "oppai-patterns",
  "oppai-protocol",
  "oppai-uct",
+ "oppai-zero",
+ "oppai-zero-burn",
  "postcard",
  "rand 0.10.1",
  "serde_json",
+ "strum",
 ]
 
 [[package]]

@@ -14,8 +14,14 @@ clap = { workspace = true, features = [ "cargo" ] }
 humantime.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+either.workspace = true
+strum.workspace = true
+num-traits.workspace = true
 postcard = { workspace = true, features = [ "use-std" ] }
+burn = { workspace = true }
 oppai-common = { path = "../common" }
+oppai-zero = { path = "../zero" }
+oppai-zero-burn = { path = "../zero-burn", default-features = false }
 oppai-field = { path = "../field" }
 oppai-ladders = { path = "../ladders" }
 oppai-patterns = { path = "../patterns" }
@@ -26,8 +32,13 @@ oppai-ais = { path = "../ais" }
 oppai-protocol = { path = "../protocol" }
 
 [features]
-default = ["dsu"]
+default = ["dsu", "ndarray", "vulkan"]
 dsu = ["oppai-ais/dsu"]
+cuda = ["oppai-zero-burn/cuda", "burn/cuda"]
+rocm = ["oppai-zero-burn/rocm", "burn/rocm"]
+ndarray = ["oppai-zero-burn/ndarray", "burn/ndarray"]
+vulkan = ["oppai-zero-burn/vulkan", "burn/vulkan"]
+webgpu = ["oppai-zero-burn/webgpu", "burn/webgpu"]
 
 [[bin]]
 name = "oppai-cli"

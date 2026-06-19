@@ -17,6 +17,8 @@ oppai-zero = { path = "../zero" }
 derive_more = { workspace = true, features = ["from"] }
 
 [features]
+cuda = ["burn/cuda"]
+rocm = ["burn/rocm"]
 ndarray = ["burn/ndarray"]
 vulkan = ["burn/vulkan"]
 webgpu = ["burn/webgpu"]

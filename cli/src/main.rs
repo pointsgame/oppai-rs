@@ -3,8 +3,23 @@
 
 mod config;
 
-use crate::config::cli_parse;
+use crate::config::{Backend as ConfigBackend, Config, cli_parse};
 use anyhow::Result;
+#[cfg(feature = "cuda")]
+use burn::backend::{Cuda, cuda::CudaDevice};
+#[cfg(feature = "ndarray")]
+use burn::backend::{NdArray, ndarray::NdArrayDevice};
+#[cfg(feature = "rocm")]
+use burn::backend::{Rocm, rocm::RocmDevice};
+#[cfg(any(feature = "vulkan", feature = "webgpu"))]
+use burn::backend::{Wgpu, wgpu::WgpuDevice};
+use burn::{
+  module::Module,
+  record::{DefaultFileRecorder, FullPrecisionSettings},
+  tensor::{backend::Backend, ops::FloatElem},
+};
+use either::Either;
+use num_traits::Float;
 use oppai_ai::{ai::AI, analysis::Analysis};
 use oppai_ais::{
   oppai::{InConfidence, Oppai},
@@ -13,57 +28,44 @@ use oppai_ais::{
 use oppai_field::field::Field;
 use oppai_patterns::patterns::Patterns;
 use oppai_protocol::{Constraint, Coords, Move, Request, Response};
+use oppai_zero_burn::model::{Model as BurnModel, Predictor};
 use rand::{make_rng, rngs::SmallRng};
 use std::{
   default::Default,
+  fmt::{Debug, Display},
   fs::File,
   io::{self, BufRead, BufReader, Read, Write},
+  iter::Sum,
   path::Path,
   sync::Arc,
 };
 
-struct State {
+type CliModel<B> = Either<(), Predictor<B>>;
+
+struct State<B: Backend>
+where
+  FloatElem<B>: Float + Sum + Display + Debug,
+{
   field: Field,
   rng: SmallRng,
-  oppai: Oppai<f32, ()>,
+  oppai: Oppai<FloatElem<B>, CliModel<B>>,
 }
 
-fn main() -> Result<()> {
-  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
-  env_logger::Builder::from_env(env).init();
-  let config = cli_parse();
-  let patterns = config
-    .patterns_cache
-    .as_ref()
-    .filter(|patterns_cache| Path::new(patterns_cache).exists())
-    .map(|patterns_cache| {
-      let mut file = File::open(patterns_cache).expect("Failed to open patterns cache file.");
-      let mut buffer = Vec::new();
-      file
-        .read_to_end(&mut buffer)
-        .expect("Failed to read patterns cache file.");
-      postcard::from_bytes(&buffer).expect("Failed to deserialize patterns cache file.")
-    })
-    .unwrap_or_else(|| {
-      if config.patterns.is_empty() {
-        Patterns::default()
-      } else {
-        Patterns::from_files(
-          config
-            .patterns
-            .iter()
-            .map(|path| File::open(path).expect("Failed to open patterns file.")),
-        )
-        .expect("Failed to read patterns file.")
-      }
-    });
-  if let Some(patterns_cache) = config.patterns_cache.as_ref()
-    && !Path::new(patterns_cache).exists()
-  {
-    let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
-    std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
-  }
-  let patterns_arc = Arc::new(patterns);
+fn run<B>(config: Config, patterns: Arc<Patterns>, device: B::Device) -> Result<()>
+where
+  B: Backend,
+  FloatElem<B>: Float + Sum + Display + Debug,
+{
+  let model = config.model.as_ref().map(|model_path| {
+    let model = BurnModel::<B>::new(&device);
+    model
+      .load_file(
+        model_path,
+        &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+        &device,
+      )
+      .expect("Failed to load model file.")
+  });
   let mut input = BufReader::new(io::stdin());
   let mut output = io::stdout();
   let mut state_option = None;
@@ -76,10 +78,17 @@ fn main() -> Result<()> {
     let response = match request {
       Request::Init { width, height } => {
         let mut rng = make_rng::<SmallRng>();
-        state_option = Some(State {
+        let model: CliModel<B> = match &model {
+          Some(model) => Either::Right(Predictor {
+            model: model.clone(),
+            device: device.clone(),
+          }),
+          None => Either::Left(()),
+        };
+        state_option = Some(State::<B> {
           field: Field::new_from_rng(width, height, &mut rng),
           rng,
-          oppai: Oppai::new(width, height, config.ai.clone(), patterns_arc.clone(), ()),
+          oppai: Oppai::new(width, height, config.ai.clone(), patterns.clone(), model),
         });
         Response::Init
       }
@@ -144,5 +153,54 @@ fn main() -> Result<()> {
 
     writeln!(&mut output, "{}", serde_json::to_string(&response)?)?;
     output.flush()?;
+  }
+}
+
+fn main() -> Result<()> {
+  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  env_logger::Builder::from_env(env).init();
+  let config = cli_parse();
+  let patterns = config
+    .patterns_cache
+    .as_ref()
+    .filter(|patterns_cache| Path::new(patterns_cache).exists())
+    .map(|patterns_cache| {
+      let mut file = File::open(patterns_cache).expect("Failed to open patterns cache file.");
+      let mut buffer = Vec::new();
+      file
+        .read_to_end(&mut buffer)
+        .expect("Failed to read patterns cache file.");
+      postcard::from_bytes(&buffer).expect("Failed to deserialize patterns cache file.")
+    })
+    .unwrap_or_else(|| {
+      if config.patterns.is_empty() {
+        Patterns::default()
+      } else {
+        Patterns::from_files(
+          config
+            .patterns
+            .iter()
+            .map(|path| File::open(path).expect("Failed to open patterns file.")),
+        )
+        .expect("Failed to read patterns file.")
+      }
+    });
+  if let Some(patterns_cache) = config.patterns_cache.as_ref()
+    && !Path::new(patterns_cache).exists()
+  {
+    let buffer = postcard::to_stdvec(&patterns).expect("Failed to serialize patterns cache file.");
+    std::fs::write(patterns_cache, buffer).expect("Failed to write patterns cache file.");
+  }
+  let patterns_arc = Arc::new(patterns);
+
+  match config.backend {
+    #[cfg(feature = "cuda")]
+    ConfigBackend::Cuda => run::<Cuda>(config, patterns_arc, CudaDevice::default()),
+    #[cfg(feature = "ndarray")]
+    ConfigBackend::Ndarray => run::<NdArray>(config, patterns_arc, NdArrayDevice::Cpu),
+    #[cfg(feature = "rocm")]
+    ConfigBackend::Rocm => run::<Rocm>(config, patterns_arc, RocmDevice::default()),
+    #[cfg(any(feature = "vulkan", feature = "webgpu"))]
+    ConfigBackend::Wgpu => run::<Wgpu>(config, patterns_arc, WgpuDevice::DefaultDevice),
   }
 }
