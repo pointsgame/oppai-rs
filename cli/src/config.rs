@@ -102,7 +102,7 @@ pub fn cli_parse() -> Config {
       .get_many("patterns-file")
       .map_or_else(Vec::new, |patterns| patterns.cloned().collect()),
     patterns_cache: matches.get_one("patterns-cache-file").cloned(),
-    model: matches.get_one("model-file").cloned(),
+    model: matches.get_one("model").cloned(),
     backend: matches.get_one("backend").copied().unwrap(),
     uct_iterations: matches.get_one("uct-iterations").copied().unwrap(),
     minimax_depth: matches.get_one("minimax-depth").copied().unwrap(),
