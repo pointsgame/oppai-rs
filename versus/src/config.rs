@@ -3,6 +3,8 @@ use clap::ArgAction;
 use clap::{Arg, Command};
 
 pub struct Config {
+  pub width: u32,
+  pub height: u32,
   pub ai1: String,
   pub ai2: String,
   pub ai1_args: Vec<String>,
@@ -16,6 +18,22 @@ pub fn cli_parse() -> Config {
     .version(clap::crate_version!())
     .author(clap::crate_authors!("\n"))
     .about(clap::crate_description!())
+    .arg(
+      Arg::new("width")
+        .long("width")
+        .help("Field width")
+        .num_args(1)
+        .value_parser(clap::value_parser!(u32))
+        .default_value("10"),
+    )
+    .arg(
+      Arg::new("height")
+        .long("height")
+        .help("Field height")
+        .num_args(1)
+        .value_parser(clap::value_parser!(u32))
+        .default_value("10"),
+    )
     .arg(
       Arg::new("ai1")
         .long("ai1")
@@ -54,6 +72,8 @@ pub fn cli_parse() -> Config {
   let matches = command.get_matches();
 
   Config {
+    width: *matches.get_one::<u32>("width").expect("`width` has a default"),
+    height: *matches.get_one::<u32>("height").expect("`height` has a default"),
     ai1: matches.get_one::<String>("ai1").expect("`ai1` is required").to_owned(),
     ai2: matches.get_one::<String>("ai2").expect("`ai2` is required").to_owned(),
     ai1_args: matches

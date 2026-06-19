@@ -25,8 +25,6 @@ use oppai_term_render::render;
 use rand::make_rng;
 use rand::rngs::SmallRng;
 
-const WIDTH: u32 = 10;
-const HEIGHT: u32 = 10;
 const INITIAL_POSITION: InitialPosition = InitialPosition::Cross;
 const TIME: Duration = Duration::from_secs(1);
 
@@ -212,7 +210,7 @@ fn main() -> Result<()> {
 
   let mut rng = make_rng::<SmallRng>();
   let mut game = Game {
-    field: ExtendedField::new_from_rng(WIDTH, HEIGHT, &mut rng),
+    field: ExtendedField::new_from_rng(config.width, config.height, &mut rng),
     client1: Client::spawn(config.ai1, config.ai1_args)?,
     client2: Client::spawn(config.ai2, config.ai2_args)?,
   };
