@@ -39,7 +39,7 @@ pub fn cli_parse() -> Config {
         .long("minimax-depth")
         .help(
           "The depth of minimax search tree. Used only for move generation with \
-         no time limit",
+           no time limit",
         )
         .num_args(1)
         .value_parser(value_parser!(u32))
@@ -50,7 +50,7 @@ pub fn cli_parse() -> Config {
         .long("uct-iterations")
         .help(
           "The number of UCT iterations. Used only for move generation with \
-         no time limit",
+           no time limit",
         )
         .num_args(1)
         .value_parser(value_parser!(usize))

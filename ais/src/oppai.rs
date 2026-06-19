@@ -1,6 +1,6 @@
 use crate::{
   heuristic::Heuristic, initial::Initial, ladders::Ladders, minimax::Minimax, patterns::Patterns,
-  time_limited_ai::TimeLimitedAI, uct::Uct, zero::Zero,
+  time_limited_ai::TimeLimitedAI, uct::Uct, zero::Zero, zero::ZeroPolicy,
 };
 use either::Either;
 use num_traits::Float;
@@ -32,6 +32,7 @@ pub enum Solver {
   Minimax,
   Uct,
   Zero,
+  ZeroPolicy,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -66,7 +67,8 @@ pub struct InConfidence {
   pub zero_iterations: usize,
 }
 
-type SolverAi<N, M> = Either<Either<Heuristic, (Minimax, Heuristic)>, Either<Uct, Zero<N, M>>>;
+type SolverAi<N, M> =
+  Either<Either<Heuristic, (Minimax, Heuristic)>, Either<Uct, Either<Zero<N, M>, ZeroPolicy<N, M>>>>;
 
 pub struct Oppai<N: Float + Sum + Display + Debug, M: Model<N>> {
   config: Config,
@@ -84,7 +86,7 @@ type InnerAnalysis<N> = Either<
       SingleAnalysis<i32, ()>,
       Either<
         Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
-        Either<SimpleAnalysis<f64, f64, usize>, SimpleAnalysis<u64, N, usize>>,
+        Either<SimpleAnalysis<f64, f64, usize>, Either<SimpleAnalysis<u64, N, usize>, SimpleAnalysis<N, N, usize>>>,
       >,
     >,
   >,
@@ -103,7 +105,8 @@ impl<N: Float + Sum + Display + Debug + 'static> OppaiWeight<N> {
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(())))))) => None,
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(w)))))) => Some(w as f64),
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w))))) => Some(w),
-      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(w))))) => Some(w as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w)))))) => Some(w as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(w)))))) => w.to_f64(),
     }
   }
 }
@@ -121,7 +124,8 @@ impl<N: Float + Sum + Display + Debug + 'static> OppaiEstimation<N> {
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(e)))))) => Some(e as f64),
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(())))))) => None,
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(e))))) => Some(e),
-      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(e))))) => e.to_f64(),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(e)))))) => e.to_f64(),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(e)))))) => e.to_f64(),
     }
   }
 }
@@ -139,7 +143,8 @@ impl<N: Float + Sum + Display + Debug + 'static> OppaiConfidence<N> {
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(c)))))) => Some(c as f64),
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(())))))) => None,
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(c))))) => Some(c as f64),
-      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(c))))) => Some(c as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(c)))))) => Some(c as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(c)))))) => Some(c as f64),
     }
   }
 }
@@ -202,7 +207,10 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
           (),
           (
             ((), (confidence.minimax_depth, ())),
-            (confidence.uct_iterations, confidence.zero_iterations),
+            (
+              confidence.uct_iterations,
+              (confidence.zero_iterations, confidence.zero_iterations),
+            ),
           ),
         ),
       )
@@ -224,7 +232,8 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> Oppai<N,
         config.uct.clone(),
         length(width, height),
       )))),
-      Solver::Zero => Either::Right(Either::Right(Zero(InnerZero::new(model)))),
+      Solver::Zero => Either::Right(Either::Right(Either::Left(Zero(InnerZero::new(model))))),
+      Solver::ZeroPolicy => Either::Right(Either::Right(Either::Right(ZeroPolicy::new(model)))),
     };
     Oppai {
       config,
