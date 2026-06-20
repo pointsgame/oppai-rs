@@ -19,8 +19,16 @@ use std::iter::{self, Sum};
 const MCTS_SIMS: u32 = 200;
 const MCTS_FULL_SIMS: u32 = 1000;
 
-#[derive(Clone, PartialEq, Eq, Default, Debug)]
-pub struct Visits(pub Vec<(Pos, u64)>, pub bool);
+/// Search statistics for a single move played in a self-play game.
+///
+/// * `.0` - visit count for each explored child of the root (the policy target).
+/// * `.1` - whether this move was decided by a "full" search (and is therefore a
+///   training sample).
+/// * `.2` - policy surprise: the KL divergence from the (noised, softmaxed) root
+///   policy prior to the policy training target, used for policy surprise
+///   weighting. Only meaningful for full searches; `0` otherwise.
+#[derive(Clone, PartialEq, Default, Debug)]
+pub struct Visits(pub Vec<(Pos, u64)>, pub bool, pub f64);
 
 impl Visits {
   pub fn total(&self) -> u64 {
@@ -178,17 +186,23 @@ where
       search.mcgs(field, player, model, komi_x_2, rng)?;
     }
 
-    let current_visits = Visits(
-      if full_search {
-        // Use pruned visits for full searches with Dirichlet noise.
-        // This removes the extra forced playouts from the policy target,
-        // producing a cleaner training signal.
-        search.pruned_visits().collect()
-      } else {
-        search.visits().collect()
-      },
-      full_search,
-    );
+    let target: Vec<(Pos, u64)> = if full_search {
+      // Use pruned visits for full searches with Dirichlet noise.
+      // This removes the extra forced playouts from the policy target,
+      // producing a cleaner training signal.
+      search.pruned_visits().collect()
+    } else {
+      search.visits().collect()
+    };
+    // Policy surprise (KL divergence from the root policy prior to the policy
+    // target) is only used to weight full-search training samples, so only
+    // bother computing it for those.
+    let surprise = if full_search {
+      search.policy_surprise(&target).to_f64().unwrap()
+    } else {
+      0.0
+    };
+    let current_visits = Visits(target, full_search, surprise);
 
     let pos = if let Some(pos) = search.next_root_with_temperature(
       interpolate_early(field, N::from(0.75).unwrap(), N::from(0.15).unwrap()),

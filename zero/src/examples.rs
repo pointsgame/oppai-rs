@@ -12,7 +12,7 @@ use oppai_field::{
   zobrist::Zobrist,
 };
 use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
-use rand::{Rng, seq::SliceRandom};
+use rand::{Rng, RngExt, seq::SliceRandom};
 use std::{cmp::Ordering, ops::Range, sync::Arc};
 
 #[derive(Clone, Debug)]
@@ -53,10 +53,29 @@ pub struct Examples {
   pub examples: Vec<Example>,
 }
 
+/// Fraction of the total policy surprise frequency weight that is distributed
+/// proportionally to each position's policy surprise. The remaining
+/// `1 - POLICY_SURPRISE_DATA_WEIGHT` is spread uniformly across the full-searched
+/// positions of a game. With the default of `0.5`, half of the total weight is
+/// uniform (giving every full search a baseline weight of `0.5`) and the other
+/// half is proportional to the policy surprise, so "surprising" positions end up
+/// written into the training data many more times. See KataGoMethods.md
+/// "Policy Surprise Weighting".
+const POLICY_SURPRISE_DATA_WEIGHT: f64 = 0.5;
+
 impl Examples {
-  pub fn add(&mut self, komi_x_2: i32, visits: Vec<Visits>, field: &Field, rotations: bool) {
+  pub fn add<R: Rng>(&mut self, komi_x_2: i32, visits: Vec<Visits>, field: &Field, rotations: bool, rng: &mut R) {
     let initial_moves = field.moves_count() - visits.len();
     let rotations = if rotations { ROTATIONS } else { MIRRORS };
+
+    // Policy surprise weighting: redistribute the per-position frequency weights
+    // across all full-searched positions of this game.
+    let full_count = visits.iter().filter(|visits| visits.1).count() as f64;
+    let sum_surprise = visits
+      .iter()
+      .filter(|visits| visits.1)
+      .map(|visits| visits.2)
+      .sum::<f64>();
 
     let game = ExampleGame {
       width: field.width(),
@@ -71,12 +90,26 @@ impl Examples {
 
     for (i, visits) in self.games[game_index].visits.iter().enumerate() {
       if visits.1 {
-        for rotation in 0..rotations {
-          self.examples.push(Example {
-            game: game_index,
-            position: initial_moves + i,
-            rotation,
-          });
+        // The frequency weight is `(1 - w) + w * full_count * surprise / sum_surprise`,
+        // averaging 1 across the game's full searches (so the expected total amount
+        // of data is unchanged) but skewed towards surprising positions. If there
+        // is no surprise anywhere, fall back to a flat weight of 1.
+        let weight = if sum_surprise > 0.0 {
+          (1.0 - POLICY_SURPRISE_DATA_WEIGHT) + POLICY_SURPRISE_DATA_WEIGHT * full_count * visits.2 / sum_surprise
+        } else {
+          1.0
+        };
+        // Write the position `floor(weight)` times, plus once more with probability
+        // equal to the fractional part of the weight.
+        let copies = weight.floor() as usize + usize::from(rng.random::<f64>() < weight.fract());
+        for _ in 0..copies {
+          for rotation in 0..rotations {
+            self.examples.push(Example {
+              game: game_index,
+              position: initial_moves + i,
+              rotation,
+            });
+          }
         }
       }
     }
