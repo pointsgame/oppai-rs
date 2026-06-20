@@ -3,6 +3,8 @@ mod config;
 use anyhow::{Error, Result};
 #[cfg(feature = "cuda")]
 use burn::backend::{Cuda, cuda::CudaDevice};
+#[cfg(feature = "flex")]
+use burn::backend::{Flex, flex::FlexDevice};
 #[cfg(feature = "ndarray")]
 use burn::backend::{NdArray, ndarray::NdArrayDevice};
 #[cfg(feature = "rocm")]
@@ -462,6 +464,8 @@ fn main() -> Result<ExitCode> {
   let (config, action) = cli_parse();
 
   match config.backend {
+    #[cfg(feature = "flex")]
+    ConfigBackend::Flex => run::<Flex>(config, action, FlexDevice, should_stop),
     #[cfg(feature = "ndarray")]
     ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu, should_stop),
     #[cfg(any(feature = "vulkan", feature = "webgpu"))]

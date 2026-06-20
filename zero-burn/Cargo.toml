@@ -19,6 +19,7 @@ derive_more = { workspace = true, features = ["from"] }
 [features]
 cuda = ["burn/cuda"]
 rocm = ["burn/rocm"]
+flex = ["burn/flex"]
 ndarray = ["burn/ndarray"]
 vulkan = ["burn/vulkan"]
 webgpu = ["burn/webgpu"]

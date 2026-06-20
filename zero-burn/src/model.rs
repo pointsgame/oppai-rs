@@ -821,11 +821,16 @@ where
   }
 }
 
-#[cfg(all(test, any(feature = "ndarray", feature = "vulkan", feature = "webgpu")))]
+#[cfg(all(
+  test,
+  any(feature = "flex", feature = "ndarray", feature = "vulkan", feature = "webgpu")
+))]
 mod tests {
   #[cfg(feature = "ndarray")]
   use super::ConvOrGpool;
   use super::{Learner, Model, Predictor};
+  #[cfg(feature = "flex")]
+  use burn::backend::{Flex, flex::FlexDevice};
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   use burn::backend::{Wgpu, wgpu::WgpuDevice};
   use burn::{backend::Autodiff, optim::SgdConfig};
@@ -930,6 +935,8 @@ mod tests {
     };
   }
 
+  #[cfg(feature = "flex")]
+  predict_test!(predict_flex, Flex, FlexDevice);
   #[cfg(feature = "ndarray")]
   predict_test!(predict_ndarray, NdArray, NdArrayDevice::Cpu);
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
@@ -975,6 +982,8 @@ mod tests {
     };
   }
 
+  #[cfg(feature = "flex")]
+  train_test!(train_flex, Flex, FlexDevice);
   #[cfg(feature = "ndarray")]
   train_test!(train_ndarray, NdArray, NdArrayDevice::Cpu);
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]

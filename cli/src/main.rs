@@ -7,6 +7,8 @@ use crate::config::{Backend as ConfigBackend, Config, cli_parse};
 use anyhow::Result;
 #[cfg(feature = "cuda")]
 use burn::backend::{Cuda, cuda::CudaDevice};
+#[cfg(feature = "flex")]
+use burn::backend::{Flex, flex::FlexDevice};
 #[cfg(feature = "ndarray")]
 use burn::backend::{NdArray, ndarray::NdArrayDevice};
 #[cfg(feature = "rocm")]
@@ -196,6 +198,8 @@ fn main() -> Result<()> {
   match config.backend {
     #[cfg(feature = "cuda")]
     ConfigBackend::Cuda => run::<Cuda>(config, patterns_arc, CudaDevice::default()),
+    #[cfg(feature = "flex")]
+    ConfigBackend::Flex => run::<Flex>(config, patterns_arc, FlexDevice),
     #[cfg(feature = "ndarray")]
     ConfigBackend::Ndarray => run::<NdArray>(config, patterns_arc, NdArrayDevice::Cpu),
     #[cfg(feature = "rocm")]
