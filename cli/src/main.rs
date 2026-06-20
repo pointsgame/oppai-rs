@@ -6,19 +6,22 @@ mod config;
 use crate::config::{Backend as ConfigBackend, Config, cli_parse};
 use anyhow::Result;
 #[cfg(feature = "cuda")]
-use burn::backend::{Cuda, cuda::CudaDevice};
+use burn::backend::Cuda;
 #[cfg(feature = "flex")]
-use burn::backend::{Flex, flex::FlexDevice};
+use burn::backend::Flex;
 #[cfg(feature = "ndarray")]
-use burn::backend::{NdArray, ndarray::NdArrayDevice};
+use burn::backend::NdArray;
 #[cfg(feature = "rocm")]
-use burn::backend::{Rocm, rocm::RocmDevice};
+use burn::backend::Rocm;
 #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-use burn::backend::{Wgpu, wgpu::WgpuDevice};
+use burn::backend::Wgpu;
 use burn::{
   module::Module,
   record::{DefaultFileRecorder, FullPrecisionSettings},
-  tensor::{backend::Backend, ops::FloatElem},
+  tensor::{
+    backend::{Backend, Device, DeviceId},
+    ops::FloatElem,
+  },
 };
 use either::Either;
 use num_traits::Float;
@@ -53,11 +56,12 @@ where
   oppai: Oppai<FloatElem<B>, CliModel<B>>,
 }
 
-fn run<B>(config: Config, patterns: Arc<Patterns>, device: B::Device) -> Result<()>
+fn run<B>(config: Config, patterns: Arc<Patterns>) -> Result<()>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + Display + Debug,
 {
+  let device = B::Device::from_id(DeviceId::new(config.device_type, config.device_id));
   let model = config.model.as_ref().map(|model_path| {
     let model = BurnModel::<B>::new(&device);
     model
@@ -197,14 +201,14 @@ fn main() -> Result<()> {
 
   match config.backend {
     #[cfg(feature = "cuda")]
-    ConfigBackend::Cuda => run::<Cuda>(config, patterns_arc, CudaDevice::default()),
+    ConfigBackend::Cuda => run::<Cuda>(config, patterns_arc),
     #[cfg(feature = "flex")]
-    ConfigBackend::Flex => run::<Flex>(config, patterns_arc, FlexDevice),
+    ConfigBackend::Flex => run::<Flex>(config, patterns_arc),
     #[cfg(feature = "ndarray")]
-    ConfigBackend::Ndarray => run::<NdArray>(config, patterns_arc, NdArrayDevice::Cpu),
+    ConfigBackend::Ndarray => run::<NdArray>(config, patterns_arc),
     #[cfg(feature = "rocm")]
-    ConfigBackend::Rocm => run::<Rocm>(config, patterns_arc, RocmDevice::default()),
+    ConfigBackend::Rocm => run::<Rocm>(config, patterns_arc),
     #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-    ConfigBackend::Wgpu => run::<Wgpu>(config, patterns_arc, WgpuDevice::DefaultDevice),
+    ConfigBackend::Wgpu => run::<Wgpu>(config, patterns_arc),
   }
 }

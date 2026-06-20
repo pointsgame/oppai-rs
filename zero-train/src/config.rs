@@ -71,6 +71,8 @@ pub enum Backend {
 
 pub struct Config {
   pub backend: Backend,
+  pub device_type: u16,
+  pub device_id: u16,
   pub seed: Option<u64>,
 }
 
@@ -303,6 +305,22 @@ pub fn cli_parse() -> (Config, Action) {
         .required(true),
     )
     .arg(
+      Arg::new("device-type")
+        .long("device-type")
+        .help("Device type id used to construct the backend device")
+        .num_args(1)
+        .value_parser(value_parser!(u16))
+        .default_value("0"),
+    )
+    .arg(
+      Arg::new("device-id")
+        .long("device-id")
+        .help("Device index id used to construct the backend device")
+        .num_args(1)
+        .value_parser(value_parser!(u16))
+        .default_value("0"),
+    )
+    .arg(
       Arg::new("seed")
         .long("seed")
         .help("Random seed")
@@ -312,9 +330,16 @@ pub fn cli_parse() -> (Config, Action) {
     .get_matches();
 
   let backend = matches.get_one("backend").copied().unwrap();
+  let device_type = matches.get_one("device-type").copied().unwrap();
+  let device_id = matches.get_one("device-id").copied().unwrap();
   let seed = matches.get_one("seed").copied();
 
-  let config = Config { backend, seed };
+  let config = Config {
+    backend,
+    device_type,
+    device_id,
+    seed,
+  };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {

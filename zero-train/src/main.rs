@@ -2,15 +2,15 @@ mod config;
 
 use anyhow::{Error, Result};
 #[cfg(feature = "cuda")]
-use burn::backend::{Cuda, cuda::CudaDevice};
+use burn::backend::Cuda;
 #[cfg(feature = "flex")]
-use burn::backend::{Flex, flex::FlexDevice};
+use burn::backend::Flex;
 #[cfg(feature = "ndarray")]
-use burn::backend::{NdArray, ndarray::NdArrayDevice};
+use burn::backend::NdArray;
 #[cfg(feature = "rocm")]
-use burn::backend::{Rocm, rocm::RocmDevice};
+use burn::backend::Rocm;
 #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-use burn::backend::{Wgpu, wgpu::WgpuDevice};
+use burn::backend::Wgpu;
 use burn::{
   backend::Autodiff,
   grad_clipping::GradientClippingConfig,
@@ -18,7 +18,7 @@ use burn::{
   optim::{Optimizer, SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
   tensor::{
-    backend::{AutodiffBackend, Backend},
+    backend::{AutodiffBackend, Backend, Device, DeviceId},
     ops::FloatElem,
   },
 };
@@ -428,7 +428,7 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
   Ok(ExitCode::SUCCESS)
 }
 
-fn run<B>(config: Config, action: Action, device: B::Device, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
+fn run<B>(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
@@ -436,6 +436,7 @@ where
   Exp1: Distribution<FloatElem<B>>,
   Open01: Distribution<FloatElem<B>>,
 {
+  let device = B::Device::from_id(DeviceId::new(config.device_type, config.device_id));
   let mut rng = config.seed.map_or_else(make_rng, SmallRng::seed_from_u64);
 
   match action {
@@ -465,14 +466,14 @@ fn main() -> Result<ExitCode> {
 
   match config.backend {
     #[cfg(feature = "flex")]
-    ConfigBackend::Flex => run::<Flex>(config, action, FlexDevice, should_stop),
+    ConfigBackend::Flex => run::<Flex>(config, action, should_stop),
     #[cfg(feature = "ndarray")]
-    ConfigBackend::Ndarray => run::<NdArray>(config, action, NdArrayDevice::Cpu, should_stop),
+    ConfigBackend::Ndarray => run::<NdArray>(config, action, should_stop),
     #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-    ConfigBackend::Wgpu => run::<Wgpu>(config, action, WgpuDevice::DefaultDevice, should_stop),
+    ConfigBackend::Wgpu => run::<Wgpu>(config, action, should_stop),
     #[cfg(feature = "cuda")]
-    ConfigBackend::Cuda => run::<Cuda>(config, action, CudaDevice::default(), should_stop),
+    ConfigBackend::Cuda => run::<Cuda>(config, action, should_stop),
     #[cfg(feature = "rocm")]
-    ConfigBackend::Rocm => run::<Rocm>(config, action, RocmDevice::default(), should_stop),
+    ConfigBackend::Rocm => run::<Rocm>(config, action, should_stop),
   }
 }

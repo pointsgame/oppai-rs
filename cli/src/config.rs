@@ -25,6 +25,8 @@ pub struct Config {
   pub patterns_cache: Option<String>,
   pub model: Option<String>,
   pub backend: Backend,
+  pub device_type: u16,
+  pub device_id: u16,
   pub uct_iterations: usize,
   pub minimax_depth: u32,
   pub time_gap: Duration,
@@ -67,6 +69,22 @@ pub fn cli_parse() -> Config {
         .required(true),
     )
     .arg(
+      Arg::new("device-type")
+        .long("device-type")
+        .help("Device type id used to construct the backend device")
+        .num_args(1)
+        .value_parser(value_parser!(u16))
+        .default_value("0"),
+    )
+    .arg(
+      Arg::new("device-id")
+        .long("device-id")
+        .help("Device index id used to construct the backend device")
+        .num_args(1)
+        .value_parser(value_parser!(u16))
+        .default_value("0"),
+    )
+    .arg(
       Arg::new("minimax-depth")
         .long("minimax-depth")
         .help(
@@ -106,6 +124,8 @@ pub fn cli_parse() -> Config {
     patterns_cache: matches.get_one("patterns-cache-file").cloned(),
     model: matches.get_one("model").cloned(),
     backend: matches.get_one("backend").copied().unwrap(),
+    device_type: matches.get_one("device-type").copied().unwrap(),
+    device_id: matches.get_one("device-id").copied().unwrap(),
     uct_iterations: matches.get_one("uct-iterations").copied().unwrap(),
     minimax_depth: matches.get_one("minimax-depth").copied().unwrap(),
     time_gap: matches
