@@ -571,7 +571,9 @@ impl<B: Backend> Model<B> {
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      linear_global: LinearConfig::new(GLOBAL_FEATURES, INNER_CHANNELS).init(device),
+      linear_global: LinearConfig::new(GLOBAL_FEATURES, INNER_CHANNELS)
+        .with_bias(false)
+        .init(device),
       residuals: (0..RESIDUAL_BLOCKS)
         .map(|i| ResidualBlock::new(device, (i + 1) % GPOOL_EVERY == 0))
         .collect(),
