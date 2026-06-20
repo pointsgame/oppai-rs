@@ -31,6 +31,7 @@ pub struct TrainParams {
   pub gradient_clipping: Option<f32>,
   pub batch_size: usize,
   pub skip: usize,
+  pub ignore_surprise: bool,
 }
 
 pub struct PitParams {
@@ -243,6 +244,13 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(usize))
         .default_value("0"),
+    )
+    .arg(
+      Arg::new("ignore-surprise")
+        .long("ignore-surprise")
+        .help("Ignore policy surprise values when weighting training samples")
+        .num_args(0)
+        .action(clap::ArgAction::SetTrue),
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
@@ -382,6 +390,7 @@ pub fn cli_parse() -> (Config, Action) {
       let gradient_clipping = matches.get_one::<f32>("gradient-clipping").copied();
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
+      let ignore_surprise = matches.get_flag("ignore-surprise");
       Action::Train(TrainParams {
         width,
         height,
@@ -396,6 +405,7 @@ pub fn cli_parse() -> (Config, Action) {
         gradient_clipping,
         batch_size,
         skip,
+        ignore_surprise,
       })
     }
     Some(("pit", matches)) => {

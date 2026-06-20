@@ -64,18 +64,32 @@ pub struct Examples {
 const POLICY_SURPRISE_DATA_WEIGHT: f64 = 0.5;
 
 impl Examples {
-  pub fn add<R: Rng>(&mut self, komi_x_2: i32, visits: Vec<Visits>, field: &Field, rotations: bool, rng: &mut R) {
+  pub fn add<R: Rng>(
+    &mut self,
+    komi_x_2: i32,
+    visits: Vec<Visits>,
+    field: &Field,
+    rotations: bool,
+    surprise_weighting: bool,
+    rng: &mut R,
+  ) {
     let initial_moves = field.moves_count() - visits.len();
     let rotations = if rotations { ROTATIONS } else { MIRRORS };
 
     // Policy surprise weighting: redistribute the per-position frequency weights
-    // across all full-searched positions of this game.
+    // across all full-searched positions of this game. Disabled when
+    // `surprise_weighting` is `false`, in which case every full search gets a
+    // flat weight of 1.
     let full_count = visits.iter().filter(|visits| visits.1).count() as f64;
-    let sum_surprise = visits
-      .iter()
-      .filter(|visits| visits.1)
-      .map(|visits| visits.2)
-      .sum::<f64>();
+    let sum_surprise = if surprise_weighting {
+      visits
+        .iter()
+        .filter(|visits| visits.1)
+        .map(|visits| visits.2)
+        .sum::<f64>()
+    } else {
+      0.0
+    };
 
     let game = ExampleGame {
       width: field.width(),

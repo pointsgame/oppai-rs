@@ -223,6 +223,7 @@ where
         visits,
         &field,
         field.width() <= params.height && field.height() <= params.width,
+        !params.ignore_surprise,
         rng,
       );
     }
