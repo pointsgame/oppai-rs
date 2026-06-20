@@ -92,8 +92,11 @@ impl<B: Backend> NormMask<B> {
   pub fn new(device: &B::Device, channels: usize, gamma: bool) -> Self {
     Self {
       beta: Param::from_tensor(Tensor::zeros([1, channels, 1, 1], device)),
+      // Centered at 1: gamma starts at zero and is applied as `gamma + 1`,
+      // so the layer begins as a unit affine and weight decay pulls the
+      // effective scale toward 1 rather than 0.
       gamma: if gamma {
-        Some(Param::from_tensor(Tensor::ones([1, channels, 1, 1], device)))
+        Some(Param::from_tensor(Tensor::zeros([1, channels, 1, 1], device)))
       } else {
         None
       },
@@ -102,7 +105,7 @@ impl<B: Backend> NormMask<B> {
 
   pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>) -> Tensor<B, 4> {
     match self.gamma {
-      Some(ref gamma) => (inputs * gamma.val() + self.beta.val()) * mask,
+      Some(ref gamma) => (inputs * (gamma.val() + 1.0) + self.beta.val()) * mask,
       None => (inputs + self.beta.val()) * mask,
     }
   }
