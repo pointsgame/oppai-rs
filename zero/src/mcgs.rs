@@ -702,17 +702,29 @@ impl<N: Float + Sum + Copy> Search<N> {
     self.nodes[self.root_idx].value
   }
 
+  /// Snapshot the policy priors of the root's children into a vector indexed by
+  /// position.
+  ///
+  /// Useful for capturing the raw network priors before they are overwritten in
+  /// place by temperature scaling and Dirichlet noise.
+  pub fn root_priors(&self, priors: &mut [N]) {
+    let children = &self.nodes[self.root_idx].children;
+    priors.fill(N::zero());
+    for edge in children {
+      priors[edge.pos] = edge.prior;
+    }
+  }
+
   /// Policy surprise of a policy training target relative to the prior.
   ///
-  /// This is the KL divergence from the (temperatured and Dirichlet-noised) root
-  /// policy prior to the `target` distribution:
-  /// `sum_i target_i * (ln(target_i) - ln(prior_i))`.
+  /// This is the KL divergence from the policy `priors` (indexed by position) to
+  /// the `target` distribution: `sum_i target_i * (ln(target_i) - ln(prior_i))`.
   ///
   /// A large value means the search ended up favouring moves quite differently
   /// from what the raw policy expected, i.e. the position was "surprising". It is
   /// used for policy surprise weighting of training samples, overweighting such
   /// positions in the training data.
-  pub fn policy_surprise(&self, target: &[(Pos, u64)]) -> N {
+  pub fn policy_surprise(target: &[(Pos, u64)], priors: &[N]) -> N {
     let total = target.iter().map(|&(_, visits)| visits).sum::<u64>();
     if total == 0 {
       return N::zero();
@@ -721,19 +733,13 @@ impl<N: Float + Sum + Copy> Search<N> {
     // Floor on the prior to avoid `ln(0)` for targets on moves the prior gave a
     // zero probability (and to bound the surprise of such moves).
     let offset = N::from(1e-30).unwrap();
-    let root = &self.nodes[self.root_idx];
     let mut surprise = N::zero();
     for &(pos, visits) in target {
       if visits == 0 {
         continue;
       }
       let t = N::from(visits).unwrap() / total;
-      let prior = root
-        .children
-        .iter()
-        .find(|edge| edge.pos == pos)
-        .map_or(N::zero(), |edge| edge.prior);
-      surprise = surprise + t * (t.ln() - (prior + offset).ln());
+      surprise = surprise + t * (t.ln() - (priors[pos] + offset).ln());
     }
     // Guard against tiny negative values from floating point imprecision.
     surprise.max(N::zero())

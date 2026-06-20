@@ -163,6 +163,11 @@ where
   let mut search = Search::new();
   let mut visits = Vec::new();
 
+  // Raw network policy priors of the root, captured before temperature and
+  // Dirichlet noise overwrite them, so the policy surprise is measured against
+  // the network's true prior rather than the noised one.
+  let mut raw_priors = vec![N::zero(); field.length()];
+
   while !field.is_game_over(if player == Player::Red { komi_x_2 } else { -komi_x_2 }) {
     let full_search = rng.random::<f64>() <= 0.25;
 
@@ -171,6 +176,7 @@ where
       if search.nodes[search.root_idx].children.is_empty() {
         search.mcgs(field, player, model, komi_x_2, rng)?;
       }
+      search.root_priors(&mut raw_priors);
       // Total Dirichlet alpha, matching AlphaZero's 0.03 per move on an empty 19x19 board
       // (0.03 * 361 = 10.83). Kept constant across board sizes and through the game, with
       // the shaping in `add_dirichlet_noise` deciding how it is spread across the moves.
@@ -194,11 +200,11 @@ where
     } else {
       search.visits().collect()
     };
-    // Policy surprise (KL divergence from the root policy prior to the policy
+    // Policy surprise (KL divergence from the raw policy prior to the policy
     // target) is only used to weight full-search training samples, so only
     // bother computing it for those.
     let surprise = if full_search {
-      search.policy_surprise(&target).to_f64().unwrap()
+      Search::policy_surprise(&target, &raw_priors).to_f64().unwrap()
     } else {
       0.0
     };
