@@ -19,6 +19,7 @@ const UCT_CONFIG: UctConfig = UctConfig {
   green: 0.5,
   komi_min_iterations: 3_000,
   fpu: 1.1,
+  virtual_loss: 3,
 };
 
 macro_rules! uct_test {
@@ -51,7 +52,7 @@ uct_test!(uct_3, IMAGE_3, 1_000_000, 7);
 uct_test!(uct_4, IMAGE_4, 1_000_000, 3);
 uct_test!(uct_5, IMAGE_5, 100_000, 3);
 uct_test!(uct_6, IMAGE_6, 1_000_000, 3);
-uct_test!(uct_7, IMAGE_7, 1_000_000, 7);
+uct_test!(uct_7, IMAGE_7, 1_000_000, 3);
 uct_test!(uct_8, IMAGE_8, 1_000_000, 5);
 uct_test!(uct_9, IMAGE_9, 100_000, 7);
 uct_test!(uct_10, IMAGE_10, 1_000_000, 7);

@@ -13,6 +13,16 @@ use std::{
 use strum::{EnumString, VariantNames};
 use thin_vec::ThinVec;
 
+/// Value stored in `visits`/`wins` to mark a node as decided (lost or won).
+/// Sits below `usize::MAX` so concurrent additions (virtual loss, backprop) on
+/// an already-decided node can't wrap around to a small number.
+const VISITS_SENTINEL: usize = usize::MAX - 64;
+/// Detection threshold for the sentinel. Sits below `VISITS_SENTINEL` so the
+/// `remove_virtual_loss` subtractions that follow `lose_node` keep the value
+/// within the decided band instead of dropping it below detection. Still far
+/// above any real visit count, so it never matches a live node.
+const VISITS_DEAD: usize = usize::MAX - 128;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum UcbType {
   Winrate,
@@ -41,6 +51,7 @@ pub struct UctConfig {
   pub green: f64,
   pub komi_min_iterations: usize,
   pub fpu: f64,
+  pub virtual_loss: usize,
 }
 
 impl Default for UctConfig {
@@ -61,6 +72,7 @@ impl Default for UctConfig {
       green: 0.5,
       komi_min_iterations: 3000,
       fpu: 1.1,
+      virtual_loss: 3,
     }
   }
 }
@@ -156,6 +168,14 @@ impl UctNode {
     self.draws.load(Ordering::Relaxed)
   }
 
+  pub fn add_virtual_loss(&self, count: usize) {
+    self.visits.fetch_add(count, Ordering::Relaxed);
+  }
+
+  pub fn remove_virtual_loss(&self, count: usize) {
+    self.visits.fetch_sub(count, Ordering::Relaxed);
+  }
+
   pub fn add_win(&self) {
     self.visits.fetch_add(1, Ordering::Relaxed);
     self.wins.fetch_add(1, Ordering::Relaxed);
@@ -173,7 +193,7 @@ impl UctNode {
   pub fn lose_node(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
-    self.visits.store(usize::MAX, Ordering::Relaxed);
+    self.visits.store(VISITS_SENTINEL, Ordering::Relaxed);
   }
 
   pub fn clear_stats(&self) {
@@ -246,7 +266,7 @@ impl UctRoot {
       moves.shuffle(rng);
       children.extend(moves.iter().copied().map(UctNode::new));
       node.set_children(children);
-    } else if node.get_visits() == usize::MAX {
+    } else if node.get_visits() >= VISITS_DEAD {
       node.clear_stats();
     }
   }
@@ -419,8 +439,8 @@ impl UctRoot {
     for child in children.iter().flat_map(|children| children.iter()) {
       let visits = child.get_visits();
       let wins = child.get_wins();
-      let uct_value = if visits == usize::MAX {
-        if wins == usize::MAX {
+      let uct_value = if visits >= VISITS_DEAD {
+        if wins >= VISITS_DEAD {
           return Some(child);
         }
         -1f64
@@ -462,15 +482,13 @@ impl UctRoot {
           return self.play_simulation_rec(field, player, node, possible_moves, rng, komi, depth);
         }
         if common::is_penult_move_stupid(field) {
-          // Theoretically, visits in this node may be overflowed by another thread, but
-          // there's nothing to worry about. In this case this node will be
-          // marked as losing on the next visit
-          // because uct_select method selects
-          // child determined.
           node.lose_node();
           return Some(player);
         }
-        self.play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
+        next.add_virtual_loss(self.config.virtual_loss);
+        let result = self.play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1);
+        next.remove_virtual_loss(self.config.virtual_loss);
+        result
       } else {
         UctRoot::random_result(field, player, komi)
       }

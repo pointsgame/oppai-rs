@@ -21,12 +21,13 @@ pub fn groups() -> [ArgGroup; 2] {
         "komi-type",
         "komi-min-iterations",
         "fpu",
+        "virtual-loss",
       ])
       .multiple(true),
   ]
 }
 
-pub fn args() -> [Arg; 20] {
+pub fn args() -> [Arg; 21] {
   [
     Arg::new("solver")
       .short('s')
@@ -152,6 +153,12 @@ pub fn args() -> [Arg; 20] {
       .num_args(1)
       .value_parser(value_parser!(f64))
       .default_value("1.1"),
+    Arg::new("virtual-loss")
+      .long("virtual-loss")
+      .help("Virtual loss to discourage threads from exploring the same node concurrently")
+      .num_args(1)
+      .value_parser(value_parser!(usize))
+      .default_value("3"),
     Arg::new("no-ladders-solver")
       .long("no-ladders-solver")
       .help("Disable ladders solver")
@@ -192,6 +199,7 @@ pub fn parse_config(matches: &ArgMatches) -> Config {
     green: matches.get_one("green").copied().unwrap(),
     komi_min_iterations: matches.get_one("komi-min-iterations").copied().unwrap(),
     fpu: matches.get_one("fpu").copied().unwrap(),
+    virtual_loss: matches.get_one("virtual-loss").copied().unwrap(),
   };
   let minimax_config = MinimaxConfig {
     threads_count: threads_count.unwrap_or_else(num_cpus::get_physical),
