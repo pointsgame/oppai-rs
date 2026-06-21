@@ -365,9 +365,16 @@ impl UctRoot {
     let mut cur_player = player;
     for &pos in possible_moves.iter() {
       let cell = field.cell(pos);
-      if cell.is_putting_allowed() && !cell.is_empty_base() {
+      if cell.is_putting_allowed() {
         field.put_point(pos, cur_player);
-        cur_player = cur_player.next();
+        // Don't fill in moves that immediately lose points (self-captures):
+        // keeping these out of the rollout makes the playout result better
+        // correlated with real play.
+        if field.get_delta_score(cur_player) < 0 {
+          field.undo();
+        } else {
+          cur_player = cur_player.next();
+        }
       }
     }
     UctRoot::random_result(field, player, komi)
