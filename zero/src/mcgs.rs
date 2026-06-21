@@ -44,6 +44,64 @@ impl Hasher for IdentityHasher {
 
 type HashMap<K, V> = std::collections::HashMap<K, V, BuildHasherDefault<IdentityHasher>>;
 
+/// Radius of the square local pattern used as part of a [`BiasKey`].
+///
+/// KataGo keys subtree value bias buckets by, among other things, the 5x5
+/// pattern surrounding the last move. A radius of 2 reproduces that 5x5 window.
+const BIAS_PATTERN_RADIUS: i32 = 2;
+/// Side length of the local pattern window (`2 * radius + 1`).
+const BIAS_PATTERN_SIDE: usize = (2 * BIAS_PATTERN_RADIUS + 1) as usize;
+/// Number of cells in the local pattern window.
+const BIAS_PATTERN_CELLS: usize = BIAS_PATTERN_SIDE * BIAS_PATTERN_SIDE;
+
+/// Classifies a board cell relative to the player who made the last move, used
+/// to build the local pattern of a [`BiasKey`].
+///
+/// The classification is relative to the mover (own / opponent) rather than
+/// absolute (red / black), so that the same tactic played by either player
+/// shares a bucket - this mirrors the player-relative features the net itself
+/// sees and keeps the perspective of the bucketed bias consistent.
+fn classify_cell(field: &Field, x: i32, y: i32, mover: Player) -> u8 {
+  if x < 0 || y < 0 || x >= field.width() as i32 || y >= field.height() as i32 {
+    // Off-board / border.
+    return 0;
+  }
+  let cell = field.cell(field.to_pos(x as u32, y as u32));
+  match cell.get_owner() {
+    None => 1,                  // empty / neutral
+    Some(p) if p == mover => 2, // owned by the mover
+    Some(_) => 3,               // owned by the opponent
+  }
+}
+
+/// Identifies a subtree value bias bucket.
+///
+/// Nodes are bucketed by the local context of the last move so that the
+/// observed bias of the neural net for a given tactic can be shared across the
+/// many places that tactic appears in the search tree. The key mirrors
+/// KataGo's: the location of the last move, the location of the move before it,
+/// and the local pattern surrounding the last move (relative to the mover).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct BiasKey {
+  /// Location of the last move.
+  last: Pos,
+  /// Location of the move before the last move (`0` if there was none).
+  prev: Pos,
+  /// Local pattern surrounding the last move, relative to the mover.
+  pattern: [u8; BIAS_PATTERN_CELLS],
+}
+
+/// Accumulated observed bias for a single bucket.
+///
+/// `delta_sum` is `sum_n (ChildrenUtility(n) - NNUtility(n)) * ChildVisits(n)^alpha`
+/// and `weight_sum` is `sum_n ChildVisits(n)^alpha`, both summed over the nodes
+/// `n` currently in the bucket. The bucket's observed bias is their ratio.
+#[derive(Clone, PartialEq, Debug)]
+pub struct BiasEntry<N: Float> {
+  pub delta_sum: N,
+  pub weight_sum: N,
+}
+
 /// Represents an edge from a parent to a child in the graph.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Edge<N: Float> {
@@ -67,10 +125,22 @@ pub struct Node<N: Float> {
   /// Q(n): Expected utility.
   /// Calculated recursively: (U(n) + sum(edge.visits * child.Q)) / N(n)
   pub value: N,
-  /// U(n): Raw utility from the neural net for this state.
+  /// U(n): Raw utility from the neural net for this state (NNUtility). The
+  /// bias-corrected NodeUtility used by the MCTS recurrence is derived from this
+  /// plus the bucket's observed bias; see [`Search::update_node`].
   pub raw_value: N,
   /// Edges to children.
   pub children: Vec<Edge<N>>,
+  /// Subtree value bias bucket this node belongs to, if any. Computed once when
+  /// the node is created and then kept constant. `None` for the root, terminal
+  /// nodes, and nodes with no preceding move.
+  pub bias_key: Option<BiasKey>,
+  /// The node's most recent contribution to its bucket, i.e. the last values it
+  /// added to [`BiasEntry::delta_sum`] and [`BiasEntry::weight_sum`]. Tracked so
+  /// that recomputing the node's bias updates the bucket by the delta rather
+  /// than double-counting.
+  pub last_bias_delta: N,
+  pub last_bias_weight: N,
 }
 
 impl<N: Float> Node<N> {
@@ -80,6 +150,9 @@ impl<N: Float> Node<N> {
       value: N::zero(),
       raw_value: N::zero(),
       children: Vec::new(),
+      bias_key: None,
+      last_bias_delta: N::zero(),
+      last_bias_weight: N::zero(),
     }
   }
 }
@@ -192,6 +265,8 @@ pub struct Search<N: Float> {
   pub nodes: Vec<Node<N>>,
   /// Maps Zobrist hash -> index in `nodes`
   pub map: HashMap<Hash, usize>,
+  /// Subtree value bias buckets, keyed by the local context of the last move.
+  pub bias: std::collections::HashMap<BiasKey, BiasEntry<N>>,
   /// Whether dirichlet noise was added to the root node
   pub dirichlet_noise: bool,
 }
@@ -202,6 +277,7 @@ impl<N: Float> Search<N> {
       root_idx: 0,
       nodes: Vec::new(),
       map: HashMap::default(),
+      bias: std::collections::HashMap::default(),
       dirichlet_noise: false,
     };
 
@@ -221,7 +297,43 @@ impl<N: Float + Sum + Copy> Search<N> {
     })
   }
 
-  fn update_node(map: &HashMap<Hash, usize>, nodes: &mut [Node<N>], node_idx: usize) {
+  /// Subtree value bias correction hyperparameters.
+  ///
+  /// `lambda` is the fraction of the bucket's observed bias that is mixed into a
+  /// node's utility; `alpha` is the exponent applied to a node's child visit
+  /// count when weighting its contribution to the bucket. These are KataGo's
+  /// reported values. `free_prop` is the fraction of a node's bucket
+  /// contribution that is removed when the node leaves the reused search tree.
+  /// Setting `lambda` to zero disables the correction entirely.
+  const BIAS_LAMBDA: f64 = 0.35;
+  const BIAS_ALPHA: f64 = 0.8;
+  const BIAS_FREE_PROP: f64 = 0.8;
+
+  /// Retrieves the current observed bias of a bucket, i.e.
+  /// `delta_sum / weight_sum`, or zero if the bucket has too little weight.
+  fn retrieve_bias(bias: &std::collections::HashMap<BiasKey, BiasEntry<N>>, key: &BiasKey) -> N {
+    if let Some(entry) = bias.get(key)
+      && entry.weight_sum > N::from(1e-3).unwrap()
+    {
+      return entry.delta_sum / entry.weight_sum;
+    }
+    N::zero()
+  }
+
+  /// Recomputes a node's visit count and MCTS utility from its children,
+  /// applying subtree value bias correction.
+  ///
+  /// This is the recurrence
+  /// `MCTSUtility(n) = (NodeUtility(n) + sum_c MCTSUtility(c) * Visits(c)) / (1 + sum_c Visits(c))`
+  /// where `NodeUtility(n) = NNUtility(n) - lambda * ObsBias(bucket(n))`. As a
+  /// side effect, the node's bucket is updated with its freshly observed error
+  /// `ChildrenUtility(n) - NNUtility(n)` before that bias is retrieved back.
+  fn update_node(
+    map: &HashMap<Hash, usize>,
+    nodes: &mut [Node<N>],
+    bias: &mut std::collections::HashMap<BiasKey, BiasEntry<N>>,
+    node_idx: usize,
+  ) {
     let mut sum_values = N::zero();
     let mut sum_visits = 0;
 
@@ -238,8 +350,39 @@ impl<N: Float + Sum + Copy> Search<N> {
       sum_visits += edge.visits;
     }
 
+    // NodeUtility starts as the raw neural net utility and is then corrected
+    // towards the observed bias of this node's bucket.
+    let raw_value = nodes[node_idx].raw_value;
+    let mut node_utility = raw_value;
+
+    if let Some(key) = nodes[node_idx].bias_key {
+      // ChildVisits(n) = Visits(n) - 1 = sum of the visits to the children.
+      if sum_visits > 0 {
+        let sum_visits_n = N::from(sum_visits).unwrap();
+        // ChildrenUtility from this node's perspective. `sum_values` already
+        // holds `-sum_c value(c) * visits(c)`, i.e. the children's utility from
+        // the parent's perspective times their visits.
+        let children_utility = sum_values / sum_visits_n;
+        let weight = sum_visits_n.powf(N::from(Self::BIAS_ALPHA).unwrap());
+        let delta = (children_utility - raw_value) * weight;
+
+        let entry = bias.entry(key).or_insert(BiasEntry {
+          delta_sum: N::zero(),
+          weight_sum: N::zero(),
+        });
+        // Replace this node's previous contribution to the bucket with its new one.
+        entry.delta_sum = entry.delta_sum + delta - nodes[node_idx].last_bias_delta;
+        entry.weight_sum = entry.weight_sum + weight - nodes[node_idx].last_bias_weight;
+        nodes[node_idx].last_bias_delta = delta;
+        nodes[node_idx].last_bias_weight = weight;
+      }
+
+      let obs_bias = Self::retrieve_bias(bias, &key);
+      node_utility = raw_value + N::from(Self::BIAS_LAMBDA).unwrap() * obs_bias;
+    }
+
     nodes[node_idx].visits = 1 + sum_visits;
-    nodes[node_idx].value = (nodes[node_idx].raw_value + sum_values) / N::from(nodes[node_idx].visits).unwrap();
+    nodes[node_idx].value = (node_utility + sum_values) / N::from(nodes[node_idx].visits).unwrap();
   }
 
   /// Hyperparameter for forced playouts at the root with Dirichlet noise.
@@ -346,7 +489,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
-  fn add_result(&mut self, path: &[(usize, usize)], result: N, children: Vec<Edge<N>>) {
+  fn add_result(&mut self, path: &[(usize, usize)], result: N, children: Vec<Edge<N>>, bias_key: Option<BiasKey>) {
     for &(node_idx, edge_idx) in path {
       self.nodes[node_idx].children[edge_idx].visits += 1;
     }
@@ -358,13 +501,43 @@ impl<N: Float + Sum + Copy> Search<N> {
     } else {
       self.root_idx
     };
-    self.nodes[leaf_idx].value = result;
     self.nodes[leaf_idx].raw_value = result;
     self.nodes[leaf_idx].visits = 1;
     self.nodes[leaf_idx].children = children;
+    self.nodes[leaf_idx].bias_key = bias_key;
+    self.nodes[leaf_idx].last_bias_delta = N::zero();
+    self.nodes[leaf_idx].last_bias_weight = N::zero();
+    // The leaf has no children yet, so it cannot update its bucket, but it does
+    // immediately retrieve the bucket's current observed bias to correct its own
+    // utility (matching KataGo's retrieval on node creation).
+    let obs_bias = bias_key.map_or(N::zero(), |key| Self::retrieve_bias(&self.bias, &key));
+    self.nodes[leaf_idx].value = result + N::from(Self::BIAS_LAMBDA).unwrap() * obs_bias;
     for &(node_idx, _) in path.iter().rev() {
-      Self::update_node(&self.map, &mut self.nodes, node_idx);
+      Self::update_node(&self.map, &mut self.nodes, &mut self.bias, node_idx);
     }
+  }
+
+  /// Computes the subtree value bias bucket for a leaf node from the field state
+  /// at the leaf (with all of the path's moves played). Returns `None` when
+  /// there is no preceding move to key on.
+  fn bias_key(field: &Field) -> Option<BiasKey> {
+    let moves = &field.moves;
+    let last = *moves.last()?;
+    let prev = moves.len().checked_sub(2).map_or(0, |i| moves[i]);
+    let mover = field.cell(last).get_player();
+
+    let (lx, ly) = field.to_xy(last);
+    let (lx, ly) = (lx as i32, ly as i32);
+    let mut pattern = [0u8; BIAS_PATTERN_CELLS];
+    let mut i = 0;
+    for dy in -BIAS_PATTERN_RADIUS..=BIAS_PATTERN_RADIUS {
+      for dx in -BIAS_PATTERN_RADIUS..=BIAS_PATTERN_RADIUS {
+        pattern[i] = classify_cell(field, lx + dx, ly + dy, mover);
+        i += 1;
+      }
+    }
+
+    Some(BiasKey { last, prev, pattern })
   }
 
   const PARALLEL_READOUTS: usize = 8;
@@ -469,7 +642,8 @@ impl<N: Float + Sum + Copy> Search<N> {
       };
 
       let result = if *terminal || field.is_game_over(red_komi_x_2) {
-        self.add_result(path, game_result(field, player, leaf_komi_x_2), Vec::new());
+        // Terminal nodes get no bias correction, matching KataGo.
+        self.add_result(path, game_result(field, player, leaf_komi_x_2), Vec::new(), None);
         false
       } else {
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
@@ -515,7 +689,11 @@ impl<N: Float + Sum + Copy> Search<N> {
       let value = values[(i, 0)] - values[(i, 1)];
 
       let children = self.create_children(field, player, &policy, rng);
-      self.add_result(path, value, children);
+      // Bucket the leaf by the local context of the move that created it. The
+      // field currently has all of the path's moves played, so `field.moves`
+      // ends with this node's move and the move before it.
+      let bias_key = Self::bias_key(field);
+      self.add_result(path, value, children, bias_key);
 
       for _ in 0..path.len() {
         field.undo();
@@ -572,6 +750,10 @@ impl<N: Float + Sum + Copy> Search<N> {
       root_idx: 0,
       nodes: Vec::with_capacity(self.nodes.len()),
       map: HashMap::with_capacity_and_hasher(self.map.len(), BuildHasherDefault::default()),
+      // Carry the subtree value bias buckets over; the surviving nodes keep
+      // their contributions and the dropped nodes' contributions are decayed
+      // below.
+      bias: mem::take(&mut self.bias),
       dirichlet_noise: self.dirichlet_noise,
     };
 
@@ -593,6 +775,21 @@ impl<N: Float + Sum + Copy> Search<N> {
         }
         new_search.nodes.push(mem::take(&mut self.nodes[child_idx]));
         new_search.map.insert(hash, new_search.nodes.len() - 1);
+      }
+    }
+
+    // Surviving nodes were removed from `self.map` above; whatever remains are
+    // the nodes being dropped. Decay their contribution to their buckets, so
+    // that the bias of a reused tactic carries over only partially rather than
+    // lingering at full strength forever (KataGo's `subtreeValueBiasFreeProp`).
+    let free_prop = N::from(Self::BIAS_FREE_PROP).unwrap();
+    for &dropped_idx in self.map.values() {
+      let node = &self.nodes[dropped_idx];
+      if let Some(key) = node.bias_key
+        && let Some(entry) = new_search.bias.get_mut(&key)
+      {
+        entry.delta_sum = entry.delta_sum - node.last_bias_delta * free_prop;
+        entry.weight_sum = entry.weight_sum - node.last_bias_weight * free_prop;
       }
     }
 
