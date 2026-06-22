@@ -14,14 +14,9 @@ use strum::{EnumString, VariantNames};
 use thin_vec::ThinVec;
 
 /// Value stored in `visits`/`wins` to mark a node as decided (lost or won).
-/// Sits below `usize::MAX` so concurrent additions (virtual loss, backprop) on
-/// an already-decided node can't wrap around to a small number.
-const VISITS_SENTINEL: usize = usize::MAX - 64;
-/// Detection threshold for the sentinel. Sits below `VISITS_SENTINEL` so the
-/// `remove_virtual_loss` subtractions that follow `lose_node` keep the value
-/// within the decided band instead of dropping it below detection. Still far
-/// above any real visit count, so it never matches a live node.
-const VISITS_DEAD: usize = usize::MAX - 128;
+/// Sits below `usize::MAX` so concurrent additions on an already-decided
+/// node can't wrap around to a small number.
+const VISITS_LIMIT: usize = usize::MAX - 64;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum UcbType {
@@ -51,7 +46,6 @@ pub struct UctConfig {
   pub green: f64,
   pub komi_min_iterations: usize,
   pub fpu: f64,
-  pub virtual_loss: usize,
 }
 
 impl Default for UctConfig {
@@ -72,7 +66,6 @@ impl Default for UctConfig {
       green: 0.5,
       komi_min_iterations: 3000,
       fpu: 1.1,
-      virtual_loss: 1,
     }
   }
 }
@@ -168,32 +161,22 @@ impl UctNode {
     self.draws.load(Ordering::Relaxed)
   }
 
-  pub fn add_virtual_loss(&self, count: usize) {
-    self.visits.fetch_add(count, Ordering::Relaxed);
-  }
-
-  pub fn remove_virtual_loss(&self, count: usize) {
-    self.visits.fetch_sub(count, Ordering::Relaxed);
+  pub fn add_visits(&self) {
+    self.visits.fetch_add(1, Ordering::Relaxed);
   }
 
   pub fn add_win(&self) {
-    self.visits.fetch_add(1, Ordering::Relaxed);
     self.wins.fetch_add(1, Ordering::Relaxed);
   }
 
   pub fn add_draw(&self) {
-    self.visits.fetch_add(1, Ordering::Relaxed);
     self.draws.fetch_add(1, Ordering::Relaxed);
-  }
-
-  pub fn add_loose(&self) {
-    self.visits.fetch_add(1, Ordering::Relaxed);
   }
 
   pub fn lose_node(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
-    self.visits.store(VISITS_SENTINEL, Ordering::Relaxed);
+    self.visits.store(VISITS_LIMIT, Ordering::Relaxed);
   }
 
   pub fn clear_stats(&self) {
@@ -266,7 +249,7 @@ impl UctRoot {
       moves.shuffle(rng);
       children.extend(moves.iter().copied().map(UctNode::new));
       node.set_children(children);
-    } else if node.get_visits() >= VISITS_DEAD {
+    } else if node.get_visits() >= VISITS_LIMIT {
       node.clear_stats();
     }
   }
@@ -439,8 +422,8 @@ impl UctRoot {
     for child in children.iter().flat_map(|children| children.iter()) {
       let visits = child.get_visits();
       let wins = child.get_wins();
-      let uct_value = if visits >= VISITS_DEAD {
-        if wins >= VISITS_DEAD {
+      let uct_value = if visits >= VISITS_LIMIT {
+        if wins >= VISITS_LIMIT {
           return Some(child);
         }
         -1f64
@@ -468,6 +451,7 @@ impl UctRoot {
     depth: u32,
   ) -> Option<Player> {
     let random_result = if node.get_visits() < self.config.when_create_children || depth == self.config.depth {
+      node.add_visits();
       UctRoot::play_random_game(field, player, rng, possible_moves, komi)
     } else {
       if unsafe { node.get_children() }.is_none() {
@@ -485,18 +469,15 @@ impl UctRoot {
           node.lose_node();
           return Some(player);
         }
-        next.add_virtual_loss(self.config.virtual_loss);
-        let result = self.play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1);
-        next.remove_virtual_loss(self.config.virtual_loss);
-        result
+        node.add_visits();
+        self.play_simulation_rec(field, player.next(), next, possible_moves, rng, -komi, depth + 1)
       } else {
+        node.add_visits();
         UctRoot::random_result(field, player, komi)
       }
     };
     if let Some(player_random_result) = random_result {
-      if player_random_result == player {
-        node.add_loose();
-      } else {
+      if player_random_result != player {
         node.add_win();
       }
     } else {

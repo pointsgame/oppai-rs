@@ -19,7 +19,6 @@ const UCT_CONFIG: UctConfig = UctConfig {
   green: 0.5,
   komi_min_iterations: 3_000,
   fpu: 1.1,
-  virtual_loss: 3,
 };
 
 macro_rules! uct_test {
