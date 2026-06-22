@@ -158,7 +158,7 @@ pub fn args() -> [Arg; 21] {
       .help("Virtual loss to discourage threads from exploring the same node concurrently")
       .num_args(1)
       .value_parser(value_parser!(usize))
-      .default_value("3"),
+      .default_value("1"),
     Arg::new("no-ladders-solver")
       .long("no-ladders-solver")
       .help("Disable ladders solver")
