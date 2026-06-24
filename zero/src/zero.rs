@@ -94,18 +94,5 @@ where
     moves.push((pos, policy[(y as usize, x as usize)]));
   }
 
-  // Renormalize the priors over the legal moves.
-  let sum: N = moves.iter().map(|&(_, prior)| prior).sum();
-  if sum > N::zero() {
-    for (_, prior) in moves.iter_mut() {
-      *prior = *prior / sum;
-    }
-  } else if !moves.is_empty() {
-    let uniform = N::one() / N::from(moves.len()).unwrap();
-    for (_, prior) in moves.iter_mut() {
-      *prior = uniform;
-    }
-  }
-
   Ok((moves, value))
 }
