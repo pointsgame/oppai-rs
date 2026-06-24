@@ -6,7 +6,7 @@ use crate::{
 use ndarray::Axis;
 use num_traits::Float;
 use oppai_field::{
-  field::{Field, Pos, to_x, to_y},
+  field::{Field, Hash, Pos, to_x, to_y},
   player::Player,
 };
 use rand::Rng;
@@ -23,6 +23,12 @@ type PolicyAnalysis<N> = (Vec<(Pos, N)>, N);
 pub struct Zero<N: Float, M: Model<N>> {
   model: M,
   search: Search<N>,
+  /// Player to move at the search root.
+  player: Player,
+  /// Number of moves played on the field when the root was set.
+  moves_count: usize,
+  /// Zobrist hash of the root position, used to detect history divergence.
+  hash: Hash,
 }
 
 impl<N, M> Zero<N, M>
@@ -34,11 +40,60 @@ where
     Zero {
       model,
       search: Search::new(),
+      // A fresh search holds an empty root, which corresponds to the empty
+      // board: zero moves played, zero hash, Red to move.
+      player: Player::Red,
+      moves_count: 0,
+      hash: 0,
     }
   }
 
   pub fn clear(&mut self) {
     self.search = Search::new();
+    self.player = Player::Red;
+    self.moves_count = 0;
+    self.hash = 0;
+  }
+
+  fn init(&mut self, field: &Field, player: Player) {
+    self.search = Search::new();
+    self.player = player;
+    self.moves_count = field.moves_count();
+    self.hash = field.hash();
+  }
+
+  /// Advances the persistent graph to the current `field`/`player`, reusing the
+  /// subtree already explored when the field is a continuation of the previously
+  /// searched position.
+  fn update(&mut self, field: &Field, player: Player) {
+    // The stored root must still sit on the field's actual history; otherwise the
+    // graph is stale and the search restarts from the current position.
+    if field.hash_at(self.moves_count) != Some(self.hash) {
+      self.init(field, player);
+      return;
+    }
+
+    // Replay the moves played since the last search, descending into the
+    // matching child for each one.
+    let moves_count = field.moves_count();
+    while self.moves_count < moves_count {
+      let pos = field.moves[self.moves_count];
+      if !self.search.next_root(pos) {
+        // The continuation was never expanded - start fresh from here.
+        self.init(field, player);
+        return;
+      }
+      self.moves_count += 1;
+      self.player = self.player.next();
+    }
+
+    if self.player != player {
+      self.init(field, player);
+      return;
+    }
+
+    self.hash = field.hash();
+    self.search.compact();
   }
 
   pub fn best_moves<SS: Fn() -> bool, R: Rng>(
@@ -49,8 +104,7 @@ where
     should_stop: &SS,
     max_iterations_count: usize,
   ) -> Result<Analysis<N>, <M as Model<N>>::E> {
-    // TODO: persistent tree
-    self.clear();
+    self.update(field, player);
 
     // TODO: check if game is over
     let mut iterations = 0;

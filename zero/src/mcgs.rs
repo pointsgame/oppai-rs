@@ -551,8 +551,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
-  /// Move the root to the child with the given position
-  pub fn next_root(&mut self, pos: Pos) {
+  /// Move the root to the child with the given position.
+  ///
+  /// Returns `true` if a matching child existed and the root was advanced into
+  /// the persistent graph, or `false` if no such child was found - in which case
+  /// the search is reset to a fresh empty tree.
+  pub fn next_root(&mut self, pos: Pos) -> bool {
     self.dirichlet_noise = false;
     if let Some(edge_hash) = self.nodes[self.root_idx]
       .children
@@ -561,8 +565,10 @@ impl<N: Float + Sum + Copy> Search<N> {
       .map(|edge| edge.hash)
     {
       self.root_idx = self.add_node(edge_hash);
+      true
     } else {
       *self = Self::new();
+      false
     }
   }
 
