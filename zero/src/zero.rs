@@ -108,8 +108,9 @@ where
 
     // TODO: check if game is over
     let mut iterations = 0;
+    let mut field = field.clone();
     while !should_stop() && iterations < max_iterations_count {
-      self.search.mcgs(&mut field.clone(), player, &mut self.model, 0, rng)?;
+      self.search.mcgs(&mut field, player, &mut self.model, 0, rng)?;
       iterations += 1;
     }
 

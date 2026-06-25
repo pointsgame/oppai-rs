@@ -102,6 +102,9 @@ where
         let state = state_option.as_mut().ok_or(anyhow::anyhow!("Not initialized"))?;
         let pos = state.field.to_pos(coords.x, coords.y);
         let put = state.field.put_point(pos, player);
+        if put {
+          state.field.update_grounded();
+        }
         Response::PutPoint { put }
       }
       Request::Undo => {
