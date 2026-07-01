@@ -50,15 +50,24 @@ fn crosses<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
   let mut result = Vec::new();
 
   for _ in 0..count {
-    let (x, y) = loop {
-      let x = rng.random_range(PADDING..width - PADDING - 1);
-      let y = rng.random_range(PADDING..height - PADDING - 1);
-      if !result.iter().any(|&(x1, y1)| {
-        (x, y) == (x1, y1) || (x + 1, y) == (x1, y1) || (x, y + 1) == (x1, y1) || (x + 1, y + 1) == (x1, y1)
-      }) {
-        break (x, y);
-      }
-    };
+    // Collect all positions that don't clash with an already placed cross. On
+    // small fields there might be no room left, in which case we just stop and
+    // return whatever was placed so far instead of looping forever.
+    let candidates = (PADDING..width - PADDING - 1)
+      .flat_map(|x| (PADDING..height - PADDING - 1).map(move |y| (x, y)))
+      .filter(|&(x, y)| {
+        !result
+          .iter()
+          .any(|&(x1, y1)| x - 1 <= x1 && x1 <= x + 2 && y - 1 <= y1 && y1 <= y + 2)
+      })
+      .collect::<Vec<_>>();
+
+    if candidates.is_empty() {
+      break;
+    }
+
+    let (x, y) = candidates[rng.random_range(0..candidates.len())];
+
     if rng.random() {
       // XO
       // OX
