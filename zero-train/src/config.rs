@@ -48,12 +48,19 @@ pub struct CountParams {
   pub games: Vec<PathBuf>,
 }
 
+pub struct RecalcParams {
+  pub model: PathBuf,
+  pub games: Vec<PathBuf>,
+  pub games_new: PathBuf,
+}
+
 pub enum Action {
   Init(InitParams),
   Play(PlayParams),
   Train(TrainParams),
   Pit(PitParams),
   Count(CountParams),
+  Recalc(RecalcParams),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
@@ -293,6 +300,27 @@ pub fn cli_parse() -> (Config, Action) {
       .value_parser(value_parser!(PathBuf))
       .required(true),
   );
+  let recalc = Command::new("recalc-surprise")
+    .about("Recalculate policy surprise for games using a model")
+    .arg(model_arg())
+    .arg(
+      Arg::new("games")
+        .long("games")
+        .short('g')
+        .help("Paths to the played games")
+        .num_args(1..)
+        .value_parser(value_parser!(PathBuf))
+        .required(true),
+    )
+    .arg(
+      Arg::new("games-new")
+        .long("games-new")
+        .short('n')
+        .help("Path where to save the games with recalculated surprise")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf))
+        .required(true),
+    );
 
   let matches = Command::new(crate_name!())
     .version(crate_version!())
@@ -303,6 +331,7 @@ pub fn cli_parse() -> (Config, Action) {
     .subcommand(train)
     .subcommand(pit)
     .subcommand(count)
+    .subcommand(recalc)
     .subcommand_required(true)
     .arg(
       Arg::new("backend")
@@ -429,6 +458,16 @@ pub fn cli_parse() -> (Config, Action) {
     Some(("count", matches)) => {
       let games = matches.get_many("games").unwrap().cloned().collect();
       Action::Count(CountParams { games })
+    }
+    Some(("recalc-surprise", matches)) => {
+      let model = matches.get_one("model").cloned().unwrap();
+      let games = matches.get_many("games").unwrap().cloned().collect();
+      let games_new = matches.get_one("games-new").cloned().unwrap();
+      Action::Recalc(RecalcParams {
+        model,
+        games,
+        games_new,
+      })
     }
     _ => panic!("no subcommand"),
   };

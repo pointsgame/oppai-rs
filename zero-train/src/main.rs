@@ -23,19 +23,22 @@ use burn::{
   },
 };
 use config::{
-  Action, Backend as ConfigBackend, Config, CountParams, InitParams, PitParams, PlayParams, TrainParams, cli_parse,
+  Action, Backend as ConfigBackend, Config, CountParams, InitParams, PitParams, PlayParams, RecalcParams, TrainParams,
+  cli_parse,
 };
 use either::Either;
-use num_traits::Float;
+use num_traits::{Float, ToPrimitive, Zero};
 use oppai_field::{
   any_field::AnyField,
+  extended_field::ExtendedField,
   field::{Field, length},
   player::Player,
   zobrist::Zobrist,
 };
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
-  episode::episode, examples::Examples, model::TrainableModel, opening::opening, pit, random_model::RandomModel,
+  episode::episode, examples::Examples, mcgs::Search, model::TrainableModel, opening::opening, pit,
+  random_model::RandomModel,
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
@@ -429,6 +432,114 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
   Ok(ExitCode::SUCCESS)
 }
 
+fn recalc<B, R: Rng>(
+  params: RecalcParams,
+  device: B::Device,
+  rng: &mut R,
+  should_stop: Arc<AtomicBool>,
+) -> Result<ExitCode>
+where
+  B: Backend,
+  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
+{
+  let model = BurnModel::<B>::new(&device);
+  let model = model.load_file(
+    params.model,
+    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+    &device,
+  )?;
+  let mut model = Predictor { model, device };
+
+  let mut file = File::options().append(true).create(true).open(&params.games_new)?;
+
+  'games: for path in params.games {
+    let sgf = fs::read_to_string(path)?;
+    let trees = sgf_parse::parse(&sgf)?;
+    for node in trees.iter().filter_map(|tree| match tree {
+      GameTree::Unknown(node) => Some(node),
+      GameTree::GoGame(_) => None,
+    }) {
+      if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+        log::info!("Stopping surprise recalculation");
+        break 'games;
+      }
+
+      let field = from_sgf::<ExtendedField, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+      let stride = field.field().stride;
+      let mut visits = sgf_to_visits(node, stride);
+      let komi_x_2 = node
+        .properties
+        .iter()
+        .find_map(|prop| match prop {
+          Prop::Unknown(name, values) if name == "KM" => values.first().map(|value| {
+            let value = value.parse::<f32>().unwrap();
+            (value * 2.0).round() as i32
+          }),
+          _ => None,
+        })
+        .unwrap_or(0);
+
+      let width = field.field().width();
+      let height = field.field().height();
+      let moves: Vec<_> = field.field().colored_moves().collect();
+      // Moves played before the first searched position (e.g. the opening).
+      let initial_moves = moves.len() - visits.len();
+      let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, rng));
+
+      let mut position_field = Field::new(width, height, zobrist.clone());
+      let mut placed = 0;
+
+      // Recompute the policy surprise (KL divergence from the model's raw policy
+      // prior to the visit-count target) only for full searches - it is meaningless
+      // and stored as 0 for the rest.
+      for (i, current) in visits.iter_mut().enumerate() {
+        if !current.1 {
+          continue;
+        }
+
+        let position = initial_moves + i;
+        let player = moves[position].1;
+        let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
+
+        for &(pos, player) in &moves[placed..position] {
+          assert!(position_field.put_point(pos, player));
+          position_field.update_grounded();
+        }
+        placed = position;
+
+        // A single search step expands the root with the network, filling in the
+        // raw child priors used to measure the surprise.
+        let mut search = Search::<FloatElem<B>>::new();
+        search.mcgs(&mut position_field, player, &mut model, komi_x_2, rng)?;
+        let mut priors = vec![FloatElem::<B>::zero(); position_field.length()];
+        search.root_priors(&mut priors);
+        current.2 = Search::policy_surprise(&current.0, &priors).to_f64().unwrap();
+      }
+
+      let mut node = to_sgf(&field).ok_or(anyhow::anyhow!("failed to serialize game"))?;
+      visits_to_sgf(&mut node, &visits, stride, field.field().moves_count());
+      let score = field.field().score(Player::Red);
+      node.properties.push(Prop::RE(match score.cmp(&0) {
+        Ordering::Equal => "0".into(),
+        Ordering::Greater => SimpleText {
+          text: format!("W+{}", score),
+        },
+        Ordering::Less => SimpleText {
+          text: format!("B+{}", score.abs()),
+        },
+      }));
+      node
+        .properties
+        .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
+      let sgf = serialize(iter::once(&GameTree::Unknown(node)));
+      writeln!(&mut file, "{sgf}")?;
+      file.flush()?;
+    }
+  }
+
+  Ok(ExitCode::SUCCESS)
+}
+
 fn run<B>(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
@@ -446,6 +557,7 @@ where
     Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
     Action::Pit(params) => pit::<B, _>(params, device, &mut rng, should_stop),
     Action::Count(params) => count(params, &mut rng),
+    Action::Recalc(params) => recalc::<B, _>(params, device, &mut rng, should_stop),
   }
 }
 
