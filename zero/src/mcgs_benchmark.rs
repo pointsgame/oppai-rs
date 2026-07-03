@@ -29,7 +29,7 @@ fn search(bencher: &mut Bencher) {
     ",
   );
   bencher.iter(|| {
-    let mut search = Search::<f64>::new();
+    let mut search = Search::<f64>::new(false);
     let mut model = RandomModel(rng.clone());
     for _ in 0..SIMS {
       search

@@ -39,7 +39,7 @@ where
   pub fn new(model: M) -> Self {
     Zero {
       model,
-      search: Search::new(),
+      search: Search::new(true),
       // A fresh search holds an empty root, which corresponds to the empty
       // board: zero moves played, zero hash, Red to move.
       player: Player::Red,
@@ -49,14 +49,14 @@ where
   }
 
   pub fn clear(&mut self) {
-    self.search = Search::new();
+    self.search = Search::new(true);
     self.player = Player::Red;
     self.moves_count = 0;
     self.hash = 0;
   }
 
   fn init(&mut self, field: &Field, player: Player) {
-    self.search = Search::new();
+    self.search = Search::new(true);
     self.player = player;
     self.moves_count = field.moves_count();
     self.hash = field.hash();

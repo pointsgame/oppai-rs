@@ -3,7 +3,7 @@ use crate::model::Model;
 use either::Either;
 use ndarray::{Array, ArrayView2, s};
 use num_traits::Float;
-use oppai_field::field::{to_x, to_y};
+use oppai_field::field::{is_corner, to_x, to_y};
 use oppai_field::{
   field::{Field, Hash, NonZeroPos, Pos},
   player::Player,
@@ -194,15 +194,18 @@ pub struct Search<N: Float> {
   pub map: HashMap<Hash, usize>,
   /// Whether dirichlet noise was added to the root node
   pub dirichlet_noise: bool,
+  /// Whether forbid apriori bad moves
+  pub forbid_bad: bool,
 }
 
 impl<N: Float> Search<N> {
-  pub fn new() -> Self {
+  pub fn new(forbid_bad: bool) -> Self {
     let mut search = Search {
       root_idx: 0,
       nodes: Vec::new(),
       map: HashMap::default(),
       dirichlet_noise: false,
+      forbid_bad,
     };
 
     // Initialize root
@@ -390,14 +393,30 @@ impl<N: Float + Sum + Copy> Search<N> {
     let stride = field.stride;
     let mut children = Vec::new();
 
+    let mut all_bad = true;
+
     for pos in field.min_pos()..=field.max_pos() {
       if !field.is_putting_allowed(pos) {
         continue;
       }
 
       assert!(field.put_point(pos, player));
+
+      if field.get_delta_score(player) < 0 {
+        if self.forbid_bad {
+          field.undo();
+          continue;
+        }
+      } else {
+        all_bad = false;
+      }
+
       let hash = field.colored_hash(player);
       field.undo();
+
+      if self.forbid_bad && is_corner(field.width(), field.height(), pos) {
+        continue;
+      }
 
       let x = to_x(stride, pos);
       let y = to_y(stride, pos);
@@ -410,6 +429,10 @@ impl<N: Float + Sum + Copy> Search<N> {
         prior: p,
         virtual_losses: 0,
       });
+    }
+
+    if all_bad {
+      return Vec::new();
     }
 
     // renormalize
@@ -546,7 +569,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       self.root_idx = self.add_node(edge_hash);
       NonZeroPos::new(edge_pos)
     } else {
-      *self = Self::new();
+      *self = Self::new(self.forbid_bad);
       None
     }
   }
@@ -567,7 +590,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       self.root_idx = self.add_node(edge_hash);
       true
     } else {
-      *self = Self::new();
+      *self = Self::new(self.forbid_bad);
       false
     }
   }
@@ -579,6 +602,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       nodes: Vec::with_capacity(self.nodes.len()),
       map: HashMap::with_capacity_and_hasher(self.map.len(), BuildHasherDefault::default()),
       dirichlet_noise: self.dirichlet_noise,
+      forbid_bad: self.forbid_bad,
     };
 
     let mut queue = VecDeque::new();
@@ -796,7 +820,7 @@ impl<N: Float + Sum + SampleUniform> Search<N> {
       self.root_idx = self.add_node(hash);
       NonZeroPos::new(pos)
     } else {
-      *self = Self::new();
+      *self = Self::new(self.forbid_bad);
       None
     }
   }
@@ -813,11 +837,5 @@ where
     self.nodes[self.root_idx].apply_temperature(temperature);
     self.nodes[self.root_idx].add_dirichlet_noise(rng, epsilon, total_concentration);
     self.dirichlet_noise = true;
-  }
-}
-
-impl<N: Float> Default for Search<N> {
-  fn default() -> Self {
-    Self::new()
   }
 }

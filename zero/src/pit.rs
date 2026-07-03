@@ -24,8 +24,8 @@ where
   R: Rng,
 {
   let mut moves_count = 0;
-  let mut search1 = Search::new();
-  let mut search2 = Search::new();
+  let mut search1 = Search::new(true);
+  let mut search2 = Search::new(true);
 
   while !field.is_game_over(if player == Player::Red { komi_x_2 } else { -komi_x_2 }) {
     for _ in 0..MCTS_SIMS {

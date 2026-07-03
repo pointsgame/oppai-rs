@@ -509,7 +509,7 @@ where
 
         // A single search step expands the root with the network, filling in the
         // raw child priors used to measure the surprise.
-        let mut search = Search::<FloatElem<B>>::new();
+        let mut search = Search::<FloatElem<B>>::new(false);
         search.mcgs(&mut position_field, player, &mut model, komi_x_2, rng)?;
         let mut priors = vec![FloatElem::<B>::zero(); position_field.length()];
         search.root_priors(&mut priors);

@@ -160,7 +160,7 @@ where
     }
   }
 
-  let mut search = Search::new();
+  let mut search = Search::new(false);
   let mut visits = Vec::new();
 
   // Raw network policy priors of the root, captured before temperature and

@@ -32,7 +32,7 @@ fn mcts_first_iterations() {
     ......
     ",
   );
-  let mut search = Search::<f64>::new();
+  let mut search = Search::<f64>::new(false);
 
   search
     .mcgs(
@@ -118,7 +118,7 @@ fn mcts_last_iterations() {
     .a.
     ",
   );
-  let mut search = Search::<f64>::new();
+  let mut search = Search::<f64>::new(false);
 
   search
     .mcgs(
