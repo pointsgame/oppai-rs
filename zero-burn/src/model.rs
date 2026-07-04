@@ -824,10 +824,10 @@ where
       TensorData::new(into_data_vec(captured), [batch, 2, height, width]),
       &self.predictor.device,
     );
-    // The captured loss only considers positions where dots are placed so far,
-    // which is exactly what the player/opponent dots input channels contain.
-    let dots_mask = inputs.clone().slice(s![.., 1..3]);
-    let mask_sum_hw = inputs.clone().slice(s![.., 0..1]).sum_dim(2).sum_dim(3);
+    // The captured head predicts the terminal captured state of every board
+    // cell, so the loss is masked only by the board mask.
+    let mask = inputs.clone().slice(s![.., 0..1]);
+    let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let (out_policy_logits, out_value_logits, out_scores, out_captured_logits) =
       self.predictor.model.forward(inputs, global);
     let out_policies = log_softmax(
@@ -846,11 +846,11 @@ where
     let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
     let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
     // Binary cross-entropy with logits in the numerically stable form
-    // `max(z, 0) - z * t + ln(1 + exp(-|z|))`, masked to placed dots and
-    // normalized by the board area.
+    // `max(z, 0) - z * t + ln(1 + exp(-|z|))`, normalized by the board area
+    // like KataGo's ownership loss.
     let captured_bce = out_captured_logits.clone().clamp_min(0.0) - out_captured_logits.clone() * captured
       + (-out_captured_logits.abs()).exp().log1p();
-    let captured_loss = ((captured_bce * dots_mask).sum_dim(2).sum_dim(3) / mask_sum_hw).sum() * 3 / batch;
+    let captured_loss = ((captured_bce * mask).sum_dim(2).sum_dim(3) / mask_sum_hw).sum() * 1.5 / batch;
 
     let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
     self.predictor.model.visit(&mut norm_visitor);

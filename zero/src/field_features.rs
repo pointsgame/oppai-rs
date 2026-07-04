@@ -205,8 +205,8 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   );
 }
 
-/// Two planes marking captured dots in the given field state:
-/// first the `player`'s captured dots, then the enemy's.
+/// Two planes marking captured cells in the given field state, with or without
+/// a dot: first the cells captured by `player`, then the ones captured by the enemy.
 pub fn captured_features_to_vec<N: Float + Zero + One + Copy>(
   field: &Field,
   player: Player,
@@ -219,7 +219,7 @@ pub fn captured_features_to_vec<N: Float + Zero + One + Copy>(
   push_features(
     field,
     |cell| {
-      if cell.is_players_point(player) && cell.is_captured() {
+      if cell.is_captured() && cell.is_owner(player) {
         N::one()
       } else {
         N::zero()
@@ -233,7 +233,7 @@ pub fn captured_features_to_vec<N: Float + Zero + One + Copy>(
   push_features(
     field,
     |cell| {
-      if cell.is_players_point(enemy) && cell.is_captured() {
+      if cell.is_captured() && cell.is_owner(enemy) {
         N::one()
       } else {
         N::zero()

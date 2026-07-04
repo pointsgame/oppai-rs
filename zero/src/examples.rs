@@ -24,8 +24,8 @@ pub struct Batch<N> {
   pub opponent_policies: Array3<N>,
   pub values: Array2<N>,
   pub scores: Array2<N>,
-  /// Captured dots at the terminal game state, 2 channels:
-  /// the current player's captured dots and the opponent's ones.
+  /// Captured cells at the terminal game state, 2 channels:
+  /// the cells captured by the current player and by the opponent.
   pub captured: Array4<N>,
 }
 
