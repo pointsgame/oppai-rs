@@ -555,6 +555,31 @@ impl<B: Backend> PolicyHead<B> {
 }
 
 #[derive(Module, Debug)]
+pub struct CapturedHead<B: Backend> {
+  conv: Conv2d<B>,
+}
+
+impl<B: Backend> CapturedHead<B> {
+  pub fn new(device: &B::Device) -> Self {
+    Self {
+      conv: Conv2dConfig::new([INNER_CHANNELS, 2], [1, 1])
+        .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
+        .init(device),
+    }
+  }
+
+  /// Scale down the output conv (identity gain) so initial logits are small.
+  fn initialize(&mut self, device: &B::Device) {
+    init_conv(&mut self.conv, 0.2, 1.0, device);
+  }
+
+  fn forward(&self, inputs: Tensor<B, 4>) -> Tensor<B, 4> {
+    self.conv.forward(inputs)
+  }
+}
+
+#[derive(Module, Debug)]
 pub struct Model<B: Backend> {
   conv_spatial: Conv2d<B>,
   linear_global: Linear<B>,
@@ -562,6 +587,7 @@ pub struct Model<B: Backend> {
   norm_trunkfinal: NormMask<B>,
   value_head: ValueHead<B>,
   policy_head: PolicyHead<B>,
+  captured_head: CapturedHead<B>,
 }
 
 impl<B: Backend> Model<B> {
@@ -580,6 +606,7 @@ impl<B: Backend> Model<B> {
       norm_trunkfinal: NormMask::new(device, INNER_CHANNELS, false),
       value_head: ValueHead::new(device),
       policy_head: PolicyHead::new(device),
+      captured_head: CapturedHead::new(device),
     }
   }
 
@@ -604,9 +631,14 @@ impl<B: Backend> Model<B> {
 
     self.policy_head.initialize(device);
     self.value_head.initialize(device);
+    self.captured_head.initialize(device);
   }
 
-  pub fn forward(&self, spatial: Tensor<B, 4>, global: Tensor<B, 2>) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>) {
+  pub fn forward(
+    &self,
+    spatial: Tensor<B, 4>,
+    global: Tensor<B, 2>,
+  ) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 4>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = self.conv_spatial.forward(spatial);
@@ -618,8 +650,9 @@ impl<B: Backend> Model<B> {
     x = self.norm_trunkfinal.forward(x, mask.clone());
     x = mish(x);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
+    let captured = self.captured_head.forward(x.clone());
     let (value, score) = self.value_head.forward(x, mask, mask_sum_hw);
-    (policy, value, score)
+    (policy, value, score, captured)
   }
 
   pub fn forward_no_score(&self, spatial: Tensor<B, 4>, global: Tensor<B, 2>) -> (Tensor<B, 4>, Tensor<B, 2>) {
@@ -758,6 +791,7 @@ where
     opponent_policies: Array3<FloatElem<B>>,
     values: Array2<FloatElem<B>>,
     scores: Array2<FloatElem<B>>,
+    captured: Array4<FloatElem<B>>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
@@ -786,7 +820,16 @@ where
       &self.predictor.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
-    let (out_policy_logits, out_value_logits, out_scores) = self.predictor.model.forward(inputs, global);
+    let captured = Tensor::from_data(
+      TensorData::new(into_data_vec(captured), [batch, 2, height, width]),
+      &self.predictor.device,
+    );
+    // The captured loss only considers positions where dots are placed so far,
+    // which is exactly what the player/opponent dots input channels contain.
+    let dots_mask = inputs.clone().slice(s![.., 1..3]);
+    let mask_sum_hw = inputs.clone().slice(s![.., 0..1]).sum_dim(2).sum_dim(3);
+    let (out_policy_logits, out_value_logits, out_scores, out_captured_logits) =
+      self.predictor.model.forward(inputs, global);
     let out_policies = log_softmax(
       out_policy_logits.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
       1,
@@ -802,22 +845,29 @@ where
     let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
     let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
     let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
+    // Binary cross-entropy with logits in the numerically stable form
+    // `max(z, 0) - z * t + ln(1 + exp(-|z|))`, masked to placed dots and
+    // normalized by the board area.
+    let captured_bce = out_captured_logits.clone().clamp_min(0.0) - out_captured_logits.clone() * captured
+      + (-out_captured_logits.abs()).exp().log1p();
+    let captured_loss = ((captured_bce * dots_mask).sum_dim(2).sum_dim(3) / mask_sum_hw).sum() * 3 / batch;
 
     let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
     self.predictor.model.visit(&mut norm_visitor);
     let param_l2_norm = norm_visitor.l2_norm();
 
     log::info!(
-      "Loss: value {} policy {} opponent policy {} pdf {} cdf {} L2 norm {}",
+      "Loss: value {} policy {} opponent policy {} pdf {} cdf {} captured {} L2 norm {}",
       values_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
       opponent_policies_loss.clone().into_scalar(),
       pdf_loss.clone().into_scalar(),
       cdf_loss.clone().into_scalar(),
+      captured_loss.clone().into_scalar(),
       param_l2_norm,
     );
 
-    let loss = values_loss + policies_loss + opponent_policies_loss + pdf_loss + cdf_loss;
+    let loss = values_loss + policies_loss + opponent_policies_loss + pdf_loss + cdf_loss + captured_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(learning_rate, self.predictor.model, grads);
@@ -854,7 +904,7 @@ mod tests {
   #[cfg(feature = "ndarray")]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
-    let (policy_logits, values, _) = model.forward(
+    let (policy_logits, values, _, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu),
       Tensor::ones([1, 1], &NdArrayDevice::Cpu),
     );
@@ -904,7 +954,7 @@ mod tests {
       }
     }
 
-    let (policy_logits, values, _) = model.forward(
+    let (policy_logits, values, _, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &device),
       Tensor::ones([1, 1], &device),
     );
@@ -966,6 +1016,7 @@ mod tests {
         let values = array![[1.0, 0.0]];
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
+        let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
 
         let (out_policies_1, out_values_1) = learner.predict(inputs.clone(), global.clone()).unwrap();
         let mut learner = learner
@@ -976,6 +1027,7 @@ mod tests {
             opponent_policies,
             values,
             scores,
+            captured,
             0.01,
           )
           .unwrap();

@@ -260,6 +260,7 @@ where
       batch.opponent_policies,
       batch.values,
       batch.scores,
+      batch.captured,
       learning_rate,
     )?;
   }

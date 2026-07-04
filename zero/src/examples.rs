@@ -1,7 +1,8 @@
 use crate::{
   episode::Visits,
   field_features::{
-    CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE, field_features_to_vec, global_to_vec, score_one_hot_to_vec,
+    CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE, captured_features_to_vec, field_features_to_vec, global_to_vec,
+    score_one_hot_to_vec,
   },
 };
 use ndarray::{Array, Array2, Array3, Array4};
@@ -23,6 +24,9 @@ pub struct Batch<N> {
   pub opponent_policies: Array3<N>,
   pub values: Array2<N>,
   pub scores: Array2<N>,
+  /// Captured dots at the terminal game state, 2 channels:
+  /// the current player's captured dots and the opponent's ones.
+  pub captured: Array4<N>,
 }
 
 #[derive(Clone, Debug)]
@@ -172,6 +176,7 @@ impl Examples {
     let mut opponent_policies = Vec::<N>::with_capacity(range.len() * height as usize * width as usize);
     let mut values = Vec::<N>::with_capacity(range.len() * 2);
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
+    let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
     for example in self.examples.get(range.clone()).unwrap() {
       let game = &self.games[example.game];
       let mut field = Field::new(game.width, game.height, zobrist.clone());
@@ -211,6 +216,12 @@ impl Examples {
         );
       Self::values_to_vec::<N>(score, komi_x_2, &mut values);
       score_one_hot_to_vec(score, komi_x_2, &mut scores);
+      // Replay the rest of the game to get the captured dots at the terminal
+      // state. Grounded state is not updated since it doesn't affect captures.
+      for &(pos, player) in game.moves.iter().skip(example.position) {
+        assert!(field.put_point(pos, player));
+      }
+      captured_features_to_vec(&field, player, width, height, example.rotation, &mut captured);
     }
     Batch {
       inputs: Array::from(inputs)
@@ -228,6 +239,9 @@ impl Examples {
       values: Array::from(values).into_shape_with_order((range.len(), 2)).unwrap(),
       scores: Array::from(scores)
         .into_shape_with_order((range.len(), SCORE_ONE_HOT_SIZE))
+        .unwrap(),
+      captured: Array::from(captured)
+        .into_shape_with_order((range.len(), 2, height as usize, width as usize))
         .unwrap(),
     }
   }
