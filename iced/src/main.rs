@@ -180,7 +180,7 @@ fn run_app<M: Model<f32> + Clone + Send + 'static>(config: Config, model: M) -> 
         extended_field.field.height(),
         extended_field.player,
       );
-      extended_field.put_points(moves.clone());
+      put_points_grounded(&mut extended_field, moves.clone());
       let game = Game {
         config: config.clone(),
         rng,
@@ -234,6 +234,21 @@ fn run_app<M: Model<f32> + Clone + Send + 'static>(config: Config, model: M) -> 
     ..Default::default()
   })
   .run()
+}
+
+/// Puts points updating the grounded state after each move, which is
+/// necessary for the AI to detect the end of the game.
+fn put_points_grounded<I>(extended_field: &mut ExtendedField, points: I) -> bool
+where
+  I: IntoIterator<Item = (Pos, Player)>,
+{
+  for (pos, player) in points {
+    if !extended_field.put_players_point(pos, player) {
+      return false;
+    }
+    extended_field.field.update_grounded();
+  }
+  true
 }
 
 struct Game<M: Model<f32> + Clone + Send + 'static> {
@@ -294,6 +309,7 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
 
   pub fn put_players_point(&mut self, pos: Pos, player: Player) -> bool {
     if self.canvas_field.extended_field.put_players_point(pos, player) {
+      self.canvas_field.extended_field.field.update_grounded();
       let moves_count = self.canvas_field.extended_field.field.moves_count();
       if self
         .moves
@@ -337,9 +353,10 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
   pub fn redo_all(&mut self) -> bool {
     let moves_count = self.canvas_field.extended_field.field.moves_count();
     if self.moves.len() > moves_count {
-      for &(pos, player, _) in &self.moves[moves_count..] {
-        self.canvas_field.extended_field.put_players_point(pos, player);
-      }
+      put_points_grounded(
+        &mut self.canvas_field.extended_field,
+        self.moves[moves_count..].iter().map(|&(pos, player, _)| (pos, player)),
+      );
       self.put_all_bot_points();
       self.refresh();
       true
@@ -468,14 +485,12 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
           self.canvas_field.extended_field.field.width(),
           self.canvas_field.extended_field.field.height(),
         ));
-        self
-          .canvas_field
-          .extended_field
-          .put_points(self.config.initial_position.points(
-            self.canvas_field.extended_field.field.width(),
-            self.canvas_field.extended_field.field.height(),
-            self.canvas_field.extended_field.player,
-          ));
+        let points = self.config.initial_position.points(
+          self.canvas_field.extended_field.field.width(),
+          self.canvas_field.extended_field.field.height(),
+          self.canvas_field.extended_field.player,
+        );
+        put_points_grounded(&mut self.canvas_field.extended_field, points);
         self.put_all_bot_points();
         self.refresh();
       }
@@ -567,8 +582,13 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
             GameTree::Unknown(node) => Some(node),
             GameTree::GoGame(_) => None,
           })
-          && let Some(extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng)
+          && let Some(mut extended_field) = from_sgf::<ExtendedField, _>(node, &mut self.rng)
         {
+          // Replay the moves to update the grounded state which `from_sgf`
+          // doesn't maintain.
+          let moves = extended_field.field.colored_moves().collect::<Vec<_>>();
+          extended_field.clear();
+          put_points_grounded(&mut extended_field, moves);
           let visits = sgf_to_visits(node, extended_field.field.stride);
           self.moves = extended_field
             .field
