@@ -6239,8 +6239,10 @@ dependencies = [
 name = "oppai-iced"
 version = "0.1.0"
 dependencies = [
+ "burn",
  "clap",
  "console_error_panic_hook",
+ "either",
  "env_logger",
  "getrandom 0.3.4",
  "humantime",
@@ -6254,6 +6256,7 @@ dependencies = [
  "oppai-patterns",
  "oppai-sgf",
  "oppai-zero",
+ "oppai-zero-burn",
  "oppai-zero-sgf",
  "postcard",
  "rand 0.10.1",

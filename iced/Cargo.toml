@@ -28,6 +28,9 @@ oppai-zero-sgf = { path = "../zero-sgf" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger.workspace = true
+either.workspace = true
+burn = { workspace = true }
+oppai-zero-burn = { path = "../zero-burn", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = [
@@ -50,8 +53,14 @@ oppai-field = { path = "../field", features = ["serde"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
-default = ["dsu"]
+default = ["dsu", "ndarray", "vulkan"]
 dsu = ["oppai-field/dsu", "oppai-ais/dsu"]
+cuda = ["oppai-zero-burn/cuda", "burn/cuda"]
+rocm = ["oppai-zero-burn/rocm", "burn/rocm"]
+flex = ["oppai-zero-burn/flex", "burn/flex"]
+ndarray = ["oppai-zero-burn/ndarray", "burn/ndarray"]
+vulkan = ["oppai-zero-burn/vulkan", "burn/vulkan"]
+webgpu = ["oppai-zero-burn/webgpu", "burn/webgpu"]
 
 [[bin]]
 name = "oppai-iced"

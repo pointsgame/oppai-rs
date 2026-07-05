@@ -740,11 +740,13 @@ impl<B: Backend> Model<B> {
   }
 }
 
+#[derive(Clone)]
 pub struct Predictor<B: Backend> {
   pub model: Model<B>,
   pub device: B::Device,
 }
 
+#[derive(Clone)]
 pub struct Learner<B: AutodiffBackend, O> {
   pub predictor: Predictor<B>,
   pub optimizer: O,

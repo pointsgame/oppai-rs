@@ -4,10 +4,30 @@ mod config;
 #[cfg(target_arch = "wasm32")]
 mod worker_message;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::Backend as ConfigBackend;
 use crate::config::{Config, cli_parse};
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
+#[cfg(all(feature = "cuda", not(target_arch = "wasm32")))]
+use burn::backend::Cuda;
+#[cfg(all(feature = "flex", not(target_arch = "wasm32")))]
+use burn::backend::Flex;
+#[cfg(all(feature = "ndarray", not(target_arch = "wasm32")))]
+use burn::backend::NdArray;
+#[cfg(all(feature = "rocm", not(target_arch = "wasm32")))]
+use burn::backend::Rocm;
+#[cfg(all(any(feature = "vulkan", feature = "webgpu"), not(target_arch = "wasm32")))]
+use burn::backend::Wgpu;
+#[cfg(not(target_arch = "wasm32"))]
+use burn::{
+  module::Module,
+  record::{DefaultFileRecorder, FullPrecisionSettings},
+  tensor::backend::{Backend, Device, DeviceId},
+};
 use canvas_field::{CanvasField, CanvasMessage, Label};
+#[cfg(not(target_arch = "wasm32"))]
+use either::Either;
 use iced::theme::Palette;
 use iced::widget::{Canvas, Column, Container, Row, Text};
 use iced::{Color, Element, Event, Length, Subscription, Task, Theme, event, keyboard, window};
@@ -24,6 +44,9 @@ use oppai_field::player::Player;
 use oppai_patterns::patterns::Patterns;
 use oppai_sgf::{from_sgf, to_sgf_str};
 use oppai_zero::episode::Visits;
+use oppai_zero::model::Model;
+#[cfg(not(target_arch = "wasm32"))]
+use oppai_zero_burn::model::{Model as BurnModel, Predictor};
 use oppai_zero_sgf::sgf_to_visits;
 #[cfg(not(target_arch = "wasm32"))]
 use rand::RngExt;
@@ -48,6 +71,9 @@ use std::sync::{
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs, fs::File, sync::Mutex};
 
+#[cfg(not(target_arch = "wasm32"))]
+type IcedModel<B> = Either<(), Predictor<B>>;
+
 pub fn main() -> iced::Result {
   #[cfg(not(target_arch = "wasm32"))]
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
@@ -61,6 +87,48 @@ pub fn main() -> iced::Result {
 
   let config = cli_parse();
 
+  #[cfg(not(target_arch = "wasm32"))]
+  return match config.backend {
+    #[cfg(feature = "cuda")]
+    ConfigBackend::Cuda => run::<Cuda>(config),
+    #[cfg(feature = "flex")]
+    ConfigBackend::Flex => run::<Flex>(config),
+    #[cfg(feature = "ndarray")]
+    ConfigBackend::Ndarray => run::<NdArray>(config),
+    #[cfg(feature = "rocm")]
+    ConfigBackend::Rocm => run::<Rocm>(config),
+    #[cfg(any(feature = "vulkan", feature = "webgpu"))]
+    ConfigBackend::Wgpu => run::<Wgpu>(config),
+  };
+
+  #[cfg(target_arch = "wasm32")]
+  run_app(config, ())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn run<B>(config: Config) -> iced::Result
+where
+  B: Backend<FloatElem = f32>,
+{
+  let device = B::Device::from_id(DeviceId::new(config.device_type, config.device_id));
+  let model = config.model.as_ref().map(|model_path| {
+    let model = BurnModel::<B>::new(&device, &config.model_config);
+    model
+      .load_file(
+        model_path,
+        &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+        &device,
+      )
+      .expect("Failed to load model file.")
+  });
+  let model: IcedModel<B> = match model {
+    Some(model) => Either::Right(Predictor { model, device }),
+    None => Either::Left(()),
+  };
+  run_app(config, model)
+}
+
+fn run_app<M: Model<f32> + Clone + Send + 'static>(config: Config, model: M) -> iced::Result {
   iced::application(
     move || {
       let mut rng = make_rng::<SmallRng>();
@@ -105,7 +173,7 @@ pub fn main() -> iced::Result {
         config.height,
         config.ai_config.clone(),
         Arc::new(patterns),
-        (),
+        model.clone(),
       );
       let moves = config.initial_position.points(
         extended_field.field.width(),
@@ -116,6 +184,7 @@ pub fn main() -> iced::Result {
       let game = Game {
         config: config.clone(),
         rng,
+        model: model.clone(),
         moves: moves.map(|(pos, player)| (pos, player, Default::default())).collect(),
         canvas_field: CanvasField {
           extended_field,
@@ -167,13 +236,15 @@ pub fn main() -> iced::Result {
   .run()
 }
 
-struct Game {
+struct Game<M: Model<f32> + Clone + Send + 'static> {
   config: Config,
   rng: SmallRng,
+  #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+  model: M,
   moves: Vec<(Pos, Player, Visits)>,
   canvas_field: CanvasField<Vec<Label>>,
   #[cfg(not(target_arch = "wasm32"))]
-  oppai: Arc<Mutex<Oppai<f32, ()>>>,
+  oppai: Arc<Mutex<Oppai<f32, M>>>,
   #[cfg(target_arch = "wasm32")]
   worker: web_sys::Worker,
   ai: bool,
@@ -183,7 +254,7 @@ struct Game {
   should_stop: Arc<AtomicBool>,
 }
 
-impl Game {
+impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
   #[cfg(target_arch = "wasm32")]
   fn send_worker_message(&self, message: Request) {
     self
@@ -389,7 +460,7 @@ impl Game {
             self.config.height,
             self.config.ai_config.clone(),
             Arc::new(Patterns::default()),
-            (),
+            self.model.clone(),
           )));
         }
         #[cfg(target_arch = "wasm32")]
@@ -518,7 +589,7 @@ impl Game {
             self.config.height,
             self.config.ai_config.clone(),
             Arc::new(Patterns::default()),
-            (),
+            self.model.clone(),
           )));
           self.put_all_bot_points();
           self.refresh();
