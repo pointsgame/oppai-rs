@@ -5,6 +5,7 @@ use strum::{EnumString, VariantNames};
 
 pub struct InitParams {
   pub model: PathBuf,
+  pub model_config: ModelConfig,
   pub optimizer: PathBuf,
   pub weight_decay: f32,
 }
@@ -14,6 +15,7 @@ pub struct PlayParams {
   pub height: Vec<u32>,
   pub komi_x_2: Vec<i32>,
   pub model: Option<PathBuf>,
+  pub model_config: ModelConfig,
   pub game: PathBuf,
   pub count: usize,
 }
@@ -22,6 +24,7 @@ pub struct TrainParams {
   pub width: u32,
   pub height: u32,
   pub model: PathBuf,
+  pub model_config: ModelConfig,
   pub optimizer: PathBuf,
   pub model_new: PathBuf,
   pub optimizer_new: PathBuf,
@@ -39,7 +42,9 @@ pub struct PitParams {
   pub width: Vec<u32>,
   pub height: Vec<u32>,
   pub model: PathBuf,
+  pub model_config: ModelConfig,
   pub model_new: PathBuf,
+  pub model_config_new: ModelConfig,
   pub games: Option<PathBuf>,
   pub count: u64,
   pub win_rate_threshold: f64,
@@ -51,6 +56,7 @@ pub struct CountParams {
 
 pub struct RecalcParams {
   pub model: PathBuf,
+  pub model_config: ModelConfig,
   pub games: Vec<PathBuf>,
   pub games_new: PathBuf,
 }
@@ -83,7 +89,6 @@ pub struct Config {
   pub device_type: u16,
   pub device_id: u16,
   pub seed: Option<u64>,
-  pub model_config: ModelConfig,
 }
 
 fn width_arg() -> Arg {
@@ -124,6 +129,30 @@ fn optimizer_arg() -> Arg {
     .required(true)
 }
 
+fn model_config_arg() -> Arg {
+  Arg::new("model-config")
+    .long("model-config")
+    .help("Path to a JSON file with the model architecture configuration")
+    .num_args(1)
+    .value_parser(value_parser!(PathBuf))
+}
+
+fn model_config_new_arg() -> Arg {
+  Arg::new("model-config-new")
+    .long("model-config-new")
+    .help("Path to a JSON file with the new model architecture configuration")
+    .num_args(1)
+    .value_parser(value_parser!(PathBuf))
+}
+
+fn parse_model_config(matches: &clap::ArgMatches, name: &str) -> ModelConfig {
+  matches
+    .get_one::<PathBuf>(name)
+    .map_or_else(ModelConfig::default, |path| {
+      ModelConfig::from_file(path).expect("failed to load the model config file")
+    })
+}
+
 fn model_new_arg() -> Arg {
   Arg::new("model-new")
     .long("model-new")
@@ -158,6 +187,7 @@ pub fn cli_parse() -> (Config, Action) {
   let init = Command::new("init")
     .about("Initialize the neural network")
     .arg(model_arg())
+    .arg(model_config_arg())
     .arg(optimizer_arg())
     .arg(weight_decay_arg());
   let play = Command::new("play")
@@ -174,6 +204,7 @@ pub fn cli_parse() -> (Config, Action) {
         .allow_hyphen_values(true),
     )
     .arg(model_arg().required(false))
+    .arg(model_config_arg())
     .arg(
       Arg::new("game")
         .long("game")
@@ -197,6 +228,7 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(width_arg())
     .arg(height_arg())
     .arg(model_arg())
+    .arg(model_config_arg())
     .arg(optimizer_arg())
     .arg(model_new_arg())
     .arg(optimizer_new_arg())
@@ -266,7 +298,9 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(width_arg().num_args(1..))
     .arg(height_arg().num_args(1..))
     .arg(model_arg())
+    .arg(model_config_arg())
     .arg(model_new_arg())
+    .arg(model_config_new_arg())
     .arg(
       Arg::new("games")
         .long("games")
@@ -305,6 +339,7 @@ pub fn cli_parse() -> (Config, Action) {
   let recalc = Command::new("recalc-surprise")
     .about("Recalculate policy surprise for games using a model")
     .arg(model_arg())
+    .arg(model_config_arg())
     .arg(
       Arg::new("games")
         .long("games")
@@ -366,40 +401,29 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(u64)),
     )
-    .arg(
-      Arg::new("model-config")
-        .long("model-config")
-        .help("Path to a JSON file with the model architecture configuration")
-        .num_args(1)
-        .value_parser(value_parser!(PathBuf)),
-    )
     .get_matches();
 
   let backend = matches.get_one("backend").copied().unwrap();
   let device_type = matches.get_one("device-type").copied().unwrap();
   let device_id = matches.get_one("device-id").copied().unwrap();
   let seed = matches.get_one("seed").copied();
-  let model_config = matches
-    .get_one::<PathBuf>("model-config")
-    .map_or_else(ModelConfig::default, |path| {
-      ModelConfig::from_file(path).expect("failed to load the model config file")
-    });
 
   let config = Config {
     backend,
     device_type,
     device_id,
     seed,
-    model_config,
   };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
+      let model_config = parse_model_config(matches, "model-config");
       let optimizer = matches.get_one("optimizer").cloned().unwrap();
       let weight_decay = matches.get_one("weight-decay").copied().unwrap();
       Action::Init(InitParams {
         model,
+        model_config,
         optimizer,
         weight_decay,
       })
@@ -409,6 +433,7 @@ pub fn cli_parse() -> (Config, Action) {
       let height = matches.get_many("height").unwrap().copied().collect();
       let komi_x_2 = matches.get_many("komi-x2").unwrap().copied().collect();
       let model = matches.get_one("model").cloned();
+      let model_config = parse_model_config(matches, "model-config");
       let game = matches.get_one("game").cloned().unwrap();
       let count = matches.get_one("count").copied().unwrap();
       Action::Play(PlayParams {
@@ -416,6 +441,7 @@ pub fn cli_parse() -> (Config, Action) {
         height,
         komi_x_2,
         model,
+        model_config,
         game,
         count,
       })
@@ -424,6 +450,7 @@ pub fn cli_parse() -> (Config, Action) {
       let width = matches.get_one("width").copied().unwrap();
       let height = matches.get_one("height").copied().unwrap();
       let model = matches.get_one("model").cloned().unwrap();
+      let model_config = parse_model_config(matches, "model-config");
       let optimizer = matches.get_one("optimizer").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
@@ -439,6 +466,7 @@ pub fn cli_parse() -> (Config, Action) {
         width,
         height,
         model,
+        model_config,
         optimizer,
         model_new,
         optimizer_new,
@@ -456,7 +484,9 @@ pub fn cli_parse() -> (Config, Action) {
       let width = matches.get_many("width").unwrap().copied().collect();
       let height = matches.get_many("height").unwrap().copied().collect();
       let model = matches.get_one("model").cloned().unwrap();
+      let model_config = parse_model_config(matches, "model-config");
       let model_new = matches.get_one("model-new").cloned().unwrap();
+      let model_config_new = parse_model_config(matches, "model-config-new");
       let games = matches.get_one("games").cloned();
       let count = matches.get_one("count").copied().unwrap();
       let win_rate_threshold = matches.get_one("win-rate-threshold").copied().unwrap();
@@ -464,7 +494,9 @@ pub fn cli_parse() -> (Config, Action) {
         width,
         height,
         model,
+        model_config,
         model_new,
+        model_config_new,
         games,
         count,
         win_rate_threshold,
@@ -476,10 +508,12 @@ pub fn cli_parse() -> (Config, Action) {
     }
     Some(("recalc-surprise", matches)) => {
       let model = matches.get_one("model").cloned().unwrap();
+      let model_config = parse_model_config(matches, "model-config");
       let games = matches.get_many("games").unwrap().cloned().collect();
       let games_new = matches.get_one("games-new").cloned().unwrap();
       Action::Recalc(RecalcParams {
         model,
+        model_config,
         games,
         games_new,
       })

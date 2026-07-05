@@ -40,7 +40,7 @@ use oppai_zero::{
   episode::episode, examples::Examples, mcgs::Search, model::TrainableModel, opening::opening, pit,
   random_model::RandomModel,
 };
-use oppai_zero_burn::model::{Learner, Model as BurnModel, ModelConfig, Predictor};
+use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
 use rand::{Rng, RngExt, SeedableRng, distr::uniform::SampleUniform, make_rng, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
@@ -55,11 +55,11 @@ use std::{
   sync::{Arc, atomic::AtomicBool},
 };
 
-fn init<B>(params: InitParams, model_config: &ModelConfig, device: B::Device) -> Result<ExitCode>
+fn init<B>(params: InitParams, device: B::Device) -> Result<ExitCode>
 where
   B: AutodiffBackend,
 {
-  let mut model = BurnModel::<B>::new(&device, model_config);
+  let mut model = BurnModel::<B>::new(&device, &params.model_config);
   model.initialize(&device);
   model.save_file(params.model, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
@@ -78,13 +78,7 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<B, R: Rng>(
-  params: PlayParams,
-  model_config: &ModelConfig,
-  device: B::Device,
-  rng: &mut R,
-  should_stop: Arc<AtomicBool>,
-) -> Result<ExitCode>
+fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
@@ -94,7 +88,7 @@ where
 {
   let mut model = match params.model {
     Some(model_path) => {
-      let model = BurnModel::<B>::new(&device, model_config);
+      let model = BurnModel::<B>::new(&device, &params.model_config);
       let model = model.load_file(
         model_path,
         &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -169,7 +163,6 @@ where
 
 fn train<B, R: Rng>(
   params: TrainParams,
-  model_config: &ModelConfig,
   device: B::Device,
   rng: &mut R,
   should_stop: Arc<AtomicBool>,
@@ -178,7 +171,7 @@ where
   B: AutodiffBackend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model = BurnModel::<B>::new(&device, model_config);
+  let model = BurnModel::<B>::new(&device, &params.model_config);
   let model = model.load_file(
     params.model,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -288,18 +281,12 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn pit<B, R: Rng>(
-  params: PitParams,
-  model_config: &ModelConfig,
-  device: B::Device,
-  rng: &mut R,
-  should_stop: Arc<AtomicBool>,
-) -> Result<ExitCode>
+fn pit<B, R: Rng>(params: PitParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model_old = BurnModel::<B>::new(&device, model_config);
+  let model_old = BurnModel::<B>::new(&device, &params.model_config);
   let model_old = model_old.load_file(
     params.model,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -310,7 +297,7 @@ where
     device: device.clone(),
   };
 
-  let model_new = BurnModel::<B>::new(&device, model_config);
+  let model_new = BurnModel::<B>::new(&device, &params.model_config_new);
   let model_new = model_new.load_file(
     params.model_new,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -448,7 +435,6 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
 
 fn recalc<B, R: Rng>(
   params: RecalcParams,
-  model_config: &ModelConfig,
   device: B::Device,
   rng: &mut R,
   should_stop: Arc<AtomicBool>,
@@ -457,7 +443,7 @@ where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
 {
-  let model = BurnModel::<B>::new(&device, model_config);
+  let model = BurnModel::<B>::new(&device, &params.model_config);
   let model = model.load_file(
     params.model,
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -567,12 +553,12 @@ where
   let mut rng = config.seed.map_or_else(make_rng, SmallRng::seed_from_u64);
 
   match action {
-    Action::Init(params) => init::<Autodiff<B>>(params, &config.model_config, device),
-    Action::Play(params) => play::<B, _>(params, &config.model_config, device, &mut rng, should_stop),
-    Action::Train(params) => train::<Autodiff<B>, _>(params, &config.model_config, device, &mut rng, should_stop),
-    Action::Pit(params) => pit::<B, _>(params, &config.model_config, device, &mut rng, should_stop),
+    Action::Init(params) => init::<Autodiff<B>>(params, device),
+    Action::Play(params) => play::<B, _>(params, device, &mut rng, should_stop),
+    Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
+    Action::Pit(params) => pit::<B, _>(params, device, &mut rng, should_stop),
     Action::Count(params) => count(params, &mut rng),
-    Action::Recalc(params) => recalc::<B, _>(params, &config.model_config, device, &mut rng, should_stop),
+    Action::Recalc(params) => recalc::<B, _>(params, device, &mut rng, should_stop),
   }
 }
 
