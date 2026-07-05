@@ -1,0 +1,13 @@
+{
+  "inner_channels": 384,
+  "residual_blocks": 10,
+  "residual_size": 2,
+  "gpool_every": 3,
+  "gpool_channels": 64,
+  "v1_channels": 48,
+  "p1_channels": 48,
+  "g1_channels": 48,
+  "v2_size": 112,
+  "sbv2_size": 96,
+  "num_scorebeliefs": 8
+}

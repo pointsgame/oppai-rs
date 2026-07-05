@@ -969,6 +969,12 @@ mod tests {
   };
 
   #[test]
+  fn default_config_file_matches_default() {
+    let config = ModelConfig::from_file(concat!(env!("CARGO_MANIFEST_DIR"), "/configs/b5c192nbt.json")).unwrap();
+    assert_eq!(config, ModelConfig::default());
+  }
+
+  #[test]
   #[cfg(feature = "ndarray")]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu, &ModelConfig::default());
