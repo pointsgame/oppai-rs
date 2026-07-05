@@ -86,7 +86,10 @@ type InnerAnalysis<N> = Either<
       SingleAnalysis<i32, ()>,
       Either<
         Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
-        Either<SimpleAnalysis<f64, f64, usize>, Either<SimpleAnalysis<u64, N, usize>, SimpleAnalysis<N, N, usize>>>,
+        Either<
+          SimpleAnalysis<f64, f64, usize>,
+          Either<SimpleAnalysis<(u64, N), N, usize>, SimpleAnalysis<N, N, usize>>,
+        >,
       >,
     >,
   >,
@@ -105,7 +108,9 @@ impl<N: Float + Sum + Display + Debug + 'static> OppaiWeight<N> {
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(())))))) => None,
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(w)))))) => Some(w as f64),
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w))))) => Some(w),
-      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w)))))) => Some(w as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w)))))) => {
+        Some(w.0 as f64 + w.1.to_f64().unwrap())
+      }
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(w)))))) => w.to_f64(),
     }
   }

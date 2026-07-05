@@ -15,7 +15,7 @@ use std::{
   iter::Sum,
 };
 
-type Analysis<N> = (Vec<(Pos, u64)>, usize, N);
+type Analysis<N> = (Vec<(Pos, (u64, N))>, usize, N);
 
 type PolicyAnalysis<N> = (Vec<(Pos, N)>, N);
 
@@ -114,7 +114,11 @@ where
       iterations += 1;
     }
 
-    Ok((self.search.visits().collect(), iterations, self.search.value()))
+    Ok((
+      self.search.visits_with_prior().collect(),
+      iterations,
+      self.search.value(),
+    ))
   }
 }
 

@@ -630,11 +630,18 @@ impl<N: Float + Sum + Copy> Search<N> {
   }
 
   /// Get the visits for each child of the root node
-  pub fn visits(&self) -> impl Iterator<Item = (Pos, u64)> + '_ {
+  pub fn visits_with_prior(&self) -> impl Iterator<Item = (Pos, (u64, N))> + '_ {
     self.nodes[self.root_idx]
       .children
       .iter()
-      .map(|edge| (edge.pos, edge.visits))
+      .map(|edge| (edge.pos, (edge.visits, edge.prior)))
+  }
+
+  /// Get the visits for each child of the root node
+  pub fn visits(&self) -> impl Iterator<Item = (Pos, u64)> + '_ {
+    self
+      .visits_with_prior()
+      .map(|(pos, (visits, _))| (pos, visits))
       .filter(|(_, visits)| *visits > 0)
   }
 
