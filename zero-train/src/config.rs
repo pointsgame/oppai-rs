@@ -1,4 +1,5 @@
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version, value_parser};
+use oppai_zero_burn::model::ModelConfig;
 use std::path::PathBuf;
 use strum::{EnumString, VariantNames};
 
@@ -82,6 +83,7 @@ pub struct Config {
   pub device_type: u16,
   pub device_id: u16,
   pub seed: Option<u64>,
+  pub model_config: ModelConfig,
 }
 
 fn width_arg() -> Arg {
@@ -364,18 +366,31 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(u64)),
     )
+    .arg(
+      Arg::new("model-config")
+        .long("model-config")
+        .help("Path to a JSON file with the model architecture configuration")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf)),
+    )
     .get_matches();
 
   let backend = matches.get_one("backend").copied().unwrap();
   let device_type = matches.get_one("device-type").copied().unwrap();
   let device_id = matches.get_one("device-id").copied().unwrap();
   let seed = matches.get_one("seed").copied();
+  let model_config = matches
+    .get_one::<PathBuf>("model-config")
+    .map_or_else(ModelConfig::default, |path| {
+      ModelConfig::from_file(path).expect("failed to load the model config file")
+    });
 
   let config = Config {
     backend,
     device_type,
     device_id,
     seed,
+    model_config,
   };
 
   let action = match matches.subcommand() {

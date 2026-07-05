@@ -1,6 +1,7 @@
 use clap::{Arg, Command, value_parser};
 use oppai_ais::cli::*;
 use oppai_ais::oppai::Config as AIConfig;
+use oppai_zero_burn::model::ModelConfig;
 use std::time::Duration;
 use strum::{EnumString, VariantNames};
 
@@ -24,6 +25,7 @@ pub struct Config {
   pub patterns: Vec<String>,
   pub patterns_cache: Option<String>,
   pub model: Option<String>,
+  pub model_config: ModelConfig,
   pub backend: Backend,
   pub device_type: u16,
   pub device_id: u16,
@@ -58,6 +60,12 @@ pub fn cli_parse() -> Config {
         .short('m')
         .long("model")
         .help("Neural network model file to use for the zero solver")
+        .num_args(1),
+    )
+    .arg(
+      Arg::new("model-config")
+        .long("model-config")
+        .help("Path to a JSON file with the model architecture configuration")
         .num_args(1),
     )
     .arg(
@@ -123,6 +131,11 @@ pub fn cli_parse() -> Config {
       .map_or_else(Vec::new, |patterns| patterns.cloned().collect()),
     patterns_cache: matches.get_one("patterns-cache-file").cloned(),
     model: matches.get_one("model").cloned(),
+    model_config: matches
+      .get_one::<String>("model-config")
+      .map_or_else(ModelConfig::default, |path| {
+        ModelConfig::from_file(path).expect("Failed to load the model config file.")
+      }),
     backend: matches.get_one("backend").copied().unwrap(),
     device_type: matches.get_one("device-type").copied().unwrap(),
     device_id: matches.get_one("device-id").copied().unwrap(),

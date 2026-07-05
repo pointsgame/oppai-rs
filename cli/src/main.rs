@@ -63,7 +63,7 @@ where
 {
   let device = B::Device::from_id(DeviceId::new(config.device_type, config.device_id));
   let model = config.model.as_ref().map(|model_path| {
-    let model = BurnModel::<B>::new(&device);
+    let model = BurnModel::<B>::new(&device, &config.model_config);
     model
       .load_file(
         model_path,

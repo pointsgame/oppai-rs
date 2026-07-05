@@ -6510,6 +6510,7 @@ dependencies = [
  "num-traits",
  "oppai-zero",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

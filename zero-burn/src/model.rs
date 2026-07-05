@@ -20,21 +20,63 @@ use oppai_zero::{
   field_features::{CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
 };
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io::BufReader, path::Path};
 use thiserror::Error;
 
-const INPUT_CHANNELS: usize = CHANNELS;
-const INNER_CHANNELS: usize = 192;
-const RESIDUAL_INNER_CHANNELS: usize = INNER_CHANNELS / 2;
-const RESIDUAL_BLOCKS: usize = 5;
-const RESIDUAL_SIZE: usize = 2;
-const GPOOL_EVERY: usize = 2;
-const GPOOL_CHANNELS: usize = 32;
-const V1_CHANNELS: usize = 32;
-const P1_CHANNELS: usize = 32;
-const G1_CHANNELS: usize = 32;
-const V2_SIZE: usize = 80;
-const SBV2_SIZE: usize = 80;
-const NUM_SCOREBELIEFS: usize = 6;
+/// Model architecture hyperparameters. A model must be created with the same
+/// config it was trained with for the weights to load.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ModelConfig {
+  pub inner_channels: usize,
+  pub residual_blocks: usize,
+  pub residual_size: usize,
+  pub gpool_every: usize,
+  pub gpool_channels: usize,
+  pub v1_channels: usize,
+  pub p1_channels: usize,
+  pub g1_channels: usize,
+  pub v2_size: usize,
+  pub sbv2_size: usize,
+  pub num_scorebeliefs: usize,
+}
+
+impl Default for ModelConfig {
+  fn default() -> Self {
+    Self {
+      inner_channels: 192,
+      residual_blocks: 5,
+      residual_size: 2,
+      gpool_every: 2,
+      gpool_channels: 32,
+      v1_channels: 32,
+      p1_channels: 32,
+      g1_channels: 32,
+      v2_size: 80,
+      sbv2_size: 80,
+      num_scorebeliefs: 6,
+    }
+  }
+}
+
+impl ModelConfig {
+  pub fn residual_inner_channels(&self) -> usize {
+    self.inner_channels / 2
+  }
+
+  pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ModelConfigError> {
+    let file = File::open(path)?;
+    Ok(serde_json::from_reader(BufReader::new(file))?)
+  }
+}
+
+#[derive(Error, Debug, From)]
+pub enum ModelConfigError {
+  #[error("io error")]
+  Io(std::io::Error),
+  #[error("json error")]
+  Json(serde_json::Error),
+}
 
 // Activation gain for mish, used to keep activation variance stable through the deep residual trunk.
 fn mish_gain() -> f64 {
@@ -120,23 +162,27 @@ pub struct ConvAndGPool<B: Backend> {
 }
 
 impl<B: Backend> ConvAndGPool<B> {
-  pub fn new(device: &B::Device) -> Self {
+  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
+    let residual_inner_channels = config.residual_inner_channels();
     Self {
       conv1r: Conv2dConfig::new(
-        [RESIDUAL_INNER_CHANNELS, RESIDUAL_INNER_CHANNELS - GPOOL_CHANNELS],
+        [residual_inner_channels, residual_inner_channels - config.gpool_channels],
         [3, 3],
       )
       .with_padding(PaddingConfig2d::Same)
       .with_bias(false)
       .init(device),
-      conv1g: Conv2dConfig::new([RESIDUAL_INNER_CHANNELS, GPOOL_CHANNELS], [3, 3])
+      conv1g: Conv2dConfig::new([residual_inner_channels, config.gpool_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      normg: NormMask::new(device, GPOOL_CHANNELS, false),
-      linearg: LinearConfig::new(3 * GPOOL_CHANNELS, RESIDUAL_INNER_CHANNELS - GPOOL_CHANNELS)
-        .with_bias(false)
-        .init(device),
+      normg: NormMask::new(device, config.gpool_channels, false),
+      linearg: LinearConfig::new(
+        3 * config.gpool_channels,
+        residual_inner_channels - config.gpool_channels,
+      )
+      .with_bias(false)
+      .init(device),
     }
   }
 
@@ -198,13 +244,14 @@ pub enum ConvOrGpool<B: Backend> {
 impl<B: Backend> ConvOrGpool<B> {
   pub fn new(
     device: &B::Device,
+    config: &ModelConfig,
     gpool: bool,
     in_channels: usize,
     out_channels: usize,
     kernel_size: [usize; 2],
   ) -> Self {
     if gpool {
-      Self::Gpool(ConvAndGPool::new(device))
+      Self::Gpool(ConvAndGPool::new(device, config))
     } else {
       Self::Conv(
         Conv2dConfig::new([in_channels, out_channels], kernel_size)
@@ -232,6 +279,7 @@ pub struct NormActConv<B: Backend> {
 impl<B: Backend> NormActConv<B> {
   pub fn new(
     device: &B::Device,
+    config: &ModelConfig,
     gamma: bool,
     gpool: bool,
     in_channels: usize,
@@ -240,7 +288,7 @@ impl<B: Backend> NormActConv<B> {
   ) -> Self {
     Self {
       norm: NormMask::new(device, in_channels, gamma),
-      convgpool: ConvOrGpool::new(device, gpool, in_channels, out_channels, kernel_size),
+      convgpool: ConvOrGpool::new(device, config, gpool, in_channels, out_channels, kernel_size),
     }
   }
 
@@ -267,26 +315,29 @@ pub struct InnerResidualBlock<B: Backend> {
 }
 
 impl<B: Backend> InnerResidualBlock<B> {
-  pub fn new(device: &B::Device, gpool: bool) -> Self {
+  pub fn new(device: &B::Device, config: &ModelConfig, gpool: bool) -> Self {
+    let residual_inner_channels = config.residual_inner_channels();
     Self {
       normactconv1: NormActConv::new(
         device,
+        config,
         false,
         gpool,
-        RESIDUAL_INNER_CHANNELS,
-        RESIDUAL_INNER_CHANNELS,
+        residual_inner_channels,
+        residual_inner_channels,
         [3, 3],
       ),
       normactconv2: NormActConv::new(
         device,
+        config,
         true,
         false,
         if gpool {
-          RESIDUAL_INNER_CHANNELS - GPOOL_CHANNELS
+          residual_inner_channels - config.gpool_channels
         } else {
-          RESIDUAL_INNER_CHANNELS
+          residual_inner_channels
         },
-        RESIDUAL_INNER_CHANNELS,
+        residual_inner_channels,
         [3, 3],
       ),
     }
@@ -316,21 +367,37 @@ pub struct ResidualBlock<B: Backend> {
 }
 
 impl<B: Backend> ResidualBlock<B> {
-  pub fn new(device: &B::Device, gpool: bool) -> Self {
+  pub fn new(device: &B::Device, config: &ModelConfig, gpool: bool) -> Self {
     Self {
-      normactconvp: NormActConv::new(device, false, false, INNER_CHANNELS, RESIDUAL_INNER_CHANNELS, [1, 1]),
-      inner: (0..RESIDUAL_SIZE)
-        .map(|i| InnerResidualBlock::new(device, gpool && i == 0))
+      normactconvp: NormActConv::new(
+        device,
+        config,
+        false,
+        false,
+        config.inner_channels,
+        config.residual_inner_channels(),
+        [1, 1],
+      ),
+      inner: (0..config.residual_size)
+        .map(|i| InnerResidualBlock::new(device, config, gpool && i == 0))
         .collect(),
-      normactconvq: NormActConv::new(device, true, false, RESIDUAL_INNER_CHANNELS, INNER_CHANNELS, [1, 1]),
+      normactconvq: NormActConv::new(
+        device,
+        config,
+        true,
+        false,
+        config.residual_inner_channels(),
+        config.inner_channels,
+        [1, 1],
+      ),
     }
   }
 
-  /// Each of the `1 + RESIDUAL_SIZE` stages gets the geometric share
-  /// `fixup_scale^(1/(1+RESIDUAL_SIZE))` of the block's scale, and the final `1x1`
+  /// Each of the `1 + residual_size` stages gets the geometric share
+  /// `fixup_scale^(1/(1+residual_size))` of the block's scale, and the final `1x1`
   /// conv is zero-initialized so the whole nested block starts as the identity.
   fn initialize(&mut self, fixup_scale: f64, device: &B::Device) {
-    let inner_scale = fixup_scale.powf(1.0 / (1.0 + RESIDUAL_SIZE as f64));
+    let inner_scale = fixup_scale.powf(1.0 / (1.0 + self.inner.len() as f64));
     self.normactconvp.initialize(inner_scale, device);
     for inner in &mut self.inner {
       inner.initialize(inner_scale, device);
@@ -365,7 +432,7 @@ pub struct ValueHead<B: Backend> {
 }
 
 impl<B: Backend> ValueHead<B> {
-  pub fn new(device: &B::Device) -> Self {
+  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
     let offset_bias_data: Vec<f32> = (0..SCORE_ONE_HOT_SIZE as i32)
       .map(|i| 0.002 * ((i - (SCORE_ONE_HOT_SIZE - 1) as i32 / 2) as f32))
       .collect();
@@ -373,18 +440,18 @@ impl<B: Backend> ValueHead<B> {
       Tensor::from_data(TensorData::new(offset_bias_data, [SCORE_ONE_HOT_SIZE]), device);
 
     Self {
-      conv1: Conv2dConfig::new([INNER_CHANNELS, V1_CHANNELS], [1, 1])
+      conv1: Conv2dConfig::new([config.inner_channels, config.v1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      bias1: NormMask::new(device, V1_CHANNELS, false),
-      linear2: LinearConfig::new(3 * V1_CHANNELS, V2_SIZE).init(device),
-      linear_valuehead: LinearConfig::new(V2_SIZE, 2).init(device),
+      bias1: NormMask::new(device, config.v1_channels, false),
+      linear2: LinearConfig::new(3 * config.v1_channels, config.v2_size).init(device),
+      linear_valuehead: LinearConfig::new(config.v2_size, 2).init(device),
 
-      linear_s2: LinearConfig::new(3 * V1_CHANNELS, SBV2_SIZE).init(device),
-      linear_s2off: LinearConfig::new(1, SBV2_SIZE).with_bias(false).init(device),
-      linear_s3: LinearConfig::new(SBV2_SIZE, NUM_SCOREBELIEFS).init(device),
-      linear_smix: LinearConfig::new(3 * V1_CHANNELS, NUM_SCOREBELIEFS).init(device),
+      linear_s2: LinearConfig::new(3 * config.v1_channels, config.sbv2_size).init(device),
+      linear_s2off: LinearConfig::new(1, config.sbv2_size).with_bias(false).init(device),
+      linear_s3: LinearConfig::new(config.sbv2_size, config.num_scorebeliefs).init(device),
+      linear_smix: LinearConfig::new(3 * config.v1_channels, config.num_scorebeliefs).init(device),
       score_belief_offset_bias: Param::from_tensor(offset_bias_tensor).no_grad(),
     }
   }
@@ -405,7 +472,8 @@ impl<B: Backend> ValueHead<B> {
     // `linear_s2off` has a single input feature, so KataGo borrows `linear_s2`'s fan-in to avoid a
     // huge std; it has no bias.
     let s2off_dims = self.linear_s2off.weight.val().dims();
-    self.linear_s2off.weight = init_weight(s2off_dims, 3 * V1_CHANNELS, 1.0, gain, device);
+    let s2_fan_in = self.linear_s2.weight.val().dims()[0];
+    self.linear_s2off.weight = init_weight(s2off_dims, s2_fan_in, 1.0, gain, device);
     init_linear(
       &mut self.linear_s3,
       scorebelief_output_scale,
@@ -504,22 +572,22 @@ pub struct PolicyHead<B: Backend> {
 }
 
 impl<B: Backend> PolicyHead<B> {
-  pub fn new(device: &B::Device) -> Self {
+  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
     Self {
-      conv1p: Conv2dConfig::new([INNER_CHANNELS, P1_CHANNELS], [1, 1])
+      conv1p: Conv2dConfig::new([config.inner_channels, config.p1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      conv1g: Conv2dConfig::new([INNER_CHANNELS, G1_CHANNELS], [1, 1])
+      conv1g: Conv2dConfig::new([config.inner_channels, config.g1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      biasg: NormMask::new(device, G1_CHANNELS, false),
-      linearg: LinearConfig::new(3 * G1_CHANNELS, P1_CHANNELS)
+      biasg: NormMask::new(device, config.g1_channels, false),
+      linearg: LinearConfig::new(3 * config.g1_channels, config.p1_channels)
         .with_bias(false)
         .init(device),
-      bias2: NormMask::new(device, P1_CHANNELS, false),
-      conv2p: Conv2dConfig::new([P1_CHANNELS, 2], [1, 1])
+      bias2: NormMask::new(device, config.p1_channels, false),
+      conv2p: Conv2dConfig::new([config.p1_channels, 2], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -560,9 +628,9 @@ pub struct CapturedHead<B: Backend> {
 }
 
 impl<B: Backend> CapturedHead<B> {
-  pub fn new(device: &B::Device) -> Self {
+  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
     Self {
-      conv: Conv2dConfig::new([INNER_CHANNELS, 2], [1, 1])
+      conv: Conv2dConfig::new([config.inner_channels, 2], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -591,22 +659,22 @@ pub struct Model<B: Backend> {
 }
 
 impl<B: Backend> Model<B> {
-  pub fn new(device: &B::Device) -> Self {
+  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
     Self {
-      conv_spatial: Conv2dConfig::new([INPUT_CHANNELS, INNER_CHANNELS], [3, 3])
+      conv_spatial: Conv2dConfig::new([CHANNELS, config.inner_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      linear_global: LinearConfig::new(GLOBAL_FEATURES, INNER_CHANNELS)
+      linear_global: LinearConfig::new(GLOBAL_FEATURES, config.inner_channels)
         .with_bias(false)
         .init(device),
-      residuals: (0..RESIDUAL_BLOCKS)
-        .map(|i| ResidualBlock::new(device, (i + 1) % GPOOL_EVERY == 0))
+      residuals: (0..config.residual_blocks)
+        .map(|i| ResidualBlock::new(device, config, (i + 1) % config.gpool_every == 0))
         .collect(),
-      norm_trunkfinal: NormMask::new(device, INNER_CHANNELS, false),
-      value_head: ValueHead::new(device),
-      policy_head: PolicyHead::new(device),
-      captured_head: CapturedHead::new(device),
+      norm_trunkfinal: NormMask::new(device, config.inner_channels, false),
+      value_head: ValueHead::new(device, config),
+      policy_head: PolicyHead::new(device, config),
+      captured_head: CapturedHead::new(device, config),
     }
   }
 
@@ -623,7 +691,7 @@ impl<B: Backend> Model<B> {
       self.linear_global.weight = init_weight(dims, dims[0], 0.6, gain, device);
     }
 
-    let fixup_scale = 1.0 / (RESIDUAL_BLOCKS as f64).sqrt();
+    let fixup_scale = 1.0 / (self.residuals.len() as f64).sqrt();
     for residual in &mut self.residuals {
       residual.initialize(fixup_scale, device);
     }
@@ -883,7 +951,7 @@ where
 mod tests {
   #[cfg(feature = "ndarray")]
   use super::ConvOrGpool;
-  use super::{Learner, Model, Predictor};
+  use super::{Learner, Model, ModelConfig, Predictor};
   #[cfg(feature = "flex")]
   use burn::backend::{Flex, flex::FlexDevice};
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
@@ -903,7 +971,7 @@ mod tests {
   #[test]
   #[cfg(feature = "ndarray")]
   fn forward() {
-    let model = Model::<NdArray>::new(&NdArrayDevice::Cpu);
+    let model = Model::<NdArray>::new(&NdArrayDevice::Cpu, &ModelConfig::default());
     let (policy_logits, values, _, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu),
       Tensor::ones([1, 1], &NdArrayDevice::Cpu),
@@ -936,7 +1004,7 @@ mod tests {
   #[cfg(feature = "ndarray")]
   fn initialize_zeroes_residual_branches() {
     let device = NdArrayDevice::Cpu;
-    let mut model = Model::<NdArray>::new(&device);
+    let mut model = Model::<NdArray>::new(&device, &ModelConfig::default());
     model.initialize(&device);
 
     let assert_zero = |convgpool: &ConvOrGpool<NdArray>| match convgpool {
@@ -978,7 +1046,7 @@ mod tests {
     ($name:ident, $backend:ty, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<$backend>::new(&$device);
+        let model = Model::<$backend>::new(&$device, &ModelConfig::default());
         let mut predictor = Predictor {
           model,
           device: $device,
@@ -1001,7 +1069,7 @@ mod tests {
     ($name:ident, $backend:ty, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<Autodiff<$backend>>::new(&$device);
+        let model = Model::<Autodiff<$backend>>::new(&$device, &ModelConfig::default());
         let predictor = Predictor {
           model,
           device: $device,
