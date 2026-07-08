@@ -2,11 +2,14 @@
 #![allow(clippy::cognitive_complexity)]
 
 use anyhow::{Result, anyhow};
+use burn::backend::flex::{Flex, FlexDevice};
 use burn::backend::wgpu::{Wgpu, WgpuDevice, graphics::AutoGraphicsApi, init_setup_async};
 use burn::{
   module::Module,
   record::{FullPrecisionSettings, NamedMpkBytesRecorder, Recorder},
+  tensor::backend::Backend,
 };
+use either::Either;
 use futures::{StreamExt, channel::mpsc};
 use oppai_ai::{ai::AI, analysis::Analysis};
 use oppai_ais::{
@@ -22,10 +25,16 @@ use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
 
+fn load_predictor<B: Backend>(device: B::Device, config: &ModelConfig, model_bytes: &[u8]) -> Result<Predictor<B>> {
+  let record = NamedMpkBytesRecorder::<FullPrecisionSettings>::default().load(model_bytes.to_vec(), &device)?;
+  let model = BurnModel::<B>::new(&device, config).load_record(record);
+  Ok(Predictor { model, device })
+}
+
 struct State {
   field: Field,
   rng: SmallRng,
-  oppai: Oppai<f32, Predictor<Wgpu>>,
+  oppai: Oppai<f32, Either<Predictor<Wgpu>, Predictor<Flex>>>,
 }
 
 async fn download_bytes(url: &str) -> Result<Vec<u8>> {
@@ -43,15 +52,14 @@ async fn handle(
   request: Request,
   config: &ModelConfig,
   model_bytes: &[u8],
+  wgpu: bool,
 ) -> Result<Response> {
   Ok(match request {
     Request::Init { width, height } => {
-      let record = NamedMpkBytesRecorder::<FullPrecisionSettings>::default()
-        .load(model_bytes.to_vec(), &WgpuDevice::DefaultDevice)?;
-      let model = BurnModel::<Wgpu>::new(&WgpuDevice::DefaultDevice, config).load_record(record);
-      let predictor = Predictor {
-        model,
-        device: WgpuDevice::DefaultDevice,
+      let predictor = if wgpu {
+        Either::Left(load_predictor::<Wgpu>(WgpuDevice::DefaultDevice, config, model_bytes)?)
+      } else {
+        Either::Right(load_predictor::<Flex>(FlexDevice, config, model_bytes)?)
       };
       let mut rng = make_rng::<SmallRng>();
       let config = AIConfig {
@@ -139,9 +147,10 @@ async fn process(
   config: &ModelConfig,
   model_bytes: &[u8],
   message: String,
+  wgpu: bool,
 ) {
   let result = match serde_json::from_str(&message) {
-    Ok(request) => handle(state, patterns, request, config, model_bytes).await,
+    Ok(request) => handle(state, patterns, request, config, model_bytes, wgpu).await,
     Err(error) => Err(anyhow::Error::from(error)),
   };
   let result = result.and_then(|response| serde_json::to_string(&response).map_err(anyhow::Error::from));
@@ -175,7 +184,11 @@ pub fn run() {
   callback.forget();
 
   wasm_bindgen_futures::spawn_local(async move {
-    init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), Default::default()).await;
+    let wgpu = scope.navigator().gpu().is_object();
+
+    if wgpu {
+      init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), Default::default()).await;
+    }
 
     let (config, model_bytes) = futures::future::join(
       download_config("https://kropki.org/model.json"),
@@ -201,7 +214,7 @@ pub fn run() {
     let patterns = Arc::new(Patterns::default());
     let mut state = None;
     while let Some(message) = receiver.next().await {
-      process(&scope, &mut state, &patterns, &config, &model_bytes, message).await;
+      process(&scope, &mut state, &patterns, &config, &model_bytes, message, wgpu).await;
     }
   });
 }

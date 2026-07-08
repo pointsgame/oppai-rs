@@ -6520,6 +6520,7 @@ dependencies = [
  "anyhow",
  "burn",
  "console_error_panic_hook",
+ "either",
  "futures",
  "getrandom 0.4.2",
  "js-sys",
