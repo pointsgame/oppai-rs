@@ -2,10 +2,11 @@ use either::Either;
 use ndarray::{Array, Array2, Array3, Array4, Axis};
 use num_traits::Float;
 
+#[allow(async_fn_in_trait)]
 pub trait Model<N: Float> {
   type E;
 
-  fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E>;
+  async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E>;
 }
 
 pub trait TrainableModel<N: Float>: Model<N> + Sized {
@@ -30,7 +31,7 @@ where
 {
   type E = E;
 
-  fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
     self(inputs, global)
   }
 }
@@ -38,7 +39,7 @@ where
 impl<N: Float> Model<N> for () {
   type E = ();
 
-  fn predict(&mut self, inputs: Array4<N>, _: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(&mut self, inputs: Array4<N>, _: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let batch_size = inputs.len_of(Axis(0));
     let height = inputs.len_of(Axis(2));
     let width = inputs.len_of(Axis(3));
@@ -52,10 +53,10 @@ impl<N: Float> Model<N> for () {
 impl<N: Float, A: Model<N>, B: Model<N>> Model<N> for Either<A, B> {
   type E = Either<A::E, B::E>;
 
-  fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
     match self {
-      Either::Left(a) => a.predict(inputs, global).map_err(Either::Left),
-      Either::Right(b) => b.predict(inputs, global).map_err(Either::Right),
+      Either::Left(a) => a.predict(inputs, global).await.map_err(Either::Left),
+      Either::Right(b) => b.predict(inputs, global).await.map_err(Either::Right),
     }
   }
 }

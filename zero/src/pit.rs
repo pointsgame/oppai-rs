@@ -10,7 +10,7 @@ use std::mem;
 
 const MCTS_SIMS: u32 = 32;
 
-pub fn play<'a, N, M, R>(
+pub async fn play<'a, N, M, R>(
   field: &mut Field,
   mut player: Player,
   mut model1: &'a mut M,
@@ -29,7 +29,7 @@ where
 
   while !field.is_game_over(if player == Player::Red { komi_x_2 } else { -komi_x_2 }) {
     for _ in 0..MCTS_SIMS {
-      search1.mcgs(field, player, model1, komi_x_2, rng)?;
+      search1.mcgs(field, player, model1, komi_x_2, rng).await?;
     }
 
     let pos = if let Some(pos) = search1.next_best_root() {

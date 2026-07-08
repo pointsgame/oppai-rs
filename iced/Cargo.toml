@@ -8,6 +8,7 @@ edition = "2024"
 default-run = "oppai-iced"
 
 [dependencies]
+futures.workspace = true
 iced = { version = "0.14", features = ["canvas", "image"] }
 rand.workspace = true
 log.workspace = true

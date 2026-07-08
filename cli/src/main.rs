@@ -118,7 +118,8 @@ where
       } => {
         let state = state_option.as_mut().ok_or(anyhow::anyhow!("Not initialized"))?;
         let mut oppai = TimeLimitedAI(time, &mut state.oppai);
-        let analysis = oppai.analyze(&mut state.rng, &mut state.field, player, None, &|| false);
+        let analysis =
+          futures::executor::block_on(oppai.analyze(&mut state.rng, &mut state.field, player, None, &|| false));
         let mut moves: Vec<Move> = analysis
           .moves()
           .map(|(pos, weight)| Move {
@@ -142,9 +143,13 @@ where
           uct_iterations: (100_000.0 * complexity).round() as usize,
           zero_iterations: (1_000.0 * complexity).round() as usize,
         };
-        let analysis = state
-          .oppai
-          .analyze(&mut state.rng, &mut state.field, player, Some(confidence), &|| false);
+        let analysis = futures::executor::block_on(state.oppai.analyze(
+          &mut state.rng,
+          &mut state.field,
+          player,
+          Some(confidence),
+          &|| false,
+        ));
         let mut moves: Vec<Move> = analysis
           .moves()
           .map(|(pos, weight)| Move {

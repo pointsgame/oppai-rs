@@ -182,7 +182,7 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
   type Analysis = OppaiAnalysis<N>;
   type Confidence = InConfidence;
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,
@@ -221,7 +221,7 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
       )
     });
 
-    OppaiAnalysis(ai.analyze(rng, field, player, confidence, should_stop))
+    OppaiAnalysis(ai.analyze(rng, field, player, confidence, should_stop).await)
   }
 }
 

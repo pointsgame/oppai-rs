@@ -8,7 +8,7 @@ use burn::{
   tensor::{
     DataError, Tensor, TensorData,
     activation::{log_softmax, mish, softmax},
-    backend::{AutodiffBackend, Backend},
+    backend::{AutodiffBackend, Backend, ExecutionError},
     ops::FloatElem,
     s,
   },
@@ -758,6 +758,8 @@ pub enum ModelError {
   ShapeError(ShapeError),
   #[error("data error")]
   DataError(DataError),
+  #[error("execution error")]
+  ExecutionError(ExecutionError),
 }
 
 fn into_data_vec<A: Clone, D: Dimension>(array: Array<A, D>) -> Vec<A> {
@@ -781,7 +783,7 @@ where
 {
   type E = ModelError;
 
-  fn predict(
+  async fn predict(
     &mut self,
     inputs: Array4<FloatElem<B>>,
     global: Array2<FloatElem<B>>,
@@ -800,8 +802,8 @@ where
     let policy_logits: Tensor<B, 3> = policy_logits.slice(s![.., 0..1, .., ..]).squeeze_dim(1);
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
     let values = softmax(value_logits, 1);
-    let policies = Array3::from_shape_vec((batch, height, width), policies.into_data().into_vec()?)?;
-    let values = Array2::from_shape_vec((batch, 2), values.into_data().into_vec()?)?;
+    let policies = Array3::from_shape_vec((batch, height, width), policies.into_data_async().await?.into_vec()?)?;
+    let values = Array2::from_shape_vec((batch, 2), values.into_data_async().await?.into_vec()?)?;
     Ok((policies, values))
   }
 }
@@ -813,12 +815,12 @@ where
 {
   type E = ModelError;
 
-  fn predict(
+  async fn predict(
     &mut self,
     inputs: Array4<FloatElem<B>>,
     global: Array2<FloatElem<B>>,
   ) -> Result<(Array3<FloatElem<B>>, Array2<FloatElem<B>>), Self::E> {
-    self.predictor.predict(inputs, global)
+    self.predictor.predict(inputs, global).await
   }
 }
 
@@ -1059,8 +1061,7 @@ mod tests {
           model,
           device: $device,
         };
-        predictor
-          .predict(Array4::from_elem((1, CHANNELS, 4, 8), 1.0), array![[0.2]])
+        futures::executor::block_on(predictor.predict(Array4::from_elem((1, CHANNELS, 4, 8), 1.0), array![[0.2]]))
           .unwrap();
       }
     };
@@ -1094,7 +1095,8 @@ mod tests {
         scores[(0, 0)] = 1.0;
         let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
 
-        let (out_policies_1, out_values_1) = learner.predict(inputs.clone(), global.clone()).unwrap();
+        let (out_policies_1, out_values_1) =
+          futures::executor::block_on(learner.predict(inputs.clone(), global.clone())).unwrap();
         let mut learner = learner
           .train(
             inputs.clone(),
@@ -1107,7 +1109,7 @@ mod tests {
             0.01,
           )
           .unwrap();
-        let (out_policies_2, out_values_2) = learner.predict(inputs, global).unwrap();
+        let (out_policies_2, out_values_2) = futures::executor::block_on(learner.predict(inputs, global)).unwrap();
 
         assert!((out_policies_1 - out_policies_2).iter().all(|v| v.abs() > 0.0));
         assert!((out_values_1 - out_values_2).iter().all(|v| v.abs() > 0.0));

@@ -20,6 +20,7 @@ oppai-rotate = { path = "../rotate" }
 [dev-dependencies]
 criterion.workspace = true
 rand_xoshiro.workspace = true
+futures.workspace = true
 
 [[bench]]
 name = "mcgs_benchmark"

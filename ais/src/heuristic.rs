@@ -35,7 +35,7 @@ impl AI for Heuristic {
   type Analysis = SimpleAnalysis<i32, (), ()>;
   type Confidence = ();
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     _: &mut R,
     field: &mut Field,

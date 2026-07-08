@@ -9,7 +9,7 @@ impl AI for Patterns {
   type Analysis = FlatAnalysis<(), ()>;
   type Confidence = ();
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     _: &mut R,
     field: &mut Field,

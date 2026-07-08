@@ -56,7 +56,7 @@ impl AI for Initial {
   type Analysis = SingleAnalysis<(), ()>;
   type Confidence = ();
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     _rng: &mut R,
     field: &mut Field,

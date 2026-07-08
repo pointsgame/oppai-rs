@@ -9,7 +9,7 @@ impl AI for Minimax {
   type Analysis = SingleAnalysis<i32, u32>;
   type Confidence = u32;
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     _: &mut R,
     field: &mut Field,

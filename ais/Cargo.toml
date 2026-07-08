@@ -26,6 +26,9 @@ oppai-patterns = { path = "../patterns" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 crossbeam.workspace = true
 
+[dev-dependencies]
+futures.workspace = true
+
 [features]
 default = ["dsu"]
 dsu = ["oppai-field/dsu"]

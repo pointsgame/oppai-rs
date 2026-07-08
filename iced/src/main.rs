@@ -414,11 +414,10 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
               async move {
                 let mut oppai = oppai.lock().unwrap();
                 let mut oppai = TimeLimitedAI(time, oppai.deref_mut());
-                oppai
-                  .analyze(&mut rng, &mut field, player, None, &|| {
-                    should_stop.load(Ordering::Relaxed)
-                  })
-                  .best_move(&mut rng)
+                futures::executor::block_on(oppai.analyze(&mut rng, &mut field, player, None, &|| {
+                  should_stop.load(Ordering::Relaxed)
+                }))
+                .best_move(&mut rng)
               },
               Message::BotMove,
             );

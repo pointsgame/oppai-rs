@@ -453,7 +453,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     children
   }
 
-  pub fn mcgs<M: Model<N>, R: Rng>(
+  pub async fn mcgs<M: Model<N>, R: Rng>(
     &mut self,
     field: &mut Field,
     player: Player,
@@ -523,7 +523,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     .unwrap();
     let global = Array::from_shape_vec((global.len() / GLOBAL_FEATURES, GLOBAL_FEATURES), global).unwrap();
 
-    let (policies, values) = model.predict(features, global)?;
+    let (policies, values) = model.predict(features, global).await?;
 
     for (i, (path, _)) in leafs.iter().enumerate() {
       Self::make_moves(&self.nodes, field, path, player, false);

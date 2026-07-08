@@ -19,7 +19,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
   type Analysis = SimpleAnalysis<(u64, N), N, usize>;
   type Confidence = usize;
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,
@@ -32,10 +32,10 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
     StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
-    if let Ok((moves, confidence, estimation)) =
-      self
-        .0
-        .best_moves(field, player, rng, should_stop, confidence.unwrap_or(usize::MAX))
+    if let Ok((moves, confidence, estimation)) = self
+      .0
+      .best_moves(field, player, rng, should_stop, confidence.unwrap_or(usize::MAX))
+      .await
     {
       SimpleAnalysis {
         moves,
@@ -74,7 +74,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
   type Analysis = SimpleAnalysis<N, N, usize>;
   type Confidence = usize;
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     _rng: &mut R,
     field: &mut Field,
@@ -87,7 +87,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
     StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
-    if let Ok((moves, estimation)) = policy_moves(&mut self.model, field, player) {
+    if let Ok((moves, estimation)) = policy_moves(&mut self.model, field, player).await {
       SimpleAnalysis {
         moves,
         estimation,

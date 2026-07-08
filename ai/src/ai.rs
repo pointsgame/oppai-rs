@@ -5,6 +5,7 @@ use either::Either;
 use oppai_field::{field::Field, player::Player};
 use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 
+#[allow(async_fn_in_trait)]
 pub trait AI {
   /// Analysis result of this AI.
   type Analysis: Analysis;
@@ -12,7 +13,7 @@ pub trait AI {
   type Confidence: Clone + 'static;
 
   /// Analyze the game position.
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,
@@ -46,7 +47,7 @@ impl AI for () {
   type Analysis = ();
   type Confidence = ();
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     _: &mut R,
     _: &mut Field,
@@ -61,7 +62,7 @@ impl<T: AI> AI for &mut T {
   type Analysis = T::Analysis;
   type Confidence = T::Confidence;
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,
@@ -74,7 +75,7 @@ impl<T: AI> AI for &mut T {
     StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
-    (*self).analyze(rng, field, player, confidence, should_stop)
+    (*self).analyze(rng, field, player, confidence, should_stop).await
   }
 }
 
@@ -82,7 +83,7 @@ impl<A: AI, B: AI> AI for (A, B) {
   type Analysis = Either<A::Analysis, B::Analysis>;
   type Confidence = (A::Confidence, B::Confidence);
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,
@@ -95,15 +96,23 @@ impl<A: AI, B: AI> AI for (A, B) {
     StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
-    let analysis = self.0.analyze(
-      rng,
-      field,
-      player,
-      confidence.as_ref().map(|c| &c.0).cloned(),
-      should_stop,
-    );
+    let analysis = self
+      .0
+      .analyze(
+        rng,
+        field,
+        player,
+        confidence.as_ref().map(|c| &c.0).cloned(),
+        should_stop,
+      )
+      .await;
     if analysis.is_empty() {
-      Either::Right(self.1.analyze(rng, field, player, confidence.map(|c| c.1), should_stop))
+      Either::Right(
+        self
+          .1
+          .analyze(rng, field, player, confidence.map(|c| c.1), should_stop)
+          .await,
+      )
     } else {
       Either::Left(analysis)
     }
@@ -114,7 +123,7 @@ impl<A: AI, B: AI> AI for Either<A, B> {
   type Analysis = Either<A::Analysis, B::Analysis>;
   type Confidence = (A::Confidence, B::Confidence);
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,
@@ -128,8 +137,14 @@ impl<A: AI, B: AI> AI for Either<A, B> {
     SS: Fn() -> bool + Sync,
   {
     match self {
-      Either::Left(ai) => Either::Left(ai.analyze(rng, field, player, confidence.map(|c| c.0), should_stop)),
-      Either::Right(ai) => Either::Right(ai.analyze(rng, field, player, confidence.map(|c| c.1), should_stop)),
+      Either::Left(ai) => Either::Left(
+        ai.analyze(rng, field, player, confidence.map(|c| c.0), should_stop)
+          .await,
+      ),
+      Either::Right(ai) => Either::Right(
+        ai.analyze(rng, field, player, confidence.map(|c| c.1), should_stop)
+          .await,
+      ),
     }
   }
 }
@@ -162,7 +177,7 @@ impl<
   type Analysis = A2;
   type Confidence = C2;
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,
@@ -179,6 +194,6 @@ impl<
       Some(c) => Some((self.cf)(c)),
       None => None,
     };
-    (self.af)(self.ai.analyze(rng, field, player, c, should_stop))
+    (self.af)(self.ai.analyze(rng, field, player, c, should_stop).await)
   }
 }

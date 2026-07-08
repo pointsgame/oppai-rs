@@ -10,7 +10,7 @@ impl AI for Ladders {
   type Analysis = SingleAnalysis<i32, ()>;
   type Confidence = ();
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     _: &mut R,
     field: &mut Field,

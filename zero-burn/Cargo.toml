@@ -17,6 +17,9 @@ log.workspace = true
 oppai-zero = { path = "../zero" }
 derive_more = { workspace = true, features = ["from"] }
 
+[dev-dependencies]
+futures.workspace = true
+
 [features]
 cuda = ["burn/cuda"]
 rocm = ["burn/rocm"]

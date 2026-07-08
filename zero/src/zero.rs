@@ -96,7 +96,7 @@ where
     self.search.compact();
   }
 
-  pub fn best_moves<SS: Fn() -> bool, R: Rng>(
+  pub async fn best_moves<SS: Fn() -> bool, R: Rng>(
     &mut self,
     field: &Field,
     player: Player,
@@ -110,7 +110,7 @@ where
     let mut iterations = 0;
     let mut field = field.clone();
     while !should_stop() && iterations < max_iterations_count {
-      self.search.mcgs(&mut field, player, &mut self.model, 0, rng)?;
+      self.search.mcgs(&mut field, player, &mut self.model, 0, rng).await?;
       iterations += 1;
     }
 
@@ -126,7 +126,11 @@ where
 /// running any Monte Carlo search. A single forward pass produces the policy
 /// and value; the legal moves are returned weighted by their policy priors
 /// (renormalized over the legal moves) and the value is the estimation.
-pub fn policy_moves<N, M>(model: &mut M, field: &Field, player: Player) -> Result<PolicyAnalysis<N>, <M as Model<N>>::E>
+pub async fn policy_moves<N, M>(
+  model: &mut M,
+  field: &Field,
+  player: Player,
+) -> Result<PolicyAnalysis<N>, <M as Model<N>>::E>
 where
   N: Float + Sum,
   M: Model<N>,
@@ -137,7 +141,7 @@ where
   let features = field_features::<N>(field, player, field.width(), field.height(), 0).insert_axis(Axis(0));
   let global = global::<N>(field, player, komi_x_2).insert_axis(Axis(0));
 
-  let (policies, values) = model.predict(features, global)?;
+  let (policies, values) = model.predict(features, global).await?;
 
   let policy = policies.index_axis(Axis(0), 0);
   let value = values[(0, 0)] - values[(0, 1)];

@@ -70,8 +70,9 @@ fn main() {
       }
       Request::BestMove(player) => {
         let mut oppai = TimeLimitedAI(Duration::from_secs(5), &mut state.oppai);
-        let pos = oppai
-          .analyze(&mut state.rng, &mut state.field, player, None, &|| false)
+        // The model here is `()`, so the analyze future completes on the first
+        // poll and blocking on it is safe even on wasm.
+        let pos = futures::executor::block_on(oppai.analyze(&mut state.rng, &mut state.field, player, None, &|| false))
           .best_move(&mut state.rng)
           .map_or(0, |pos| pos.get());
         scope_clone

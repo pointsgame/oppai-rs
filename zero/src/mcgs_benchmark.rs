@@ -32,9 +32,7 @@ fn search(bencher: &mut Bencher) {
     let mut search = Search::<f64>::new(false);
     let mut model = RandomModel(rng.clone());
     for _ in 0..SIMS {
-      search
-        .mcgs(&mut field, Player::Red, &mut model, 0, &mut rng.clone())
-        .unwrap();
+      futures::executor::block_on(search.mcgs(&mut field, Player::Red, &mut model, 0, &mut rng.clone())).unwrap();
     }
     search.best_move()
   });

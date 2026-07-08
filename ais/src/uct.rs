@@ -11,7 +11,7 @@ impl AI for Uct {
   type Analysis = SimpleAnalysis<f64, f64, usize>;
   type Confidence = usize;
 
-  fn analyze<S, R, SS>(
+  async fn analyze<S, R, SS>(
     &mut self,
     rng: &mut R,
     field: &mut Field,

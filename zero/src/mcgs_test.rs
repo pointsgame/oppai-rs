@@ -34,18 +34,17 @@ fn mcts_first_iterations() {
   );
   let mut search = Search::<f64>::new(false);
 
-  search
-    .mcgs(
-      &mut field,
-      Player::Red,
-      &mut |inputs: Array4<f64>, _| {
-        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0])));
-        result
-      },
-      0,
-      &mut rng,
-    )
-    .unwrap();
+  futures::executor::block_on(search.mcgs(
+    &mut field,
+    Player::Red,
+    &mut |inputs: Array4<f64>, _| {
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0])));
+      result
+    },
+    0,
+    &mut rng,
+  ))
+  .unwrap();
   assert_eq!(search.nodes[0].visits, 1);
   assert_eq!(search.nodes[0].value, 1.0);
   // corner moves are not considered
@@ -60,18 +59,17 @@ fn mcts_first_iterations() {
       .all(|edge| !search.map.contains_key(&edge.hash))
   );
 
-  search
-    .mcgs(
-      &mut field,
-      Player::Red,
-      &mut |inputs: Array4<f64>, _| {
-        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0])));
-        result
-      },
-      0,
-      &mut rng,
-    )
-    .unwrap();
+  futures::executor::block_on(search.mcgs(
+    &mut field,
+    Player::Red,
+    &mut |inputs: Array4<f64>, _| {
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0])));
+      result
+    },
+    0,
+    &mut rng,
+  ))
+  .unwrap();
   assert_eq!(search.nodes[0].visits, 9);
   assert_eq!(search.nodes[0].value, 1.0);
   assert_eq!(search.nodes[0].children.iter().map(|edge| edge.visits).sum::<u64>(), 8);
@@ -120,18 +118,17 @@ fn mcts_last_iterations() {
   );
   let mut search = Search::<f64>::new(false);
 
-  search
-    .mcgs(
-      &mut field,
-      Player::Red,
-      &mut |inputs: Array4<f64>, _| {
-        let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5])));
-        result
-      },
-      0,
-      &mut rng,
-    )
-    .unwrap();
+  futures::executor::block_on(search.mcgs(
+    &mut field,
+    Player::Red,
+    &mut |inputs: Array4<f64>, _| {
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5])));
+      result
+    },
+    0,
+    &mut rng,
+  ))
+  .unwrap();
   assert_eq!(search.nodes[0].visits, 1);
   assert_eq!(search.nodes[0].value, 1.0);
   assert!(search.nodes[0].children.is_empty());

@@ -7,9 +7,11 @@ description = "Open Points Artificial Intelligence"
 edition = "2024"
 
 [dependencies]
+futures.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+burn = { workspace = true, features = [ "webgpu", "flex" ] }
 log.workspace = true
 web-sys = { version = "0.3", features = [
   "MessageEvent",
@@ -18,12 +20,16 @@ web-sys = { version = "0.3", features = [
 ] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 wasm-logger = "0.2"
 console_error_panic_hook = "0.1"
 # for wasm_js feature
 getrandom = { version = "0.4", features = ["wasm_js"] }
+reqwest = { version = "0.13", features = ["json"] }
 oppai-field = { path = "../field" }
 oppai-patterns = { path = "../patterns" }
+oppai-zero = { path = "../zero" }
+oppai-zero-burn = { path = "../zero-burn", default-features = false, features = [ "webgpu", "flex" ] }
 oppai-ai = { path = "../ai" }
 oppai-ais = { path = "../ais" }
 oppai-protocol = { path = "../protocol" }

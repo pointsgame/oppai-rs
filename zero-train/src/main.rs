@@ -78,7 +78,12 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
+async fn play<B, R: Rng>(
+  params: PlayParams,
+  device: B::Device,
+  rng: &mut R,
+  should_stop: Arc<AtomicBool>,
+) -> Result<ExitCode>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
@@ -134,6 +139,7 @@ where
     }
 
     let visits = episode(&mut field, player, &mut model, komi_x_2, rng)
+      .await
       .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
 
     let field = field.into();
@@ -281,7 +287,12 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn pit<B, R: Rng>(params: PitParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
+async fn pit<B, R: Rng>(
+  params: PitParams,
+  device: B::Device,
+  rng: &mut R,
+  should_stop: Arc<AtomicBool>,
+) -> Result<ExitCode>
 where
   B: Backend,
   FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
@@ -352,9 +363,9 @@ where
     }
 
     let result = if i.is_multiple_of(2) {
-      pit::play(&mut field, player, &mut model_new, &mut model_old, 0, rng)?
+      pit::play(&mut field, player, &mut model_new, &mut model_old, 0, rng).await?
     } else {
-      -pit::play(&mut field, player, &mut model_old, &mut model_new, 0, rng)?
+      -pit::play(&mut field, player, &mut model_old, &mut model_new, 0, rng).await?
     };
 
     match result.cmp(&0) {
@@ -433,7 +444,7 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
   Ok(ExitCode::SUCCESS)
 }
 
-fn recalc<B, R: Rng>(
+async fn recalc<B, R: Rng>(
   params: RecalcParams,
   device: B::Device,
   rng: &mut R,
@@ -511,7 +522,9 @@ where
         // A single search step expands the root with the network, filling in the
         // raw child priors used to measure the surprise.
         let mut search = Search::<FloatElem<B>>::new(false);
-        search.mcgs(&mut position_field, player, &mut model, komi_x_2, rng)?;
+        search
+          .mcgs(&mut position_field, player, &mut model, komi_x_2, rng)
+          .await?;
         let mut priors = vec![FloatElem::<B>::zero(); position_field.length()];
         search.root_priors(&mut priors);
         current.2 = Search::policy_surprise(&current.0, &priors).to_f64().unwrap();
@@ -554,11 +567,11 @@ where
 
   match action {
     Action::Init(params) => init::<Autodiff<B>>(params, device),
-    Action::Play(params) => play::<B, _>(params, device, &mut rng, should_stop),
+    Action::Play(params) => futures::executor::block_on(play::<B, _>(params, device, &mut rng, should_stop)),
     Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
-    Action::Pit(params) => pit::<B, _>(params, device, &mut rng, should_stop),
+    Action::Pit(params) => futures::executor::block_on(pit::<B, _>(params, device, &mut rng, should_stop)),
     Action::Count(params) => count(params, &mut rng),
-    Action::Recalc(params) => recalc::<B, _>(params, device, &mut rng, should_stop),
+    Action::Recalc(params) => futures::executor::block_on(recalc::<B, _>(params, device, &mut rng, should_stop)),
   }
 }
 

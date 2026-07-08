@@ -125,7 +125,7 @@ where
   None
 }
 
-pub fn episode<N, M, R>(
+pub async fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
   model: &mut M,
@@ -149,7 +149,9 @@ where
   for _ in 0..raw_policy_moves {
     let features = field_features(field, player, field.width(), field.height(), 0);
     let global = global(field, player, komi_x_2);
-    let (policy, _) = model.predict(features.insert_axis(Axis(0)), global.insert_axis(Axis(0)))?;
+    let (policy, _) = model
+      .predict(features.insert_axis(Axis(0)), global.insert_axis(Axis(0)))
+      .await?;
     if let Some(pos) = select_policy_move(field, policy, rng) {
       assert!(field.put_point(pos.get(), player));
       field.update_grounded();
@@ -174,7 +176,7 @@ where
     let sims = if full_search {
       // The root has to be expanded before the noise can be applied to its children priors.
       if search.nodes[search.root_idx].children.is_empty() {
-        search.mcgs(field, player, model, komi_x_2, rng)?;
+        search.mcgs(field, player, model, komi_x_2, rng).await?;
       }
       search.root_priors(&mut raw_priors);
       // Total Dirichlet alpha, matching AlphaZero's 0.03 per move on an empty 19x19 board
@@ -189,7 +191,7 @@ where
     };
 
     for _ in 0..sims {
-      search.mcgs(field, player, model, komi_x_2, rng)?;
+      search.mcgs(field, player, model, komi_x_2, rng).await?;
     }
 
     let target: Vec<(Pos, u64)> = if full_search {
