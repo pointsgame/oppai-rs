@@ -177,10 +177,10 @@ fn weight_decay_arg() -> Arg {
   Arg::new("weight-decay")
     .long("weight-decay")
     .short('w')
-    .help("Weight decay (L2 penalty)")
+    .help("Weight decay (L2 penalty; 0 disables it)")
     .num_args(1)
     .value_parser(value_parser!(f32))
-    .default_value("0.00003")
+    .default_value("0.000000004")
 }
 
 pub fn cli_parse() -> (Config, Action) {

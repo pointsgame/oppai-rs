@@ -64,7 +64,7 @@ where
   model.save_file(params.model, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
 
   let optimizer = SgdConfig::new()
-    .with_weight_decay(Some(WeightDecayConfig::new(params.weight_decay)))
+    .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
     .init::<B, BurnModel<_>>();
   let record = optimizer.to_record();
@@ -184,7 +184,7 @@ where
     &device,
   )?;
   let optimizer = SgdConfig::new()
-    .with_weight_decay(Some(WeightDecayConfig::new(params.weight_decay)))
+    .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
     .with_gradient_clipping(params.gradient_clipping.map(GradientClippingConfig::Norm))
     .init::<B, BurnModel<_>>();
