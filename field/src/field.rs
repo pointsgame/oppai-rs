@@ -731,7 +731,7 @@ impl Field {
     };
     #[cfg(not(feature = "dsu"))]
     let mut field = Field {
-      stride: width + 1,
+      stride,
       score_red: 0,
       score_black: 0,
       non_grounded_red: 0,
