@@ -190,12 +190,18 @@ pub fn is_corner(width: u32, height: u32, pos: Pos) -> bool {
   (x == 0 || x == width - 1) && (y == 0 || y == height - 1)
 }
 
+/// (dx, dy) of a step between two adjacent positions
+#[inline(always)]
+fn delta_to_direction(delta: isize, stride: u32) -> (i32, i32) {
+  let dy = (delta > 1) as i32 - (delta < -1) as i32;
+  let dx = (delta - dy as isize * stride as isize) as i32;
+  (dx, dy)
+}
+
 #[inline]
-fn get_intersection_state(stride: u32, pos_x: u32, pos_y: u32, next_pos: Pos) -> IntersectionState {
-  let next_pos_x = to_x(stride, next_pos);
-  let next_pos_y = to_y(stride, next_pos);
-  if next_pos_x <= pos_x {
-    match next_pos_y as i32 - pos_y as i32 {
+fn get_intersection_state(rel_x: i32, rel_y: i32) -> IntersectionState {
+  if rel_x <= 0 {
+    match rel_y {
       1 => IntersectionState::Up,
       0 => IntersectionState::Target,
       -1 => IntersectionState::Down,
@@ -206,13 +212,24 @@ fn get_intersection_state(stride: u32, pos_x: u32, pos_y: u32, next_pos: Pos) ->
   }
 }
 
-pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
-  let pos_x = to_x(stride, pos);
-  let pos_y = to_y(stride, pos);
+/// `ring` must be a closed chain of adjacent positions
+fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
+  let (pos_x, pos_y) = to_xy(stride, pos);
+  let (begin_x, begin_y) = to_xy(stride, ring[0]);
+  // coordinates of ring points relative to pos are tracked incrementally
+  let rel_begin_x = begin_x as i32 - pos_x as i32;
+  let rel_begin_y = begin_y as i32 - pos_y as i32;
+  let mut rel_x = rel_begin_x;
+  let mut rel_y = rel_begin_y;
+  let mut prev_pos = ring[0];
   let mut intersections = 0u32;
   let mut state = IntersectionState::None;
   for &next_pos in ring {
-    match get_intersection_state(stride, pos_x, pos_y, next_pos) {
+    let (dx, dy) = delta_to_direction(next_pos as isize - prev_pos as isize, stride);
+    rel_x += dx;
+    rel_y += dy;
+    prev_pos = next_pos;
+    match get_intersection_state(rel_x, rel_y) {
       IntersectionState::None => {
         state = IntersectionState::None;
       }
@@ -232,10 +249,18 @@ pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
     }
   }
   if state == IntersectionState::Up || state == IntersectionState::Down {
+    let mut rel_x = rel_begin_x;
+    let mut rel_y = rel_begin_y;
     let mut iter = ring.iter();
-    let mut begin_state = get_intersection_state(stride, pos_x, pos_y, *iter.next().unwrap());
+    let mut prev_pos = *iter.next().unwrap();
+    let mut begin_state = get_intersection_state(rel_x, rel_y);
     while begin_state == IntersectionState::Target {
-      begin_state = get_intersection_state(stride, pos_x, pos_y, *iter.next().unwrap());
+      let next_pos = *iter.next().unwrap();
+      let (dx, dy) = delta_to_direction(next_pos as isize - prev_pos as isize, stride);
+      rel_x += dx;
+      rel_y += dy;
+      prev_pos = next_pos;
+      begin_state = get_intersection_state(rel_x, rel_y);
     }
     if state == IntersectionState::Up && begin_state == IntersectionState::Down
       || state == IntersectionState::Down && begin_state == IntersectionState::Up
@@ -244,11 +269,6 @@ pub fn is_point_inside_ring(stride: u32, pos: Pos, ring: &[Pos]) -> bool {
     }
   }
   intersections % 2 == 1
-}
-
-#[inline]
-pub fn skew_product(coord1: (u32, u32), coord2: (u32, u32)) -> i32 {
-  (coord1.0 * coord2.1) as i32 - (coord1.1 * coord2.0) as i32
 }
 
 pub fn directions(stride: u32, pos: Pos) -> [Pos; 4] {
@@ -447,16 +467,20 @@ fn build_chain(
     }
     center_pos = pos;
   }
-  let start_coord = to_xy(stride, start_pos);
-  let mut center_coord = start_coord;
-  let mut base_area = 0;
+  let mut x = 0i32;
+  let mut y = 0i32;
+  let mut base_area = 0i32;
+  let mut prev_pos = start_pos;
   for &pos in chain.iter().skip(1) {
-    let pos_coord = to_xy(stride, pos);
-    base_area += skew_product(center_coord, pos_coord);
-    center_coord = pos_coord;
+    let (dx, dy) = delta_to_direction(pos as isize - prev_pos as isize, stride);
+    base_area += x * dy - y * dx;
+    x += dx;
+    y += dy;
+    prev_pos = pos;
     points[pos].clear_tag();
   }
-  base_area += skew_product(center_coord, start_coord);
+  let (dx, dy) = delta_to_direction(start_pos as isize - prev_pos as isize, stride);
+  base_area += x * dy - y * dx;
   base_area < 0
 }
 
@@ -470,8 +494,8 @@ fn find_chain(
   mut direction: Neighbor,
 ) -> bool {
   let mut center_pos = direction.apply(neighbor_offsets, start_pos);
-  let mut center_coord = to_xy(stride, center_pos);
-  let mut base_area = skew_product(to_xy(stride, start_pos), center_coord);
+  let (mut x, mut y) = delta_to_direction(center_pos as isize - start_pos as isize, stride);
+  let mut base_area = 0i32;
   chain.clear();
   chain.push(start_pos);
   loop {
@@ -482,13 +506,14 @@ fn find_chain(
       direction = direction.next();
       pos = direction.apply(neighbor_offsets, center_pos);
     }
-    let pos_coord = to_xy(stride, pos);
-    base_area += skew_product(center_coord, pos_coord);
+    let (dx, dy) = delta_to_direction(pos as isize - center_pos as isize, stride);
+    base_area += x * dy - y * dx;
     if pos == start_pos {
       break;
     }
+    x += dx;
+    y += dy;
     center_pos = pos;
-    center_coord = pos_coord;
   }
   base_area < 0 && chain.len() > 2
 }
