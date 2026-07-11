@@ -367,9 +367,7 @@ impl UctRoot {
     possible_moves.shuffle(rng);
     let mut cur_player = player;
     for &pos in possible_moves.iter() {
-      let cell = field.cell(pos);
-      if cell.is_putting_allowed() {
-        field.put_point(pos, cur_player);
+      if field.put_point(pos, cur_player) {
         // Don't fill in moves that immediately lose points (self-captures):
         // keeping these out of the rollout makes the playout result better
         // correlated with real play.
