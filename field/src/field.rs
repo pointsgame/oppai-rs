@@ -811,23 +811,29 @@ impl Field {
     for &pos in &self.chains[chain_index].0 {
       self.points[pos].set_tag();
     }
-    wave(&mut self.q, self.stride, inside_pos, |pos| {
-      let cell = self.points[pos];
-      if !cell.is_tagged() && !cell.is_bound_player(player) {
-        self.points[pos].set_tag();
-        self.buffer.push(pos);
-        if cell.is_put() {
-          if cell.get_player() != player {
-            captured_count += 1;
-          } else if cell.is_captured() {
-            freed_count += 1;
-          }
+    // buffer serves both as the wave front and as the list of visited points,
+    // the tag bit doesn't affect the counted bits
+    self.points[inside_pos].set_tag();
+    self.buffer.push(inside_pos);
+    let mut front = 0;
+    while let Some(&center_pos) = self.buffer.get(front) {
+      front += 1;
+      let cell = self.points[center_pos];
+      if cell.is_put() {
+        if cell.get_player() != player {
+          captured_count += 1;
+        } else if cell.is_captured() {
+          freed_count += 1;
         }
-        true
-      } else {
-        false
       }
-    });
+      for pos in directions(self.stride, center_pos) {
+        let cell = self.points[pos];
+        if !cell.is_tagged() && !cell.is_bound_player(player) {
+          self.points[pos].set_tag();
+          self.buffer.push(pos);
+        }
+      }
+    }
     if captured_count > 0 {
       match player {
         Player::Red => {
