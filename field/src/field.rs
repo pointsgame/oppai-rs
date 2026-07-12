@@ -24,17 +24,6 @@ impl Neighbor {
   const W: Self = Self(6);
   const NW: Self = Self(7);
 
-  //  . . .   * . .   x * .   . x *   . . x   . . .   . . .   . . .
-  //  * o .   x o .   . o .   . o .   . o *   . o x   . o .   . o .
-  //  x . .   . . .   . . .   . . .   . . .   . . *   . * x   * x .
-  //  o - center pos
-  //  x - pos
-  //  * - result
-  #[inline(always)]
-  fn next(self) -> Self {
-    Self((self.0 + 1) & 7)
-  }
-
   //  * . .   x . *   . x x   . . .
   //  . o .   x o .   . o .   . o x
   //  x x .   . . .   . . *   * . x
@@ -50,6 +39,47 @@ impl Neighbor {
   fn apply(self, neighbor_offsets: &[isize; 8], pos: Pos) -> Pos {
     pos.wrapping_add_signed(neighbor_offsets[self.0])
   }
+}
+
+const SWAR_ONES: u64 = 0x0101_0101_0101_0101;
+const SWAR_LOWS: u64 = 0x7F7F_7F7F_7F7F_7F7F;
+const SWAR_HIGHS: u64 = 0x8080_8080_8080_8080;
+
+/// Cells of all 8 neighbors packed into a u64, byte `i` is the cell in the
+/// direction `Neighbor(i)`. All neighbors of `pos` must be within the field.
+#[inline(always)]
+fn neighbor_cells(points: &PointsVec<Cell>, stride: u32, pos: Pos) -> u64 {
+  let stride = stride as Pos;
+  let pos_n = pos - stride;
+  let pos_s = pos + stride;
+  (points[pos_n].0 as u64)
+    | (points[pos_n + 1].0 as u64) << 8
+    | (points[pos + 1].0 as u64) << 16
+    | (points[pos_s + 1].0 as u64) << 24
+    | (points[pos_s].0 as u64) << 32
+    | (points[pos_s - 1].0 as u64) << 40
+    | (points[pos - 1].0 as u64) << 48
+    | (points[pos_n - 1].0 as u64) << 56
+}
+
+/// The highest bit of byte `i` of the result is set if byte `i` of `cells`
+/// masked with `mask` equals `pattern`. `mask` must not include the highest bit.
+#[inline(always)]
+fn masked_eq(cells: u64, mask: u8, pattern: u8) -> u64 {
+  let t = (cells ^ (pattern as u64 * SWAR_ONES)) & (mask as u64 * SWAR_ONES);
+  // bytes of t are below 0x80 so the per-byte additions don't carry over
+  !((t + SWAR_LOWS) | t) & SWAR_HIGHS
+}
+
+/// The highest bit of byte `i` of the result is set if the neighbor in the
+/// direction `Neighbor(i)` is a live point of `player`.
+#[inline(always)]
+fn live_players_mask(cells: u64, player: Player) -> u64 {
+  masked_eq(
+    cells,
+    Cell::PUT_BIT | Cell::CAPTURED_BIT | Cell::PLAYER_BIT,
+    Cell::PUT_BIT | player.to_bool() as u8,
+  )
 }
 
 #[derive(Clone, PartialEq)]
@@ -345,6 +375,7 @@ impl InputPoints {
     }
   }
 
+  #[cfg(feature = "dsu")]
   #[inline(always)]
   fn push(&mut self, item: (Neighbor, Pos)) {
     self.points[self.len as usize] = item;
@@ -376,51 +407,87 @@ impl Index<usize> for InputPoints {
   }
 }
 
+/// Direction of the first neighbor of `center_pos`, starting from `direction`
+/// clockwise, that is a live point of `player`. Returns None if a bad point is
+/// encountered first. There must be such a live or bad neighbor.
+#[inline(always)]
+fn first_live_neighbor(
+  points: &PointsVec<Cell>,
+  stride: u32,
+  center_pos: Pos,
+  player: Player,
+  direction: Neighbor,
+) -> Option<Neighbor> {
+  let cells = neighbor_cells(points, stride, center_pos);
+  // the highest bit of a byte marks a live point, the bit of BAD_BIT a bad one
+  let live_or_bad = live_players_mask(cells, player) | cells & (Cell::BAD_BIT as u64 * SWAR_ONES);
+  let rotated = live_or_bad.rotate_right(8 * direction.0 as u32);
+  debug_assert!(rotated != 0);
+  let index = rotated.trailing_zeros();
+  if index & 7 != 7 {
+    // the first suitable neighbor is a bad one
+    None
+  } else {
+    Some(Neighbor((direction.0 + index as usize / 8) & 7))
+  }
+}
+
+/// Direction of the first neighbor of `center_pos`, starting from `direction`
+/// clockwise, that is a live bound point of `player`. There must be such a
+/// neighbor.
+#[inline(always)]
+fn first_bound_neighbor(
+  points: &PointsVec<Cell>,
+  stride: u32,
+  center_pos: Pos,
+  player: Player,
+  direction: Neighbor,
+) -> Neighbor {
+  let cells = neighbor_cells(points, stride, center_pos);
+  let bound = masked_eq(
+    cells,
+    Cell::PUT_BIT | Cell::CAPTURED_BIT | Cell::PLAYER_BIT | Cell::BOUND_BIT,
+    Cell::PUT_BIT | Cell::BOUND_BIT | player.to_bool() as u8,
+  );
+  let rotated = bound.rotate_right(8 * direction.0 as u32);
+  debug_assert!(rotated != 0);
+  Neighbor((direction.0 + rotated.trailing_zeros() as usize / 8) & 7)
+}
+
 fn get_input_points(stride: u32, points: &PointsVec<Cell>, center_pos: Pos, player: Player) -> InputPoints {
   let mut inp_points = InputPoints::new();
 
+  let live = live_players_mask(neighbor_cells(points, stride, center_pos), player);
+
+  let has_n = live & 1 << 7 != 0;
+  let has_ne = live & 1 << 15 != 0;
+  let has_e = live & 1 << 23 != 0;
+  let has_se = live & 1 << 31 != 0;
+  let has_s = live & 1 << 39 != 0;
+  let has_sw = live & 1 << 47 != 0;
+  let has_w = live & 1 << 55 != 0;
+  let has_nw = live & 1 << 63 != 0;
+
   let pos_w = center_pos - 1;
   let pos_e = center_pos + 1;
-  let pos_n = center_pos - stride as usize;
-  let pos_s = center_pos + stride as usize;
+  let pos_n = center_pos - stride as Pos;
+  let pos_s = center_pos + stride as Pos;
 
-  let has_w = points[pos_w].is_live_players_point(player);
-  let has_e = points[pos_e].is_live_players_point(player);
-  let has_n = points[pos_n].is_live_players_point(player);
-  let has_s = points[pos_s].is_live_players_point(player);
+  let direction = if has_nw { Neighbor::NW } else { Neighbor::N };
+  inp_points.points[inp_points.len as usize] = (direction, pos_w);
+  inp_points.len += (!has_w & (has_nw | has_n)) as u8;
 
-  if !has_w {
-    // NW
-    if points[pos_n - 1].is_live_players_point(player) {
-      inp_points.push((Neighbor::NW, pos_w));
-    } else if has_n {
-      inp_points.push((Neighbor::N, pos_w));
-    }
-  }
-  if !has_s {
-    // SW
-    if points[pos_s - 1].is_live_players_point(player) {
-      inp_points.push((Neighbor::SW, pos_s));
-    } else if has_w {
-      inp_points.push((Neighbor::W, pos_s));
-    }
-  }
-  if !has_e {
-    // SE
-    if points[pos_s + 1].is_live_players_point(player) {
-      inp_points.push((Neighbor::SE, pos_e));
-    } else if has_s {
-      inp_points.push((Neighbor::S, pos_e));
-    }
-  }
-  if !has_n {
-    // NE
-    if points[pos_n + 1].is_live_players_point(player) {
-      inp_points.push((Neighbor::NE, pos_n));
-    } else if has_e {
-      inp_points.push((Neighbor::E, pos_n));
-    }
-  }
+  let direction = if has_sw { Neighbor::SW } else { Neighbor::W };
+  inp_points.points[inp_points.len as usize] = (direction, pos_s);
+  inp_points.len += (!has_s & (has_sw | has_w)) as u8;
+
+  let direction = if has_se { Neighbor::SE } else { Neighbor::S };
+  inp_points.points[inp_points.len as usize] = (direction, pos_e);
+  inp_points.len += (!has_e & (has_se | has_s)) as u8;
+
+  let direction = if has_ne { Neighbor::NE } else { Neighbor::E };
+  inp_points.points[inp_points.len as usize] = (direction, pos_n);
+  inp_points.len += (!has_n & (has_ne | has_e)) as u8;
 
   inp_points
 }
@@ -440,19 +507,17 @@ fn build_chain(
   chain.push(center_pos);
   points[center_pos].set_tag();
   loop {
-    direction = direction.first_next();
-    let mut pos = direction.apply(neighbor_offsets, center_pos);
-    while !points[pos].is_live_players_point(player) {
-      if points[pos].is_bad() {
+    direction = match first_live_neighbor(points, stride, center_pos, player, direction.first_next()) {
+      Some(direction) => direction,
+      None => {
         for &pos in &*chain {
           points[pos].clear_tag();
         }
         chain.clear(); // used as a mark for reaching border
         return false;
       }
-      direction = direction.next();
-      pos = direction.apply(neighbor_offsets, center_pos);
-    }
+    };
+    let pos = direction.apply(neighbor_offsets, center_pos);
     if pos == start_pos {
       break;
     }
@@ -500,12 +565,8 @@ fn find_chain(
   chain.push(start_pos);
   loop {
     chain.push(center_pos);
-    direction = direction.first_next();
-    let mut pos = direction.apply(neighbor_offsets, center_pos);
-    while !(points[pos].is_live_players_point(player) && points[pos].is_bound()) {
-      direction = direction.next();
-      pos = direction.apply(neighbor_offsets, center_pos);
-    }
+    direction = first_bound_neighbor(points, stride, center_pos, player, direction.first_next());
+    let pos = direction.apply(neighbor_offsets, center_pos);
     let (dx, dy) = delta_to_direction(pos as isize - center_pos as isize, stride);
     base_area += x * dy - y * dx;
     if pos == start_pos {
