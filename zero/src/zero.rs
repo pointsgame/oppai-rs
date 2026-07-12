@@ -15,7 +15,7 @@ use std::{
   iter::Sum,
 };
 
-type Analysis<N> = (Vec<(Pos, (u64, N))>, usize, N);
+type Analysis<N> = (Vec<(Pos, (u64, N))>, u32, N);
 
 type PolicyAnalysis<N> = (Vec<(Pos, N)>, N);
 
@@ -102,7 +102,7 @@ where
     player: Player,
     rng: &mut R,
     should_stop: &SS,
-    max_iterations_count: usize,
+    max_iterations_count: u32,
   ) -> Result<Analysis<N>, <M as Model<N>>::E> {
     self.update(field, player);
 

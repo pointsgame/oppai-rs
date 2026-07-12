@@ -64,7 +64,7 @@ impl Default for Config {
 pub struct InConfidence {
   pub minimax_depth: u32,
   pub uct_iterations: u32,
-  pub zero_iterations: usize,
+  pub zero_iterations: u32,
 }
 
 type SolverAi<N, M> =
@@ -86,7 +86,7 @@ type InnerAnalysis<N> = Either<
       SingleAnalysis<i32, ()>,
       Either<
         Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
-        Either<SimpleAnalysis<f64, f64, u32>, Either<SimpleAnalysis<(u64, N), N, usize>, SimpleAnalysis<N, N, usize>>>,
+        Either<SimpleAnalysis<f64, f64, u32>, Either<SimpleAnalysis<(u64, N), N, u32>, SimpleAnalysis<N, N, ()>>>,
       >,
     >,
   >,
@@ -146,7 +146,7 @@ impl<N: Float + Sum + Display + Debug + 'static> OppaiConfidence<N> {
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(())))))) => None,
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(c))))) => Some(c as f64),
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(c)))))) => Some(c as f64),
-      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(c)))))) => Some(c as f64),
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(())))))) => None,
     }
   }
 }
@@ -209,10 +209,7 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> AI for O
           (),
           (
             ((), (confidence.minimax_depth, ())),
-            (
-              confidence.uct_iterations,
-              (confidence.zero_iterations, confidence.zero_iterations),
-            ),
+            (confidence.uct_iterations, (confidence.zero_iterations, ())),
           ),
         ),
       )

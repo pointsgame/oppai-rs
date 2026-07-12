@@ -119,7 +119,7 @@ async fn handle(
       let confidence = InConfidence {
         minimax_depth: (8.0 * complexity).round() as u32,
         uct_iterations: (100_000.0 * complexity).round() as u32,
-        zero_iterations: (1_000.0 * complexity).round() as usize,
+        zero_iterations: (1_000.0 * complexity).round() as u32,
       };
       let analysis = state
         .oppai

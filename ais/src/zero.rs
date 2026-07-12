@@ -16,8 +16,8 @@ use std::{
 pub struct Zero<N: Float + Sum + Display + Debug, M: Model<N>>(pub InnerZero<N, M>);
 
 impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'static> AI for Zero<N, M> {
-  type Analysis = SimpleAnalysis<(u64, N), N, usize>;
-  type Confidence = usize;
+  type Analysis = SimpleAnalysis<(u64, N), N, u32>;
+  type Confidence = u32;
 
   async fn analyze<S, R, SS>(
     &mut self,
@@ -34,7 +34,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
   {
     if let Ok((moves, confidence, estimation)) = self
       .0
-      .best_moves(field, player, rng, should_stop, confidence.unwrap_or(usize::MAX))
+      .best_moves(field, player, rng, should_stop, confidence.unwrap_or(u32::MAX))
       .await
     {
       SimpleAnalysis {
@@ -71,8 +71,8 @@ impl<N: Float + Sum + Display + Debug, M: Model<N>> ZeroPolicy<N, M> {
 }
 
 impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'static> AI for ZeroPolicy<N, M> {
-  type Analysis = SimpleAnalysis<N, N, usize>;
-  type Confidence = usize;
+  type Analysis = SimpleAnalysis<N, N, ()>;
+  type Confidence = ();
 
   async fn analyze<S, R, SS>(
     &mut self,
@@ -91,14 +91,14 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
       SimpleAnalysis {
         moves,
         estimation,
-        confidence: 1,
+        confidence: (),
         origin: TypeId::of::<Self>(),
       }
     } else {
       SimpleAnalysis {
         moves: Vec::new(),
         estimation: N::zero(),
-        confidence: 0,
+        confidence: (),
         origin: TypeId::of::<Self>(),
       }
     }
