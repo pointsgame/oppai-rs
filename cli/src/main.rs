@@ -140,7 +140,7 @@ where
         let state = state_option.as_mut().ok_or(anyhow::anyhow!("Not initialized"))?;
         let confidence = InConfidence {
           minimax_depth: (8.0 * complexity).round() as u32,
-          uct_iterations: (100_000.0 * complexity).round() as usize,
+          uct_iterations: (100_000.0 * complexity).round() as u32,
           zero_iterations: (1_000.0 * complexity).round() as usize,
         };
         let analysis = futures::executor::block_on(state.oppai.analyze(

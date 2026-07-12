@@ -63,7 +63,7 @@ impl Default for Config {
 #[derive(Clone, Debug)]
 pub struct InConfidence {
   pub minimax_depth: u32,
-  pub uct_iterations: usize,
+  pub uct_iterations: u32,
   pub zero_iterations: usize,
 }
 
@@ -86,10 +86,7 @@ type InnerAnalysis<N> = Either<
       SingleAnalysis<i32, ()>,
       Either<
         Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
-        Either<
-          SimpleAnalysis<f64, f64, usize>,
-          Either<SimpleAnalysis<(u64, N), N, usize>, SimpleAnalysis<N, N, usize>>,
-        >,
+        Either<SimpleAnalysis<f64, f64, u32>, Either<SimpleAnalysis<(u64, N), N, usize>, SimpleAnalysis<N, N, usize>>>,
       >,
     >,
   >,

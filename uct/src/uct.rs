@@ -8,15 +8,15 @@ use rand::{Rng, RngExt, SeedableRng};
 use std::{
   mem::{self, ManuallyDrop},
   ptr,
-  sync::atomic::{AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+  sync::atomic::{AtomicI32, AtomicPtr, AtomicU32, Ordering},
 };
 use strum::{EnumString, VariantNames};
 use thin_vec::ThinVec;
 
 /// Value stored in `visits`/`wins` to mark a node as decided (lost or won).
-/// Sits below `usize::MAX` so concurrent additions on an already-decided
+/// Sits below `u32::MAX` so concurrent additions on an already-decided
 /// node can't wrap around to a small number.
-const VISITS_LIMIT: usize = usize::MAX - 64;
+const VISITS_LIMIT: u32 = u32::MAX - 64;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
 pub enum UcbType {
@@ -39,12 +39,12 @@ pub struct UctConfig {
   pub ucb_type: UcbType,
   pub draw_weight: f64,
   pub uctk: f64,
-  pub when_create_children: usize,
+  pub when_create_children: u32,
   pub depth: u32,
   pub komi_type: UctKomiType,
   pub red: f64,
   pub green: f64,
-  pub komi_min_iterations: usize,
+  pub komi_min_iterations: u32,
   pub fpu: f64,
 }
 
@@ -71,10 +71,10 @@ impl Default for UctConfig {
 }
 
 struct UctNode {
-  wins: AtomicUsize,
-  draws: AtomicUsize,
-  visits: AtomicUsize,
-  pos: Pos,
+  wins: AtomicU32,
+  draws: AtomicU32,
+  visits: AtomicU32,
+  pos: u32,
   children: AtomicPtr<()>,
 }
 
@@ -87,9 +87,9 @@ impl Drop for UctNode {
 impl Clone for UctNode {
   fn clone(&self) -> Self {
     Self {
-      wins: AtomicUsize::new(self.wins.load(Ordering::SeqCst)),
-      draws: AtomicUsize::new(self.draws.load(Ordering::SeqCst)),
-      visits: AtomicUsize::new(self.visits.load(Ordering::SeqCst)),
+      wins: AtomicU32::new(self.wins.load(Ordering::SeqCst)),
+      draws: AtomicU32::new(self.draws.load(Ordering::SeqCst)),
+      visits: AtomicU32::new(self.visits.load(Ordering::SeqCst)),
       pos: self.pos,
       children: unsafe {
         self.get_children().map_or(AtomicPtr::default(), |children| {
@@ -104,16 +104,16 @@ impl Clone for UctNode {
 impl UctNode {
   pub fn new(pos: Pos) -> UctNode {
     UctNode {
-      wins: AtomicUsize::new(0),
-      draws: AtomicUsize::new(0),
-      visits: AtomicUsize::new(0),
-      pos,
+      wins: AtomicU32::new(0),
+      draws: AtomicU32::new(0),
+      visits: AtomicU32::new(0),
+      pos: pos as u32,
       children: AtomicPtr::default(),
     }
   }
 
   pub fn get_pos(&self) -> Pos {
-    self.pos
+    self.pos as Pos
   }
 
   unsafe fn get_children<'a>(&'a self) -> Option<&'a [UctNode]> {
@@ -149,15 +149,15 @@ impl UctNode {
     }
   }
 
-  pub fn get_visits(&self) -> usize {
+  pub fn get_visits(&self) -> u32 {
     self.visits.load(Ordering::Relaxed)
   }
 
-  pub fn get_wins(&self) -> usize {
+  pub fn get_wins(&self) -> u32 {
     self.wins.load(Ordering::Relaxed)
   }
 
-  pub fn get_draws(&self) -> usize {
+  pub fn get_draws(&self) -> u32 {
     self.draws.load(Ordering::Relaxed)
   }
 
@@ -176,7 +176,7 @@ impl UctNode {
   pub fn lose_node(&self) {
     self.wins.store(0, Ordering::Relaxed);
     self.draws.store(0, Ordering::Relaxed);
-    self.visits.store(VISITS_LIMIT, Ordering::Relaxed);
+    self.visits.store(VISITS_LIMIT as u32, Ordering::Relaxed);
   }
 
   pub fn clear_stats(&self) {
@@ -193,10 +193,10 @@ pub struct UctRoot {
   moves_count: usize,
   hash: Hash,
   wave_pruning: WavePruning,
-  komi: AtomicIsize,
-  komi_visits: AtomicUsize,
-  komi_wins: AtomicUsize,
-  komi_draws: AtomicUsize,
+  komi: AtomicI32,
+  komi_visits: AtomicU32,
+  komi_wins: AtomicU32,
+  komi_draws: AtomicU32,
 }
 
 impl Clone for UctRoot {
@@ -208,10 +208,10 @@ impl Clone for UctRoot {
       moves_count: self.moves_count,
       hash: self.hash,
       wave_pruning: self.wave_pruning.clone(),
-      komi: AtomicIsize::new(self.komi.load(Ordering::SeqCst)),
-      komi_visits: AtomicUsize::new(self.komi_visits.load(Ordering::SeqCst)),
-      komi_wins: AtomicUsize::new(self.komi_wins.load(Ordering::SeqCst)),
-      komi_draws: AtomicUsize::new(self.komi_draws.load(Ordering::SeqCst)),
+      komi: AtomicI32::new(self.komi.load(Ordering::SeqCst)),
+      komi_visits: AtomicU32::new(self.komi_visits.load(Ordering::SeqCst)),
+      komi_wins: AtomicU32::new(self.komi_wins.load(Ordering::SeqCst)),
+      komi_draws: AtomicU32::new(self.komi_draws.load(Ordering::SeqCst)),
     }
   }
 }
@@ -223,10 +223,10 @@ impl UctRoot {
     self.player = Player::Red;
     self.moves_count = 0;
     self.hash = 0;
-    self.komi = AtomicIsize::new(0);
-    self.komi_visits = AtomicUsize::new(0);
-    self.komi_wins = AtomicUsize::new(0);
-    self.komi_draws = AtomicUsize::new(0);
+    self.komi = AtomicI32::new(0);
+    self.komi_visits = AtomicU32::new(0);
+    self.komi_wins = AtomicU32::new(0);
+    self.komi_draws = AtomicU32::new(0);
   }
 
   fn init(&mut self, field: &mut Field, player: Player) {
@@ -236,7 +236,7 @@ impl UctRoot {
     self.moves_count = field.moves_count();
     self.hash = field.hash();
     if self.config.komi_type != UctKomiType::None {
-      self.komi = AtomicIsize::new(field.score(player) as isize);
+      self.komi = AtomicI32::new(field.score(player));
     }
     self.wave_pruning.init(field, self.config.radius);
   }
@@ -280,11 +280,11 @@ impl UctRoot {
             );
             UctRoot::expand_node(node, &mut added_moves, rng);
             match self.config.komi_type {
-              UctKomiType::Static => self.komi = AtomicIsize::new(field.score(self.player) as isize),
+              UctKomiType::Static => self.komi = AtomicI32::new(field.score(self.player)),
               UctKomiType::Dynamic => {
-                self.komi_visits = AtomicUsize::new(node.get_visits());
-                self.komi_wins = AtomicUsize::new(node.get_wins());
-                self.komi_draws = AtomicUsize::new(node.get_draws());
+                self.komi_visits = AtomicU32::new(node.get_visits());
+                self.komi_wins = AtomicU32::new(node.get_wins());
+                self.komi_draws = AtomicU32::new(node.get_draws());
               }
               UctKomiType::None => {}
             }
@@ -304,18 +304,18 @@ impl UctRoot {
           break;
         }
         if let Some(children) = self.node.take().and_then(|node| node.clear_children()) {
-          if let Some(node) = children.into_iter().find(|node| node.pos == next_pos) {
+          if let Some(node) = children.into_iter().find(|node| node.get_pos() == next_pos) {
             debug!(
               "Node found for move ({}, {}).",
-              field.to_x(node.pos),
-              field.to_y(node.pos)
+              field.to_x(node.get_pos()),
+              field.to_y(node.get_pos())
             );
             self.node = Some(node);
             self.moves_count += 1;
             self.player = self.player.next();
             self.hash = field.hash();
             if self.config.komi_type == UctKomiType::Dynamic {
-              self.komi = AtomicIsize::new(-self.komi.load(Ordering::Relaxed));
+              self.komi = AtomicI32::new(-self.komi.load(Ordering::Relaxed));
             }
           } else {
             self.clear();
@@ -339,10 +339,10 @@ impl UctRoot {
       moves_count: 0,
       hash: 0,
       wave_pruning: WavePruning::new(length),
-      komi: AtomicIsize::new(0),
-      komi_visits: AtomicUsize::new(0),
-      komi_wins: AtomicUsize::new(0),
-      komi_draws: AtomicUsize::new(0),
+      komi: AtomicI32::new(0),
+      komi_visits: AtomicU32::new(0),
+      komi_wins: AtomicU32::new(0),
+      komi_draws: AtomicU32::new(0),
     }
   }
 
@@ -499,7 +499,7 @@ impl UctRoot {
     player: Player,
     possible_moves: &mut Vec<Pos>,
     rng: &mut R,
-    ratched: &AtomicIsize,
+    ratched: &AtomicI32,
   ) {
     if let Some(node) = self.node.as_ref() {
       self.play_simulation_rec(
@@ -563,8 +563,8 @@ impl UctRoot {
     player: Player,
     rng: &mut R,
     should_stop: &SS,
-    max_iterations_count: usize,
-  ) -> (Vec<(Pos, f64)>, usize, f64)
+    max_iterations_count: u32,
+  ) -> (Vec<(Pos, f64)>, u32, f64)
   where
     R: Rng + SeedableRng<Seed = S> + Send,
     StandardUniform: Distribution<S>,
@@ -586,10 +586,10 @@ impl UctRoot {
       self.komi.load(Ordering::Relaxed),
       self.config.komi_type
     );
-    let ratched = AtomicIsize::new(isize::MAX);
+    let ratched = AtomicI32::new(i32::MAX);
     #[cfg(not(target_arch = "wasm32"))]
     let iterations = {
-      let iterations = AtomicUsize::new(0);
+      let iterations = AtomicU32::new(0);
       crossbeam::scope(|scope| {
         for _ in 0..self.config.threads_count {
           let new_rng = R::from_seed(rng.random());

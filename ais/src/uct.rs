@@ -8,8 +8,8 @@ use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 pub struct Uct(pub UctRoot);
 
 impl AI for Uct {
-  type Analysis = SimpleAnalysis<f64, f64, usize>;
-  type Confidence = usize;
+  type Analysis = SimpleAnalysis<f64, f64, u32>;
+  type Confidence = u32;
 
   async fn analyze<S, R, SS>(
     &mut self,
@@ -27,7 +27,7 @@ impl AI for Uct {
     let (moves, confidence, estimation) =
       self
         .0
-        .best_moves(field, player, rng, should_stop, confidence.unwrap_or(usize::MAX));
+        .best_moves(field, player, rng, should_stop, confidence.unwrap_or(u32::MAX));
     SimpleAnalysis {
       moves,
       estimation,
