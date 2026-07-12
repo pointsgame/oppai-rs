@@ -16,13 +16,9 @@ struct Neighbor(usize);
 
 impl Neighbor {
   const N: Self = Self(0);
-  const NE: Self = Self(1);
   const E: Self = Self(2);
-  const SE: Self = Self(3);
   const S: Self = Self(4);
-  const SW: Self = Self(5);
   const W: Self = Self(6);
-  const NW: Self = Self(7);
 
   //  * . .   x . *   . x x   . . .
   //  . o .   x o .   . o .   . o x
@@ -460,36 +456,24 @@ fn get_input_points(stride: u32, points: &PointsVec<Cell>, center_pos: Pos, play
   let mut inp_points = InputPoints::new();
 
   let live = live_players_mask(neighbor_cells(points, stride, center_pos), player);
+  let has = |direction: Neighbor| live & 1 << (direction.0 * 8 + 7) != 0;
 
-  let has_n = live & 1 << 7 != 0;
-  let has_ne = live & 1 << 15 != 0;
-  let has_e = live & 1 << 23 != 0;
-  let has_se = live & 1 << 31 != 0;
-  let has_s = live & 1 << 39 != 0;
-  let has_sw = live & 1 << 47 != 0;
-  let has_w = live & 1 << 55 != 0;
-  let has_nw = live & 1 << 63 != 0;
-
-  let pos_w = center_pos - 1;
-  let pos_e = center_pos + 1;
-  let pos_n = center_pos - stride as Pos;
-  let pos_s = center_pos + stride as Pos;
-
-  let direction = if has_nw { Neighbor::NW } else { Neighbor::N };
-  inp_points.points[inp_points.len as usize] = (direction, pos_w);
-  inp_points.len += (!has_w & (has_nw | has_n)) as u8;
-
-  let direction = if has_sw { Neighbor::SW } else { Neighbor::W };
-  inp_points.points[inp_points.len as usize] = (direction, pos_s);
-  inp_points.len += (!has_s & (has_sw | has_w)) as u8;
-
-  let direction = if has_se { Neighbor::SE } else { Neighbor::S };
-  inp_points.points[inp_points.len as usize] = (direction, pos_e);
-  inp_points.len += (!has_e & (has_se | has_s)) as u8;
-
-  let direction = if has_ne { Neighbor::NE } else { Neighbor::E };
-  inp_points.points[inp_points.len as usize] = (direction, pos_n);
-  inp_points.len += (!has_n & (has_ne | has_e)) as u8;
+  // a group is pushed if the cardinal direction is empty but one of the two
+  // directions clockwise from it is live, the first of them being the
+  // direction to start the chain search from
+  for (cardinal, pos) in [
+    (Neighbor::W, center_pos - 1),
+    (Neighbor::S, center_pos + stride as Pos),
+    (Neighbor::E, center_pos + 1),
+    (Neighbor::N, center_pos - stride as Pos),
+  ] {
+    let diag = Neighbor((cardinal.0 + 1) & 7);
+    let next = Neighbor((cardinal.0 + 2) & 7);
+    let has_diag = has(diag);
+    let direction = if has_diag { diag } else { next };
+    inp_points.points[inp_points.len as usize] = (direction, pos);
+    inp_points.len += (!has(cardinal) & (has_diag | has(next))) as u8;
+  }
 
   inp_points
 }
