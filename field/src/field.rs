@@ -215,9 +215,11 @@ pub fn is_near(stride: u32, pos1: Pos, pos2: Pos) -> bool {
 }
 
 pub fn is_corner(width: u32, height: u32, pos: Pos) -> bool {
-  let x = to_x(width + 1, pos);
-  let y = to_y(width + 1, pos);
-  (x == 0 || x == width - 1) && (y == 0 || y == height - 1)
+  let stride = width + 1;
+  pos == to_pos(stride, 0, 0)
+    || pos == to_pos(stride, width - 1, 0)
+    || pos == to_pos(stride, 0, height - 1)
+    || pos == to_pos(stride, width - 1, height - 1)
 }
 
 /// (dx, dy) of a step between two adjacent positions

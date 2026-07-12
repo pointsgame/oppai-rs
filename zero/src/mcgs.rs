@@ -3,7 +3,7 @@ use crate::model::Model;
 use either::Either;
 use ndarray::{Array, ArrayView2, s};
 use num_traits::Float;
-use oppai_field::field::{is_corner, to_x, to_y};
+use oppai_field::field::{to_x, to_y};
 use oppai_field::{
   field::{Field, Hash, NonZeroPos, Pos},
   player::Player,
@@ -414,7 +414,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       let hash = field.colored_hash(player);
       field.undo();
 
-      if self.forbid_bad && is_corner(field.width(), field.height(), pos) {
+      if self.forbid_bad && field.is_corner(pos) {
         continue;
       }
 
