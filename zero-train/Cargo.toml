@@ -31,8 +31,9 @@ oppai-zero-sgf = { path = "../zero-sgf" }
 rand_xoshiro.workspace = true
 
 [features]
-default = ["dsu", "ndarray", "vulkan"]
+default = ["dsu", "unsafe", "ndarray", "vulkan"]
 dsu = ["oppai-field/dsu"]
+unsafe = ["oppai-field/unsafe"]
 cuda = ["burn/cuda"]
 rocm = ["burn/rocm"]
 flex = ["burn/flex"]
