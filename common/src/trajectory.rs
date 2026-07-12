@@ -1,4 +1,4 @@
-use oppai_field::field::{Field, Hash, Pos, euclidean, wave_diag};
+use oppai_field::field::{Field, Hash, Pos, wave_diag};
 use oppai_field::player::Player;
 use smallvec::{Array, SmallVec};
 use std::ops::Index;
@@ -162,7 +162,14 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajector
       let mut marks = SmallVec::new();
       let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
       if last_pos != 0 {
-        next_moves.retain(|&mut next_pos| euclidean(field.stride, last_pos, next_pos) > 2);
+        // the same as euclidean(field.stride, last_pos, next_pos) > 2 which
+        // means being outside the 3x3 neighborhood, but without divisions;
+        // unambiguous since dx is at most stride - 2 by absolute value
+        let stride = field.stride as isize;
+        next_moves.retain(|&mut next_pos| {
+          let delta = (next_pos as isize - last_pos as isize).abs();
+          delta > 1 && (delta - stride).abs() > 1
+        });
       }
       build_trajectories_rec(
         field,
