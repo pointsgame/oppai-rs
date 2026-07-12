@@ -145,12 +145,7 @@ fn ladders_rec<SS: Fn() -> bool>(
   marks: &mut Vec<Pos>,
 ) -> (Option<NonZeroPos>, i32, u32, bool) {
   match *trajectory.points.as_slice() {
-    [pos] => {
-      field.put_point(pos, player);
-      let cur_score = field.score(player);
-      field.undo();
-      (NonZeroPos::new(pos), cur_score, depth, true)
-    }
+    [pos] => (NonZeroPos::new(pos), trajectory.score, depth, true),
     [pos1, pos2] => {
       let mut best_move = None;
       let mut capture_depth = 0;
