@@ -390,9 +390,18 @@ impl UctRoot {
       UcbType::Winrate => 0f64,
       UcbType::Ucb1 => self.config.uctk * (2.0 * parent_visits_ln / visits).sqrt(),
       UcbType::Ucb1Tuned => {
-        let v = (wins + draws * self.config.draw_weight * self.config.draw_weight) / visits - win_rate * win_rate
-          + (2.0 * parent_visits_ln / visits).sqrt();
-        self.config.uctk * (v.min(0.25) * parent_visits_ln / visits).sqrt()
+        let exploration = 2.0 * parent_visits_ln / visits;
+        // the variance is non-negative, so when the exploration term alone
+        // reaches 0.25 the min always picks 0.25 and the variance together
+        // with its square root doesn't have to be computed
+        let v = if exploration >= 0.0625 {
+          0.25
+        } else {
+          let variance =
+            (wins + draws * self.config.draw_weight * self.config.draw_weight) / visits - win_rate * win_rate;
+          (variance + exploration.sqrt()).min(0.25)
+        };
+        self.config.uctk * (v * parent_visits_ln / visits).sqrt()
       }
     };
     win_rate + uct
