@@ -276,6 +276,7 @@ pub fn ladders<SS: Fn() -> bool>(
   let mut alpha = field.score(player);
   let mut capture_depth = 0;
   let mut best_move = None;
+  let mut marks = Vec::with_capacity(field.length());
 
   for trajectory in trajectories {
     if should_stop() {
@@ -286,7 +287,6 @@ pub fn ladders<SS: Fn() -> bool>(
       continue;
     }
 
-    let mut marks = Vec::with_capacity(field.length());
     if let [pos1, _] = *trajectory.points.as_slice()
       && let Some(&pos) = field
         .directions_diag(pos1)
@@ -315,9 +315,10 @@ pub fn ladders<SS: Fn() -> bool>(
       best_move = cur_pos;
     }
 
-    for pos in marks {
+    for &pos in &marks {
       empty_board[pos] = 0;
     }
+    marks.clear();
   }
 
   (best_move, alpha, capture_depth)
@@ -331,6 +332,7 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
   let alpha = field.score(player);
 
   let mut moves = HashSet::new();
+  let mut marks = Vec::with_capacity(field.length());
 
   for trajectory in trajectories {
     if should_stop() {
@@ -343,7 +345,6 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
         continue;
       }
       [pos1, pos2] => {
-        let mut marks = Vec::with_capacity(field.length());
         if let Some(&pos) = field
           .directions_diag(pos1)
           .iter()
@@ -440,9 +441,10 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
           field.undo();
         }
 
-        for pos in marks {
+        for &pos in &marks {
           empty_board[pos] = 0;
         }
+        marks.clear();
       }
       _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
     }
