@@ -563,7 +563,11 @@ impl<N: Float + Sum + Copy> Search<N> {
     if let Some((edge_hash, edge_pos)) = self.nodes[self.root_idx]
       .children
       .iter()
-      .max_by_key(|edge| edge.visits)
+      .max_by(|a, b| {
+        a.visits
+          .cmp(&b.visits)
+          .then_with(|| a.prior.partial_cmp(&b.prior).unwrap_or(std::cmp::Ordering::Equal))
+      })
       .map(|edge| (edge.hash, edge.pos))
     {
       self.root_idx = self.add_node(edge_hash);
