@@ -64,7 +64,7 @@ pub fn to_coordinate(c: u8) -> u8 {
 }
 
 pub fn from_coordinate(c: u8) -> u8 {
-  if c > 26 { c + 39 } else { c + 97 }
+  if c > 25 { c + 39 } else { c + 97 }
 }
 
 pub fn from_sgf<F: AnyField, R: Rng>(node: &SgfNode<Prop>, rng: &mut R) -> Option<F> {

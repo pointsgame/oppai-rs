@@ -1,9 +1,25 @@
-use crate::{from_sgf_str, to_sgf_str};
+use crate::{from_coordinate, from_sgf_str, to_coordinate, to_sgf_str};
 use oppai_field::{any_field::AnyField, construct_field::construct_field, field::Field, player::Player};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 
 const SEED: u64 = 7;
+
+#[test]
+fn coordinates() {
+  for c in 0..52 {
+    let encoded = from_coordinate(c);
+    assert!(
+      encoded.is_ascii_lowercase() || encoded.is_ascii_uppercase(),
+      "coordinate {} encoded to invalid character {}",
+      c,
+      encoded as char
+    );
+    assert_eq!(to_coordinate(encoded), c);
+  }
+  assert_eq!(from_coordinate(25), b'z');
+  assert_eq!(from_coordinate(26), b'A');
+}
 
 #[test]
 fn cross() {
