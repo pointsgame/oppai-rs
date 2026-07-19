@@ -7,7 +7,7 @@ use burn::{
   optim::{GradientsParams, Optimizer},
   tensor::{
     DataError, Tensor, TensorData,
-    activation::{log_softmax, mish, softmax, softplus},
+    activation::{log_softmax, mish, sigmoid, softmax, softplus},
     backend::{AutodiffBackend, Backend, ExecutionError},
     ops::FloatElem,
     s,
@@ -583,7 +583,15 @@ impl<B: Backend> ValueHead<B> {
 
 /// Policy head output channels:
 /// 0 - policy, 1 - opponent policy,
-/// 2 - soft policy, 3 - soft opponent policy.
+/// 2 - soft policy, 3 - soft opponent policy,
+/// 4 - long-term optimistic policy, 5 - short-term optimistic policy.
+///
+/// The optimistic policies are trained on the same target as the main policy
+/// but with rows weighted by how much better than expected the game went for
+/// the player, so they predict "what would I play if things go well". At
+/// inference KataGo blends channel 5 into the main policy in logit space with
+/// a `policyOptimism` factor (0 during self-play, up to 1 in match play);
+/// prediction here still uses the plain channel 0 for now.
 #[derive(Module, Debug)]
 pub struct PolicyHead<B: Backend> {
   conv1p: Conv2d<B>,
@@ -610,7 +618,7 @@ impl<B: Backend> PolicyHead<B> {
         .with_bias(false)
         .init(device),
       bias2: NormMask::new(device, config.p1_channels, false),
-      conv2p: Conv2dConfig::new([config.p1_channels, 4], [1, 1])
+      conv2p: Conv2dConfig::new([config.p1_channels, 6], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -999,7 +1007,15 @@ where
       out_policy_logits.clone().slice(s![.., 2..3, .., ..]).reshape([0, -1]),
       1,
     );
-    let out_soft_opponent_policies = log_softmax(out_policy_logits.slice(s![.., 3..4, .., ..]).reshape([0, -1]), 1);
+    let out_soft_opponent_policies = log_softmax(
+      out_policy_logits.clone().slice(s![.., 3..4, .., ..]).reshape([0, -1]),
+      1,
+    );
+    let out_long_optimistic_policies = log_softmax(
+      out_policy_logits.clone().slice(s![.., 4..5, .., ..]).reshape([0, -1]),
+      1,
+    );
+    let out_short_optimistic_policies = log_softmax(out_policy_logits.slice(s![.., 5..6, .., ..]).reshape([0, -1]), 1);
     let out_values = log_softmax(out_value_logits.clone().slice(s![.., 0..2]), 1);
     let out_scores_cdf = out_scores.clone().exp().cumsum(1);
 
@@ -1016,7 +1032,7 @@ where
     let batch = <FloatElem<B> as num_traits::NumCast>::from(batch).unwrap();
     // KataGo's 1.20 samplewise factor times the 0.6 value_loss_scale, for the
     // main value head and each TD horizon alike.
-    let values_loss = -(out_values * values).sum() * 0.72 / batch;
+    let values_loss = -(out_values * values.clone()).sum() * 0.72 / batch;
     let td_values_loss = (0..TD_VALUES)
       .map(|i| {
         let logits = out_value_logits.clone().slice(s![.., 2 + 2 * i..4 + 2 * i]);
@@ -1038,9 +1054,23 @@ where
     let pred_value = td_short_pred.clone().slice(s![.., 0..1]) - td_short_pred.slice(s![.., 1..2]);
     let td_short_target = td_values.clone().slice(s![.., TD_VALUES - 1.., ..]).reshape([0, -1]);
     let real_value = td_short_target.clone().slice(s![.., 0..1]) - td_short_target.slice(s![.., 1..2]);
-    let sq_error = (pred_value - real_value).square() + 1e-8;
-    let value_error_loss = huber_loss(out_value_error, sq_error, 0.4).sum() * 2.0 / batch;
-    let policies_loss = -(out_policies * policies).sum() / batch;
+    let sq_error = (pred_value.clone() - real_value.clone()).square() + 1e-8;
+    let value_error_loss = huber_loss(out_value_error.clone(), sq_error, 0.4).sum() * 2.0 / batch;
+    // Optimistic policy weights. Long-term: the final result was a win (the
+    // square discourages draws). Short-term: the shortest-horizon TD value
+    // turned out around 1.5 predicted stdevs better than the model expected.
+    // KataGo also mixes in analogous score-based terms, which have no
+    // equivalent here.
+    let long_optimism_weight = values.clone().slice(s![.., 0..1]).square();
+    let stdevs_excess = (real_value - pred_value) / (out_value_error.detach() + 1e-4).sqrt();
+    let short_optimism_weight = sigmoid((stdevs_excess - 1.5) * 3.0);
+    // The optimistic policy heads take a small share of the main policy's
+    // loss scale, as in KataGo (0.93 + 0.1 + 0.2 relative weights).
+    let policies_loss = -(out_policies * policies.clone()).sum() * 0.93 / batch;
+    let long_optimistic_policies_loss =
+      -(out_long_optimistic_policies * policies.clone() * long_optimism_weight).sum() * 0.1 / batch;
+    let short_optimistic_policies_loss =
+      -(out_short_optimistic_policies * policies * short_optimism_weight).sum() * 0.2 / batch;
     let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
     // KataGo's soft_policy_weight_scale is 8.0; the opponent variant keeps the
     // same extra 0.15 factor as the hard opponent policy loss.
@@ -1060,11 +1090,13 @@ where
     let param_l2_norm = norm_visitor.l2_norm();
 
     log::info!(
-      "Loss: value {} td value {} value error {} policy {} opponent policy {} soft policy {} soft opponent policy {} pdf {} cdf {} captured {} L2 norm {}",
+      "Loss: value {} td value {} value error {} policy {} long optimistic {} short optimistic {} opponent policy {} soft policy {} soft opponent policy {} pdf {} cdf {} captured {} L2 norm {}",
       values_loss.clone().into_scalar(),
       td_values_loss.clone().into_scalar(),
       value_error_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
+      long_optimistic_policies_loss.clone().into_scalar(),
+      short_optimistic_policies_loss.clone().into_scalar(),
       opponent_policies_loss.clone().into_scalar(),
       soft_policies_loss.clone().into_scalar(),
       soft_opponent_policies_loss.clone().into_scalar(),
@@ -1078,6 +1110,8 @@ where
       + td_values_loss
       + value_error_loss
       + policies_loss
+      + long_optimistic_policies_loss
+      + short_optimistic_policies_loss
       + opponent_policies_loss
       + soft_policies_loss
       + soft_opponent_policies_loss
