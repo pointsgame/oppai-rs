@@ -327,6 +327,9 @@ where
     }
   }
 
+  examples.window(params.window_min, params.window_expand);
+  examples.sample(params.max_examples, rng);
+  log::info!("Training on {} examples", examples.len());
   examples.shuffle(rng);
   let batches_count = examples.batches_count(params.batch_size);
   // KataGo averages a snapshot every half-epoch by default.

@@ -53,3 +53,58 @@ fn td_values_fall_back_to_final_result() {
     assert_eq!(td_values[2 * i + 1], 0.0);
   }
 }
+
+// The replay window keeps the most recent rows, drops the games that no
+// remaining example references, and reindexes the survivors.
+#[test]
+fn window_keeps_recent_examples() {
+  use crate::examples::Example;
+
+  let mut examples = Examples::default();
+  for _ in 0..10 {
+    let index = examples.games.len();
+    examples.games.push(game([0.1, -0.1]));
+    for _ in 0..10 {
+      examples.examples.push(Example {
+        game: index,
+        position: 0,
+        rotation: 0,
+        history: 5,
+      });
+    }
+  }
+
+  // total 100, min 20: window = 20 + 80 * 0.25 = 40 most recent rows.
+  examples.window(20, 0.25);
+  assert_eq!(examples.examples.len(), 40);
+  assert_eq!(examples.games.len(), 4);
+  assert!(examples.examples.iter().all(|example| example.game < examples.games.len()));
+
+  // Below the minimum nothing is dropped.
+  let len = examples.examples.len();
+  examples.window(1000, 0.25);
+  assert_eq!(examples.examples.len(), len);
+}
+
+// Sampling keeps about the requested number of rows.
+#[test]
+fn sample_bounds_examples() {
+  use crate::examples::Example;
+  use rand::SeedableRng;
+
+  let mut examples = Examples::default();
+  examples.games.push(game([0.1, -0.1]));
+  for _ in 0..10000 {
+    examples.examples.push(Example {
+      game: 0,
+      position: 0,
+      rotation: 0,
+      history: 5,
+    });
+  }
+
+  let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(7);
+  examples.sample(1000, &mut rng);
+  let len = examples.examples.len();
+  assert!((900..1100).contains(&len), "expected about 1000 examples, got {}", len);
+}

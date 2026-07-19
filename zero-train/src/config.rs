@@ -41,6 +41,9 @@ pub struct TrainParams {
   pub batch_size: usize,
   pub skip: usize,
   pub ignore_surprise: bool,
+  pub window_min: usize,
+  pub window_expand: f64,
+  pub max_examples: usize,
 }
 
 pub struct PitParams {
@@ -334,6 +337,30 @@ pub fn cli_parse() -> (Config, Action) {
         .help("Ignore policy surprise values when weighting training samples")
         .num_args(0)
         .action(clap::ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("window-min")
+        .long("window-min")
+        .help("Sliding replay window: keep only the most recent `min + (total - min) * expand` training rows, with the game files ordered from oldest to newest (0 trains on everything)")
+        .num_args(1)
+        .value_parser(value_parser!(usize))
+        .default_value("0"),
+    )
+    .arg(
+      Arg::new("window-expand")
+        .long("window-expand")
+        .help("How many rows the replay window grows per row of data beyond the minimum")
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("0.4"),
+    )
+    .arg(
+      Arg::new("max-examples")
+        .long("max-examples")
+        .help("Randomly subsample the windowed data down to about this many rows per run (0 trains on everything)")
+        .num_args(1)
+        .value_parser(value_parser!(usize))
+        .default_value("0"),
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
@@ -510,6 +537,9 @@ pub fn cli_parse() -> (Config, Action) {
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
       let ignore_surprise = matches.get_flag("ignore-surprise");
+      let window_min = matches.get_one("window-min").copied().unwrap();
+      let window_expand = matches.get_one("window-expand").copied().unwrap();
+      let max_examples = matches.get_one("max-examples").copied().unwrap();
       Action::Train(TrainParams {
         width,
         height,
@@ -530,6 +560,9 @@ pub fn cli_parse() -> (Config, Action) {
         batch_size,
         skip,
         ignore_surprise,
+        window_min,
+        window_expand,
+        max_examples,
       })
     }
     Some(("pit", matches)) => {

@@ -224,6 +224,41 @@ impl Examples {
     }
   }
 
+  /// Sliding replay window: keep only the most recent
+  /// `min_rows + (total - min_rows) * expand_per_row` examples, like KataGo's
+  /// shuffler. Growing the window sublinearly keeps early generations from
+  /// training only on fresh data while old data still ages out. Games are
+  /// assumed to have been added from oldest to newest, and must not have been
+  /// shuffled yet. A `min_rows` of 0 disables the window.
+  pub fn window(&mut self, min_rows: usize, expand_per_row: f64) {
+    let total = self.examples.len();
+    if min_rows == 0 || total <= min_rows {
+      return;
+    }
+    let window = min_rows + ((total - min_rows) as f64 * expand_per_row) as usize;
+    if total > window {
+      self.examples.drain(..total - window);
+      // The remaining examples reference a suffix of the games, so the
+      // earlier games can be dropped.
+      let min_game = self.examples.first().map_or(self.games.len(), |example| example.game);
+      self.games.drain(..min_game);
+      for example in &mut self.examples {
+        example.game -= min_game;
+      }
+    }
+  }
+
+  /// Randomly subsample the examples down to about `max_rows`, so the amount
+  /// of training done per run stays bounded as the replay window grows. A
+  /// `max_rows` of 0 disables the sampling.
+  pub fn sample<R: Rng>(&mut self, max_rows: usize, rng: &mut R) {
+    if max_rows == 0 || self.examples.len() <= max_rows {
+      return;
+    }
+    let keep_prob = max_rows as f64 / self.examples.len() as f64;
+    self.examples.retain(|_| rng.random::<f64>() < keep_prob);
+  }
+
   #[inline]
   pub fn shuffle<R: Rng>(&mut self, rng: &mut R) {
     self.examples.shuffle(rng);
