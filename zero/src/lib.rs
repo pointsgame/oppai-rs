@@ -1,3 +1,6 @@
+pub mod batch_model;
+#[cfg(test)]
+pub mod batch_model_test;
 pub mod episode;
 pub mod examples;
 pub mod field_features;

@@ -16,8 +16,9 @@ pub struct PlayParams {
   pub komi_x_2: Vec<i32>,
   pub model: Option<PathBuf>,
   pub model_config: ModelConfig,
-  pub game: PathBuf,
+  pub games: PathBuf,
   pub count: usize,
+  pub parallel_games: usize,
 }
 
 pub struct TrainParams {
@@ -206,10 +207,10 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(model_arg().required(false))
     .arg(model_config_arg())
     .arg(
-      Arg::new("game")
-        .long("game")
+      Arg::new("games")
+        .long("games")
         .short('g')
-        .help("Path where to save the played game")
+        .help("Path where to save the played games")
         .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .required(true),
@@ -222,6 +223,14 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(usize))
         .default_value("1"),
+    )
+    .arg(
+      Arg::new("parallel-games")
+        .long("parallel-games")
+        .help("How many games to play concurrently, merging their positions into shared forward passes")
+        .num_args(1)
+        .value_parser(value_parser!(usize))
+        .default_value("32"),
     );
   let train = Command::new("train")
     .about("Train the neural network")
@@ -434,16 +443,18 @@ pub fn cli_parse() -> (Config, Action) {
       let komi_x_2 = matches.get_many("komi-x2").unwrap().copied().collect();
       let model = matches.get_one("model").cloned();
       let model_config = parse_model_config(matches, "model-config");
-      let game = matches.get_one("game").cloned().unwrap();
+      let games = matches.get_one("games").cloned().unwrap();
       let count = matches.get_one("count").copied().unwrap();
+      let parallel_games = matches.get_one("parallel-games").copied().unwrap();
       Action::Play(PlayParams {
         width,
         height,
         komi_x_2,
         model,
         model_config,
-        game,
+        games,
         count,
+        parallel_games,
       })
     }
     Some(("train", matches)) => {

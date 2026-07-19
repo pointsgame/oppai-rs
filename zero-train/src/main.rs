@@ -26,7 +26,7 @@ use config::{
   Action, Backend as ConfigBackend, Config, CountParams, InitParams, PitParams, PlayParams, RecalcParams, TrainParams,
   cli_parse,
 };
-use either::Either;
+use futures::StreamExt;
 use num_traits::{Float, ToPrimitive, Zero};
 use oppai_field::{
   any_field::AnyField,
@@ -37,7 +37,13 @@ use oppai_field::{
 };
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
-  episode::episode, examples::Examples, mcgs::Search, model::TrainableModel, opening::opening, pit,
+  batch_model::{batch_model, run_evaluator},
+  episode::{Visits, episode},
+  examples::Examples,
+  mcgs::Search,
+  model::{Model, TrainableModel},
+  opening::opening,
+  pit,
   random_model::RandomModel,
 };
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
@@ -78,6 +84,105 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
+fn write_game(file: &mut File, field: Field, visits: &[Visits], komi_x_2: i32) -> Result<()> {
+  let field: ExtendedField = field.into();
+  if let Some(mut node) = to_sgf(&field) {
+    visits_to_sgf(&mut node, visits, field.field().stride, field.field().moves_count());
+    let score = field.field().score(Player::Red);
+    node.properties.push(Prop::RE(match score.cmp(&0) {
+      Ordering::Equal => "0".into(),
+      Ordering::Greater => SimpleText {
+        text: format!("W+{}", score),
+      },
+      Ordering::Less => SimpleText {
+        text: format!("B+{}", score.abs()),
+      },
+    }));
+    node
+      .properties
+      .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
+    let sgf = serialize(iter::once(&GameTree::Unknown(node)));
+    writeln!(file, "{sgf}")?;
+    file.flush()?;
+  }
+  Ok(())
+}
+
+/// Plays `params.count` games, up to `params.parallel_games` of them
+/// concurrently, creating a fresh model per game with `new_model`.
+async fn play_games<N, M, MF, R>(
+  params: &PlayParams,
+  mut new_model: MF,
+  rng: &mut R,
+  should_stop: &AtomicBool,
+) -> Result<()>
+where
+  N: Float + Sum + SampleUniform + Display + Debug,
+  M: Model<N>,
+  M::E: Debug,
+  MF: FnMut() -> M,
+  R: Rng,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
+  let games = (0..params.count)
+    .take_while(|&i| {
+      if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+        log::info!("Stopping after {} games", i);
+        false
+      } else {
+        true
+      }
+    })
+    .map(|_| {
+      let mut rng = SmallRng::from_seed(rng.random());
+      let mut model = new_model();
+      let width = params.width[rng.random_range(0..params.width.len())];
+      let height = params.height[rng.random_range(0..params.height.len())];
+      let op = opening(width, height, &mut rng);
+      let komi_x_2_count = params
+        .komi_x_2
+        .iter()
+        .copied()
+        .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
+        .count();
+      let komi_x_2 = params
+        .komi_x_2
+        .iter()
+        .copied()
+        .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
+        .nth(rng.random_range(0..komi_x_2_count))
+        .unwrap();
+      async move {
+        let mut player = Player::Red;
+        let mut field = Field::new_from_rng(width, height, &mut rng);
+        for (x, y) in op {
+          let pos = field.to_pos(x, y);
+          assert!(field.put_point(pos, player));
+          field.update_grounded();
+          player = player.next();
+        }
+
+        let visits = episode(&mut field, player, &mut model, komi_x_2, &mut rng)
+          .await
+          .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
+
+        Ok::<_, Error>((field, visits, komi_x_2))
+      }
+    });
+
+  let mut games = futures::stream::iter(games).buffer_unordered(params.parallel_games);
+
+  let mut file = File::options().append(true).create(true).open(&params.games)?;
+  while let Some(game) = games.next().await {
+    let (field, visits, komi_x_2) = game?;
+    write_game(&mut file, field, &visits, komi_x_2)?;
+  }
+
+  Ok(())
+}
+
 async fn play<B, R: Rng>(
   params: PlayParams,
   device: B::Device,
@@ -91,7 +196,7 @@ where
   Exp1: Distribution<FloatElem<B>>,
   Open01: Distribution<FloatElem<B>>,
 {
-  let mut model = match params.model {
+  match params.model.clone() {
     Some(model_path) => {
       let model = BurnModel::<B>::new(&device, &params.model_config);
       let model = model.load_file(
@@ -99,68 +204,30 @@ where
         &DefaultFileRecorder::<FullPrecisionSettings>::new(),
         &device,
       )?;
-      Either::Right(Predictor { model, device })
+      let mut predictor = Predictor { model, device };
+
+      // All games share one evaluator: their positions are merged into large
+      // forward passes instead of each game evaluating its own tiny batch.
+      let (handle, requests) = batch_model::<FloatElem<B>>();
+      let games = async {
+        let result = play_games(&params, || handle.clone(), rng, &should_stop).await;
+        // Close the channel so the evaluator terminates with the last game.
+        drop(handle);
+        result
+      };
+      let (games_result, evaluator_result) = futures::join!(games, run_evaluator(&mut predictor, requests));
+      evaluator_result?;
+      games_result?;
     }
-    None => Either::Left(RandomModel(SmallRng::from_seed(rng.random()))),
-  };
-
-  let mut file = File::options().append(true).create(true).open(&params.game)?;
-
-  for i in 0..params.count {
-    if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
-      log::info!("Stopping after {} games", i);
-      break;
-    }
-
-    let width = params.width[rng.random_range(0..params.width.len())];
-    let height = params.height[rng.random_range(0..params.height.len())];
-    let mut player = Player::Red;
-    let mut field = Field::new_from_rng(width, height, rng);
-
-    let op = opening(width, height, rng);
-    let komi_x_2_count = params
-      .komi_x_2
-      .iter()
-      .copied()
-      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
-      .count();
-    let komi_x_2 = params
-      .komi_x_2
-      .iter()
-      .copied()
-      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
-      .nth(rng.random_range(0..komi_x_2_count))
-      .unwrap();
-    for (x, y) in op {
-      let pos = field.to_pos(x, y);
-      assert!(field.put_point(pos, player));
-      field.update_grounded();
-      player = player.next();
-    }
-
-    let visits = episode(&mut field, player, &mut model, komi_x_2, rng)
-      .await
-      .map_err(|e| e.either(|()| anyhow::anyhow!("random model failed"), Error::from))?;
-
-    let field = field.into();
-    if let Some(mut node) = to_sgf(&field) {
-      visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
-      let score = field.field().score(Player::Red);
-      node.properties.push(Prop::RE(match score.cmp(&0) {
-        Ordering::Equal => "0".into(),
-        Ordering::Greater => SimpleText {
-          text: format!("W+{}", score),
-        },
-        Ordering::Less => SimpleText {
-          text: format!("B+{}", score.abs()),
-        },
-      }));
-      node
-        .properties
-        .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
-      let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-      writeln!(&mut file, "{sgf}")?;
-      file.flush()?;
+    None => {
+      let mut seeder = SmallRng::from_seed(rng.random());
+      play_games(
+        &params,
+        || RandomModel(SmallRng::from_seed(seeder.random())),
+        rng,
+        &should_stop,
+      )
+      .await?;
     }
   }
 

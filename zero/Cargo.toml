@@ -9,6 +9,7 @@ edition = "2024"
 [dependencies]
 rand.workspace = true
 rand_distr.workspace = true
+futures.workspace = true
 ndarray.workspace = true
 num-traits.workspace = true
 either.workspace = true
@@ -20,7 +21,6 @@ oppai-rotate = { path = "../rotate" }
 [dev-dependencies]
 criterion.workspace = true
 rand_xoshiro.workspace = true
-futures.workspace = true
 
 [[bench]]
 name = "mcgs_benchmark"
