@@ -50,7 +50,9 @@ where
     }
     let policies = Array3::from_shape_vec((batch, height, width), policies).map_err(|_| ())?;
     let values = Array2::from_shape_vec((batch, 2), values).map_err(|_| ())?;
+    let mut values_with_error = Array2::zeros((batch, 3));
+    values_with_error.slice_mut(ndarray::s![.., 0..2]).assign(&values);
 
-    Ok((policies, values))
+    Ok((policies, values_with_error))
   }
 }

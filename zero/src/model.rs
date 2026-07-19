@@ -6,6 +6,10 @@ use num_traits::Float;
 pub trait Model<N: Float> {
   type E;
 
+  /// Returns the policies and the values for a batch of positions. The values
+  /// have 3 columns: the win and loss probabilities, and the predicted
+  /// short-term error (standard deviation) of the value - how uncertain the
+  /// value estimate is. Models without an uncertainty estimate return 0 there.
   async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E>;
 }
 
@@ -47,7 +51,10 @@ impl<N: Float> Model<N> for () {
     let width = inputs.len_of(Axis(3));
     let policy = N::one() / N::from(width * height).unwrap();
     let policies = Array::from_elem((batch_size, height, width), policy);
-    let values = Array::from_elem((batch_size, 2), N::one() / (N::one() + N::one()));
+    let mut values = Array::zeros((batch_size, 3));
+    values
+      .slice_mut(ndarray::s![.., 0..2])
+      .fill(N::one() / (N::one() + N::one()));
     Ok((policies, values))
   }
 }

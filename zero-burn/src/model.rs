@@ -560,7 +560,12 @@ impl<B: Backend> ValueHead<B> {
     (out_value, out_value_error, out_score_log_dist)
   }
 
-  pub fn forward_no_score(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 2> {
+  pub fn forward_no_score(
+    &self,
+    inputs: Tensor<B, 4>,
+    mask: Tensor<B, 4>,
+    mask_sum_hw: Tensor<B, 4>,
+  ) -> (Tensor<B, 2>, Tensor<B, 2>) {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
@@ -570,7 +575,9 @@ impl<B: Backend> ValueHead<B> {
 
     let outv2 = self.linear2.forward(outpooled.clone());
     let outv2 = mish(outv2);
-    self.linear_valuehead.forward(outv2)
+    let out_value = self.linear_valuehead.forward(outv2.clone());
+    let out_value_error = softplus(self.linear_error.forward(outv2), 1.0) * 0.25;
+    (out_value, out_value_error)
   }
 }
 
@@ -739,7 +746,11 @@ impl<B: Backend> Model<B> {
     (policy, value, value_error, score, captured)
   }
 
-  pub fn forward_no_score(&self, spatial: Tensor<B, 4>, global: Tensor<B, 2>) -> (Tensor<B, 4>, Tensor<B, 2>) {
+  pub fn forward_no_score(
+    &self,
+    spatial: Tensor<B, 4>,
+    global: Tensor<B, 2>,
+  ) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = self.conv_spatial.forward(spatial);
@@ -751,8 +762,8 @@ impl<B: Backend> Model<B> {
     x = self.norm_trunkfinal.forward(x, mask.clone());
     x = mish(x);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
-    let value = self.value_head.forward_no_score(x, mask, mask_sum_hw);
-    (policy, value)
+    let (value, value_error) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
+    (policy, value, value_error)
   }
 }
 
@@ -813,13 +824,15 @@ where
       TensorData::new(into_data_vec(global), [batch, GLOBAL_FEATURES]),
       &self.device,
     );
-    let (policy_logits, value_logits) = self.model.forward_no_score(inputs, global);
+    let (policy_logits, value_logits, value_error) = self.model.forward_no_score(inputs, global);
     // TODO: lightweight model that doesn't calculate second layer
     let policy_logits: Tensor<B, 3> = policy_logits.slice(s![.., 0..1, .., ..]).squeeze_dim(1);
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
-    let values = softmax(value_logits.slice(s![.., 0..2]), 1);
+    // The predicted squared error becomes a standard deviation for the
+    // search's uncertainty weighting.
+    let values = Tensor::cat(vec![softmax(value_logits.slice(s![.., 0..2]), 1), value_error.sqrt()], 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data_async().await?.into_vec()?)?;
-    let values = Array2::from_shape_vec((batch, 2), values.into_data_async().await?.into_vec()?)?;
+    let values = Array2::from_shape_vec((batch, 3), values.into_data_async().await?.into_vec()?)?;
     Ok((policies, values))
   }
 }

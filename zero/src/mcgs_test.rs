@@ -40,7 +40,7 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>, _| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0])));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0, 0.0])));
       result
     },
     0,
@@ -65,7 +65,7 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>, _| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0])));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0, 0.0])));
       result
     },
     0,
@@ -218,7 +218,7 @@ fn mcts_last_iterations() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>, _| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5])));
+      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5, 0.0])));
       result
     },
     0,
@@ -236,7 +236,7 @@ fn mcts_last_iterations() {
 /// observed bias for the subtree value bias correction to pick up.
 fn depth_value(inputs: &Array4<f64>) -> Array2<f64> {
   let batch_size = inputs.len_of(Axis(0));
-  let mut value = Array::zeros((batch_size, 2));
+  let mut value = Array::zeros((batch_size, 3));
   for i in 0..batch_size {
     let mass: f64 = inputs.index_axis(Axis(0), i).sum();
     let p = (mass * 0.02).tanh();
@@ -393,6 +393,7 @@ fn utility_stdev_scales_exploration() {
   // A quiet node: every playout agrees on the value, so the observed variance
   // is zero and only the prior keeps the factor above its minimum.
   node.visits = 100;
+  node.weight_sum = 100.0;
   node.value = 0.3;
   node.value_sq = 0.3 * 0.3;
   let quiet = Search::utility_stdev_factor(&node);
@@ -405,4 +406,16 @@ fn utility_stdev_scales_exploration() {
   let volatile = Search::utility_stdev_factor(&node);
   assert!(volatile > 1.0, "volatile node should explore more, got {}", volatile);
   assert!(volatile > quiet);
+}
+
+// Certain evaluations weigh up to the maximum, uncertain ones weigh less, and
+// the weight decreases monotonically with the predicted error.
+#[test]
+fn uncertainty_weight_scales_with_error() {
+  let max = Search::<f64>::uncertainty_weight(0.0);
+  assert!((max - 8.0).abs() < 1e-9, "zero error should give the maximum weight");
+  let confident = Search::<f64>::uncertainty_weight(0.05);
+  let uncertain = Search::<f64>::uncertainty_weight(0.5);
+  assert!(max > confident && confident > uncertain);
+  assert!(uncertain < 1.0);
 }

@@ -136,6 +136,13 @@ pub struct Node<N: Float> {
   /// perspective-independent, so no sign flips are needed. Together with
   /// `value` it estimates the variance of the value for LCB move selection.
   pub value_sq: N,
+  /// Weight of this node's own evaluation: certain evaluations (low predicted
+  /// short-term value error) weigh more, up to `UNCERTAINTY_MAX_WEIGHT`
+  /// (KataGo's uncertainty weighting).
+  pub weight: N,
+  /// W(n): Total weight, the weighted analog of `visits`:
+  /// `weight` plus the children's edge weights.
+  pub weight_sum: N,
   /// Edges to children.
   pub children: Vec<Edge<N>>,
   /// Subtree value bias bucket this node belongs to, if any. Computed once when
@@ -157,6 +164,8 @@ impl<N: Float> Node<N> {
       value: N::zero(),
       raw_value: N::zero(),
       value_sq: N::zero(),
+      weight: N::zero(),
+      weight_sum: N::zero(),
       children: Vec::new(),
       bias_key: None,
       last_bias_delta: N::zero(),
@@ -349,6 +358,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut sum_values = N::zero();
     let mut sum_values_sq = N::zero();
     let mut sum_visits = 0;
+    let mut sum_weights = N::zero();
 
     for edge in nodes[node_idx].children.iter() {
       // Unvisited edges contribute nothing (zero weight in both sums), so skip
@@ -358,9 +368,14 @@ impl<N: Float + Sum + Copy> Search<N> {
         continue;
       }
       if let Some(&child_idx) = map.get(&edge.hash) {
-        let visits = N::from(edge.visits).unwrap();
-        sum_values = sum_values - visits * nodes[child_idx].value;
-        sum_values_sq = sum_values_sq + visits * nodes[child_idx].value_sq;
+        // The edge's weight is the child's average weight per visit times the
+        // visits that came through this edge, which distributes the child's
+        // weight correctly across transpositions.
+        let edge_weight =
+          nodes[child_idx].weight_sum * N::from(edge.visits).unwrap() / N::from(nodes[child_idx].visits).unwrap();
+        sum_values = sum_values - edge_weight * nodes[child_idx].value;
+        sum_values_sq = sum_values_sq + edge_weight * nodes[child_idx].value_sq;
+        sum_weights = sum_weights + edge_weight;
       }
       sum_visits += edge.visits;
     }
@@ -372,12 +387,12 @@ impl<N: Float + Sum + Copy> Search<N> {
 
     if let Some(key) = nodes[node_idx].bias_key {
       // ChildVisits(n) = Visits(n) - 1 = sum of the visits to the children.
-      if sum_visits > 0 {
+      if sum_visits > 0 && sum_weights > N::zero() {
         let sum_visits_n = N::from(sum_visits).unwrap();
         // ChildrenUtility from this node's perspective. `sum_values` already
-        // holds `-sum_c value(c) * visits(c)`, i.e. the children's utility from
-        // the parent's perspective times their visits.
-        let children_utility = sum_values / sum_visits_n;
+        // holds `-sum_c value(c) * weight(c)`, i.e. the children's utility from
+        // the parent's perspective times their weights.
+        let children_utility = sum_values / sum_weights;
         let weight = sum_visits_n.powf(N::from(Self::BIAS_ALPHA).unwrap());
         let delta = (children_utility - raw_value) * weight;
 
@@ -398,11 +413,12 @@ impl<N: Float + Sum + Copy> Search<N> {
 
     let node = &mut nodes[node_idx];
     node.visits = 1 + sum_visits;
-    let visits = N::from(node.visits).unwrap();
+    node.weight_sum = node.weight + sum_weights;
     // The bias-corrected utility enters both moments so that the implied
-    // variance stays consistent with the value.
-    node.value = (node_utility + sum_values) / visits;
-    node.value_sq = (node_utility * node_utility + sum_values_sq) / visits;
+    // variance stays consistent with the value. The node's own evaluation
+    // counts with its uncertainty weight, like every child contribution.
+    node.value = (node_utility * node.weight + sum_values) / node.weight_sum;
+    node.value_sq = (node_utility * node_utility * node.weight + sum_values_sq) / node.weight_sum;
   }
 
   /// Hyperparameter for forced playouts at the root with Dirichlet noise.
@@ -410,6 +426,22 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// When a root child has visits > 0 but visits < nforced(c), its PUCT score
   /// is set to infinity to ensure it receives enough exploration.
   const FORCED_PLAYOUTS_K: u32 = 2;
+
+  /// How strongly evaluations count relative to their predicted short-term
+  /// value error: an evaluation's weight is
+  /// `coeff / (error + coeff / max_weight)`, so a perfectly certain
+  /// evaluation weighs `UNCERTAINTY_MAX_WEIGHT` and uncertain ones weigh
+  /// less. KataGo's `uncertaintyCoeff` and `uncertaintyMaxWeight`.
+  const UNCERTAINTY_COEFF: f64 = 0.2;
+  const UNCERTAINTY_MAX_WEIGHT: f64 = 8.0;
+
+  /// Weight of an evaluation with the given predicted short-term value error
+  /// (a standard deviation in utility units).
+  pub(crate) fn uncertainty_weight(uncertainty: N) -> N {
+    let coeff = N::from(Self::UNCERTAINTY_COEFF).unwrap();
+    let baseline = coeff / N::from(Self::UNCERTAINTY_MAX_WEIGHT).unwrap();
+    coeff / (uncertainty.max(N::zero()) + baseline)
+  }
 
   /// Typical utility standard deviation of a node; the observed stdev is
   /// measured relative to it. KataGo's `cpuctUtilityStdevPrior` is 0.40 with
@@ -428,11 +460,11 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// towards `CPUCT_UTILITY_STDEV_PRIOR`.
   pub(crate) fn utility_stdev_factor(node: &Node<N>) -> N {
     let prior = N::from(Self::CPUCT_UTILITY_STDEV_PRIOR).unwrap();
-    let stdev = if node.visits <= 1 {
+    let stdev = if node.visits <= 1 || node.weight_sum <= N::one() {
       prior
     } else {
       let prior_weight = N::from(Self::CPUCT_UTILITY_STDEV_PRIOR_WEIGHT).unwrap();
-      let weight_sum = N::from(node.visits).unwrap();
+      let weight_sum = node.weight_sum;
       let utility_sq = node.value * node.value;
       // Guard against numerical imprecision producing negative variance.
       let utility_sq_avg = node.value_sq.max(utility_sq);
@@ -448,7 +480,7 @@ impl<N: Float + Sum + Copy> Search<N> {
   fn select_edge(&self, node_idx: usize, noise: bool) -> Option<usize> {
     let node = &self.nodes[node_idx];
     let total_n = N::from(node.visits).unwrap();
-    let total_n_sqrt = total_n.sqrt();
+    let total_child_weight = node.weight_sum - node.weight;
 
     let mut best_score = -N::infinity();
     let mut best = None;
@@ -456,7 +488,10 @@ impl<N: Float + Sum + Copy> Search<N> {
     let c_puct = N::from(1.1).unwrap();
     let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
     let forced_k = N::from(Self::FORCED_PLAYOUTS_K).unwrap();
-    let puct_coeff = c_puct * total_n_sqrt * Self::utility_stdev_factor(node);
+    // The tiny offset keeps the exploration term positive with no child
+    // weight yet, as in KataGo.
+    let puct_coeff =
+      c_puct * (total_child_weight + N::from(0.01).unwrap()).sqrt() * Self::utility_stdev_factor(node);
 
     let prior_visited = LazyCell::new(|| {
       node
@@ -469,16 +504,22 @@ impl<N: Float + Sum + Copy> Search<N> {
 
     for (idx, edge) in node.children.iter().enumerate() {
       let total_edge_visits = edge.visits + edge.virtual_losses;
+      let virtual_losses = N::from(edge.virtual_losses).unwrap();
+      // Each virtual loss counts as a lost playout of weight 1.
+      let mut edge_weight = virtual_losses;
       let q = if total_edge_visits > 0 {
-        let child_value = self
-          .map
-          .get(&edge.hash)
-          .map_or(N::zero(), |&child_idx| self.nodes[child_idx].value);
-        let visits = N::from(edge.visits).unwrap();
-        let virtual_losses = N::from(edge.virtual_losses).unwrap();
+        let child_value = if edge.visits > 0
+          && let Some(&child_idx) = self.map.get(&edge.hash)
+        {
+          let child = &self.nodes[child_idx];
+          edge_weight = edge_weight + child.weight_sum * N::from(edge.visits).unwrap() / N::from(child.visits).unwrap();
+          child.value
+        } else {
+          N::zero()
+        };
         // Child value is from child's perspective.
         // Parent wants to maximize own value, which is -child.value
-        (-child_value * visits - virtual_losses) / N::from(total_edge_visits).unwrap()
+        (-child_value * (edge_weight - virtual_losses) - virtual_losses) / edge_weight.max(N::one())
       } else {
         // FPU
         node.value - c_fpu * *prior_visited
@@ -486,8 +527,8 @@ impl<N: Float + Sum + Copy> Search<N> {
       let p = edge.prior;
 
       // PUCT formula
-      // Score = Q(a) + C * P(a) * sqrt(sum(N)) / (N(a) + 1)
-      let score = q + puct_coeff * p / N::from(total_edge_visits + 1).unwrap();
+      // Score = Q(a) + C * P(a) * sqrt(sum(W)) / (W(a) + 1)
+      let score = q + puct_coeff * p / (edge_weight + N::one());
 
       // Forced playouts
       let score = if noise && edge.visits > 0 {
@@ -543,7 +584,14 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
-  fn add_result(&mut self, path: &[(usize, usize)], result: N, children: Vec<Edge<N>>, bias_key: Option<BiasKey>) {
+  fn add_result(
+    &mut self,
+    path: &[(usize, usize)],
+    result: N,
+    weight: N,
+    children: Vec<Edge<N>>,
+    bias_key: Option<BiasKey>,
+  ) {
     for &(node_idx, edge_idx) in path {
       self.nodes[node_idx].children[edge_idx].visits += 1;
     }
@@ -557,6 +605,8 @@ impl<N: Float + Sum + Copy> Search<N> {
     };
     self.nodes[leaf_idx].raw_value = result;
     self.nodes[leaf_idx].visits = 1;
+    self.nodes[leaf_idx].weight = weight;
+    self.nodes[leaf_idx].weight_sum = weight;
     self.nodes[leaf_idx].children = children;
     self.nodes[leaf_idx].bias_key = bias_key;
     self.nodes[leaf_idx].last_bias_delta = N::zero();
@@ -719,8 +769,15 @@ impl<N: Float + Sum + Copy> Search<N> {
       };
 
       let result = if *terminal || field.is_game_over(red_komi_x_2) {
-        // Terminal nodes get no bias correction, matching KataGo.
-        self.add_result(path, game_result(field, player, leaf_komi_x_2), Vec::new(), None);
+        // Terminal nodes get no bias correction, matching KataGo. Their value
+        // is exact, so they get the maximum weight.
+        self.add_result(
+          path,
+          game_result(field, player, leaf_komi_x_2),
+          Self::uncertainty_weight(N::zero()),
+          Vec::new(),
+          None,
+        );
         false
       } else {
         field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, HISTORY_CHANNELS, &mut features);
@@ -764,13 +821,14 @@ impl<N: Float + Sum + Copy> Search<N> {
 
       let policy = policies.slice(s![i, .., ..]);
       let value = values[(i, 0)] - values[(i, 1)];
+      let weight = Self::uncertainty_weight(values[(i, 2)]);
 
       let children = self.create_children(field, player, &policy, rng);
       // Bucket the leaf by the local context of the move that created it. The
       // field currently has all of the path's moves played, so `field.moves`
       // ends with this node's move and the move before it.
       let bias_key = Self::bias_key(field);
-      self.add_result(path, value, children, bias_key);
+      self.add_result(path, value, weight, children, bias_key);
 
       for _ in 0..path.len() {
         field.undo();
