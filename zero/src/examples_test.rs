@@ -9,6 +9,7 @@ fn game(values: [f64; 2]) -> ExampleGame {
     moves: vec![(0, Player::Red), (1, Player::Black)],
     komi_x_2: 0,
     score: 1,
+    has_result: true,
     visits: vec![
       Visits(Vec::new(), true, 0.0, values[0], 0.0),
       Visits(Vec::new(), true, 0.0, values[1], 0.0),
@@ -107,4 +108,44 @@ fn sample_bounds_examples() {
   examples.sample(1000, &mut rng);
   let len = examples.examples.len();
   assert!((900..1100).contains(&len), "expected about 1000 examples, got {}", len);
+}
+
+// A side game (no result) trains the value towards its own recorded search
+// value and gets zero weight on the outcome-derived targets.
+#[test]
+fn side_games_use_search_values() {
+  use oppai_field::construct_field::construct_field;
+  use oppai_field::field::length;
+  use oppai_field::zobrist::Zobrist;
+  use rand::SeedableRng;
+  use std::sync::Arc;
+
+  let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(7);
+  let field = construct_field(
+    &mut rng,
+    "
+    ....
+    .aA.
+    ....
+    ",
+  );
+  let pos = field.to_pos(0, 0);
+  // One full search for the last move, with a search value of 0.5 for the
+  // mover.
+  let visits = vec![Visits(vec![(pos, 10)], true, 0.0, 0.5, 0.25)];
+  let mut examples = Examples::default();
+  examples.add(0, visits, &field, false, false, false, &mut rng);
+  assert!(!examples.is_empty());
+
+  let zobrist = Arc::new(Zobrist::new(length(4, 3) * 3, &mut rng));
+  let batch = examples.batches::<f64>(4, 3, zobrist, examples.len()).next().unwrap();
+  for i in 0..batch.values.dim().0 {
+    assert!((batch.values[(i, 0)] - 0.75).abs() < 1e-9);
+    assert!((batch.values[(i, 1)] - 0.25).abs() < 1e-9);
+    // All TD horizons of a single-position game collapse to the search value.
+    for td in 0..TD_VALUES {
+      assert!((batch.td_values[(i, td, 0)] - 0.75).abs() < 1e-9);
+    }
+    assert_eq!(batch.outcome_weights[i], 0.0);
+  }
 }

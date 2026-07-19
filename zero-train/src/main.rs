@@ -84,20 +84,24 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn write_game(file: &mut File, field: Field, visits: &[Visits], komi_x_2: i32) -> Result<()> {
+/// Writes a game as an SGF tree. Side positions have no result, so they get
+/// no RE property, which is how the loader tells them apart.
+fn write_game(file: &mut File, field: Field, visits: &[Visits], komi_x_2: i32, has_result: bool) -> Result<()> {
   let field: ExtendedField = field.into();
   if let Some(mut node) = to_sgf(&field) {
     visits_to_sgf(&mut node, visits, field.field().stride, field.field().moves_count());
-    let score = field.field().score(Player::Red);
-    node.properties.push(Prop::RE(match score.cmp(&0) {
-      Ordering::Equal => "0".into(),
-      Ordering::Greater => SimpleText {
-        text: format!("W+{}", score),
-      },
-      Ordering::Less => SimpleText {
-        text: format!("B+{}", score.abs()),
-      },
-    }));
+    if has_result {
+      let score = field.field().score(Player::Red);
+      node.properties.push(Prop::RE(match score.cmp(&0) {
+        Ordering::Equal => "0".into(),
+        Ordering::Greater => SimpleText {
+          text: format!("W+{}", score),
+        },
+        Ordering::Less => SimpleText {
+          text: format!("B+{}", score.abs()),
+        },
+      }));
+    }
     node
       .properties
       .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
@@ -164,11 +168,11 @@ where
           player = player.next();
         }
 
-        let visits = episode(&mut field, player, &mut model, komi_x_2, &mut rng)
+        let (visits, side_games) = episode(&mut field, player, &mut model, komi_x_2, &mut rng)
           .await
           .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
 
-        Ok::<_, Error>((field, visits, komi_x_2))
+        Ok::<_, Error>((field, visits, side_games, komi_x_2))
       }
     });
 
@@ -176,8 +180,11 @@ where
 
   let mut file = File::options().append(true).create(true).open(&params.games)?;
   while let Some(game) = games.next().await {
-    let (field, visits, komi_x_2) = game?;
-    write_game(&mut file, field, &visits, komi_x_2)?;
+    let (field, visits, side_games, komi_x_2) = game?;
+    write_game(&mut file, field, &visits, komi_x_2, true)?;
+    for side_game in side_games {
+      write_game(&mut file, side_game.field, &[side_game.visits], komi_x_2, false)?;
+    }
   }
 
   Ok(())
@@ -320,6 +327,7 @@ where
         komi_x_2,
         visits,
         &field,
+        node.get_property("RE").is_some(),
         field.width() <= params.height && field.height() <= params.width,
         !params.ignore_surprise,
         rng,
@@ -362,6 +370,7 @@ where
       batch.td_values,
       batch.scores,
       batch.captured,
+      batch.outcome_weights,
       learning_rate,
     )?;
 
@@ -637,18 +646,23 @@ where
         current.2 = Search::policy_surprise(&current.0, &priors).to_f64().unwrap();
       }
 
+      let has_result = node.get_property("RE").is_some();
       let mut node = to_sgf(&field).ok_or(anyhow::anyhow!("failed to serialize game"))?;
       visits_to_sgf(&mut node, &visits, stride, field.field().moves_count());
-      let score = field.field().score(Player::Red);
-      node.properties.push(Prop::RE(match score.cmp(&0) {
-        Ordering::Equal => "0".into(),
-        Ordering::Greater => SimpleText {
-          text: format!("W+{}", score),
-        },
-        Ordering::Less => SimpleText {
-          text: format!("B+{}", score.abs()),
-        },
-      }));
+      // Side positions have no result, so the RE property is preserved only
+      // when the source game had one.
+      if has_result {
+        let score = field.field().score(Player::Red);
+        node.properties.push(Prop::RE(match score.cmp(&0) {
+          Ordering::Equal => "0".into(),
+          Ordering::Greater => SimpleText {
+            text: format!("W+{}", score),
+          },
+          Ordering::Less => SimpleText {
+            text: format!("B+{}", score.abs()),
+          },
+        }));
+      }
       node
         .properties
         .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));

@@ -5,7 +5,7 @@ use crate::{
     global_to_vec, score_one_hot_to_vec,
   },
 };
-use ndarray::{Array, Array2, Array3, Array4};
+use ndarray::{Array, Array1, Array2, Array3, Array4};
 use num_traits::{Float, One, Zero};
 use oppai_field::{
   field::{Field, Pos},
@@ -41,6 +41,9 @@ pub struct Batch<N> {
   /// Captured cells at the terminal game state, 2 channels:
   /// the cells captured by the current player and by the opponent.
   pub captured: Array4<N>,
+  /// Per-row weight of the outcome-derived targets (score belief, captured):
+  /// 1 for rows from finished games, 0 for side positions with no result.
+  pub outcome_weights: Array1<N>,
 }
 
 #[derive(Clone, Debug)]
@@ -55,6 +58,10 @@ pub struct ExampleGame {
   pub komi_x_2: i32,
   /// Score at the terminal game state
   pub score: i32,
+  /// Whether the game was actually played to the end. Side positions forked
+  /// off the main line have no result, so their value targets come from the
+  /// recorded search values and the outcome-derived targets are skipped.
+  pub has_result: bool,
   pub visits: Vec<Visits>,
 }
 
@@ -117,6 +124,7 @@ impl Examples {
     komi_x_2: i32,
     visits: Vec<Visits>,
     field: &Field,
+    has_result: bool,
     rotations: bool,
     surprise_weighting: bool,
     rng: &mut R,
@@ -145,7 +153,7 @@ impl Examples {
     // surprise is the KL divergence from that target to the raw network value
     // at the turn.
     let mut value_surprises = vec![0.0; visits.len()];
-    if surprise_weighting {
+    if surprise_weighting && has_result {
       let movers: Vec<Player> = field.colored_moves().map(|(_, player)| player).collect();
       let now_factor = 1.0 / (1.0 + (field.width() * field.height()) as f64 * 0.016);
       // The blend is tracked from Red's perspective and flipped to the mover's
@@ -184,6 +192,7 @@ impl Examples {
       moves: field.colored_moves().collect(),
       komi_x_2,
       score: field.score(Player::Red),
+      has_result,
       visits,
     };
     let game_index = self.games.len();
@@ -344,6 +353,7 @@ impl Examples {
     let mut values = Vec::<N>::with_capacity(range.len() * 2);
     let mut td_values = Vec::<N>::with_capacity(range.len() * TD_VALUES * 2);
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
+    let mut outcome_weights = Vec::<N>::with_capacity(range.len());
     let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
     for example in self.examples.get(range.clone()).unwrap() {
       let game = &self.games[example.game];
@@ -390,15 +400,30 @@ impl Examples {
           example.rotation,
           &mut opponent_policies,
         );
-      Self::values_to_vec::<N>(score, komi_x_2, &mut values);
+      // Rows from finished games train the value towards the final result;
+      // side positions have no result, so their value target is the recorded
+      // search value of the position itself.
+      let final_value = if game.has_result {
+        f64::from((score * 2 + komi_x_2).signum())
+      } else {
+        game.visits[example.position - initial_moves].3
+      };
+      if game.has_result {
+        Self::values_to_vec::<N>(score, komi_x_2, &mut values);
+      } else {
+        let win = (1.0 + final_value) / 2.0;
+        values.push(N::from(win).unwrap());
+        values.push(N::from(1.0 - win).unwrap());
+      }
       Self::td_values_to_vec::<N>(
         game,
         example.position - initial_moves,
         player,
-        f64::from((score * 2 + komi_x_2).signum()),
+        final_value,
         &mut td_values,
       );
       score_one_hot_to_vec(score, komi_x_2, &mut scores);
+      outcome_weights.push(if game.has_result { N::one() } else { N::zero() });
       // Replay the rest of the game to get the captured dots at the terminal
       // state. Grounded state is not updated since it doesn't affect captures.
       for &(pos, player) in game.moves.iter().skip(example.position) {
@@ -429,6 +454,7 @@ impl Examples {
       captured: Array::from(captured)
         .into_shape_with_order((range.len(), 2, height as usize, width as usize))
         .unwrap(),
+      outcome_weights: Array::from(outcome_weights),
     }
   }
 

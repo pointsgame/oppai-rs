@@ -1,5 +1,5 @@
 use either::Either;
-use ndarray::{Array, Array2, Array3, Array4, Axis};
+use ndarray::{Array, Array1, Array2, Array3, Array4, Axis};
 use num_traits::Float;
 
 #[allow(async_fn_in_trait)]
@@ -27,6 +27,7 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
     td_values: Array3<N>,
     scores: Array2<N>,
     captured: Array4<N>,
+    outcome_weights: Array1<N>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE>;
 }

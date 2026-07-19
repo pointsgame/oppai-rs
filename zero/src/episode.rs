@@ -19,6 +19,24 @@ use std::iter::{self, Sum};
 const MCTS_SIMS: u32 = 200;
 const MCTS_FULL_SIMS: u32 = 1000;
 
+/// Probability of forking a side position off a full-search move: an
+/// alternative move is sampled from the raw policy, and the resulting
+/// position is searched after the game to produce one extra training row
+/// (KataGo's `sidePositionProb`).
+const SIDE_POSITION_PROB: f64 = 0.02;
+
+/// A position off the main game line: the game's moves up to some point plus
+/// one forking move, searched to produce a single training row. It has no
+/// game result, so outcome-derived training targets don't apply to it.
+pub struct SideGame {
+  /// The forked position with the side search's own best move appended, so
+  /// the search statistics attach to the move they chose, exactly like in a
+  /// real game.
+  pub field: Field,
+  /// Search statistics of the forked position, always a full search.
+  pub visits: Visits,
+}
+
 /// Search statistics for a single move played in a self-play game.
 ///
 /// * `.0` - visit count for each explored child of the root (the policy target).
@@ -103,6 +121,36 @@ fn interpolate_early<N: Float>(field: &Field, early_value: N, value: N) -> N {
   value + (early_value - value) * N::from(0.5).unwrap().powf(halflives)
 }
 
+/// Sample a forking move proportionally to the raw policy priors, banning the
+/// move actually played.
+fn select_forking_move<N, R>(field: &Field, priors: &[N], ban: Pos, rng: &mut R) -> Option<NonZeroPos>
+where
+  N: Float + Sum + SampleUniform,
+  R: Rng,
+{
+  let mut sum = N::zero();
+  for pos in field.min_pos()..=field.max_pos() {
+    if pos != ban && field.is_putting_allowed(pos) {
+      sum = sum + priors[pos];
+    }
+  }
+  if sum <= N::zero() {
+    return None;
+  }
+  let mut sample = rng.random_range(N::zero()..sum);
+  for pos in field.min_pos()..=field.max_pos() {
+    if pos != ban && field.is_putting_allowed(pos) {
+      let prior = priors[pos];
+      if prior >= sample {
+        return NonZeroPos::new(pos);
+      } else {
+        sample = sample - prior;
+      }
+    }
+  }
+  None
+}
+
 fn select_policy_move<N, R>(field: &Field, policy: Array3<N>, rng: &mut R) -> Option<NonZeroPos>
 where
   N: Float + Sum + SampleUniform,
@@ -137,7 +185,7 @@ pub async fn episode<N, M, R>(
   model: &mut M,
   mut komi_x_2: i32,
   rng: &mut R,
-) -> Result<Vec<Visits>, M::E>
+) -> Result<(Vec<Visits>, Vec<SideGame>), M::E>
 where
   M: Model<N>,
   N: Float + Sum + SampleUniform + Display + Debug,
@@ -170,6 +218,7 @@ where
 
   let mut search = Search::new(false);
   let mut visits = Vec::new();
+  let mut side_positions: Vec<(Field, Player, i32)> = Vec::new();
 
   // Raw network policy priors of the root, captured before temperature and
   // Dirichlet noise overwrite them, so the policy surprise is measured against
@@ -233,6 +282,22 @@ where
       break;
     };
 
+    // Occasionally fork a side position: an alternative move sampled from the
+    // raw policy, queued to be searched after the game for one extra training
+    // row.
+    if full_search
+      && rng.random::<f64>() < SIDE_POSITION_PROB
+      && let Some(alt) = select_forking_move(field, &raw_priors, pos.get(), rng)
+    {
+      let mut side_field = field.clone();
+      assert!(side_field.put_point(alt.get(), player));
+      side_field.update_grounded();
+      let red_komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
+      if !side_field.is_game_over(red_komi_x_2) {
+        side_positions.push((side_field, player.next(), -komi_x_2));
+      }
+    }
+
     visits.push(current_visits);
     search.compact();
     assert!(field.put_point(pos.get(), player));
@@ -241,5 +306,44 @@ where
     komi_x_2 = -komi_x_2;
   }
 
-  Ok(visits)
+  // Search the queued side positions with a fresh full search each, exactly
+  // like a full search of a real move.
+  let mut side_games = Vec::new();
+  for (mut side_field, side_player, side_komi_x_2) in side_positions {
+    let mut search = Search::new(false);
+    search
+      .mcgs(&mut side_field, side_player, model, side_komi_x_2, rng)
+      .await?;
+    search.root_priors(&mut raw_priors);
+    let total_concentration = N::from(0.03 * 19.0.powi(2)).unwrap();
+    let temperature = interpolate_early(&side_field, N::from(1.25).unwrap(), N::from(1.1).unwrap());
+    search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), total_concentration, temperature);
+    for _ in 0..MCTS_FULL_SIMS {
+      search
+        .mcgs(&mut side_field, side_player, model, side_komi_x_2, rng)
+        .await?;
+    }
+    let pos = if let Some(pos) = search.best_move() {
+      pos
+    } else {
+      continue;
+    };
+    let target: Vec<(Pos, u64)> = search.pruned_visits().collect();
+    let surprise = Search::policy_surprise(&target, &raw_priors).to_f64().unwrap();
+    let side_visits = Visits(
+      target,
+      true,
+      surprise,
+      search.value().to_f64().unwrap(),
+      search.raw_value().to_f64().unwrap(),
+    );
+    assert!(side_field.put_point(pos.get(), side_player));
+    side_field.update_grounded();
+    side_games.push(SideGame {
+      field: side_field,
+      visits: side_visits,
+    });
+  }
+
+  Ok((visits, side_games))
 }

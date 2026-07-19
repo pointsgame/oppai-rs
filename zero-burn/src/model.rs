@@ -14,7 +14,7 @@ use burn::{
   },
 };
 use derive_more::From;
-use ndarray::{Array, Array2, Array3, Array4, Dimension, ShapeError};
+use ndarray::{Array, Array1, Array2, Array3, Array4, Dimension, ShapeError};
 use num_traits::Float;
 use oppai_zero::{
   examples::TD_VALUES,
@@ -953,6 +953,7 @@ where
     td_values: Array3<FloatElem<B>>,
     scores: Array2<FloatElem<B>>,
     captured: Array4<FloatElem<B>>,
+    outcome_weights: Array1<FloatElem<B>>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
@@ -985,6 +986,10 @@ where
       &self.predictor.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
+    let outcome_weights: Tensor<B, 2> = Tensor::from_data(
+      TensorData::new(into_data_vec(outcome_weights), [batch, 1]),
+      &self.predictor.device,
+    );
     let captured = Tensor::from_data(
       TensorData::new(into_data_vec(captured), [batch, 2, height, width]),
       &self.predictor.device,
@@ -1060,10 +1065,11 @@ where
     // square discourages draws). Short-term: the shortest-horizon TD value
     // turned out around 1.5 predicted stdevs better than the model expected.
     // KataGo also mixes in analogous score-based terms, which have no
-    // equivalent here.
-    let long_optimism_weight = values.clone().slice(s![.., 0..1]).square();
+    // equivalent here. Side positions with no game outcome are excluded, as
+    // in KataGo.
+    let long_optimism_weight = values.clone().slice(s![.., 0..1]).square() * outcome_weights.clone();
     let stdevs_excess = (real_value - pred_value) / (out_value_error.detach() + 1e-4).sqrt();
-    let short_optimism_weight = sigmoid((stdevs_excess - 1.5) * 3.0);
+    let short_optimism_weight = sigmoid((stdevs_excess - 1.5) * 3.0) * outcome_weights.clone();
     // The optimistic policy heads take a small share of the main policy's
     // loss scale, as in KataGo (0.93 + 0.1 + 0.2 relative weights).
     let policies_loss = -(out_policies * policies.clone()).sum() * 0.93 / batch;
@@ -1076,14 +1082,20 @@ where
     // same extra 0.15 factor as the hard opponent policy loss.
     let soft_policies_loss = -(out_soft_policies * soft_policies).sum() * 8.0 / batch;
     let soft_opponent_policies_loss = -(out_soft_opponent_policies * soft_opponent_policies).sum() * 1.2 / batch;
-    let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
-    let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
+    // The score belief and captured targets require the actual game outcome,
+    // so rows without one (side positions) are weighted out.
+    let pdf_loss = -((out_scores * scores).sum_dim(1) * outcome_weights.clone()).sum() * 0.02 / batch;
+    let cdf_loss = ((out_scores_cdf - scores_cdf).square().sum_dim(1) * outcome_weights.clone()).sum() * 0.02 / batch;
     // Binary cross-entropy with logits in the numerically stable form
     // `max(z, 0) - z * t + ln(1 + exp(-|z|))`, normalized by the board area
     // like KataGo's ownership loss.
     let captured_bce = out_captured_logits.clone().clamp_min(0.0) - out_captured_logits.clone() * captured
       + (-out_captured_logits.abs()).exp().log1p();
-    let captured_loss = ((captured_bce * mask).sum_dim(2).sum_dim(3) / mask_sum_hw).sum() * 1.5 / batch;
+    let captured_loss = (((captured_bce * mask).sum_dim(2).sum_dim(3) / mask_sum_hw).reshape([0, -1]).sum_dim(1)
+      * outcome_weights)
+      .sum()
+      * 1.5
+      / batch;
 
     let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
     self.predictor.model.visit(&mut norm_visitor);
@@ -1144,7 +1156,7 @@ mod tests {
     backend::{NdArray, ndarray::NdArrayDevice},
     tensor::{Tensor, activation::softmax},
   };
-  use ndarray::{Array2, Array3, Array4, array};
+  use ndarray::{Array1, Array2, Array3, Array4, array};
   use oppai_zero::{
     examples::TD_VALUES,
     field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
@@ -1308,6 +1320,7 @@ mod tests {
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
         let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
+        let outcome_weights = Array1::from_elem(1, 1.0);
 
         let (out_policies_1, out_values_1) =
           futures::executor::block_on(learner.predict(inputs.clone(), global.clone())).unwrap();
@@ -1321,6 +1334,7 @@ mod tests {
             td_values,
             scores,
             captured,
+            outcome_weights,
             0.01,
           )
           .unwrap();
