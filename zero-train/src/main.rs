@@ -362,6 +362,7 @@ where
       batch.policies,
       batch.opponent_policies,
       batch.values,
+      batch.td_values,
       batch.scores,
       batch.captured,
       learning_rate,

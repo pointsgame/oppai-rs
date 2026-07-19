@@ -12,6 +12,7 @@ pub trait Model<N: Float> {
 pub trait TrainableModel<N: Float>: Model<N> + Sized {
   type TE: From<Self::E>;
 
+  #[allow(clippy::too_many_arguments)]
   fn train(
     self,
     inputs: Array4<N>,
@@ -19,6 +20,7 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
     policies: Array3<N>,
     opponent_policies: Array3<N>,
     values: Array2<N>,
+    td_values: Array3<N>,
     scores: Array2<N>,
     captured: Array4<N>,
     learning_rate: f64,
