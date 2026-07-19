@@ -9,12 +9,14 @@ use oppai_rotate::rotate::{rotate, rotate_back, rotate_sizes};
 
 pub const CHANNELS: usize = 13;
 
+/// Number of history planes, each marking the location of one past move.
+pub const HISTORY_CHANNELS: usize = 5;
+
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
   (width * height) as usize * CHANNELS
 }
 
-// TODO: KataGo has 2% chance of zeroing history during training
 fn push_history<N: Zero + One + Copy>(
   field: &Field,
   pos: Option<NonZeroPos>,
@@ -55,12 +57,16 @@ fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
   }));
 }
 
+/// `history` is the number of history planes to fill; the remaining ones are
+/// left empty. Inference uses the full `HISTORY_CHANNELS` while training
+/// truncates it randomly (history dropout).
 pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   field: &Field,
   player: Player,
   width: u32,
   height: u32,
   rotation: u8,
+  history: usize,
   features: &mut Vec<N>,
 ) {
   let enemy = player.next();
@@ -147,62 +153,24 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
     height,
     rotation,
   );
-  push_history(
-    field,
-    field.moves.last().copied().and_then(NonZeroPos::new),
-    features,
-    width,
-    height,
-    rotation,
-  );
-  push_history(
-    field,
-    field
-      .moves
-      .get(field.moves.len().overflowing_sub(2).0)
-      .copied()
-      .and_then(NonZeroPos::new),
-    features,
-    width,
-    height,
-    rotation,
-  );
-  push_history(
-    field,
-    field
-      .moves
-      .get(field.moves.len().overflowing_sub(3).0)
-      .copied()
-      .and_then(NonZeroPos::new),
-    features,
-    width,
-    height,
-    rotation,
-  );
-  push_history(
-    field,
-    field
-      .moves
-      .get(field.moves.len().overflowing_sub(4).0)
-      .copied()
-      .and_then(NonZeroPos::new),
-    features,
-    width,
-    height,
-    rotation,
-  );
-  push_history(
-    field,
-    field
-      .moves
-      .get(field.moves.len().overflowing_sub(5).0)
-      .copied()
-      .and_then(NonZeroPos::new),
-    features,
-    width,
-    height,
-    rotation,
-  );
+  for i in 0..HISTORY_CHANNELS {
+    push_history(
+      field,
+      if i < history {
+        field
+          .moves
+          .get(field.moves.len().overflowing_sub(i + 1).0)
+          .copied()
+          .and_then(NonZeroPos::new)
+      } else {
+        None
+      },
+      features,
+      width,
+      height,
+      rotation,
+    );
+  }
 }
 
 /// Two planes marking captured cells in the given field state, with or without
@@ -254,7 +222,7 @@ pub fn field_features<N: Float + Zero + One + Copy>(
   rotation: u8,
 ) -> Array3<N> {
   let mut features = Vec::with_capacity(field_features_len(width, height));
-  field_features_to_vec::<N>(field, player, width, height, rotation, &mut features);
+  field_features_to_vec::<N>(field, player, width, height, rotation, HISTORY_CHANNELS, &mut features);
   Array::from(features)
     .into_shape_with_order((CHANNELS, height as usize, width as usize))
     .unwrap()

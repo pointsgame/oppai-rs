@@ -1,4 +1,6 @@
-use crate::field_features::{CHANNELS, GLOBAL_FEATURES, field_features_len, field_features_to_vec, global_to_vec};
+use crate::field_features::{
+  CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, field_features_len, field_features_to_vec, global_to_vec,
+};
 use crate::model::Model;
 use either::Either;
 use ndarray::{Array, ArrayView2, s};
@@ -687,7 +689,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         self.add_result(path, game_result(field, player, leaf_komi_x_2), Vec::new(), None);
         false
       } else {
-        field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, &mut features);
+        field_features_to_vec::<N>(field, player, field.width(), field.height(), 0, HISTORY_CHANNELS, &mut features);
         global_to_vec(field, player, leaf_komi_x_2, &mut global);
         true
       };
