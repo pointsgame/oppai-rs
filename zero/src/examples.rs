@@ -1,8 +1,8 @@
 use crate::{
   episode::Visits,
   field_features::{
-    CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE, captured_features_to_vec, field_features_to_vec, global_to_vec,
-    score_one_hot_to_vec,
+    CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, SCORE_ONE_HOT_SIZE, captured_features_to_vec, field_features_to_vec,
+    global_to_vec, score_one_hot_to_vec,
   },
 };
 use ndarray::{Array, Array2, Array3, Array4};
@@ -49,6 +49,9 @@ pub struct Example {
   pub game: usize,
   pub position: usize,
   pub rotation: u8,
+  /// Number of history planes to fill for this training row; the rest are
+  /// zeroed (history dropout).
+  pub history: u8,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -63,9 +66,14 @@ pub struct Examples {
 /// positions of a game. With the default of `0.5`, half of the total weight is
 /// uniform (giving every full search a baseline weight of `0.5`) and the other
 /// half is proportional to the policy surprise, so "surprising" positions end up
-/// written into the training data many more times. See KataGoMethods.md
-/// "Policy Surprise Weighting".
+/// written into the training data many more times.
 const POLICY_SURPRISE_DATA_WEIGHT: f64 = 0.5;
+
+/// History dropout: each successive history plane is kept with this probability,
+/// and the first failure truncates the history from that plane on. So ~90% of
+/// the rows keep the full history, 2% get none at all, making the network
+/// usable on positions with unknown last moves.
+const HISTORY_KEEP_PROBABILITY: f64 = 0.98;
 
 impl Examples {
   pub fn add<R: Rng>(
@@ -122,10 +130,15 @@ impl Examples {
         let copies = weight.floor() as usize + usize::from(rng.random::<f64>() < weight.fract());
         for _ in 0..copies {
           for rotation in 0..rotations {
+            let mut history = 0;
+            while history < HISTORY_CHANNELS && rng.random::<f64>() < HISTORY_KEEP_PROBABILITY {
+              history += 1;
+            }
             self.examples.push(Example {
               game: game_index,
               position: initial_moves + i,
               rotation,
+              history: history as u8,
             });
           }
         }
@@ -190,7 +203,15 @@ impl Examples {
       } else {
         (-game.score, -game.komi_x_2)
       };
-      field_features_to_vec(&field, player, width, height, example.rotation, &mut inputs);
+      field_features_to_vec(
+        &field,
+        player,
+        width,
+        height,
+        example.rotation,
+        example.history as usize,
+        &mut inputs,
+      );
       global_to_vec(&field, player, komi_x_2, &mut global);
       let initial_moves = game.moves.len() - game.visits.len();
       game.visits[example.position - initial_moves].policies_to_vec(
