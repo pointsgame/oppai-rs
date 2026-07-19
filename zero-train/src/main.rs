@@ -46,7 +46,7 @@ use oppai_zero::{
   pit,
   random_model::RandomModel,
 };
-use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
+use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor, ema_update};
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
 use rand::{Rng, RngExt, SeedableRng, distr::uniform::SampleUniform, make_rng, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
@@ -261,7 +261,29 @@ where
   )?;
   let record = Record::from_item::<FullPrecisionSettings>(item, &device);
   let optimizer = optimizer.load_record(record);
-  let predictor = Predictor { model, device };
+  // The SWA model is an exponential moving average of the trained weights,
+  // updated every `swa_period` batches and saved separately; it's the model to
+  // export for self-play while training continues from the raw weights.
+  let mut swa_model = params
+    .model_swa_new
+    .is_some()
+    .then(|| {
+      params.model_swa.as_ref().map_or_else(
+        || Ok(model.clone()),
+        |path| {
+          BurnModel::<B>::new(&device, &params.model_config).load_file(
+            path,
+            &DefaultFileRecorder::<FullPrecisionSettings>::new(),
+            &device,
+          )
+        },
+      )
+    })
+    .transpose()?;
+  let predictor = Predictor {
+    model,
+    device: device.clone(),
+  };
   let mut learner = Learner { predictor, optimizer };
 
   let mut examples = Examples::default();
@@ -307,6 +329,8 @@ where
 
   examples.shuffle(rng);
   let batches_count = examples.batches_count(params.batch_size);
+  // KataGo averages a snapshot every half-epoch by default.
+  let swa_period = params.swa_period.unwrap_or((batches_count / 2).max(1));
   let zobrist = Arc::new(Zobrist::new(length(params.width, params.height) * 3, rng));
   for (i, batch) in examples
     .batches(params.width, params.height, zobrist, params.batch_size)
@@ -336,12 +360,24 @@ where
       batch.captured,
       learning_rate,
     )?;
+
+    if let Some(swa) = swa_model.take() {
+      swa_model = Some(if (i + 1).is_multiple_of(swa_period) {
+        ema_update(swa, &learner.predictor.model, 1.0 / params.swa_scale, &device)
+      } else {
+        swa
+      });
+    }
   }
 
   learner
     .predictor
     .model
     .save_file(params.model_new, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+
+  if let (Some(swa), Some(path)) = (swa_model, params.model_swa_new) {
+    swa.save_file(path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  }
 
   let record = learner.optimizer.to_record();
   let item = record.into_item::<FullPrecisionSettings>();

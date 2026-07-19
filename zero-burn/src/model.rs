@@ -1,5 +1,5 @@
 use burn::{
-  module::{Initializer, Module, ModuleVisitor, Param},
+  module::{Initializer, Module, ModuleMapper, ModuleVisitor, Param},
   nn::{
     Linear, LinearConfig, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
@@ -827,6 +827,48 @@ where
   }
 }
 
+struct ParamCollector {
+  params: Vec<TensorData>,
+}
+
+impl<B: Backend> ModuleVisitor<B> for ParamCollector {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
+    self.params.push(param.val().into_data());
+  }
+}
+
+struct EmaMapper<'a, B: Backend> {
+  params: std::collections::VecDeque<TensorData>,
+  factor: f64,
+  device: &'a B::Device,
+}
+
+impl<B: Backend> ModuleMapper<B> for EmaMapper<'_, B> {
+  fn map_float<const D: usize>(&mut self, param: Param<Tensor<B, D>>) -> Param<Tensor<B, D>> {
+    let data = self.params.pop_front().expect("model architectures must match");
+    let current = Tensor::from_data(data, self.device);
+    let (id, average, mapper) = param.consume();
+    let average = average.clone() + (current - average) * self.factor;
+    Param::from_mapped_value(id, average, mapper)
+  }
+}
+
+/// Update an exponential moving average of the model weights:
+/// `average += factor * (model - average)` for every parameter, pairing the
+/// parameters of the two models by module traversal order. This is KataGo's
+/// SWA scheme with `factor = 1 / swa_scale`, so `1 / factor` snapshots are
+/// averaged in expectation.
+pub fn ema_update<B: Backend>(average: Model<B>, model: &Model<B>, factor: f64, device: &B::Device) -> Model<B> {
+  let mut collector = ParamCollector { params: Vec::new() };
+  model.visit(&mut collector);
+  let mut mapper = EmaMapper {
+    params: collector.params.into(),
+    factor,
+    device,
+  };
+  average.map(&mut mapper)
+}
+
 struct ParamNormVisitor<B: Backend> {
   sum_sq: Tensor<B, 1>,
 }
@@ -1084,6 +1126,40 @@ mod tests {
         .iter()
         .all(|v| v.is_finite())
     );
+  }
+
+  // With factor 1 the average must become an exact copy of the model, and with
+  // factor 0 it must stay unchanged - the two endpoints of the EMA lerp.
+  #[test]
+  #[cfg(feature = "ndarray")]
+  fn ema_update_endpoints() {
+    use super::ema_update;
+
+    let device = NdArrayDevice::Cpu;
+    let config = ModelConfig::default();
+    let mut average = Model::<NdArray>::new(&device, &config);
+    average.initialize(&device);
+    let mut model = Model::<NdArray>::new(&device, &config);
+    model.initialize(&device);
+
+    let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
+    let global = Tensor::ones([1, 1], &device);
+
+    let (model_policy, _, _, _) = model.forward(inputs.clone(), global.clone());
+    let (average_policy, _, _, _) = average.forward(inputs.clone(), global.clone());
+
+    let average = ema_update(average, &model, 0.0, &device);
+    let (unchanged_policy, _, _, _) = average.forward(inputs.clone(), global.clone());
+    unchanged_policy
+      .into_data()
+      .assert_eq(&average_policy.into_data(), true);
+
+    // `a + (c - a) * 1` is only c up to rounding, so compare approximately.
+    let average = ema_update(average, &model, 1.0, &device);
+    let (copied_policy, _, _, _) = average.forward(inputs, global);
+    copied_policy
+      .into_data()
+      .assert_approx_eq::<f32>(&model_policy.into_data(), burn::tensor::Tolerance::default());
   }
 
   macro_rules! predict_test {

@@ -29,6 +29,10 @@ pub struct TrainParams {
   pub optimizer: PathBuf,
   pub model_new: PathBuf,
   pub optimizer_new: PathBuf,
+  pub model_swa: Option<PathBuf>,
+  pub model_swa_new: Option<PathBuf>,
+  pub swa_scale: f64,
+  pub swa_period: Option<usize>,
   pub games: Vec<PathBuf>,
   pub learning_rate_start: f64,
   pub learning_rate_end: f64,
@@ -241,6 +245,35 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(optimizer_arg())
     .arg(model_new_arg())
     .arg(optimizer_new_arg())
+    .arg(
+      Arg::new("model-swa")
+        .long("model-swa")
+        .help("Path to the SWA (averaged) model weights to continue from; when omitted the average starts from the loaded model")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf)),
+    )
+    .arg(
+      Arg::new("model-swa-new")
+        .long("model-swa-new")
+        .help("Path where to save the updated SWA model weights; the average is maintained only when this is set. Export this model for self-play and pitting")
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf)),
+    )
+    .arg(
+      Arg::new("swa-scale")
+        .long("swa-scale")
+        .help("Number of snapshots averaged in expectation by the SWA exponential moving average")
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("8"),
+    )
+    .arg(
+      Arg::new("swa-period")
+        .long("swa-period")
+        .help("How many batches between SWA snapshots (default: half of the total batch count)")
+        .num_args(1)
+        .value_parser(value_parser!(usize)),
+    )
     .arg(
       Arg::new("games")
         .long("games")
@@ -465,6 +498,10 @@ pub fn cli_parse() -> (Config, Action) {
       let optimizer = matches.get_one("optimizer").cloned().unwrap();
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let optimizer_new = matches.get_one("optimizer-new").cloned().unwrap();
+      let model_swa = matches.get_one("model-swa").cloned();
+      let model_swa_new = matches.get_one("model-swa-new").cloned();
+      let swa_scale = matches.get_one("swa-scale").copied().unwrap();
+      let swa_period = matches.get_one("swa-period").copied();
       let games = matches.get_many("games").unwrap().cloned().collect();
       let learning_rate_start = matches.get_one("learning-rate-start").cloned().unwrap();
       let learning_rate_end = matches.get_one("learning-rate-end").cloned().unwrap();
@@ -481,6 +518,10 @@ pub fn cli_parse() -> (Config, Action) {
         optimizer,
         model_new,
         optimizer_new,
+        model_swa,
+        model_swa_new,
+        swa_scale,
+        swa_period,
         games,
         learning_rate_start,
         learning_rate_end,
