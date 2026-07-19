@@ -405,6 +405,39 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// is set to infinity to ensure it receives enough exploration.
   const FORCED_PLAYOUTS_K: u32 = 2;
 
+  /// Typical utility standard deviation of a node; the observed stdev is
+  /// measured relative to it.
+  const CPUCT_UTILITY_STDEV_PRIOR: f64 = 0.30;
+  /// Weight of the prior when blending it with the observed utility variance.
+  const CPUCT_UTILITY_STDEV_PRIOR_WEIGHT: f64 = 2.0;
+  /// How strongly the exploration coefficient follows the observed utility
+  /// stdev: the PUCT coefficient is scaled by
+  /// `1 + scale * (stdev / prior - 1)`, exploring more under volatile nodes
+  /// and less under quiet ones.
+  const CPUCT_UTILITY_STDEV_SCALE: f64 = 0.85;
+
+  /// Exploration scaling from the node's observed utility standard deviation,
+  /// estimated from the value and squared-value moments blended with a prior
+  /// towards `CPUCT_UTILITY_STDEV_PRIOR`.
+  pub(crate) fn utility_stdev_factor(node: &Node<N>) -> N {
+    let prior = N::from(Self::CPUCT_UTILITY_STDEV_PRIOR).unwrap();
+    let stdev = if node.visits <= 1 {
+      prior
+    } else {
+      let prior_weight = N::from(Self::CPUCT_UTILITY_STDEV_PRIOR_WEIGHT).unwrap();
+      let weight_sum = N::from(node.visits).unwrap();
+      let utility_sq = node.value * node.value;
+      // Guard against numerical imprecision producing negative variance.
+      let utility_sq_avg = node.value_sq.max(utility_sq);
+      (((utility_sq + prior * prior) * prior_weight + utility_sq_avg * weight_sum)
+        / (prior_weight + weight_sum - N::one())
+        - utility_sq)
+        .max(N::zero())
+        .sqrt()
+    };
+    N::one() + N::from(Self::CPUCT_UTILITY_STDEV_SCALE).unwrap() * (stdev / prior - N::one())
+  }
+
   fn select_edge(&self, node_idx: usize, noise: bool) -> Option<usize> {
     let node = &self.nodes[node_idx];
     let total_n = N::from(node.visits).unwrap();
@@ -416,7 +449,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let c_puct = N::from(1.1).unwrap();
     let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
     let forced_k = N::from(Self::FORCED_PLAYOUTS_K).unwrap();
-    let puct_coeff = c_puct * total_n_sqrt;
+    let puct_coeff = c_puct * total_n_sqrt * Self::utility_stdev_factor(node);
 
     let prior_visited = LazyCell::new(|| {
       node
@@ -991,6 +1024,9 @@ impl<N: Float + Sum + Copy> Search<N> {
     let c_puct = N::from(1.1).unwrap();
     let total_n = N::from(root.visits).unwrap();
     let total_n_sqrt = total_n.sqrt();
+    // Invert the same coefficient selection used, including the utility-stdev
+    // scaling, so pruning matches what PUCT actually allocated.
+    let puct_coeff = c_puct * total_n_sqrt * Self::utility_stdev_factor(root);
 
     let best_child_value = self
       .map
@@ -999,7 +1035,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let best_q = -best_child_value;
 
     // Compute PUCT(c*) for the best child
-    let best_puct = best_q + c_puct * best_edge.prior * total_n_sqrt / N::from(best_edge.visits + 1).unwrap();
+    let best_puct = best_q + puct_coeff * best_edge.prior / N::from(best_edge.visits + 1).unwrap();
 
     let result = children.iter().enumerate().filter_map(move |(idx, edge)| {
       if edge.visits == 0 {
@@ -1032,7 +1068,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       let retrospective_visits = if explore_component <= N::zero() {
         edge.visits
       } else {
-        let max_n = c_puct * edge.prior * total_n_sqrt / explore_component - N::one();
+        let max_n = puct_coeff * edge.prior / explore_component - N::one();
         if max_n < N::zero() {
           0u64
         } else {
