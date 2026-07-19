@@ -3,6 +3,7 @@ use crate::{
   mcgs::Search,
   model::Model,
 };
+use either::Either;
 use ndarray::Axis;
 use num_traits::Float;
 use oppai_field::{
@@ -15,7 +16,7 @@ use std::{
   iter::Sum,
 };
 
-type Analysis<N> = (Vec<(Pos, (u64, N))>, u32, N);
+type Analysis<N> = (Vec<(Pos, Either<(u64, N), N>)>, u32, N);
 
 type PolicyAnalysis<N> = (Vec<(Pos, N)>, N);
 
@@ -114,11 +115,7 @@ where
       iterations += 1;
     }
 
-    Ok((
-      self.search.visits_with_prior().collect(),
-      iterations,
-      self.search.value(),
-    ))
+    Ok((self.search.play_selection(), iterations, self.search.value()))
   }
 }
 

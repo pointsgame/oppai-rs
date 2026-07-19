@@ -69,6 +69,11 @@ pub struct Node<N: Float> {
   pub value: N,
   /// U(n): Raw utility from the neural net for this state.
   pub raw_value: N,
+  /// Q²(n): Expected squared utility, propagated recursively the same way as
+  /// `value`: (U(n)² + sum(edge.visits * child.Q²)) / N(n). Squares are
+  /// perspective-independent, so no sign flips are needed. Together with
+  /// `value` it estimates the variance of the value for LCB move selection.
+  pub value_sq: N,
   /// Edges to children.
   pub children: Vec<Edge<N>>,
 }
@@ -79,6 +84,7 @@ impl<N: Float> Node<N> {
       visits: 0,
       value: N::zero(),
       raw_value: N::zero(),
+      value_sq: N::zero(),
       children: Vec::new(),
     }
   }
@@ -226,6 +232,7 @@ impl<N: Float + Sum + Copy> Search<N> {
 
   fn update_node(map: &HashMap<Hash, usize>, nodes: &mut [Node<N>], node_idx: usize) {
     let mut sum_values = N::zero();
+    let mut sum_values_sq = N::zero();
     let mut sum_visits = 0;
 
     for edge in nodes[node_idx].children.iter() {
@@ -236,13 +243,18 @@ impl<N: Float + Sum + Copy> Search<N> {
         continue;
       }
       if let Some(&child_idx) = map.get(&edge.hash) {
-        sum_values = sum_values - N::from(edge.visits).unwrap() * nodes[child_idx].value;
+        let visits = N::from(edge.visits).unwrap();
+        sum_values = sum_values - visits * nodes[child_idx].value;
+        sum_values_sq = sum_values_sq + visits * nodes[child_idx].value_sq;
       }
       sum_visits += edge.visits;
     }
 
-    nodes[node_idx].visits = 1 + sum_visits;
-    nodes[node_idx].value = (nodes[node_idx].raw_value + sum_values) / N::from(nodes[node_idx].visits).unwrap();
+    let node = &mut nodes[node_idx];
+    node.visits = 1 + sum_visits;
+    let visits = N::from(node.visits).unwrap();
+    node.value = (node.raw_value + sum_values) / visits;
+    node.value_sq = (node.raw_value * node.raw_value + sum_values_sq) / visits;
   }
 
   /// Hyperparameter for forced playouts at the root with Dirichlet noise.
@@ -364,6 +376,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     self.nodes[leaf_idx].value = result;
     self.nodes[leaf_idx].raw_value = result;
     self.nodes[leaf_idx].visits = 1;
+    self.nodes[leaf_idx].value_sq = result * result;
     self.nodes[leaf_idx].children = children;
     for &(node_idx, _) in path.iter().rev() {
       Self::update_node(&self.map, &mut self.nodes, node_idx);
@@ -548,28 +561,95 @@ impl<N: Float + Sum + Copy> Search<N> {
     Ok(())
   }
 
-  /// Get the best move based on visit counts
-  pub fn best_move(&self) -> Option<NonZeroPos> {
+  /// Number of standard errors below the mean for the lower confidence bound
+  /// used to select the move to play.
+  const LCB_STDEVS: f64 = 5.0;
+
+  /// A root child is only eligible for LCB selection once it has at least this
+  /// proportion of the most visited child's visits.
+  const MIN_VISIT_PROP_FOR_LCB: f64 = 0.15;
+
+  /// Lower confidence bound of a root child's value from the root player's
+  /// perspective: Q(a) minus `LCB_STDEVS` standard errors. The variance comes
+  /// from the second moment propagated through the graph together with the
+  /// value, so both describe the same estimate. To behave well at low visit
+  /// counts a prior that the variance is the largest possible (the values span
+  /// [-1, 1], a range radius of 1) is mixed in with a small weight, which
+  /// diminishes as the count grows.
+  fn edge_lcb(&self, edge: &Edge<N>) -> Option<N> {
+    let &child_idx = self.map.get(&edge.hash)?;
+    let child = &self.nodes[child_idx];
+    if child.visits == 0 {
+      return None;
+    }
+    let count = N::from(child.visits).unwrap();
+    let value_sq = child.value_sq.max(child.value * child.value + N::from(1e-8).unwrap());
+    // Every playout has unit weight, so the effective sample size is the count
+    // and the prior weight is count / ess³ = 1 / count².
+    let prior_weight = (count * count).recip();
+    let value_sq = (value_sq * count + (value_sq + N::one()) * prior_weight) / (count + prior_weight);
+    let weight_sum = count + prior_weight;
+    let weight_sq_sum = count + prior_weight * prior_weight;
+    let ess = weight_sum * weight_sum / weight_sq_sum;
+    let variance = value_sq - child.value * child.value;
+    let radius = N::from(Self::LCB_STDEVS).unwrap() * (variance / ess).sqrt();
+    Some(-child.value - radius)
+  }
+
+  /// Minimum visits for a root child to be eligible for LCB selection:
+  /// `MIN_VISIT_PROP_FOR_LCB` of the most visited child's visits, and at least
+  /// one so a value estimate exists.
+  fn min_visits_for_lcb(&self) -> u64 {
+    let max_visits = self.nodes[self.root_idx]
+      .children
+      .iter()
+      .map(|edge| edge.visits)
+      .max()
+      .unwrap_or(0);
+    (N::from(Self::MIN_VISIT_PROP_FOR_LCB).unwrap() * N::from(max_visits).unwrap())
+      .ceil()
+      .to_u64()
+      .unwrap_or(u64::MAX)
+      .max(1)
+  }
+
+  /// Play selection weight of a root child: its LCB when it has enough visits
+  /// and observations, otherwise its visits and prior. `Either` orders
+  /// `Left < Right`, so any child with an LCB outranks all children without
+  /// one, LCBs compare among themselves, and when no LCB is available the most
+  /// visited child wins with the prior as the tie-breaker.
+  fn edge_weight(&self, edge: &Edge<N>, min_visits: u64) -> Either<(u64, N), N> {
+    if edge.visits >= min_visits
+      && let Some(lcb) = self.edge_lcb(edge)
+    {
+      Either::Right(lcb)
+    } else {
+      Either::Left((edge.visits, edge.prior))
+    }
+  }
+
+  /// The root child to play: the child with the best play selection weight.
+  /// LCB avoids playing a move whose high value rests on too few playouts to
+  /// be trusted.
+  fn best_edge(&self) -> Option<&Edge<N>> {
+    let min_visits = self.min_visits_for_lcb();
     self.nodes[self.root_idx]
       .children
       .iter()
-      .max_by_key(|edge| edge.visits)
-      .and_then(|edge| NonZeroPos::new(edge.pos))
+      .map(|edge| (edge, self.edge_weight(edge, min_visits)))
+      .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+      .map(|(edge, _)| edge)
+  }
+
+  /// Get the best move based on LCB selection
+  pub fn best_move(&self) -> Option<NonZeroPos> {
+    self.best_edge().and_then(|edge| NonZeroPos::new(edge.pos))
   }
 
   /// Move the root to the best child
   pub fn next_best_root(&mut self) -> Option<NonZeroPos> {
     self.dirichlet_noise = false;
-    if let Some((edge_hash, edge_pos)) = self.nodes[self.root_idx]
-      .children
-      .iter()
-      .max_by(|a, b| {
-        a.visits
-          .cmp(&b.visits)
-          .then_with(|| a.prior.partial_cmp(&b.prior).unwrap_or(std::cmp::Ordering::Equal))
-      })
-      .map(|edge| (edge.hash, edge.pos))
-    {
+    if let Some((edge_hash, edge_pos)) = self.best_edge().map(|edge| (edge.hash, edge.pos)) {
       self.root_idx = self.add_node(edge_hash);
       NonZeroPos::new(edge_pos)
     } else {
@@ -639,6 +719,18 @@ impl<N: Float + Sum + Copy> Search<N> {
       .children
       .iter()
       .map(|edge| (edge.pos, (edge.visits, edge.prior)))
+  }
+
+  /// Get the play selection weight for each child of the root node: the LCB
+  /// when available, otherwise visits and prior. Consumers playing the
+  /// max-weight move pick the same child as `best_move`.
+  pub fn play_selection(&self) -> Vec<(Pos, Either<(u64, N), N>)> {
+    let min_visits = self.min_visits_for_lcb();
+    self.nodes[self.root_idx]
+      .children
+      .iter()
+      .map(|edge| (edge.pos, self.edge_weight(edge, min_visits)))
+      .collect()
   }
 
   /// Get the visits for each child of the root node
