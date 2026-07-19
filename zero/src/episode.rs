@@ -229,10 +229,15 @@ where
     let full_search = rng.random::<f64>() <= 0.25;
 
     let sims = if full_search {
+      // Recorded searches start from a fresh tree so the policy target is a
+      // clean noised-search visit distribution: visits reused from earlier
+      // cheap searches (no noise, different temperature) would contaminate
+      // the target and the forced-playout accounting. KataGo likewise clears
+      // the bot before every recorded search, while cheap searches keep
+      // reusing the tree.
+      search = Search::new(false);
       // The root has to be expanded before the noise can be applied to its children priors.
-      if search.nodes[search.root_idx].children.is_empty() {
-        search.mcgs(field, player, model, komi_x_2, rng).await?;
-      }
+      search.mcgs(field, player, model, komi_x_2, rng).await?;
       search.root_priors(&mut raw_priors);
       // Total Dirichlet alpha, matching AlphaZero's 0.03 per move on an empty 19x19 board
       // (0.03 * 361 = 10.83). Kept constant across board sizes and through the game, with
