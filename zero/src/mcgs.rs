@@ -411,6 +411,40 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// is set to infinity to ensure it receives enough exploration.
   const FORCED_PLAYOUTS_K: u32 = 2;
 
+  /// Typical utility standard deviation of a node; the observed stdev is
+  /// measured relative to it. KataGo's `cpuctUtilityStdevPrior` is 0.40 with
+  /// utilities spanning [-1.4, 1.4]; scaled here to the [-1, 1] utility range.
+  const CPUCT_UTILITY_STDEV_PRIOR: f64 = 0.30;
+  /// Weight of the prior when blending it with the observed utility variance.
+  const CPUCT_UTILITY_STDEV_PRIOR_WEIGHT: f64 = 2.0;
+  /// How strongly the exploration coefficient follows the observed utility
+  /// stdev: the PUCT coefficient is scaled by
+  /// `1 + scale * (stdev / prior - 1)`, exploring more under volatile nodes
+  /// and less under quiet ones.
+  const CPUCT_UTILITY_STDEV_SCALE: f64 = 0.85;
+
+  /// Exploration scaling from the node's observed utility standard deviation,
+  /// estimated from the value and squared-value moments blended with a prior
+  /// towards `CPUCT_UTILITY_STDEV_PRIOR`.
+  pub(crate) fn utility_stdev_factor(node: &Node<N>) -> N {
+    let prior = N::from(Self::CPUCT_UTILITY_STDEV_PRIOR).unwrap();
+    let stdev = if node.visits <= 1 {
+      prior
+    } else {
+      let prior_weight = N::from(Self::CPUCT_UTILITY_STDEV_PRIOR_WEIGHT).unwrap();
+      let weight_sum = N::from(node.visits).unwrap();
+      let utility_sq = node.value * node.value;
+      // Guard against numerical imprecision producing negative variance.
+      let utility_sq_avg = node.value_sq.max(utility_sq);
+      (((utility_sq + prior * prior) * prior_weight + utility_sq_avg * weight_sum)
+        / (prior_weight + weight_sum - N::one())
+        - utility_sq)
+        .max(N::zero())
+        .sqrt()
+    };
+    N::one() + N::from(Self::CPUCT_UTILITY_STDEV_SCALE).unwrap() * (stdev / prior - N::one())
+  }
+
   fn select_edge(&self, node_idx: usize, noise: bool) -> Option<usize> {
     let node = &self.nodes[node_idx];
     let total_n = N::from(node.visits).unwrap();
@@ -422,7 +456,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let c_puct = N::from(1.1).unwrap();
     let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
     let forced_k = N::from(Self::FORCED_PLAYOUTS_K).unwrap();
-    let puct_coeff = c_puct * total_n_sqrt;
+    let puct_coeff = c_puct * total_n_sqrt * Self::utility_stdev_factor(node);
 
     let prior_visited = LazyCell::new(|| {
       node

@@ -381,3 +381,28 @@ fn subtree_value_bias_survives_compaction() {
     assert!(entry.delta_sum.is_finite() && entry.weight_sum.is_finite());
   }
 }
+
+// The PUCT exploration coefficient scales with the node's observed utility
+// stdev: volatile nodes explore more, quiet ones less, and an unvisited node
+// sits exactly at the neutral factor of 1.
+#[test]
+fn utility_stdev_scales_exploration() {
+  let mut node = Node::<f64>::new();
+  assert_eq!(Search::utility_stdev_factor(&node), 1.0);
+
+  // A quiet node: every playout agrees on the value, so the observed variance
+  // is zero and only the prior keeps the factor above its minimum.
+  node.visits = 100;
+  node.value = 0.3;
+  node.value_sq = 0.3 * 0.3;
+  let quiet = Search::utility_stdev_factor(&node);
+  assert!(quiet < 1.0, "quiet node should explore less, got {}", quiet);
+
+  // A volatile node: values swing between -1 and 1, so the observed stdev is
+  // far above the prior.
+  node.value = 0.0;
+  node.value_sq = 1.0;
+  let volatile = Search::utility_stdev_factor(&node);
+  assert!(volatile > 1.0, "volatile node should explore more, got {}", volatile);
+  assert!(volatile > quiet);
+}
