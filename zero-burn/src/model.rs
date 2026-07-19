@@ -954,6 +954,7 @@ where
     scores: Array2<FloatElem<B>>,
     captured: Array4<FloatElem<B>>,
     outcome_weights: Array1<FloatElem<B>>,
+    opponent_weights: Array1<FloatElem<B>>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
@@ -988,6 +989,10 @@ where
     let scores_cdf = scores.clone().cumsum(1);
     let outcome_weights: Tensor<B, 2> = Tensor::from_data(
       TensorData::new(into_data_vec(outcome_weights), [batch, 1]),
+      &self.predictor.device,
+    );
+    let opponent_weights: Tensor<B, 2> = Tensor::from_data(
+      TensorData::new(into_data_vec(opponent_weights), [batch, 1]),
       &self.predictor.device,
     );
     let captured = Tensor::from_data(
@@ -1077,11 +1082,16 @@ where
       -(out_long_optimistic_policies * policies.clone() * long_optimism_weight).sum() * 0.1 / batch;
     let short_optimistic_policies_loss =
       -(out_short_optimistic_policies * policies * short_optimism_weight).sum() * 0.2 / batch;
-    let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
+    // The opponent policy targets exist only for rows with a searched next
+    // position; the rest (last searched position of a game, side positions)
+    // are weighted out.
+    let opponent_policies_loss =
+      -((out_opponent_policies * opponent_policies).sum_dim(1) * opponent_weights.clone()).sum() * 0.15 / batch;
     // KataGo's soft_policy_weight_scale is 8.0; the opponent variant keeps the
     // same extra 0.15 factor as the hard opponent policy loss.
     let soft_policies_loss = -(out_soft_policies * soft_policies).sum() * 8.0 / batch;
-    let soft_opponent_policies_loss = -(out_soft_opponent_policies * soft_opponent_policies).sum() * 1.2 / batch;
+    let soft_opponent_policies_loss =
+      -((out_soft_opponent_policies * soft_opponent_policies).sum_dim(1) * opponent_weights).sum() * 1.2 / batch;
     // The score belief and captured targets require the actual game outcome,
     // so rows without one (side positions) are weighted out.
     let pdf_loss = -((out_scores * scores).sum_dim(1) * outcome_weights.clone()).sum() * 0.02 / batch;
@@ -1321,6 +1331,7 @@ mod tests {
         scores[(0, 0)] = 1.0;
         let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
         let outcome_weights = Array1::from_elem(1, 1.0);
+        let opponent_weights = Array1::from_elem(1, 1.0);
 
         let (out_policies_1, out_values_1) =
           futures::executor::block_on(learner.predict(inputs.clone(), global.clone())).unwrap();
@@ -1335,6 +1346,7 @@ mod tests {
             scores,
             captured,
             outcome_weights,
+            opponent_weights,
             0.01,
           )
           .unwrap();

@@ -371,6 +371,7 @@ where
       batch.scores,
       batch.captured,
       batch.outcome_weights,
+      batch.opponent_weights,
       learning_rate,
     )?;
 

@@ -147,5 +147,44 @@ fn side_games_use_search_values() {
       assert!((batch.td_values[(i, td, 0)] - 0.75).abs() < 1e-9);
     }
     assert_eq!(batch.outcome_weights[i], 0.0);
+    // A side position has no searched next position, so the opponent policy
+    // target is filler and must be weighted out.
+    assert_eq!(batch.opponent_weights[i], 0.0);
+  }
+}
+
+// Only rows with a searched next position train the opponent policy heads;
+// the game's last searched position gets a zero weight.
+#[test]
+fn opponent_weights_mask_last_position() {
+  use oppai_field::construct_field::construct_field;
+  use oppai_field::field::length;
+  use oppai_field::zobrist::Zobrist;
+  use rand::SeedableRng;
+  use std::sync::Arc;
+
+  let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(7);
+  let field = construct_field(
+    &mut rng,
+    "
+    ....
+    .aA.
+    .Aa.
+    ....
+    ",
+  );
+  let moves: Vec<_> = field.colored_moves().collect();
+  let visits = vec![
+    Visits(vec![(moves[2].0, 10)], true, 0.0, 0.5, 0.25),
+    Visits(vec![(moves[3].0, 10)], true, 0.0, -0.5, 0.25),
+  ];
+  let mut examples = Examples::default();
+  examples.add(0, visits, &field, true, false, false, &mut rng);
+
+  let zobrist = Arc::new(Zobrist::new(length(4, 4) * 3, &mut rng));
+  let batch = examples.batches::<f64>(4, 4, zobrist, examples.len()).next().unwrap();
+  for (i, example) in examples.examples.iter().enumerate() {
+    let expected = if example.position == moves.len() - 1 { 0.0 } else { 1.0 };
+    assert_eq!(batch.opponent_weights[i], expected);
   }
 }

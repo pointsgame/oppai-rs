@@ -44,6 +44,10 @@ pub struct Batch<N> {
   /// Per-row weight of the outcome-derived targets (score belief, captured):
   /// 1 for rows from finished games, 0 for side positions with no result.
   pub outcome_weights: Array1<N>,
+  /// Per-row weight of the opponent policy targets: 1 for rows with a
+  /// searched next position, 0 when there is none (the game's last searched
+  /// position and side positions), whose targets are meaningless filler.
+  pub opponent_weights: Array1<N>,
 }
 
 #[derive(Clone, Debug)]
@@ -354,6 +358,7 @@ impl Examples {
     let mut td_values = Vec::<N>::with_capacity(range.len() * TD_VALUES * 2);
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
     let mut outcome_weights = Vec::<N>::with_capacity(range.len());
+    let mut opponent_weights = Vec::<N>::with_capacity(range.len());
     let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
     for example in self.examples.get(range.clone()).unwrap() {
       let game = &self.games[example.game];
@@ -388,18 +393,22 @@ impl Examples {
         &mut policies,
       );
       let default_vists = Visits::default();
-      game
-        .visits
-        .get(example.position - initial_moves + 1)
-        .unwrap_or(&default_vists)
-        .policies_to_vec(
-          width,
-          height,
-          game.width,
-          game.height,
-          example.rotation,
-          &mut opponent_policies,
-        );
+      let opponent_visits = game.visits.get(example.position - initial_moves + 1);
+      // Rows without a searched next position get a uniform filler target;
+      // the zero weight keeps it out of the loss.
+      opponent_weights.push(if opponent_visits.is_some_and(|visits| visits.total() > 0) {
+        N::one()
+      } else {
+        N::zero()
+      });
+      opponent_visits.unwrap_or(&default_vists).policies_to_vec(
+        width,
+        height,
+        game.width,
+        game.height,
+        example.rotation,
+        &mut opponent_policies,
+      );
       // Rows from finished games train the value towards the final result;
       // side positions have no result, so their value target is the recorded
       // search value of the position itself.
@@ -455,6 +464,7 @@ impl Examples {
         .into_shape_with_order((range.len(), 2, height as usize, width as usize))
         .unwrap(),
       outcome_weights: Array::from(outcome_weights),
+      opponent_weights: Array::from(opponent_weights),
     }
   }
 

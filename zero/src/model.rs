@@ -28,6 +28,7 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
     scores: Array2<N>,
     captured: Array4<N>,
     outcome_weights: Array1<N>,
+    opponent_weights: Array1<N>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE>;
 }
