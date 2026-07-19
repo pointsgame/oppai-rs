@@ -10,13 +10,13 @@ pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], stride: u3
     node = &mut node.children[0];
   }
 
-  for Visits(visits, full, surprise) in visits {
+  for Visits(visits, full, surprise, value, raw_value) in visits {
     node = &mut node.children[0];
 
     node.properties.push(Prop::Unknown(
       "ZR".into(),
       iter::once(full.to_string())
-        .chain(iter::once(surprise.to_string()))
+        .chain([surprise, value, raw_value].map(|value| value.to_string()))
         .chain(visits.iter().map(|&(pos, visits)| {
           format!(
             "{}{}{}",
@@ -37,14 +37,21 @@ pub fn sgf_to_visits(node: &SgfNode<Prop>, stride: u32) -> Vec<Visits> {
     .flat_map(|prop| match prop {
       Prop::Unknown(_, visits) => {
         let full = visits[0].parse().unwrap();
-        // The policy surprise is stored as the second value. Older self-play data
-        // predates it, so fall back to 0 (and start parsing visits one earlier) if
-        // that value is not a number - visit entries always start with a coordinate
-        // letter and so never parse as a float.
-        let (surprise, rest) = match visits[1].parse::<f64>() {
-          Ok(surprise) => (surprise, &visits[2..]),
-          Err(_) => (0.0, &visits[1..]),
-        };
+        // The policy surprise, search value and raw network value are stored
+        // after the full flag. Older self-play data predates some or all of
+        // them, so parse greedily and fall back to 0 - visit entries always
+        // start with a coordinate letter and so never parse as a float.
+        let mut numbers = [0.0f64; 3];
+        let mut rest = &visits[1..];
+        for number in &mut numbers {
+          if let Some(Ok(value)) = rest.first().map(|s| s.parse::<f64>()) {
+            *number = value;
+            rest = &rest[1..];
+          } else {
+            break;
+          }
+        }
+        let [surprise, value, raw_value] = numbers;
         Some(Visits(
           rest
             .iter()
@@ -57,6 +64,8 @@ pub fn sgf_to_visits(node: &SgfNode<Prop>, stride: u32) -> Vec<Visits> {
             .collect(),
           full,
           surprise,
+          value,
+          raw_value,
         ))
       }
       _ => None,
@@ -98,6 +107,8 @@ mod tests {
       ],
       true,
       0.625,
+      0.25,
+      -0.125,
     )];
     let mut node = to_sgf(&field).unwrap();
     visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
