@@ -561,6 +561,9 @@ impl<B: Backend> ValueHead<B> {
   }
 }
 
+/// Policy head output channels:
+/// 0 - policy, 1 - opponent policy,
+/// 2 - soft policy, 3 - soft opponent policy.
 #[derive(Module, Debug)]
 pub struct PolicyHead<B: Backend> {
   conv1p: Conv2d<B>,
@@ -587,7 +590,7 @@ impl<B: Backend> PolicyHead<B> {
         .with_bias(false)
         .init(device),
       bias2: NormMask::new(device, config.p1_channels, false),
-      conv2p: Conv2dConfig::new([config.p1_channels, 2], [1, 1])
+      conv2p: Conv2dConfig::new([config.p1_channels, 4], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -906,15 +909,37 @@ where
       out_policy_logits.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
       1,
     );
-    let out_opponent_policies = log_softmax(out_policy_logits.slice(s![.., 1..2, .., ..]).reshape([0, -1]), 1);
+    let out_opponent_policies = log_softmax(
+      out_policy_logits.clone().slice(s![.., 1..2, .., ..]).reshape([0, -1]),
+      1,
+    );
+    let out_soft_policies = log_softmax(
+      out_policy_logits.clone().slice(s![.., 2..3, .., ..]).reshape([0, -1]),
+      1,
+    );
+    let out_soft_opponent_policies = log_softmax(out_policy_logits.slice(s![.., 3..4, .., ..]).reshape([0, -1]), 1);
     let out_values = log_softmax(out_value_logits, 1);
     let out_scores_cdf = out_scores.clone().exp().cumsum(1);
+
+    // Auxiliary soft policy target: the policy target raised to the power 1/4
+    // and renormalized over the board, so it's a flattened (higher entropy)
+    // version of the same distribution. The epsilon gives unvisited on-board
+    // cells a small uniform mass; off-board cells are zeroed by the mask.
+    let policy_mask = mask.clone().reshape([0, -1]);
+    let soft_policies = ((policies.clone() + 1e-7) * policy_mask.clone()).powf_scalar(0.25);
+    let soft_policies = soft_policies.clone() / soft_policies.sum_dim(1);
+    let soft_opponent_policies = ((opponent_policies.clone() + 1e-7) * policy_mask).powf_scalar(0.25);
+    let soft_opponent_policies = soft_opponent_policies.clone() / soft_opponent_policies.sum_dim(1);
 
     let batch = <FloatElem<B> as num_traits::NumCast>::from(batch).unwrap();
     // TODO: KataGo uses different weight
     let values_loss = -(out_values * values).sum() * 1.5 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
     let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
+    // KataGo's soft_policy_weight_scale is 8.0; the opponent variant keeps the
+    // same extra 0.15 factor as the hard opponent policy loss.
+    let soft_policies_loss = -(out_soft_policies * soft_policies).sum() * 8.0 / batch;
+    let soft_opponent_policies_loss = -(out_soft_opponent_policies * soft_opponent_policies).sum() * 1.2 / batch;
     let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
     let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
     // Binary cross-entropy with logits in the numerically stable form
@@ -929,17 +954,26 @@ where
     let param_l2_norm = norm_visitor.l2_norm();
 
     log::info!(
-      "Loss: value {} policy {} opponent policy {} pdf {} cdf {} captured {} L2 norm {}",
+      "Loss: value {} policy {} opponent policy {} soft policy {} soft opponent policy {} pdf {} cdf {} captured {} L2 norm {}",
       values_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
       opponent_policies_loss.clone().into_scalar(),
+      soft_policies_loss.clone().into_scalar(),
+      soft_opponent_policies_loss.clone().into_scalar(),
       pdf_loss.clone().into_scalar(),
       cdf_loss.clone().into_scalar(),
       captured_loss.clone().into_scalar(),
       param_l2_norm,
     );
 
-    let loss = values_loss + policies_loss + opponent_policies_loss + pdf_loss + cdf_loss + captured_loss;
+    let loss = values_loss
+      + policies_loss
+      + opponent_policies_loss
+      + soft_policies_loss
+      + soft_opponent_policies_loss
+      + pdf_loss
+      + cdf_loss
+      + captured_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(learning_rate, self.predictor.model, grads);
