@@ -69,6 +69,26 @@ pub struct Examples {
 /// written into the training data many more times.
 const POLICY_SURPRISE_DATA_WEIGHT: f64 = 0.5;
 
+/// Fraction of the total frequency weight distributed proportionally to each
+/// position's value surprise, i.e. how much the actual game result surprised
+/// the raw network value.
+const VALUE_SURPRISE_DATA_WEIGHT: f64 = 0.1;
+
+/// KL divergence between the win/loss distributions implied by two values in
+/// `[-1, 1]`, capped at 1 to avoid a ridiculous weight on a single position.
+fn value_surprise(target: f64, predicted: f64) -> f64 {
+  let p = (target + 1.0) / 2.0;
+  let q = (predicted + 1.0) / 2.0;
+  let mut surprise = 0.0;
+  if p > 0.0 {
+    surprise += p * (p.ln() - q.ln());
+  }
+  if 1.0 - p > 0.0 {
+    surprise += (1.0 - p) * ((1.0 - p).ln() - (1.0 - q).ln());
+  }
+  surprise.clamp(0.0, 1.0)
+}
+
 /// History dropout: each successive history plane is kept with this probability,
 /// and the first failure truncates the history from that plane on. So ~90% of
 /// the rows keep the full history, 2% get none at all, making the network
@@ -88,17 +108,54 @@ impl Examples {
     let initial_moves = field.moves_count() - visits.len();
     let rotations = if rotations { ROTATIONS } else { MIRRORS };
 
-    // Policy surprise weighting: redistribute the per-position frequency weights
-    // across all full-searched positions of this game. Disabled when
-    // `surprise_weighting` is `false`, in which case every full search gets a
-    // flat weight of 1.
+    // Policy and value surprise weighting: redistribute the per-position
+    // frequency weights across all full-searched positions of this game.
+    // Disabled when `surprise_weighting` is `false`, in which case every full
+    // search gets a flat weight of 1.
     let full_count = visits.iter().filter(|visits| visits.1).count() as f64;
-    let sum_surprise = if surprise_weighting {
+    let sum_policy_surprise = if surprise_weighting {
       visits
         .iter()
         .filter(|visits| visits.1)
         .map(|visits| visits.2)
         .sum::<f64>()
+    } else {
+      0.0
+    };
+
+    // Value surprise of each full-searched position: the value target for a
+    // turn is the final game result blended backwards through the following
+    // turns' search values with `now_factor` per step, and the surprise is
+    // the KL divergence from that target to the raw network value at the turn.
+    let mut value_surprises = vec![0.0; visits.len()];
+    if surprise_weighting {
+      let now_factor = 1.0 / (1.0 + (field.width() * field.height()) as f64 * 0.016);
+      // The blend is tracked from Red's perspective and flipped to the mover's
+      // perspective where the stored values live.
+      let mut target = f64::from((field.score(Player::Red) * 2 + komi_x_2).signum());
+      for (i, visits) in visits.iter().enumerate().rev() {
+        let sign = if field.cell(field.moves[initial_moves + i]).get_player() == Player::Red {
+          1.0
+        } else {
+          -1.0
+        };
+        target = target + now_factor * (visits.3 * sign - target);
+        if visits.1 {
+          value_surprises[i] = value_surprise(target * sign, visits.4);
+        }
+      }
+    }
+    let sum_value_surprise = value_surprises.iter().sum::<f64>();
+    // It's possible that the game had very little value surprise, such as if it
+    // was lopsided from the start and the expected player won. Scale the value
+    // surprise weight down in that case rather than dividing by almost zero.
+    let value_surprise_weight = if full_count > 0.0 {
+      VALUE_SURPRISE_DATA_WEIGHT * (sum_value_surprise / full_count / 0.010).min(1.0)
+    } else {
+      0.0
+    };
+    let policy_surprise_weight = if sum_policy_surprise > 0.0 {
+      POLICY_SURPRISE_DATA_WEIGHT
     } else {
       0.0
     };
@@ -116,15 +173,18 @@ impl Examples {
 
     for (i, visits) in self.games[game_index].visits.iter().enumerate() {
       if visits.1 {
-        // The frequency weight is `(1 - w) + w * full_count * surprise / sum_surprise`,
+        // The frequency weight is `(1 - wp - wv) + wp * full_count * policy_surprise
+        // / sum_policy_surprise + wv * full_count * value_surprise / sum_value_surprise`,
         // averaging 1 across the game's full searches (so the expected total amount
-        // of data is unchanged) but skewed towards surprising positions. If there
-        // is no surprise anywhere, fall back to a flat weight of 1.
-        let weight = if sum_surprise > 0.0 {
-          (1.0 - POLICY_SURPRISE_DATA_WEIGHT) + POLICY_SURPRISE_DATA_WEIGHT * full_count * visits.2 / sum_surprise
-        } else {
-          1.0
-        };
+        // of data is unchanged) but skewed towards surprising positions. A term
+        // with no surprise anywhere in the game contributes its share flatly.
+        let mut weight = 1.0 - policy_surprise_weight - value_surprise_weight;
+        if sum_policy_surprise > 0.0 {
+          weight += policy_surprise_weight * full_count * visits.2 / sum_policy_surprise;
+        }
+        if sum_value_surprise > 0.0 {
+          weight += value_surprise_weight * full_count * value_surprises[i] / sum_value_surprise;
+        }
         // Write the position `floor(weight)` times, plus once more with probability
         // equal to the fractional part of the weight.
         let copies = weight.floor() as usize + usize::from(rng.random::<f64>() < weight.fract());

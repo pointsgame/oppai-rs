@@ -27,8 +27,14 @@ const MCTS_FULL_SIMS: u32 = 1000;
 /// * `.2` - policy surprise: the KL divergence from the (noised, softmaxed) root
 ///   policy prior to the policy training target, used for policy surprise
 ///   weighting. Only meaningful for full searches; `0` otherwise.
+/// * `.3` - the search's value estimate of the position (root Q), in `[-1, 1]`
+///   from the perspective of the player to move. Used for value surprise
+///   weighting.
+/// * `.4` - the raw neural net value of the position, without any search, in
+///   `[-1, 1]` from the perspective of the player to move. Used for value
+///   surprise weighting.
 #[derive(Clone, PartialEq, Default, Debug)]
-pub struct Visits(pub Vec<(Pos, u64)>, pub bool, pub f64);
+pub struct Visits(pub Vec<(Pos, u64)>, pub bool, pub f64, pub f64, pub f64);
 
 impl Visits {
   pub fn total(&self) -> u64 {
@@ -210,7 +216,13 @@ where
     } else {
       0.0
     };
-    let current_visits = Visits(target, full_search, surprise);
+    let current_visits = Visits(
+      target,
+      full_search,
+      surprise,
+      search.value().to_f64().unwrap(),
+      search.raw_value().to_f64().unwrap(),
+    );
 
     let pos = if let Some(pos) = search.next_root_with_temperature(
       interpolate_early(field, N::from(0.75).unwrap(), N::from(0.15).unwrap()),

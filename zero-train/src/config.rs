@@ -346,7 +346,7 @@ pub fn cli_parse() -> (Config, Action) {
       .required(true),
   );
   let recalc = Command::new("recalc-surprise")
-    .about("Recalculate policy surprise for games using a model")
+    .about("Recalculate policy surprise and raw network value for games using a model")
     .arg(model_arg())
     .arg(model_config_arg())
     .arg(

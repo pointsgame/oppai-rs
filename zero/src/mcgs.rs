@@ -1050,6 +1050,11 @@ impl<N: Float + Sum + Copy> Search<N> {
     self.nodes[self.root_idx].value
   }
 
+  /// Get the raw neural net value of the root node, without any search.
+  pub fn raw_value(&self) -> N {
+    self.nodes[self.root_idx].raw_value
+  }
+
   /// Snapshot the policy priors of the root's children into a vector indexed by
   /// position.
   ///
