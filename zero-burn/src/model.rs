@@ -7,7 +7,7 @@ use burn::{
   optim::{GradientsParams, Optimizer},
   tensor::{
     DataError, Tensor, TensorData,
-    activation::{log_softmax, mish, softmax},
+    activation::{log_softmax, mish, softmax, softplus},
     backend::{AutodiffBackend, Backend, ExecutionError},
     ops::FloatElem,
     s,
@@ -17,6 +17,7 @@ use derive_more::From;
 use ndarray::{Array, Array2, Array3, Array4, Dimension, ShapeError};
 use num_traits::Float;
 use oppai_zero::{
+  examples::TD_VALUES,
   field_features::{CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
 };
@@ -417,12 +418,19 @@ impl<B: Backend> ResidualBlock<B> {
   }
 }
 
+/// Value head output channels of `linear_valuehead`:
+/// 0..2 - main value (win, loss) logits trained towards the final result,
+/// then `(win, loss)` logit pairs for each of the `TD_VALUES` horizons,
+/// shortest horizon last.
 #[derive(Module, Debug)]
 pub struct ValueHead<B: Backend> {
   conv1: Conv2d<B>,
   bias1: NormMask<B>,
   linear2: Linear<B>,
   linear_valuehead: Linear<B>,
+  /// Predicts the squared error of the shortest-horizon TD value, i.e. how
+  /// uncertain the value estimate of this position is in the short term.
+  linear_error: Linear<B>,
   // Score belief components
   linear_s2: Linear<B>,
   linear_s2off: Linear<B>,
@@ -446,7 +454,8 @@ impl<B: Backend> ValueHead<B> {
         .init(device),
       bias1: NormMask::new(device, config.v1_channels, false),
       linear2: LinearConfig::new(3 * config.v1_channels, config.v2_size).init(device),
-      linear_valuehead: LinearConfig::new(config.v2_size, 2).init(device),
+      linear_valuehead: LinearConfig::new(config.v2_size, 2 + 2 * TD_VALUES).init(device),
+      linear_error: LinearConfig::new(config.v2_size, 1).init(device),
 
       linear_s2: LinearConfig::new(3 * config.v1_channels, config.sbv2_size).init(device),
       linear_s2off: LinearConfig::new(1, config.sbv2_size).with_bias(false).init(device),
@@ -467,6 +476,7 @@ impl<B: Backend> ValueHead<B> {
     init_linear(&mut self.linear2, 1.0, gain, bias_scale, gain, device);
     // Identity gain (1.0) for output projections.
     init_linear(&mut self.linear_valuehead, 1.0, 1.0, bias_scale, 1.0, device);
+    init_linear(&mut self.linear_error, 1.0, 1.0, bias_scale, 1.0, device);
 
     init_linear(&mut self.linear_s2, 1.0, gain, 1.0, gain, device);
     // `linear_s2off` has a single input feature, so KataGo borrows `linear_s2`'s fan-in to avoid a
@@ -505,7 +515,7 @@ impl<B: Backend> ValueHead<B> {
     inputs: Tensor<B, 4>,
     mask: Tensor<B, 4>,
     mask_sum_hw: Tensor<B, 4>,
-  ) -> (Tensor<B, 2>, Tensor<B, 2>) {
+  ) -> (Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 2>) {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
@@ -515,7 +525,10 @@ impl<B: Backend> ValueHead<B> {
 
     let outv2 = self.linear2.forward(outpooled.clone());
     let outv2 = mish(outv2);
-    let out_value = self.linear_valuehead.forward(outv2);
+    let out_value = self.linear_valuehead.forward(outv2.clone());
+    // Softplus keeps the predicted squared error positive; the multiplier is
+    // KataGo's, keeping the initial output small relative to the [0, 4] range.
+    let out_value_error = softplus(self.linear_error.forward(outv2), 1.0) * 0.25;
 
     // Score Belief Head
 
@@ -544,7 +557,7 @@ impl<B: Backend> ValueHead<B> {
       .log()
       .squeeze_dim(2);
 
-    (out_value, out_score_log_dist)
+    (out_value, out_value_error, out_score_log_dist)
   }
 
   pub fn forward_no_score(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 2> {
@@ -709,7 +722,7 @@ impl<B: Backend> Model<B> {
     &self,
     spatial: Tensor<B, 4>,
     global: Tensor<B, 2>,
-  ) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 4>) {
+  ) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 4>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = self.conv_spatial.forward(spatial);
@@ -722,8 +735,8 @@ impl<B: Backend> Model<B> {
     x = mish(x);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
     let captured = self.captured_head.forward(x.clone());
-    let (value, score) = self.value_head.forward(x, mask, mask_sum_hw);
-    (policy, value, score, captured)
+    let (value, value_error, score) = self.value_head.forward(x, mask, mask_sum_hw);
+    (policy, value, value_error, score, captured)
   }
 
   pub fn forward_no_score(&self, spatial: Tensor<B, 4>, global: Tensor<B, 2>) -> (Tensor<B, 4>, Tensor<B, 2>) {
@@ -804,7 +817,7 @@ where
     // TODO: lightweight model that doesn't calculate second layer
     let policy_logits: Tensor<B, 3> = policy_logits.slice(s![.., 0..1, .., ..]).squeeze_dim(1);
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
-    let values = softmax(value_logits, 1);
+    let values = softmax(value_logits.slice(s![.., 0..2]), 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data_async().await?.into_vec()?)?;
     let values = Array2::from_shape_vec((batch, 2), values.into_data_async().await?.into_vec()?)?;
     Ok((policies, values))
@@ -825,6 +838,15 @@ where
   ) -> Result<(Array3<FloatElem<B>>, Array2<FloatElem<B>>), Self::E> {
     self.predictor.predict(inputs, global).await
   }
+}
+
+/// Huber loss: quadratic within `delta` of the target, linear beyond it.
+fn huber_loss<B: Backend>(pred: Tensor<B, 2>, target: Tensor<B, 2>, delta: f64) -> Tensor<B, 2> {
+  let diff = pred - target;
+  let abs = diff.clone().abs();
+  let quadratic = diff.square() * 0.5;
+  let linear = abs.clone() * delta - delta * delta * 0.5;
+  quadratic.mask_where(abs.greater_elem(delta), linear)
 }
 
 struct ParamCollector {
@@ -907,6 +929,7 @@ where
     policies: Array3<FloatElem<B>>,
     opponent_policies: Array3<FloatElem<B>>,
     values: Array2<FloatElem<B>>,
+    td_values: Array3<FloatElem<B>>,
     scores: Array2<FloatElem<B>>,
     captured: Array4<FloatElem<B>>,
     learning_rate: f64,
@@ -932,6 +955,10 @@ where
       TensorData::new(into_data_vec(values), [batch, 2]),
       &self.predictor.device,
     );
+    let td_values: Tensor<B, 3> = Tensor::from_data(
+      TensorData::new(into_data_vec(td_values), [batch, TD_VALUES, 2]),
+      &self.predictor.device,
+    );
     let scores = Tensor::from_data(
       TensorData::new(into_data_vec(scores), [batch, SCORE_ONE_HOT_SIZE]),
       &self.predictor.device,
@@ -945,7 +972,7 @@ where
     // cell, so the loss is masked only by the board mask.
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let (out_policy_logits, out_value_logits, out_scores, out_captured_logits) =
+    let (out_policy_logits, out_value_logits, out_value_error, out_scores, out_captured_logits) =
       self.predictor.model.forward(inputs, global);
     let out_policies = log_softmax(
       out_policy_logits.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
@@ -960,7 +987,7 @@ where
       1,
     );
     let out_soft_opponent_policies = log_softmax(out_policy_logits.slice(s![.., 3..4, .., ..]).reshape([0, -1]), 1);
-    let out_values = log_softmax(out_value_logits, 1);
+    let out_values = log_softmax(out_value_logits.clone().slice(s![.., 0..2]), 1);
     let out_scores_cdf = out_scores.clone().exp().cumsum(1);
 
     // Auxiliary soft policy target: the policy target raised to the power 1/4
@@ -974,8 +1001,32 @@ where
     let soft_opponent_policies = soft_opponent_policies.clone() / soft_opponent_policies.sum_dim(1);
 
     let batch = <FloatElem<B> as num_traits::NumCast>::from(batch).unwrap();
-    // TODO: KataGo uses different weight
-    let values_loss = -(out_values * values).sum() * 1.5 / batch;
+    // KataGo's 1.20 samplewise factor times the 0.6 value_loss_scale, for the
+    // main value head and each TD horizon alike.
+    let values_loss = -(out_values * values).sum() * 0.72 / batch;
+    let td_values_loss = (0..TD_VALUES)
+      .map(|i| {
+        let logits = out_value_logits.clone().slice(s![.., 2 + 2 * i..4 + 2 * i]);
+        let target = td_values.clone().slice(s![.., i..i + 1, ..]).reshape([0, -1]);
+        -(log_softmax(logits, 1) * target).sum()
+      })
+      .reduce(|a, b| a + b)
+      .unwrap()
+      * 0.72
+      / batch;
+    // The short-term value error head is trained towards the actual squared
+    // error of the model's own shortest-horizon TD value, with the prediction
+    // detached so only the error head learns from this loss. The epsilon adds
+    // a tiny irreducible error for regularization, as in KataGo.
+    let td_short_pred = softmax(
+      out_value_logits.clone().slice(s![.., 2 + 2 * (TD_VALUES - 1)..]).detach(),
+      1,
+    );
+    let pred_value = td_short_pred.clone().slice(s![.., 0..1]) - td_short_pred.slice(s![.., 1..2]);
+    let td_short_target = td_values.clone().slice(s![.., TD_VALUES - 1.., ..]).reshape([0, -1]);
+    let real_value = td_short_target.clone().slice(s![.., 0..1]) - td_short_target.slice(s![.., 1..2]);
+    let sq_error = (pred_value - real_value).square() + 1e-8;
+    let value_error_loss = huber_loss(out_value_error, sq_error, 0.4).sum() * 2.0 / batch;
     let policies_loss = -(out_policies * policies).sum() / batch;
     let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
     // KataGo's soft_policy_weight_scale is 8.0; the opponent variant keeps the
@@ -996,8 +1047,10 @@ where
     let param_l2_norm = norm_visitor.l2_norm();
 
     log::info!(
-      "Loss: value {} policy {} opponent policy {} soft policy {} soft opponent policy {} pdf {} cdf {} captured {} L2 norm {}",
+      "Loss: value {} td value {} value error {} policy {} opponent policy {} soft policy {} soft opponent policy {} pdf {} cdf {} captured {} L2 norm {}",
       values_loss.clone().into_scalar(),
+      td_values_loss.clone().into_scalar(),
+      value_error_loss.clone().into_scalar(),
       policies_loss.clone().into_scalar(),
       opponent_policies_loss.clone().into_scalar(),
       soft_policies_loss.clone().into_scalar(),
@@ -1009,6 +1062,8 @@ where
     );
 
     let loss = values_loss
+      + td_values_loss
+      + value_error_loss
       + policies_loss
       + opponent_policies_loss
       + soft_policies_loss
@@ -1044,6 +1099,7 @@ mod tests {
   };
   use ndarray::{Array2, Array3, Array4, array};
   use oppai_zero::{
+    examples::TD_VALUES,
     field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
     model::{Model as OppaiModel, TrainableModel},
   };
@@ -1058,7 +1114,7 @@ mod tests {
   #[cfg(feature = "ndarray")]
   fn forward() {
     let model = Model::<NdArray>::new(&NdArrayDevice::Cpu, &ModelConfig::default());
-    let (policy_logits, values, _, _) = model.forward(
+    let (policy_logits, values, _, _, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu),
       Tensor::ones([1, 1], &NdArrayDevice::Cpu),
     );
@@ -1108,7 +1164,7 @@ mod tests {
       }
     }
 
-    let (policy_logits, values, _, _) = model.forward(
+    let (policy_logits, values, _, _, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &device),
       Tensor::ones([1, 1], &device),
     );
@@ -1145,18 +1201,18 @@ mod tests {
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
     let global = Tensor::ones([1, 1], &device);
 
-    let (model_policy, _, _, _) = model.forward(inputs.clone(), global.clone());
-    let (average_policy, _, _, _) = average.forward(inputs.clone(), global.clone());
+    let (model_policy, _, _, _, _) = model.forward(inputs.clone(), global.clone());
+    let (average_policy, _, _, _, _) = average.forward(inputs.clone(), global.clone());
 
     let average = ema_update(average, &model, 0.0, &device);
-    let (unchanged_policy, _, _, _) = average.forward(inputs.clone(), global.clone());
+    let (unchanged_policy, _, _, _, _) = average.forward(inputs.clone(), global.clone());
     unchanged_policy
       .into_data()
       .assert_eq(&average_policy.into_data(), true);
 
     // `a + (c - a) * 1` is only c up to rounding, so compare approximately.
     let average = ema_update(average, &model, 1.0, &device);
-    let (copied_policy, _, _, _) = average.forward(inputs, global);
+    let (copied_policy, _, _, _, _) = average.forward(inputs, global);
     copied_policy
       .into_data()
       .assert_approx_eq::<f32>(&model_policy.into_data(), burn::tensor::Tolerance::default());
@@ -1201,6 +1257,7 @@ mod tests {
         let policies = Array3::from_elem((1, 4, 8), 0.5);
         let opponent_policies = Array3::from_elem((1, 4, 8), 0.7);
         let values = array![[1.0, 0.0]];
+        let td_values = Array3::from_elem((1, TD_VALUES, 2), 0.5);
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
         let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
@@ -1214,6 +1271,7 @@ mod tests {
             policies,
             opponent_policies,
             values,
+            td_values,
             scores,
             captured,
             0.01,

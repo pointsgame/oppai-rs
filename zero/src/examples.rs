@@ -16,6 +16,16 @@ use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
 use rand::{Rng, RngExt, seq::SliceRandom};
 use std::{cmp::Ordering, ops::Range, sync::Arc};
 
+/// Number of TD value horizons.
+pub const TD_VALUES: usize = 3;
+
+/// Per-step blending coefficients of the TD value horizons, longest first:
+/// each step of a horizon takes the fraction `1 / (1 + area * c)` of the
+/// remaining weight, so larger coefficients spread the target over more future
+/// turns. The last (shortest) horizon is also the target of the short-term
+/// value error head. The values are KataGo's.
+pub const TD_VALUE_COEFFS: [f64; TD_VALUES] = [0.176, 0.056, 0.016];
+
 #[derive(Clone, Debug)]
 pub struct Batch<N> {
   pub inputs: Array4<N>,
@@ -23,6 +33,10 @@ pub struct Batch<N> {
   pub policies: Array3<N>,
   pub opponent_policies: Array3<N>,
   pub values: Array2<N>,
+  /// TD value targets: for each horizon, the (win, loss) distribution of the
+  /// exponentially time-discounted future search values, converging to the
+  /// final game result.
+  pub td_values: Array3<N>,
   pub scores: Array2<N>,
   /// Captured cells at the terminal game state, 2 channels:
   /// the cells captured by the current player and by the opponent.
@@ -230,6 +244,47 @@ impl Examples {
     (self.len() / size).max(1)
   }
 
+  /// TD value targets for the position at `start` (an index into `visits`),
+  /// from the perspective of `player`. Each horizon is an exponentially
+  /// weighted blend of the future turns' search values with the remaining
+  /// weight going to `final_value` (the game result in `player`'s
+  /// perspective). Games without recorded search values fall back to the
+  /// final result for every horizon.
+  pub(crate) fn td_values_to_vec<N: Float + Zero + One + Copy>(
+    game: &ExampleGame,
+    start: usize,
+    player: Player,
+    final_value: f64,
+    td_values: &mut Vec<N>,
+  ) {
+    let initial_moves = game.moves.len() - game.visits.len();
+    let has_values = game.visits.iter().any(|visits| visits.3 != 0.0);
+    let area = (game.width * game.height) as f64;
+    for c in TD_VALUE_COEFFS {
+      let value = if has_values {
+        let now_factor = 1.0 / (1.0 + area * c);
+        let mut weight_left = 1.0;
+        let mut value = 0.0;
+        for (i, visits) in game.visits.iter().enumerate().skip(start) {
+          let weight = weight_left * now_factor;
+          let sign = if game.moves[initial_moves + i].1 == player {
+            1.0
+          } else {
+            -1.0
+          };
+          value += weight * visits.3 * sign;
+          weight_left -= weight;
+        }
+        value + weight_left * final_value
+      } else {
+        final_value
+      };
+      let win = (1.0 + value) / 2.0;
+      td_values.push(N::from(win).unwrap());
+      td_values.push(N::from(1.0 - win).unwrap());
+    }
+  }
+
   fn values_to_vec<N: Float + Zero + One + Copy>(score: i32, komi_x_2: i32, values: &mut Vec<N>) {
     let score = score * 2 + komi_x_2;
     let scores = match score.cmp(&0) {
@@ -252,6 +307,7 @@ impl Examples {
     let mut policies = Vec::<N>::with_capacity(range.len() * height as usize * width as usize);
     let mut opponent_policies = Vec::<N>::with_capacity(range.len() * height as usize * width as usize);
     let mut values = Vec::<N>::with_capacity(range.len() * 2);
+    let mut td_values = Vec::<N>::with_capacity(range.len() * TD_VALUES * 2);
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
     let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
     for example in self.examples.get(range.clone()).unwrap() {
@@ -300,6 +356,13 @@ impl Examples {
           &mut opponent_policies,
         );
       Self::values_to_vec::<N>(score, komi_x_2, &mut values);
+      Self::td_values_to_vec::<N>(
+        game,
+        example.position - initial_moves,
+        player,
+        f64::from((score * 2 + komi_x_2).signum()),
+        &mut td_values,
+      );
       score_one_hot_to_vec(score, komi_x_2, &mut scores);
       // Replay the rest of the game to get the captured dots at the terminal
       // state. Grounded state is not updated since it doesn't affect captures.
@@ -322,6 +385,9 @@ impl Examples {
         .into_shape_with_order((range.len(), height as usize, width as usize))
         .unwrap(),
       values: Array::from(values).into_shape_with_order((range.len(), 2)).unwrap(),
+      td_values: Array::from(td_values)
+        .into_shape_with_order((range.len(), TD_VALUES, 2))
+        .unwrap(),
       scores: Array::from(scores)
         .into_shape_with_order((range.len(), SCORE_ONE_HOT_SIZE))
         .unwrap(),
