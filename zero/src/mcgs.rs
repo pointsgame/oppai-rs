@@ -865,6 +865,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
+  /// Reset the search to a fresh empty tree, dropping all reused state
+  /// including the subtree value bias buckets.
+  pub fn clear(&mut self) {
+    *self = Self::new(self.forbid_bad);
+  }
+
   /// Compact the search tree by removing unused nodes
   pub fn compact(&mut self) {
     let mut new_search = Self {

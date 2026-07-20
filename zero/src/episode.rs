@@ -180,10 +180,14 @@ where
     let full_search = rng.random::<f64>() <= 0.25;
 
     let sims = if full_search {
+      // Recorded searches start from a fresh tree: the Dirichlet noise and
+      // forced playouts have to shape the entire visit distribution, and visits
+      // inherited from previous searches would leak into the policy target and
+      // inflate the policy surprise. Cheap searches keep reusing the tree -
+      // they only pick a move.
+      search.clear();
       // The root has to be expanded before the noise can be applied to its children priors.
-      if search.nodes[search.root_idx].children.is_empty() {
-        search.mcgs(field, player, model, komi_x_2, rng).await?;
-      }
+      search.mcgs(field, player, model, komi_x_2, rng).await?;
       search.root_priors(&mut raw_priors);
       // Total Dirichlet alpha, matching AlphaZero's 0.03 per move on an empty 19x19 board
       // (0.03 * 361 = 10.83). Kept constant across board sizes and through the game, with
