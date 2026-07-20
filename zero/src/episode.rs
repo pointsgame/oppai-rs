@@ -24,9 +24,10 @@ const MCTS_FULL_SIMS: u32 = 1000;
 /// * `.0` - visit count for each explored child of the root (the policy target).
 /// * `.1` - whether this move was decided by a "full" search (and is therefore a
 ///   training sample).
-/// * `.2` - policy surprise: the KL divergence from the (noised, softmaxed) root
-///   policy prior to the policy training target, used for policy surprise
-///   weighting. Only meaningful for full searches; `0` otherwise.
+/// * `.2` - policy surprise: the KL divergence from the raw root policy prior
+///   to the policy training target, used for policy surprise weighting. For
+///   cheap searches it decides whether the row earns training weight despite
+///   the shallow search; `0` in data recorded before it was stored.
 /// * `.3` - the search's value estimate of the position (root Q), in `[-1, 1]`
 ///   from the perspective of the player to move. Used for value surprise
 ///   weighting.
@@ -213,13 +214,14 @@ where
       search.visits().collect()
     };
     // Policy surprise (KL divergence from the raw policy prior to the policy
-    // target) is only used to weight full-search training samples, so only
-    // bother computing it for those.
-    let surprise = if full_search {
-      Search::policy_surprise(&target, &raw_priors).to_f64().unwrap()
-    } else {
-      0.0
-    };
+    // target) is computed for cheap searches too: one whose surprise stands
+    // far above the game's full-search average earns training weight despite
+    // the shallow search. Cheap search roots are never noised, so their priors
+    // can be snapshotted after the search.
+    if !full_search {
+      search.root_priors(&mut raw_priors);
+    }
+    let surprise = Search::policy_surprise(&target, &raw_priors).to_f64().unwrap();
     let current_visits = Visits(
       target,
       full_search,

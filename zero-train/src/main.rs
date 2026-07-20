@@ -569,16 +569,11 @@ where
       let mut placed = 0;
 
       // Recompute the policy surprise (KL divergence from the model's raw policy
-      // prior to the visit-count target) and the raw network value only for full
-      // searches - the surprise is meaningless and stored as 0 for the rest, and
-      // the raw value only feeds value surprise which is computed for full
-      // searches alone. The search value is left untouched: a single root
-      // expansion cannot reproduce a full search's estimate.
+      // prior to the visit-count target) and the raw network value for every
+      // searched position - cheap searches need the surprise too, since it
+      // decides whether they earn training weight. The search value is left
+      // untouched: a single root expansion cannot reproduce a search's estimate.
       for (i, current) in visits.iter_mut().enumerate() {
-        if !current.1 {
-          continue;
-        }
-
         let position = initial_moves + i;
         let player = moves[position].1;
         let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };

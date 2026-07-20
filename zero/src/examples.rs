@@ -123,6 +123,28 @@ impl Examples {
       0.0
     };
 
+    // A cheap search also earns training weight when its policy surprise
+    // stands out even against the game's full searches: only the excess above
+    // 1.5x the full-search average counts, so admission is continuous and
+    // rare.
+    let threshold_to_include_reduced = if full_count > 0.0 {
+      1.5 * sum_policy_surprise / full_count
+    } else {
+      0.0
+    };
+    let policy_prop = |visits: &Visits| {
+      if visits.1 {
+        visits.2
+      } else {
+        (visits.2 - threshold_to_include_reduced).max(0.0)
+      }
+    };
+    let sum_policy_prop = if surprise_weighting {
+      visits.iter().map(policy_prop).sum::<f64>()
+    } else {
+      0.0
+    };
+
     // Value surprise of each full-searched position: the value target for a
     // turn is the final game result blended backwards through the following
     // turns' search values with `now_factor` per step, and the surprise is
@@ -150,11 +172,11 @@ impl Examples {
     // was lopsided from the start and the expected player won. Scale the value
     // surprise weight down in that case rather than dividing by almost zero.
     let value_surprise_weight = if full_count > 0.0 {
-      VALUE_SURPRISE_DATA_WEIGHT * (sum_value_surprise / full_count / 0.010).min(1.0)
+      VALUE_SURPRISE_DATA_WEIGHT * (sum_value_surprise / full_count / 0.01).min(1.0)
     } else {
       0.0
     };
-    let policy_surprise_weight = if sum_policy_surprise > 0.0 {
+    let policy_surprise_weight = if sum_policy_prop > 0.0 {
       POLICY_SURPRISE_DATA_WEIGHT
     } else {
       0.0
@@ -172,35 +194,39 @@ impl Examples {
     self.games.push(game);
 
     for (i, visits) in self.games[game_index].visits.iter().enumerate() {
-      if visits.1 {
-        // The frequency weight is `(1 - wp - wv) + wp * full_count * policy_surprise
-        // / sum_policy_surprise + wv * full_count * value_surprise / sum_value_surprise`,
-        // averaging 1 across the game's full searches (so the expected total amount
-        // of data is unchanged) but skewed towards surprising positions. A term
-        // with no surprise anywhere in the game contributes its share flatly.
-        let mut weight = 1.0 - policy_surprise_weight - value_surprise_weight;
-        if sum_policy_surprise > 0.0 {
-          weight += policy_surprise_weight * full_count * visits.2 / sum_policy_surprise;
-        }
-        if sum_value_surprise > 0.0 {
-          weight += value_surprise_weight * full_count * value_surprises[i] / sum_value_surprise;
-        }
-        // Write the position `floor(weight)` times, plus once more with probability
-        // equal to the fractional part of the weight.
-        let copies = weight.floor() as usize + usize::from(rng.random::<f64>() < weight.fract());
-        for _ in 0..copies {
-          for rotation in 0..rotations {
-            let mut history = 0;
-            while history < HISTORY_CHANNELS && rng.random::<f64>() < HISTORY_KEEP_PROBABILITY {
-              history += 1;
-            }
-            self.examples.push(Example {
-              game: game_index,
-              position: initial_moves + i,
-              rotation,
-              history: history as u8,
-            });
+      // The frequency weight is `(1 - wp - wv) * target_weight + wp * full_count
+      // * policy_prop / sum_policy_prop + wv * full_count * value_surprise
+      // / sum_value_surprise`, averaging 1 across the game's full searches (so
+      // the expected total amount of data is unchanged) but skewed towards
+      // surprising positions. Cheap searches have a flat weight of 0 and only
+      // ever enter through their excess policy surprise. A term with no
+      // surprise anywhere in the game contributes its share flatly.
+      let mut weight = if visits.1 {
+        1.0 - policy_surprise_weight - value_surprise_weight
+      } else {
+        0.0
+      };
+      if sum_policy_prop > 0.0 {
+        weight += policy_surprise_weight * full_count * policy_prop(visits) / sum_policy_prop;
+      }
+      if sum_value_surprise > 0.0 {
+        weight += value_surprise_weight * full_count * value_surprises[i] / sum_value_surprise;
+      }
+      // Write the position `floor(weight)` times, plus once more with probability
+      // equal to the fractional part of the weight.
+      let copies = weight.floor() as usize + usize::from(weight > 0.0 && rng.random::<f64>() < weight.fract());
+      for _ in 0..copies {
+        for rotation in 0..rotations {
+          let mut history = 0;
+          while history < HISTORY_CHANNELS && rng.random::<f64>() < HISTORY_KEEP_PROBABILITY {
+            history += 1;
           }
+          self.examples.push(Example {
+            game: game_index,
+            position: initial_moves + i,
+            rotation,
+            history: history as u8,
+          });
         }
       }
     }
