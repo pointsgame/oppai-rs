@@ -579,6 +579,12 @@ where
         })
         .unwrap_or(0);
 
+      // Games recorded before value surprise weighting store no search or raw
+      // network values (parsed as 0). Without the search values the value
+      // target can't be reconstructed, so recalculating the raw value would
+      // only manufacture a bogus value surprise - leave such games value-free.
+      let has_value_surprise = visits.iter().any(|visits| visits.3 != 0.0 || visits.4 != 0.0);
+
       let width = field.field().width();
       let height = field.field().height();
       let moves: Vec<_> = field.field().colored_moves().collect();
@@ -614,7 +620,9 @@ where
         let mut priors = vec![FloatElem::<B>::zero(); position_field.length()];
         search.root_priors(&mut priors);
         current.2 = Search::policy_surprise(&current.0, &priors).to_f64().unwrap();
-        current.4 = search.raw_value().to_f64().unwrap();
+        if has_value_surprise {
+          current.4 = search.raw_value().to_f64().unwrap();
+        }
       }
 
       write_game(&mut file, &field, &visits, komi_x_2)?;
