@@ -6598,6 +6598,7 @@ dependencies = [
  "ctrlc",
  "either",
  "env_logger",
+ "flate2",
  "futures",
  "log",
  "ndarray 0.17.2",

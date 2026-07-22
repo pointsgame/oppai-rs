@@ -18,6 +18,7 @@ log.workspace = true
 env_logger.workspace = true
 clap = { workspace = true, features = [ "cargo" ] }
 anyhow.workspace = true
+flate2.workspace = true
 sgf-parse.workspace = true
 strum.workspace = true
 ctrlc = "3.5"

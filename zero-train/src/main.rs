@@ -26,6 +26,7 @@ use config::{
   Action, Backend as ConfigBackend, Config, CountParams, InitParams, PitParams, PlayParams, RecalcParams, TrainParams,
   cli_parse,
 };
+use flate2::{Compression, read::MultiGzDecoder, write::GzEncoder};
 use futures::StreamExt;
 use num_traits::{Float, ToPrimitive, Zero};
 use oppai_field::{
@@ -50,13 +51,14 @@ use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor};
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
 use rand::{Rng, RngExt, SeedableRng, distr::uniform::SampleUniform, make_rng, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
-use sgf_parse::{GameTree, SimpleText, serialize, unknown_game::Prop};
+use sgf_parse::{GameTree, SgfNode, SimpleText, serialize, unknown_game::Prop};
 use std::{
   cmp::Ordering,
   fmt::{Debug, Display},
-  fs::{self, File},
-  io::Write,
+  fs::File,
+  io::{BufRead, BufReader, Write},
   iter::{self, Sum},
+  path::Path,
   process::ExitCode,
   sync::{Arc, atomic::AtomicBool},
 };
@@ -84,6 +86,40 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
+/// Streams games from a file of concatenated gzip members, decompressing and
+/// parsing one game (line) at a time.
+fn read_games<P: AsRef<Path>>(path: P) -> Result<impl Iterator<Item = Result<SgfNode<Prop>>>> {
+  let file = File::open(path)?;
+  let lines = BufReader::new(MultiGzDecoder::new(BufReader::new(file))).lines();
+  Ok(lines.flat_map(|line| {
+    let nodes = line.map_err(Error::from).and_then(|line| {
+      Ok(
+        sgf_parse::parse(&line)?
+          .into_iter()
+          .filter_map(|tree| match tree {
+            GameTree::Unknown(node) => Some(node),
+            GameTree::GoGame(_) => None,
+          })
+          .collect::<Vec<_>>(),
+      )
+    });
+    match nodes {
+      Ok(nodes) => nodes.into_iter().map(Ok).collect::<Vec<_>>(),
+      Err(e) => vec![Err(e)],
+    }
+  }))
+}
+
+/// Appends a game as a separate gzip member, so an interrupted process never
+/// corrupts previously written games and appending remains valid gzip.
+fn write_sgf(file: &mut File, sgf: &str) -> Result<()> {
+  let mut encoder = GzEncoder::new(&mut *file, Compression::default());
+  writeln!(encoder, "{sgf}")?;
+  encoder.finish()?;
+  file.flush()?;
+  Ok(())
+}
+
 fn write_game(file: &mut File, field: Field, visits: &[Visits], komi_x_2: i32) -> Result<()> {
   let field: ExtendedField = field.into();
   if let Some(mut node) = to_sgf(&field) {
@@ -102,8 +138,7 @@ fn write_game(file: &mut File, field: Field, visits: &[Visits], komi_x_2: i32) -
       .properties
       .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
     let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-    writeln!(file, "{sgf}")?;
-    file.flush()?;
+    write_sgf(file, &sgf)?;
   }
   Ok(())
 }
@@ -266,14 +301,10 @@ where
 
   let mut examples = Examples::default();
   for path in params.games {
-    let sgf = fs::read_to_string(path)?;
-    let trees = sgf_parse::parse(&sgf)?;
-    for node in trees.iter().filter_map(|tree| match tree {
-      GameTree::Unknown(node) => Some(node),
-      GameTree::GoGame(_) => None,
-    }) {
-      let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
-      let visits = sgf_to_visits(node, field.stride);
+    for node in read_games(path)? {
+      let node = node?;
+      let field = from_sgf::<Field, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+      let visits = sgf_to_visits(&node, field.stride);
       let komi_x_2 = node
         .properties
         .iter()
@@ -446,8 +477,7 @@ where
     {
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
       let mut file = File::options().append(true).create(true).open(games).unwrap();
-      writeln!(&mut file, "{sgf}").unwrap();
-      file.flush().unwrap();
+      write_sgf(&mut file, &sgf).unwrap();
     }
 
     i += 1;
@@ -493,14 +523,10 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
   let mut examples = 0u32;
 
   for path in params.games {
-    let sgf = fs::read_to_string(path)?;
-    let trees = sgf_parse::parse(&sgf)?;
-    for node in trees.iter().filter_map(|tree| match tree {
-      GameTree::Unknown(node) => Some(node),
-      GameTree::GoGame(_) => None,
-    }) {
-      let field = from_sgf::<Field, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
-      let visits = sgf_to_visits(node, field.stride);
+    for node in read_games(path)? {
+      let node = node?;
+      let field = from_sgf::<Field, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+      let visits = sgf_to_visits(&node, field.stride);
       games += 1;
       examples += visits.iter().filter(|v| v.1).count() as u32;
     }
@@ -532,20 +558,16 @@ where
   let mut file = File::options().append(true).create(true).open(&params.games_new)?;
 
   'games: for path in params.games {
-    let sgf = fs::read_to_string(path)?;
-    let trees = sgf_parse::parse(&sgf)?;
-    for node in trees.iter().filter_map(|tree| match tree {
-      GameTree::Unknown(node) => Some(node),
-      GameTree::GoGame(_) => None,
-    }) {
+    for node in read_games(path)? {
+      let node = node?;
       if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
         log::info!("Stopping surprise recalculation");
         break 'games;
       }
 
-      let field = from_sgf::<ExtendedField, _>(node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+      let field = from_sgf::<ExtendedField, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let stride = field.field().stride;
-      let mut visits = sgf_to_visits(node, stride);
+      let mut visits = sgf_to_visits(&node, stride);
       let komi_x_2 = node
         .properties
         .iter()
@@ -612,8 +634,7 @@ where
         .properties
         .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
       let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-      writeln!(&mut file, "{sgf}")?;
-      file.flush()?;
+      write_sgf(&mut file, &sgf)?;
     }
   }
 
