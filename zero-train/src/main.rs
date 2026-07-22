@@ -120,18 +120,17 @@ fn write_sgf(file: &mut File, sgf: &str) -> Result<()> {
   Ok(())
 }
 
-fn write_game(file: &mut File, field: Field, visits: &[Visits], komi_x_2: i32) -> Result<()> {
-  let field: ExtendedField = field.into();
-  if let Some(mut node) = to_sgf(&field) {
+fn write_game(file: &mut File, field: &ExtendedField, visits: &[Visits], komi_x_2: i32) -> Result<()> {
+  if let Some(mut node) = to_sgf(field) {
     visits_to_sgf(&mut node, visits, field.field().stride, field.field().moves_count());
-    let score = field.field().score(Player::Red);
-    node.properties.push(Prop::RE(match score.cmp(&0) {
+    let score_x_2 = field.field().score(Player::Red) * 2 + komi_x_2;
+    node.properties.push(Prop::RE(match score_x_2.cmp(&0) {
       Ordering::Equal => "0".into(),
       Ordering::Greater => SimpleText {
-        text: format!("W+{}", score),
+        text: format!("W+{}", score_x_2 as f32 / 2.0),
       },
       Ordering::Less => SimpleText {
-        text: format!("B+{}", score.abs()),
+        text: format!("B+{}", score_x_2.abs() as f32 / 2.0),
       },
     }));
     node
@@ -212,7 +211,7 @@ where
   let mut file = File::options().append(true).create(true).open(&params.games)?;
   while let Some(game) = games.next().await {
     let (field, visits, komi_x_2) = game?;
-    write_game(&mut file, field, &visits, komi_x_2)?;
+    write_game(&mut file, &field.into(), &visits, komi_x_2)?;
   }
 
   Ok(())
@@ -618,23 +617,7 @@ where
         current.4 = search.raw_value().to_f64().unwrap();
       }
 
-      let mut node = to_sgf(&field).ok_or(anyhow::anyhow!("failed to serialize game"))?;
-      visits_to_sgf(&mut node, &visits, stride, field.field().moves_count());
-      let score = field.field().score(Player::Red);
-      node.properties.push(Prop::RE(match score.cmp(&0) {
-        Ordering::Equal => "0".into(),
-        Ordering::Greater => SimpleText {
-          text: format!("W+{}", score),
-        },
-        Ordering::Less => SimpleText {
-          text: format!("B+{}", score.abs()),
-        },
-      }));
-      node
-        .properties
-        .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
-      let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-      write_sgf(&mut file, &sgf)?;
+      write_game(&mut file, &field, &visits, komi_x_2)?;
     }
   }
 
