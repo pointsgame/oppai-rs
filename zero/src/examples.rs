@@ -70,8 +70,8 @@ pub struct Examples {
 const POLICY_SURPRISE_DATA_WEIGHT: f64 = 0.5;
 
 /// Fraction of the total frequency weight distributed proportionally to each
-/// position's value surprise, i.e. how much the actual game result surprised
-/// the raw network value.
+/// position's value surprise, i.e. how much the position's search value
+/// surprised the raw network value.
 const VALUE_SURPRISE_DATA_WEIGHT: f64 = 0.1;
 
 /// KL divergence between the win/loss distributions implied by two values in
@@ -145,25 +145,17 @@ impl Examples {
       0.0
     };
 
-    // Value surprise of each full-searched position: the value target for a
-    // turn is the final game result blended backwards through the following
-    // turns' search values with `now_factor` per step, and the surprise is
-    // the KL divergence from that target to the raw network value at the turn.
+    // Value surprise of each full-searched position: the KL divergence from
+    // the turn's own search value to the raw network value at the turn. The
+    // search value depends only on information available at the time of the
+    // search, so the weighting does not condition on the game's realized
+    // outcome - at the cost of missing surprises that only the actual
+    // continuation of the game would reveal.
     let mut value_surprises = vec![0.0; visits.len()];
     if surprise_weighting {
-      let now_factor = 1.0 / (1.0 + (field.width() * field.height()) as f64 * 0.016);
-      // The blend is tracked from Red's perspective and flipped to the mover's
-      // perspective where the stored values live.
-      let mut target = f64::from((field.score(Player::Red) * 2 + komi_x_2).signum());
-      for (i, visits) in visits.iter().enumerate().rev() {
-        let sign = if field.cell(field.moves[initial_moves + i]).get_player() == Player::Red {
-          1.0
-        } else {
-          -1.0
-        };
-        target = target + now_factor * (visits.3 * sign - target);
+      for (i, visits) in visits.iter().enumerate() {
         if visits.1 {
-          value_surprises[i] = value_surprise(target * sign, visits.4);
+          value_surprises[i] = value_surprise(visits.3, visits.4);
         }
       }
     }
