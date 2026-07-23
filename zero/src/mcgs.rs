@@ -438,7 +438,8 @@ impl<N: Float + Sum + Copy> Search<N> {
     N::one() + N::from(Self::CPUCT_UTILITY_STDEV_SCALE).unwrap() * (stdev / prior - N::one())
   }
 
-  fn select_edge(&self, node_idx: usize, noise: bool) -> Option<usize> {
+  fn select_edge(&self, node_idx: usize, is_root: bool) -> Option<usize> {
+    let noise = is_root && self.dirichlet_noise;
     let node = &self.nodes[node_idx];
     let total_n = N::from(node.visits).unwrap();
     let total_n_sqrt = total_n.sqrt();
@@ -447,7 +448,16 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut best = None;
 
     let c_puct = N::from(1.1).unwrap();
-    let c_fpu = N::from(if noise { 0.0 } else { 0.2 }).unwrap();
+    // At the root exploration is already ensured by Dirichlet noise when it's
+    // enabled, so the FPU reduction is disabled; without noise it's halved.
+    let c_fpu = N::from(if noise {
+      0.0
+    } else if is_root {
+      0.1
+    } else {
+      0.2
+    })
+    .unwrap();
     let forced_k = N::from(Self::FORCED_PLAYOUTS_K).unwrap();
     let puct_coeff = c_puct * total_n_sqrt * Self::utility_stdev_factor(node);
 
@@ -515,12 +525,12 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// indexing instead of re-scanning each node's children by position.
   fn select_path(&mut self) -> (Vec<(usize, usize)>, bool) {
     let mut idx = self.root_idx;
-    let mut noise = self.dirichlet_noise;
+    let mut is_root = true;
     let mut path = Vec::new();
     let mut terminal = self.nodes[idx].visits > 0;
 
-    while let Some(edge_idx) = self.select_edge(idx, noise) {
-      noise = false;
+    while let Some(edge_idx) = self.select_edge(idx, is_root) {
+      is_root = false;
       let edge = &mut self.nodes[idx].children[edge_idx];
       edge.virtual_losses += 1;
       path.push((idx, edge_idx));
