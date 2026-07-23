@@ -473,8 +473,14 @@ impl<N: Float + Sum + Copy> Search<N> {
         // Parent wants to maximize own value, which is -child.value
         (-child_value * visits - virtual_losses) / N::from(total_edge_visits).unwrap()
       } else {
-        // FPU
-        node.value - c_fpu * *prior_visited
+        // FPU: the parent's utility reduced by `c_fpu * sqrt(visited policy mass)`,
+        // With little mass visited yet the parent's running average rests on few
+        // playouts, so it is blended towards the raw net value with the weight
+        // `min(1, mass²)`.
+        let mass: N = *prior_visited;
+        let parent_weight = (mass * mass).min(N::one());
+        let parent_value = node.raw_value + (node.value - node.raw_value) * parent_weight;
+        parent_value - c_fpu * mass.sqrt()
       };
       let p = edge.prior;
 
