@@ -560,14 +560,14 @@ impl<B: Backend> ValueHead<B> {
 
     let out_scorebelief_logprobs = log_softmax(outsv3, 1);
 
-    // Take the mixture distribution weighted by outsmix_logweights
-    // TODO: might be numerically unstable, but burn doesn't have LogSumExp operator
-    // See https://en.wikipedia.org/wiki/LogSumExp
-    let out_score_log_dist = (out_scorebelief_logprobs + outsmix_logweights.unsqueeze_dim(1))
-      .exp()
-      .sum_dim(2)
-      .log()
-      .squeeze_dim(2);
+    // Take the mixture distribution weighted by outsmix_logweights, as a
+    // LogSumExp stabilized by subtracting the max: the terms are
+    // log-probabilities, so the naive form can underflow to -inf for far-tail
+    // score bins. The max is detached since its gradient cancels analytically.
+    // TODO: replace with LogSumExp once it's implemented in burn
+    let log_terms = out_scorebelief_logprobs + outsmix_logweights.unsqueeze_dim(1);
+    let max = log_terms.clone().max_dim(2).detach();
+    let out_score_log_dist = ((log_terms - max.clone()).exp().sum_dim(2).log() + max).squeeze_dim(2);
 
     (out_value, out_value_error, out_score_log_dist)
   }
