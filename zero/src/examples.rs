@@ -24,7 +24,14 @@ pub const TD_VALUES: usize = 3;
 /// remaining weight, so larger coefficients spread the target over more future
 /// turns. The last (shortest) horizon is also the target of the short-term
 /// value error head.
-pub const TD_VALUE_COEFFS: [f64; TD_VALUES] = [0.176, 0.056, 0.016];
+///
+/// The expected lookahead of a horizon is `c * area` turns. KataGo uses
+/// `[0.176, 0.056, 0.016]`, placing the horizons at roughly 25%, 8% and 2.3%
+/// of a typical go game (~0.7 moves per board cell). Self-play dots games fill
+/// only ~0.32 of the field, so the longer horizons are scaled down
+/// accordingly to keep the same fractions of a typical game, while the
+/// shortest is kept at ~5 turns to stay meaningful for the value error head.
+pub const TD_VALUE_COEFFS: [f64; TD_VALUES] = [0.08, 0.025, 0.012];
 
 #[derive(Clone, Debug)]
 pub struct Batch<N> {
