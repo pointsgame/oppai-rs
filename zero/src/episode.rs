@@ -147,8 +147,12 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
-  // TODO: does it scale to big sizes?
-  let exp = Exp::new(N::from(25).unwrap() / N::from(field.width() * field.height()).unwrap()).unwrap();
+  // The number of raw policy opening moves: an exponential with mean
+  // `area / 50`, i.e. 2% of the area (the argument is the rate, the inverse of
+  // the mean). KataGo's initializeGameUsingPolicy plays 4% of the area,
+  // targeting ~6% of a typical go game; dots games fill only ~0.32 of the
+  // field, so half of that keeps the same fraction of a typical game.
+  let exp = Exp::new(N::from(50).unwrap() / N::from(field.width() * field.height()).unwrap()).unwrap();
   let raw_policy_moves = exp.sample(rng).floor().to_u32().unwrap();
 
   info!("Playing {} raw policy moves", raw_policy_moves);
