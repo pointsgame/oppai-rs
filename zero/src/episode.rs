@@ -99,8 +99,13 @@ impl Visits {
   }
 }
 
+/// Interpolates between an early-game and a rest-of-game value, decaying
+/// exponentially with the number of moves played. KataGo's interpolateEarly
+/// uses a halflife of `sqrt(area)` moves, spending ~7.6% of a typical go game
+/// at the early value; dots games fill only ~0.32 of the field, so half that
+/// halflife keeps the same fraction of a typical game.
 fn interpolate_early<N: Float>(field: &Field, early_value: N, value: N) -> N {
-  let halflives = N::from(field.moves_count()).unwrap() / N::from(field.width() * field.height()).unwrap().sqrt();
+  let halflives = N::from(2 * field.moves_count()).unwrap() / N::from(field.width() * field.height()).unwrap().sqrt();
   value + (early_value - value) * N::from(0.5).unwrap().powf(halflives)
 }
 
