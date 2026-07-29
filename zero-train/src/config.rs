@@ -60,6 +60,7 @@ pub struct RecalcParams {
   pub model_config: ModelConfig,
   pub games: Vec<PathBuf>,
   pub games_new: PathBuf,
+  pub parallel_games: usize,
 }
 
 pub enum Action {
@@ -174,6 +175,15 @@ fn optimizer_new_arg() -> Arg {
     .required(true)
 }
 
+fn parallel_games_arg(help: &'static str) -> Arg {
+  Arg::new("parallel-games")
+    .long("parallel-games")
+    .help(help)
+    .num_args(1)
+    .value_parser(value_parser!(usize))
+    .default_value("32")
+}
+
 fn weight_decay_arg() -> Arg {
   Arg::new("weight-decay")
     .long("weight-decay")
@@ -224,14 +234,9 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(usize))
         .default_value("1"),
     )
-    .arg(
-      Arg::new("parallel-games")
-        .long("parallel-games")
-        .help("How many games to play concurrently, merging their positions into shared forward passes")
-        .num_args(1)
-        .value_parser(value_parser!(usize))
-        .default_value("32"),
-    );
+    .arg(parallel_games_arg(
+      "How many games to play concurrently, merging their positions into shared forward passes",
+    ));
   let train = Command::new("train")
     .about("Train the neural network")
     .arg(width_arg())
@@ -366,7 +371,10 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .required(true),
-    );
+    )
+    .arg(parallel_games_arg(
+      "How many games to recalculate concurrently, merging their positions into shared forward passes",
+    ));
 
   let matches = Command::new(crate_name!())
     .version(crate_version!())
@@ -522,11 +530,13 @@ pub fn cli_parse() -> (Config, Action) {
       let model_config = parse_model_config(matches, "model-config");
       let games = matches.get_many("games").unwrap().cloned().collect();
       let games_new = matches.get_one("games-new").cloned().unwrap();
+      let parallel_games = matches.get_one("parallel-games").copied().unwrap();
       Action::Recalc(RecalcParams {
         model,
         model_config,
         games,
         games_new,
+        parallel_games,
       })
     }
     _ => panic!("no subcommand"),

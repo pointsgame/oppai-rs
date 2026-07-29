@@ -28,7 +28,7 @@ use config::{
 };
 use flate2::{Compression, read::MultiGzDecoder, write::GzEncoder};
 use futures::StreamExt;
-use num_traits::{Float, ToPrimitive, Zero};
+use num_traits::Float;
 use oppai_field::{
   any_field::AnyField,
   extended_field::ExtendedField,
@@ -537,6 +537,135 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
   Ok(ExitCode::SUCCESS)
 }
 
+/// Recomputes the policy surprise (KL divergence from the model's raw policy
+/// prior to the visit-count target) and the raw network value of every searched
+/// position of a single game.
+async fn recalc_game<N, M, R>(
+  node: SgfNode<Prop>,
+  model: &mut M,
+  rng: &mut R,
+) -> Result<(ExtendedField, Vec<Visits>, i32)>
+where
+  N: Float + Sum,
+  M: Model<N>,
+  M::E: Debug,
+  R: Rng,
+{
+  let field = from_sgf::<ExtendedField, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
+  let stride = field.field().stride;
+  let mut visits = sgf_to_visits(&node, stride);
+  let komi_x_2 = node
+    .properties
+    .iter()
+    .find_map(|prop| match prop {
+      Prop::Unknown(name, values) if name == "KM" => values.first().map(|value| {
+        let value = value.parse::<f32>().unwrap();
+        (value * 2.0).round() as i32
+      }),
+      _ => None,
+    })
+    .unwrap_or(0);
+
+  // Games recorded before value surprise weighting store no search or raw
+  // network values (parsed as 0). Without the search values the value
+  // target can't be reconstructed, so recalculating the raw value would
+  // only manufacture a bogus value surprise - leave such games value-free.
+  let has_value_surprise = visits.iter().any(|visits| visits.3 != 0.0 || visits.4 != 0.0);
+
+  let width = field.field().width();
+  let height = field.field().height();
+  let moves: Vec<_> = field.field().colored_moves().collect();
+  // Moves played before the first searched position (e.g. the opening).
+  let initial_moves = moves.len() - visits.len();
+  let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, rng));
+
+  let mut position_field = Field::new(width, height, zobrist);
+  let mut placed = 0;
+
+  // Cheap searches need the surprise too, since it decides whether they earn
+  // training weight. The search value is left untouched: a single root
+  // expansion cannot reproduce a search's estimate.
+  for (i, current) in visits.iter_mut().enumerate() {
+    let position = initial_moves + i;
+    let player = moves[position].1;
+    let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
+
+    for &(pos, player) in &moves[placed..position] {
+      assert!(position_field.put_point(pos, player));
+      position_field.update_grounded();
+    }
+    placed = position;
+
+    // A single search step expands the root with the network, filling in the
+    // raw child priors used to measure the surprise.
+    let mut search = Search::<N>::new(false);
+    search
+      .mcgs(&mut position_field, player, model, komi_x_2, rng)
+      .await
+      .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
+    let mut priors = vec![N::zero(); position_field.length()];
+    search.root_priors(&mut priors);
+    current.2 = Search::policy_surprise(&current.0, &priors).to_f64().unwrap();
+    if has_value_surprise {
+      current.4 = search.raw_value().to_f64().unwrap();
+    }
+  }
+
+  Ok((field, visits, komi_x_2))
+}
+
+/// Recalculates every game of `params.games`, up to `params.parallel_games` of
+/// them concurrently, creating a fresh model per game with `new_model`.
+async fn recalc_games<N, M, MF, R>(
+  params: &RecalcParams,
+  mut new_model: MF,
+  rng: &mut R,
+  should_stop: &AtomicBool,
+) -> Result<()>
+where
+  N: Float + Sum,
+  M: Model<N>,
+  M::E: Debug,
+  MF: FnMut() -> M,
+  R: Rng,
+{
+  // All the game files are opened up front, so an unreadable one fails before
+  // any recalculation is done rather than hours into it.
+  let nodes = params
+    .games
+    .iter()
+    .map(read_games)
+    .collect::<Result<Vec<_>>>()?
+    .into_iter()
+    .flatten();
+
+  let games = nodes
+    .enumerate()
+    .take_while(|&(i, _)| {
+      if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+        log::info!("Stopping surprise recalculation after {} games", i);
+        false
+      } else {
+        true
+      }
+    })
+    .map(|(_, node)| {
+      let mut rng = SmallRng::from_seed(rng.random());
+      let mut model = new_model();
+      async move { recalc_game(node?, &mut model, &mut rng).await }
+    });
+
+  let mut games = futures::stream::iter(games).buffer_unordered(params.parallel_games);
+
+  let mut file = File::options().append(true).create(true).open(&params.games_new)?;
+  while let Some(game) = games.next().await {
+    let (field, visits, komi_x_2) = game?;
+    write_game(&mut file, &field, &visits, komi_x_2)?;
+  }
+
+  Ok(())
+}
+
 async fn recalc<B, R: Rng>(
   params: RecalcParams,
   device: B::Device,
@@ -549,86 +678,25 @@ where
 {
   let model = BurnModel::<B>::new(&device, &params.model_config);
   let model = model.load_file(
-    params.model,
+    params.model.clone(),
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let mut model = Predictor { model, device };
+  let mut predictor = Predictor { model, device };
 
-  let mut file = File::options().append(true).create(true).open(&params.games_new)?;
-
-  'games: for path in params.games {
-    for node in read_games(path)? {
-      let node = node?;
-      if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
-        log::info!("Stopping surprise recalculation");
-        break 'games;
-      }
-
-      let field = from_sgf::<ExtendedField, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
-      let stride = field.field().stride;
-      let mut visits = sgf_to_visits(&node, stride);
-      let komi_x_2 = node
-        .properties
-        .iter()
-        .find_map(|prop| match prop {
-          Prop::Unknown(name, values) if name == "KM" => values.first().map(|value| {
-            let value = value.parse::<f32>().unwrap();
-            (value * 2.0).round() as i32
-          }),
-          _ => None,
-        })
-        .unwrap_or(0);
-
-      // Games recorded before value surprise weighting store no search or raw
-      // network values (parsed as 0). Without the search values the value
-      // target can't be reconstructed, so recalculating the raw value would
-      // only manufacture a bogus value surprise - leave such games value-free.
-      let has_value_surprise = visits.iter().any(|visits| visits.3 != 0.0 || visits.4 != 0.0);
-
-      let width = field.field().width();
-      let height = field.field().height();
-      let moves: Vec<_> = field.field().colored_moves().collect();
-      // Moves played before the first searched position (e.g. the opening).
-      let initial_moves = moves.len() - visits.len();
-      let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, rng));
-
-      let mut position_field = Field::new(width, height, zobrist.clone());
-      let mut placed = 0;
-
-      // Recompute the policy surprise (KL divergence from the model's raw policy
-      // prior to the visit-count target) and the raw network value for every
-      // searched position - cheap searches need the surprise too, since it
-      // decides whether they earn training weight. The search value is left
-      // untouched: a single root expansion cannot reproduce a search's estimate.
-      for (i, current) in visits.iter_mut().enumerate() {
-        let position = initial_moves + i;
-        let player = moves[position].1;
-        let komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
-
-        for &(pos, player) in &moves[placed..position] {
-          assert!(position_field.put_point(pos, player));
-          position_field.update_grounded();
-        }
-        placed = position;
-
-        // A single search step expands the root with the network, filling in the
-        // raw child priors used to measure the surprise.
-        let mut search = Search::<FloatElem<B>>::new(false);
-        search
-          .mcgs(&mut position_field, player, &mut model, komi_x_2, rng)
-          .await?;
-        let mut priors = vec![FloatElem::<B>::zero(); position_field.length()];
-        search.root_priors(&mut priors);
-        current.2 = Search::policy_surprise(&current.0, &priors).to_f64().unwrap();
-        if has_value_surprise {
-          current.4 = search.raw_value().to_f64().unwrap();
-        }
-      }
-
-      write_game(&mut file, &field, &visits, komi_x_2)?;
-    }
-  }
+  // All games share one evaluator: the single position each of them expands at
+  // a time is merged into one large forward pass instead of being evaluated on
+  // its own, which would leave the device almost entirely idle.
+  let (handle, requests) = batch_model::<FloatElem<B>>();
+  let games = async {
+    let result = recalc_games(&params, || handle.clone(), rng, &should_stop).await;
+    // Close the channel so the evaluator terminates with the last game.
+    drop(handle);
+    result
+  };
+  let (games_result, evaluator_result) = futures::join!(games, run_evaluator(&mut predictor, requests));
+  evaluator_result?;
+  games_result?;
 
   Ok(ExitCode::SUCCESS)
 }
