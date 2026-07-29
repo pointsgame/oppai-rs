@@ -87,7 +87,7 @@ pub fn args() -> [Arg; 20] {
       .long("when-create-children")
       .help("Child nodes in the UTC tree will be created only after this number of node visits")
       .num_args(1)
-      .value_parser(value_parser!(usize))
+      .value_parser(value_parser!(u32))
       .default_value("2"),
     Arg::new("ucb-type")
       .long("ucb-type")
@@ -144,7 +144,7 @@ pub fn args() -> [Arg; 20] {
       .long("komi-min-iterations")
       .help("Dynamic komi for UCT will be updated after this number of iterations")
       .num_args(1)
-      .value_parser(value_parser!(usize))
+      .value_parser(value_parser!(u32))
       .default_value("3000"),
     Arg::new("fpu")
       .long("fpu")
