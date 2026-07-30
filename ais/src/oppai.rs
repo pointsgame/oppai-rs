@@ -95,6 +95,26 @@ type InnerAnalysis<N> = Either<
   >,
 >;
 
+/// Flattens Zero's play selection weight into a single number, preserving its
+/// ordering.
+///
+/// The weight is a two tier ordering: a child with a trustworthy LCB always
+/// outranks a child that only has visits to show for itself, and `Either` orders
+/// `Left` before `Right` accordingly. The two tiers live on incomparable scales
+/// - visit counts are unbounded positives while LCBs sit around `[-5, 1]` - so
+/// they are squashed monotonically into the disjoint intervals `[-1, 0)` and
+/// `(0, 1)` instead of being emitted as is, which would rank every searched
+/// child below every barely visited one.
+pub(crate) fn zero_weight_to_f64<N: Float>(weight: Either<(u64, N), N>) -> f64 {
+  match weight {
+    Either::Left((visits, prior)) => -(1.0 + visits as f64 + prior.to_f64().unwrap()).recip(),
+    Either::Right(lcb) => {
+      let lcb = lcb.to_f64().unwrap();
+      0.5 + 0.5 * lcb / (1.0 + lcb.abs())
+    }
+  }
+}
+
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct OppaiWeight<N: Float + Sum + Display + Debug + 'static>(<InnerAnalysis<N> as Analysis>::Weight);
 
@@ -108,10 +128,9 @@ impl<N: Float + Sum + Display + Debug + 'static> OppaiWeight<N> {
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Left(())))))) => None,
       Either::Right(Either::Right(Either::Right(Either::Left(Either::Right(Either::Right(w)))))) => Some(w as f64),
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w))))) => Some(w),
-      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w)))))) => match w {
-        Either::Left((visits, prior)) => Some(visits as f64 + prior.to_f64().unwrap()),
-        Either::Right(lcb) => lcb.to_f64(),
-      },
+      Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Left(w)))))) => {
+        Some(zero_weight_to_f64(w))
+      }
       Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(Either::Right(w)))))) => w.to_f64(),
     }
   }
