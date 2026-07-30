@@ -51,7 +51,7 @@ serde = { workspace = true, features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 oppai-field = { path = "../field", features = ["serde"] }
 # for wasm_js feature
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [features]
 default = ["dsu", "ndarray", "vulkan"]
