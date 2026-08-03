@@ -1,5 +1,5 @@
 use crate::field_features::{field_features, global};
-use crate::mcgs::Search;
+use crate::mcgs::{Params, Search};
 use crate::model::Model;
 use log::info;
 use ndarray::{Array2, Array3, Axis};
@@ -21,7 +21,13 @@ const MCTS_FULL_SIMS: u32 = 1000;
 
 /// Search statistics for a single move played in a self-play game.
 ///
-/// * `.0` - visit count for each explored child of the root (the policy target).
+/// * `.0` - search weight of each explored child of the root (the policy
+///   target). Uncertainty weighting makes playouts count unequally, so this is
+///   the total weight the search accumulated behind each move rather than the
+///   number of playouts. Data recorded before weighting was introduced stores
+///   plain visit counts, which is the same thing with every playout weighing
+///   one and normalizes to the same target.
+///
 /// * `.1` - whether this move was decided by a "full" search (and is therefore a
 ///   training sample).
 /// * `.2` - policy surprise: the KL divergence from the raw root policy prior
@@ -35,15 +41,15 @@ const MCTS_FULL_SIMS: u32 = 1000;
 ///   `[-1, 1]` from the perspective of the player to move. Used for value
 ///   surprise weighting.
 #[derive(Clone, PartialEq, Default, Debug)]
-pub struct Visits(pub Vec<(Pos, u64)>, pub bool, pub f64, pub f64, pub f64);
+pub struct Visits(pub Vec<(Pos, f64)>, pub bool, pub f64, pub f64, pub f64);
 
 impl Visits {
-  pub fn total(&self) -> u64 {
+  pub fn total(&self) -> f64 {
     self.0.iter().map(|&(_, v)| v).sum()
   }
 
-  pub fn max(&self) -> u64 {
-    self.0.iter().map(|&(_, v)| v).max().unwrap_or_default()
+  pub fn max(&self) -> f64 {
+    self.0.iter().map(|&(_, v)| v).fold(0.0, f64::max)
   }
 
   /// Improved stochastic policy values, pushed into an existing vector.
@@ -61,14 +67,14 @@ impl Visits {
 
     policies.extend(iter::repeat_n(N::zero(), (width * height) as usize));
 
-    if total > 0 {
-      for &(pos, visits) in &self.0 {
+    if total > 0.0 {
+      for &(pos, weight) in &self.0 {
         let x = to_x(field_width + 1, pos);
         let y = to_y(field_width + 1, pos);
         let (x, y) = rotate(field_width, field_height, x, y, rotation);
 
         let idx = start_idx + (y as usize) * (width as usize) + (x as usize);
-        policies[idx] = N::from(visits).unwrap() / N::from(total).unwrap();
+        policies[idx] = N::from(weight).unwrap() / N::from(total).unwrap();
       }
     } else {
       let (rotated_width, rotated_height) = rotate_sizes(field_width, field_height, rotation);
@@ -178,7 +184,7 @@ where
     }
   }
 
-  let mut search = Search::new(false);
+  let mut search = Search::new(Params::SELF_PLAY);
   let mut visits = Vec::new();
 
   // Raw network policy priors of the root, captured before temperature and
@@ -214,13 +220,13 @@ where
       search.mcgs(field, player, model, komi_x_2, rng).await?;
     }
 
-    let target: Vec<(Pos, u64)> = if full_search {
-      // Use pruned visits for full searches with Dirichlet noise.
+    let target: Vec<(Pos, N)> = if full_search {
+      // Use pruned weights for full searches with Dirichlet noise.
       // This removes the extra forced playouts from the policy target,
       // producing a cleaner training signal.
-      search.pruned_visits().collect()
+      search.pruned_weights().collect()
     } else {
-      search.visits().collect()
+      search.weights().collect()
     };
     // Policy surprise (KL divergence from the raw policy prior to the policy
     // target) is computed for cheap searches too: one whose surprise stands
@@ -232,7 +238,10 @@ where
     }
     let surprise = Search::policy_surprise(&target, &raw_priors).to_f64().unwrap();
     let current_visits = Visits(
-      target,
+      target
+        .into_iter()
+        .map(|(pos, weight)| (pos, weight.to_f64().unwrap()))
+        .collect(),
       full_search,
       surprise,
       search.value().to_f64().unwrap(),

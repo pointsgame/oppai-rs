@@ -1,4 +1,4 @@
-use crate::mcgs::Search;
+use crate::mcgs::{Params, Search};
 use crate::model::Model;
 use num_traits::Float;
 use oppai_field::field::Field;
@@ -24,8 +24,8 @@ where
   R: Rng,
 {
   let mut moves_count = 0;
-  let mut search1 = Search::new(true);
-  let mut search2 = Search::new(true);
+  let mut search1 = Search::new(Params::PLAY);
+  let mut search2 = Search::new(Params::PLAY);
 
   while !field.is_game_over(if player == Player::Red { komi_x_2 } else { -komi_x_2 }) {
     for _ in 0..MCTS_SIMS {

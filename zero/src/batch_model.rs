@@ -67,6 +67,10 @@ pub struct BatchModel<N: Float> {
   /// original handle returned by [`batch_model`] is only a clone source, so
   /// only clones are counted.
   counted: bool,
+  /// What the evaluator's model answers to [`Model::predicts_uncertainty`].
+  /// A handle cannot ask it, since the model behind the channel is not part of
+  /// this type, so it is told at construction.
+  predicts_uncertainty: bool,
 }
 
 impl<N: Float> Clone for BatchModel<N> {
@@ -75,6 +79,7 @@ impl<N: Float> Clone for BatchModel<N> {
     BatchModel {
       messages: self.messages.clone(),
       counted: true,
+      predicts_uncertainty: self.predicts_uncertainty,
     }
   }
 }
@@ -91,12 +96,16 @@ impl<N: Float> Drop for BatchModel<N> {
 /// [`run_evaluator`]. The returned handle is only a source of clones - give
 /// each game its own clone and drop the original once all games are created,
 /// so that the evaluator terminates with the last game.
-pub fn batch_model<N: Float>() -> (BatchModel<N>, mpsc::UnboundedReceiver<Message<N>>) {
+///
+/// `predicts_uncertainty` must be what the model given to [`run_evaluator`]
+/// reports for [`Model::predicts_uncertainty`]; the handles cannot see it.
+pub fn batch_model<N: Float>(predicts_uncertainty: bool) -> (BatchModel<N>, mpsc::UnboundedReceiver<Message<N>>) {
   let (messages, receiver) = mpsc::unbounded();
   (
     BatchModel {
       messages,
       counted: false,
+      predicts_uncertainty,
     },
     receiver,
   )
@@ -104,6 +113,10 @@ pub fn batch_model<N: Float>() -> (BatchModel<N>, mpsc::UnboundedReceiver<Messag
 
 impl<N: Float> Model<N> for BatchModel<N> {
   type E = Closed;
+
+  fn predicts_uncertainty(&self) -> bool {
+    self.predicts_uncertainty
+  }
 
   async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let (reply, result) = oneshot::channel();

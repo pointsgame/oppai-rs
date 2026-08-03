@@ -1,9 +1,8 @@
 use crate::{
   field_features::{field_features, global},
-  mcgs::Search,
+  mcgs::{Params, PlaySelectionWeight, Search},
   model::Model,
 };
-use either::Either;
 use ndarray::Axis;
 use num_traits::Float;
 use oppai_field::{
@@ -16,7 +15,7 @@ use std::{
   iter::Sum,
 };
 
-type Analysis<N> = (Vec<(Pos, Either<(u64, N), N>)>, u32, N);
+type Analysis<N> = (Vec<(Pos, PlaySelectionWeight<N>)>, u32, N);
 
 type PolicyAnalysis<N> = (Vec<(Pos, N)>, N);
 
@@ -40,7 +39,7 @@ where
   pub fn new(model: M) -> Self {
     Zero {
       model,
-      search: Search::new(true),
+      search: Search::new(Params::PLAY),
       // A fresh search holds an empty root, which corresponds to the empty
       // board: zero moves played, zero hash, Red to move.
       player: Player::Red,
@@ -50,14 +49,14 @@ where
   }
 
   pub fn clear(&mut self) {
-    self.search = Search::new(true);
+    self.search = Search::new(Params::PLAY);
     self.player = Player::Red;
     self.moves_count = 0;
     self.hash = 0;
   }
 
   fn init(&mut self, field: &Field, player: Player) {
-    self.search = Search::new(true);
+    self.search = Search::new(Params::PLAY);
     self.player = player;
     self.moves_count = field.moves_count();
     self.hash = field.hash();

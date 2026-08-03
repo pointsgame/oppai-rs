@@ -15,7 +15,7 @@ use oppai_field::{
 use oppai_minimax::minimax::{Minimax as InnerMinimax, MinimaxConfig};
 use oppai_patterns::patterns::Patterns as InnerPatterns;
 use oppai_uct::uct::{UctConfig, UctRoot};
-use oppai_zero::{model::Model, zero::Zero as InnerZero};
+use oppai_zero::{mcgs::PlaySelectionWeight, model::Model, zero::Zero as InnerZero};
 use rand::{Rng, SeedableRng, distr::StandardUniform, prelude::Distribution};
 use std::{
   convert::identity,
@@ -88,7 +88,7 @@ type InnerAnalysis<N> = Either<
         Either<SimpleAnalysis<i32, (), ()>, Either<SingleAnalysis<i32, u32>, SimpleAnalysis<i32, (), ()>>>,
         Either<
           SimpleAnalysis<f64, f64, u32>,
-          Either<SimpleAnalysis<Either<(u64, N), N>, N, u32>, SimpleAnalysis<N, N, ()>>,
+          Either<SimpleAnalysis<PlaySelectionWeight<N>, N, u32>, SimpleAnalysis<N, N, ()>>,
         >,
       >,
     >,
@@ -99,15 +99,15 @@ type InnerAnalysis<N> = Either<
 /// ordering.
 ///
 /// The weight is a two tier ordering: a child with a trustworthy LCB always
-/// outranks a child that only has visits to show for itself, and `Either` orders
-/// `Left` before `Right` accordingly. The two tiers live on incomparable scales
-/// - visit counts are unbounded positives while LCBs sit around `[-5, 1]` - so
-/// they are squashed monotonically into the disjoint intervals `[-1, 0)` and
-/// `(0, 1)` instead of being emitted as is, which would rank every searched
-/// child below every barely visited one.
-pub(crate) fn zero_weight_to_f64<N: Float>(weight: Either<(u64, N), N>) -> f64 {
+/// outranks a child that only has search weight to show for itself, and `Either`
+/// orders `Left` before `Right` accordingly. The two tiers live on incomparable
+/// scales - search weights are unbounded positives while LCBs sit around
+/// `[-5, 1]` - so they are squashed monotonically into the disjoint intervals
+/// `[-1, 0)` and `(0, 1)` instead of being emitted as is, which would rank every
+/// searched child below every barely searched one.
+pub(crate) fn zero_weight_to_f64<N: Float>(weight: PlaySelectionWeight<N>) -> f64 {
   match weight {
-    Either::Left((visits, prior)) => -(1.0 + visits as f64 + prior.to_f64().unwrap()).recip(),
+    Either::Left((search_weight, prior)) => -(1.0 + search_weight.to_f64().unwrap() + prior.to_f64().unwrap()).recip(),
     Either::Right(lcb) => {
       let lcb = lcb.to_f64().unwrap();
       0.5 + 0.5 * lcb / (1.0 + lcb.abs())

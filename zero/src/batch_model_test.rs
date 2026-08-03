@@ -21,7 +21,7 @@ fn batches_across_games_and_pads_sizes() {
     Ok::<_, ()>((policies, values))
   };
 
-  let (handle, requests) = batch_model::<f64>();
+  let (handle, requests) = batch_model::<f64>(true);
 
   let game = |n: usize, h: usize, w: usize| {
     let mut model = handle.clone();
@@ -71,7 +71,7 @@ fn finished_games_are_not_waited_for() {
     Ok::<_, ()>((policies, values))
   };
 
-  let (handle, messages) = batch_model::<f64>();
+  let (handle, messages) = batch_model::<f64>(true);
 
   let game = |predictions: usize| {
     let mut model = handle.clone();
@@ -99,7 +99,7 @@ fn finished_games_are_not_waited_for() {
 
 #[test]
 fn predict_fails_when_evaluator_is_gone() {
-  let (handle, requests) = batch_model::<f64>();
+  let (handle, requests) = batch_model::<f64>(true);
   drop(requests);
 
   let mut model = handle;

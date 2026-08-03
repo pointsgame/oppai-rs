@@ -41,7 +41,7 @@ use oppai_zero::{
   batch_model::{batch_model, run_evaluator},
   episode::{Visits, episode},
   examples::Examples,
-  mcgs::Search,
+  mcgs::{Params, Search},
   model::{Model, TrainableModel},
   opening::opening,
   pit,
@@ -242,7 +242,7 @@ where
 
       // All games share one evaluator: their positions are merged into large
       // forward passes instead of each game evaluating its own tiny batch.
-      let (handle, requests) = batch_model::<FloatElem<B>>();
+      let (handle, requests) = batch_model::<FloatElem<B>>(predictor.predicts_uncertainty());
       let games = async {
         let result = play_games(&params, || handle.clone(), rng, &should_stop).await;
         // Close the channel so the evaluator terminates with the last game.
@@ -598,14 +598,19 @@ where
 
     // A single search step expands the root with the network, filling in the
     // raw child priors used to measure the surprise.
-    let mut search = Search::<N>::new(false);
+    let mut search = Search::<N>::new(Params::SELF_PLAY);
     search
       .mcgs(&mut position_field, player, model, komi_x_2, rng)
       .await
       .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
     let mut priors = vec![N::zero(); position_field.length()];
     search.root_priors(&mut priors);
-    current.2 = Search::policy_surprise(&current.0, &priors).to_f64().unwrap();
+    let target = current
+      .0
+      .iter()
+      .map(|&(pos, weight)| (pos, N::from(weight).unwrap()))
+      .collect::<Vec<_>>();
+    current.2 = Search::policy_surprise(&target, &priors).to_f64().unwrap();
     if has_value_surprise {
       current.4 = search.raw_value().to_f64().unwrap();
     }
@@ -687,7 +692,7 @@ where
   // All games share one evaluator: the single position each of them expands at
   // a time is merged into one large forward pass instead of being evaluated on
   // its own, which would leave the device almost entirely idle.
-  let (handle, requests) = batch_model::<FloatElem<B>>();
+  let (handle, requests) = batch_model::<FloatElem<B>>(predictor.predicts_uncertainty());
   let games = async {
     let result = recalc_games(&params, || handle.clone(), rng, &should_stop).await;
     // Close the channel so the evaluator terminates with the last game.

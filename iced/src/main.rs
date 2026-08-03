@@ -293,12 +293,12 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
       self
         .canvas_field
         .extra
-        .extend(visits.0.iter().map(|&(pos, visits)| Label {
+        .extend(visits.0.iter().map(|&(pos, weight)| Label {
           pos,
-          text: visits.to_string(),
+          text: format!("{weight:.0}"),
           color: Color {
             r: 0.0,
-            g: visits as f32 / max,
+            g: weight as f32 / max,
             b: 0.0,
             a: 1.0,
           },

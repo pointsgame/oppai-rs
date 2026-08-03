@@ -4,7 +4,7 @@ extern crate criterion;
 use criterion::{Bencher, Criterion};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
-use oppai_zero::mcgs::Search;
+use oppai_zero::mcgs::{Params, Search};
 use oppai_zero::random_model::RandomModel;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
@@ -29,7 +29,10 @@ fn search(bencher: &mut Bencher) {
     ",
   );
   bencher.iter(|| {
-    let mut search = Search::<f64>::new(false);
+    let mut search = Search::<f64>::new(Params {
+      forbid_bad: false,
+      ..Params::PLAY
+    });
     let mut model = RandomModel(rng.clone());
     for _ in 0..SIMS {
       futures::executor::block_on(search.mcgs(&mut field, Player::Red, &mut model, 0, &mut rng.clone())).unwrap();
