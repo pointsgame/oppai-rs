@@ -313,6 +313,12 @@ fn subtree_value_bias_correction() {
   // and the contribution weight is ChildWeight(n)^alpha. Both are compared against
   // the node's own stored totals rather than recomputed from its children, since a
   // transposition can update a child after this node was last recomputed.
+  //
+  // Reading ChildWeight(n) back off `weight_sum` only works while nothing has been
+  // pruned from it, which holds here because the policy is uniform: every child's
+  // lenient share is then twice the average weight of the children before it, and
+  // this search never concentrates that hard. See
+  // `the_bias_contribution_ignores_the_pruned_weight` for the general case.
   let alpha = 0.8;
   let mut bucketed = 0;
   for node_idx in 0..search.nodes.len() {
@@ -901,9 +907,9 @@ fn squared_weight_sum_accumulates_over_the_children() {
   });
 
   let Search { map, nodes, bias, .. } = &mut search;
-  // A single child means the value downweighting is a no-op by construction, so
-  // this isolates the weight bookkeeping.
-  Search::update_node(map, nodes, bias, 0, PARAMS.value_weight_exponent, &mut Vec::new());
+  // A single child means both reweightings are no-ops by construction, so this
+  // isolates the weight bookkeeping.
+  Search::update_node(map, nodes, bias, 0, PARAMS, &mut Vec::new());
 
   let root = &search.nodes[search.root_idx];
   assert_eq!(root.visits, 3, "1 own visit plus the edge's 2");
@@ -1314,10 +1320,15 @@ fn total_child_weight_is_summed_fresh() {
 #[test]
 fn bad_children_are_downweighted_before_averaging() {
   let build = |exponent: f64| {
-    let mut search = Search::<f64>::new(Params {
+    let params = Params {
       value_weight_exponent: exponent,
+      // Isolated from the noise pruning, which is a no-op here anyway: the three
+      // children share a prior, so none of them holds more than the lenient
+      // share of the weight of the ones before it.
+      noise_prune_utility_scale: 0.0,
       ..PARAMS
-    });
+    };
+    let mut search = Search::<f64>::new(params);
     // Three equally searched children: two agree the position is fine for the
     // parent, one is a disaster. Child values are from the child's perspective,
     // so -0.5 is +0.5 for the parent.
@@ -1330,7 +1341,7 @@ fn bad_children_are_downweighted_before_averaging() {
     search.nodes[search.root_idx].weight = 1.0;
     search.nodes[search.root_idx].raw_value = 0.0;
     let Search { map, nodes, bias, .. } = &mut search;
-    Search::update_node(map, nodes, bias, 0, exponent, &mut Vec::new());
+    Search::update_node(map, nodes, bias, 0, params, &mut Vec::new());
     (search.nodes[0].value, search.nodes[0].weight_sum)
   };
 
@@ -1353,6 +1364,160 @@ fn bad_children_are_downweighted_before_averaging() {
     plain_total
   );
   assert!((total - 61.0).abs() < 1e-9);
+}
+
+// Weight that exploration piled onto a move the policy ranked low, and that the
+// search then found to be worse than the moves it ranked high, is discarded
+// rather than redistributed: it says what that move is worth, not what the
+// position is. So unlike the value downweighting, this lowers the node's total.
+#[test]
+fn refuted_low_policy_children_lose_their_excess_weight() {
+  // Two equally searched children. The one the policy likes is good for the
+  // parent - child values are from the child's perspective, so -0.5 is +0.5 -
+  // and the other is bad. `swap` inserts them the other way round: the pruning
+  // has to judge them in policy order, not in the order the edges happen to sit
+  // in, which is a shuffle of the board.
+  let build = |scale: f64, refuted_prior: f64, swap: bool| {
+    let params = Params {
+      // Isolated from the value downweighting, which reshuffles the same weights
+      // among the same children rather than dropping any.
+      value_weight_exponent: 0.0,
+      noise_prune_utility_scale: scale,
+      ..PARAMS
+    };
+    let mut search = Search::<f64>::new(params);
+    let add = |search: &mut Search<f64>, pos: Pos, value: f64, prior: f64| {
+      add_weighted_root_child(search, pos, 20, 20.0, prior);
+      let idx = search.nodes.len() - 1;
+      search.nodes[idx].value = value;
+      search.nodes[idx].raw_value = value;
+      search.nodes[idx].value_sq = value * value;
+    };
+    let good = (10, -0.5, 0.9);
+    let bad = (11, 0.4, refuted_prior);
+    for (pos, value, prior) in if swap { [bad, good] } else { [good, bad] } {
+      add(&mut search, pos, value, prior);
+    }
+    search.nodes[search.root_idx].weight = 1.0;
+    search.nodes[search.root_idx].raw_value = 0.0;
+    let Search { map, nodes, bias, .. } = &mut search;
+    Search::update_node(map, nodes, bias, 0, params, &mut Vec::new());
+    (search.nodes[0].value, search.nodes[0].weight_sum)
+  };
+
+  // The plain weighted mean over the root's own evaluation and both children.
+  let (plain, plain_total) = build(0.0, 0.1, false);
+  assert!((plain - (0.5 * 20.0 - 0.4 * 20.0) / 41.0).abs() < 1e-9);
+  assert!((plain_total - 41.0).abs() < 1e-9);
+
+  // A ninth of the policy but half of the weight, and refuted by 0.9 of utility:
+  // all but 2 * 20 * (0.1 / 0.9) of its weight goes, up to the `exp(-0.9 / 0.15)`
+  // of the excess that six scale lengths of doubt leave behind.
+  let excess = 20.0 - 2.0 * 20.0 * (0.1 / 0.9);
+  let expected = 41.0 - excess * (1.0 - (-0.9f64 / 0.15).exp());
+  let (pruned, total) = build(0.15, 0.1, false);
+  assert!(
+    (total - expected).abs() < 1e-9,
+    "the excess weight should be gone, got {total} vs {expected}"
+  );
+  assert!(
+    pruned > plain + 1e-6,
+    "dropping the refuted child's weight should lift the value, got {pruned} vs {plain}"
+  );
+
+  // Same two children in the other order in the edge list.
+  let (swapped, swapped_total) = build(0.15, 0.1, true);
+  assert!((swapped - pruned).abs() < 1e-9, "policy order decides, not edge order");
+  assert!((swapped_total - total).abs() < 1e-9);
+
+  // A child that is just as refuted but holds no more than its policy share of
+  // the weight keeps all of it: there is nothing exploration overspent here.
+  let (_, unpruned_total) = build(0.15, 0.9, false);
+  assert!(
+    (unpruned_total - 41.0).abs() < 1e-9,
+    "a child within its policy share should keep its weight, got {unpruned_total}"
+  );
+}
+
+// The weight a node adds to its bias bucket says how much search stands behind
+// the error that node observed, and the playouts the pruning discards were still
+// spent looking at the position. So the bucket weighs the node by the search it
+// did, not by the part of it the value ends up trusting - the pruning moves the
+// observed error, not the confidence in it.
+#[test]
+fn the_bias_contribution_ignores_the_pruned_weight() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    .....
+    ..aA.
+    .Aa..
+    .....
+    ",
+  );
+  // Any real bucket will do; the node is bucketed by hand because the root, which
+  // this exercises `update_node` on, is deliberately left out of the table.
+  let key = Search::<f64>::bias_key(&field).unwrap();
+
+  // The same two children as above: the one the policy likes is good for the
+  // parent, the low-prior one holds half the weight and is refuted.
+  let build = |scale: f64| {
+    let params = Params {
+      value_weight_exponent: 0.0,
+      noise_prune_utility_scale: scale,
+      ..PARAMS
+    };
+    let mut search = Search::<f64>::new(params);
+    for (pos, value, prior) in [(10, -0.5, 0.9), (11, 0.4, 0.1)] {
+      add_weighted_root_child(&mut search, pos, 20, 20.0, prior);
+      let idx = search.nodes.len() - 1;
+      search.nodes[idx].value = value;
+      search.nodes[idx].raw_value = value;
+      search.nodes[idx].value_sq = value * value;
+    }
+    let root = &mut search.nodes[search.root_idx];
+    root.weight = 1.0;
+    root.raw_value = 0.0;
+    root.bias_key = Some(key);
+    let Search { map, nodes, bias, .. } = &mut search;
+    Search::update_node(map, nodes, bias, 0, params, &mut Vec::new());
+    let root = &search.nodes[0];
+    (
+      root.weight_sum,
+      root.last_bias_weight,
+      root.last_bias_delta,
+      search.bias[&key].clone(),
+    )
+  };
+
+  let (plain_total, plain_weight, plain_delta, plain_entry) = build(0.0);
+  let (total, weight, delta, entry) = build(0.15);
+
+  // The pruning did fire, so the two runs really do differ in the node's total.
+  assert!(
+    total < plain_total - 1e-6,
+    "the refuted child's excess weight should be gone, got {total} vs {plain_total}"
+  );
+
+  // Both runs weigh the node by the 40 of child weight the search actually spent.
+  let expected = 40f64.powf(0.8);
+  assert!(
+    (plain_weight - expected).abs() < 1e-9 && (weight - expected).abs() < 1e-9,
+    "the bucket weight should be ChildWeight(n)^alpha before pruning, got {weight} vs {plain_weight}"
+  );
+  assert!((entry.weight_sum - expected).abs() < 1e-9);
+  assert!((plain_entry.weight_sum - expected).abs() < 1e-9);
+
+  // The observed error, on the other hand, is the one the pruning arrived at: it
+  // is the children's utility that the node's value is built from.
+  assert!(
+    delta > plain_delta + 1e-6,
+    "dropping the refuted child's weight should lift the observed error, got {delta} vs {plain_delta}"
+  );
+  assert!((entry.delta_sum - delta).abs() < 1e-9);
+  let children_utility = (0.5 * 20.0 - 0.4 * (total - 21.0)) / (total - 1.0);
+  assert!((delta - children_utility * expected).abs() < 1e-9);
 }
 
 // The recorded policy target promotes the child with the best lower confidence

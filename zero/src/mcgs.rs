@@ -147,6 +147,13 @@ pub struct BiasEntry<N: Float> {
 /// without one.
 pub type PlaySelectionWeight<N> = Either<(N, N), N>;
 
+/// A visited child as [`Search::update_node`] aggregates it: its node index, the
+/// weight it contributes to the parent, its utility from the *parent's*
+/// perspective, and the raw policy prior of the edge leading to it. The weight is
+/// the only mutable part - both the noise pruning and the value downweighting
+/// rewrite it before the children are averaged in.
+type Child<N> = (usize, N, N, N);
+
 /// Represents an edge from a parent to a child in the graph.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Edge<N: Float> {
@@ -368,6 +375,10 @@ pub struct Params {
   /// How strongly a child whose value sits below its siblings is downweighted
   /// when averaging them into the parent; 0 disables it.
   pub value_weight_exponent: f64,
+  /// The utility gap at which a child holding more weight than its prior
+  /// justifies loses most of the excess; 0 disables the pruning. See
+  /// [`Search::prune_noise_weight`].
+  pub noise_prune_utility_scale: f64,
   /// FPU reduction applied at the root, where the alternative to a reduction is
   /// exploring widely.
   pub root_fpu_reduction_max: f64,
@@ -386,6 +397,11 @@ impl Params {
     cpuct_utility_stdev_scale: 0.0,
     root_fpu_reduction_max: 0.0,
     value_weight_exponent: 0.5,
+    // Off so that the weight the target is built from stays the visit count.
+    // Discarding weight is a value-side correction, and letting it through would
+    // teach the policy that a move is worth less than the search spent on it
+    // exactly where the search was told to spend more than it wanted to.
+    noise_prune_utility_scale: 0.0,
   };
 
   /// Playing to win: no search spent on moves that lose points outright, certain
@@ -399,6 +415,7 @@ impl Params {
     cpuct_utility_stdev_scale: 0.85,
     root_fpu_reduction_max: 0.1,
     value_weight_exponent: 0.25,
+    noise_prune_utility_scale: 0.15,
   };
 }
 
@@ -473,6 +490,54 @@ impl<N: Float + Sum + Copy> Search<N> {
     N::zero()
   }
 
+  /// A child may not hold much more weight than the policy justifies while
+  /// looking worse than the children the policy ranked above it. Drops the excess
+  /// and returns the reduced total weight.
+  ///
+  /// Root exploration noise deliberately forces weight onto moves the policy
+  /// thinks little of, and that weight then drags the root's value towards
+  /// whatever those moves turn out to be worth. The same happens without noise
+  /// wherever exploration overshoots. Unlike
+  /// [`Self::downweight_bad_children`], which only redistributes weight and so
+  /// leaves the amount of evidence behind a node alone, this genuinely discards
+  /// it: weight spent proving a move bad is not evidence about the position.
+  ///
+  /// Children are considered in descending policy order, each judged against the
+  /// weighted average utility of the ones before it. A child holding more than
+  /// twice the share of their weight its prior would give it, while its utility
+  /// sits `gap` below their average, keeps `exp(-gap / scale)` of that excess -
+  /// so a marginally worse child is left nearly alone and a clearly refuted one
+  /// is cut back to its lenient share.
+  fn prune_noise_weight(children: &mut [Child<N>], total_weight: N, scale: f64) -> N {
+    if scale == 0.0 || children.len() < 2 || total_weight <= N::from(1e-5).unwrap() {
+      return total_weight;
+    }
+    // The policy order is what makes "the children before it" mean "the children
+    // the policy preferred"; the order the edges happen to sit in is arbitrary.
+    children.sort_unstable_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+
+    let scale = N::from(scale).unwrap();
+    let leniency = N::from(2.0).unwrap();
+    let mut utility_sum = N::zero();
+    let mut weight_sum = N::zero();
+    let mut prior_sum = N::zero();
+    for &mut (_, ref mut weight, utility, prior) in children.iter_mut() {
+      if weight_sum > N::zero() && prior_sum > N::zero() {
+        let gap = utility_sum / weight_sum - utility;
+        if gap > N::zero() {
+          let share = leniency * weight_sum * prior / prior_sum;
+          if *weight > share {
+            *weight = *weight - (*weight - share) * (N::one() - (-gap / scale).exp());
+          }
+        }
+      }
+      utility_sum = utility_sum + utility * *weight;
+      weight_sum = weight_sum + *weight;
+      prior_sum = prior_sum + prior;
+    }
+    weight_sum
+  }
+
   /// Reweights children by how far their utility sits below the weighted mean,
   /// then renormalizes to the original total weight.
   ///
@@ -480,11 +545,15 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// utility gap in units of a spread that shrinks as the child accumulates
   /// weight (`sqrt(1 / (1.5 * sqrt(weight)))`) - so a lightly searched child is
   /// judged leniently and a heavily searched one that still looks bad is cut hard.
-  fn downweight_bad_children(children: &mut [(usize, N, N)], total_weight: N, exponent: f64) {
+  fn downweight_bad_children(children: &mut [Child<N>], total_weight: N, exponent: f64) {
     if exponent == 0.0 || children.len() < 2 || total_weight <= N::zero() {
       return;
     }
-    let mean_utility = children.iter().map(|&(_, weight, utility)| weight * utility).sum::<N>() / total_weight;
+    let mean_utility = children
+      .iter()
+      .map(|&(_, weight, utility, _)| weight * utility)
+      .sum::<N>()
+      / total_weight;
 
     // Minimum variance for stability regardless of the formula above.
     let min_variance = N::from(1e-8).unwrap();
@@ -502,7 +571,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     };
 
     let mut new_total = N::zero();
-    for (_, weight, utility) in children.iter_mut() {
+    for (_, weight, utility, _) in children.iter_mut() {
       let stdev = (min_variance + (precision_scale * weight.sqrt()).recip()).sqrt();
       let z = (*utility - mean_utility) / stdev;
       *weight = *weight * raise(N::from(value_weight_cdf(z.to_f64().unwrap())).unwrap() + offset);
@@ -514,19 +583,19 @@ impl<N: Float + Sum + Copy> Search<N> {
     // Restore the original total so that only the distribution across children
     // changes and the node's own `weight_sum` is unaffected.
     let factor = total_weight / new_total;
-    for (_, weight, _) in children.iter_mut() {
+    for (_, weight, _, _) in children.iter_mut() {
       *weight = *weight * factor;
     }
   }
 
   /// [`Self::downweight_bad_children`] for an exponent other than 0.5 or 0.25.
-  fn downweight_bad_children_powf(children: &mut [(usize, N, N)], total_weight: N, mean_utility: N, exponent: f64) {
+  fn downweight_bad_children_powf(children: &mut [Child<N>], total_weight: N, mean_utility: N, exponent: f64) {
     let min_variance = N::from(1e-8).unwrap();
     let precision_scale = N::from(1.5).unwrap();
     let offset = N::from(0.0001).unwrap();
     let exponent = N::from(exponent).unwrap();
     let mut new_total = N::zero();
-    for (_, weight, utility) in children.iter_mut() {
+    for (_, weight, utility, _) in children.iter_mut() {
       let stdev = (min_variance + (precision_scale * weight.sqrt()).recip()).sqrt();
       let z = (*utility - mean_utility) / stdev;
       *weight = *weight * (N::from(value_weight_cdf(z.to_f64().unwrap())).unwrap() + offset).powf(exponent);
@@ -536,7 +605,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       return;
     }
     let factor = total_weight / new_total;
-    for (_, weight, _) in children.iter_mut() {
+    for (_, weight, _, _) in children.iter_mut() {
       *weight = *weight * factor;
     }
   }
@@ -554,15 +623,14 @@ impl<N: Float + Sum + Copy> Search<N> {
     nodes: &mut [Node<N>],
     bias: &mut std::collections::HashMap<BiasKey, BiasEntry<N>>,
     node_idx: usize,
-    value_weight_exponent: f64,
+    params: Params,
     // Scratch space for the children, reused across a whole backup so that the
     // pass below costs no allocation per node.
-    children: &mut Vec<(usize, N, N)>,
+    children: &mut Vec<Child<N>>,
   ) {
     let mut sum_visits = 0;
-    // Children in the order they contribute, as (index, weight, utility from
-    // this node's perspective). Collected first because the downweighting below
-    // needs the weighted mean utility before any child's weight is final.
+    // Every visited child, collected first because both reweightings below need
+    // to see all of them before any child's weight is final.
     children.clear();
     let mut sum_weights = N::zero();
 
@@ -577,22 +645,33 @@ impl<N: Float + Sum + Copy> Search<N> {
         let child = &nodes[child_idx];
         let edge_weight = Self::child_weight(child, edge.visits);
         sum_weights = sum_weights + edge_weight;
-        children.push((child_idx, edge_weight, -child.value));
+        children.push((child_idx, edge_weight, -child.value, edge.prior));
       }
       sum_visits += edge.visits;
     }
+
+    // ChildWeight(n) = W(n) - weight(n), the weight of all the search below this
+    // node before any of the corrections below touch it. Kept because the bias
+    // bucket weights a node by how much search stands behind its observed error,
+    // which is the search that happened rather than the part of it the value
+    // ends up trusting.
+    let searched_weight = sum_weights;
+
+    // Discard weight that exploration put on refuted moves against the policy's
+    // advice; unlike the downweighting below, this lowers the node's total.
+    sum_weights = Self::prune_noise_weight(children, sum_weights, params.noise_prune_utility_scale);
 
     // Downweight children whose value sits far below the others before averaging
     // them in, so that a single bad line explored deeply cannot drag the node's
     // value down as much as a genuinely even position would. The weights are
     // renormalized back to the same total, so only the distribution across
     // children changes and `weight_sum` is untouched.
-    Self::downweight_bad_children(children, sum_weights, value_weight_exponent);
+    Self::downweight_bad_children(children, sum_weights, params.value_weight_exponent);
 
     let mut sum_values = N::zero();
     let mut sum_values_sq = N::zero();
     let mut sum_weights_sq = N::zero();
-    for &(child_idx, weight, _) in children.iter() {
+    for &(child_idx, weight, _, _) in children.iter() {
       let child = &nodes[child_idx];
       sum_values = sum_values + weight * -child.value;
       sum_values_sq = sum_values_sq + weight * child.value_sq;
@@ -616,8 +695,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         // holds `-sum_c value(c) * weight(c)`, i.e. the children's utility from
         // the parent's perspective times their weights.
         let children_utility = sum_values / sum_weights;
-        // ChildWeight(n) = W(n) - weight(n) = sum of the children's edge weights.
-        let weight = sum_weights.powf(N::from(Self::BIAS_ALPHA).unwrap());
+        let weight = searched_weight.powf(N::from(Self::BIAS_ALPHA).unwrap());
         let delta = (children_utility - raw_value) * weight;
 
         let entry = bias.entry(key).or_insert(BiasEntry {
@@ -687,7 +765,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       }
     }
 
-    let value_weight_exponent = self.params.value_weight_exponent;
+    let params = self.params;
     let mut children = Vec::new();
     for node_idx in order {
       // A node the root was just moved into may not have been evaluated yet, and
@@ -700,7 +778,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         &mut self.nodes,
         &mut self.bias,
         node_idx,
-        value_weight_exponent,
+        params,
         &mut children,
       );
     }
@@ -1080,7 +1158,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       leaf.weight_sum = new_weight_sum;
       leaf.weight_sq_sum = leaf.weight_sq_sum + weight * weight;
     }
-    let value_weight_exponent = self.params.value_weight_exponent;
+    let params = self.params;
     let mut children = Vec::new();
     for &(node_idx, _) in path.iter().rev() {
       Self::update_node(
@@ -1088,7 +1166,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         &mut self.nodes,
         &mut self.bias,
         node_idx,
-        value_weight_exponent,
+        params,
         &mut children,
       );
     }
@@ -1097,7 +1175,7 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// Computes the subtree value bias bucket for a leaf node from the field state
   /// at the leaf (with all of the path's moves played). Returns `None` when
   /// there is no preceding move to key on.
-  fn bias_key(field: &Field) -> Option<BiasKey> {
+  pub(crate) fn bias_key(field: &Field) -> Option<BiasKey> {
     let moves = &field.moves;
     let last = *moves.last()?;
     let prev = moves.len().checked_sub(2).map_or(0, |i| moves[i]);
