@@ -60,7 +60,10 @@ use std::{
   iter::{self, Sum},
   path::Path,
   process::ExitCode,
-  sync::{Arc, atomic::AtomicBool},
+  sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, AtomicUsize},
+  },
 };
 
 fn init<B>(params: InitParams, device: B::Device) -> Result<ExitCode>
@@ -142,13 +145,26 @@ fn write_game(file: &mut File, field: &ExtendedField, visits: &[Visits], komi_x_
   Ok(())
 }
 
-/// Plays `params.count` games, up to `params.parallel_games` of them
-/// concurrently, creating a fresh model per game with `new_model`.
+/// Plays games claimed from the shared `next_game` ticket, up to `parallel` of
+/// them concurrently, creating a fresh model per game with `new_model`.
+///
+/// One of these runs per thread. Games are claimed one at a time rather than
+/// handed out in equal shares up front, because their lengths vary widely: a
+/// thread that drew the short ones would otherwise sit idle while the others were
+/// still playing. Every thread keeps taking games until none are left.
+///
+/// The games file is shared with the other threads. Games are written as
+/// independent gzip members, so the lock only has to keep two of them from
+/// interleaving.
+#[allow(clippy::too_many_arguments)]
 async fn play_games<N, M, MF, R>(
   params: &PlayParams,
+  next_game: &AtomicUsize,
+  parallel: usize,
   mut new_model: MF,
   rng: &mut R,
   should_stop: &AtomicBool,
+  file: &Mutex<File>,
 ) -> Result<()>
 where
   N: Float + Sum + SampleUniform + Display + Debug,
@@ -160,76 +176,109 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
-  let games = (0..params.count)
-    .take_while(|&i| {
-      if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
-        log::info!("Stopping after {} games", i);
-        false
-      } else {
-        true
+  let games = iter::from_fn(|| {
+    if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+      return None;
+    }
+    // Claim the next game, or stop once they have all been taken. The stream below
+    // pulls from here only as a slot frees up, so a game is claimed exactly when a
+    // thread is about to start playing it.
+    //
+    // The ticket counts up rather than a stock counting down, because a counter of
+    // games left would have to be decremented with `fetch_sub`, and that wraps: the
+    // thread that took the last game would leave `usize::MAX` behind and every
+    // later claim would succeed. Counting up cannot wrap into a valid ticket.
+    if next_game.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= params.count {
+      return None;
+    }
+    Some(())
+  })
+  .map(|()| {
+    let mut rng = SmallRng::from_seed(rng.random());
+    let mut model = new_model();
+    let width = params.width[rng.random_range(0..params.width.len())];
+    let height = params.height[rng.random_range(0..params.height.len())];
+    let op = opening(width, height, &mut rng);
+    let komi_x_2_count = params
+      .komi_x_2
+      .iter()
+      .copied()
+      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
+      .count();
+    let komi_x_2 = params
+      .komi_x_2
+      .iter()
+      .copied()
+      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
+      .nth(rng.random_range(0..komi_x_2_count))
+      .unwrap();
+    async move {
+      let mut player = Player::Red;
+      let mut field = Field::new_from_rng(width, height, &mut rng);
+      for (x, y) in op {
+        let pos = field.to_pos(x, y);
+        assert!(field.put_point(pos, player));
+        field.update_grounded();
+        player = player.next();
       }
-    })
-    .map(|_| {
-      let mut rng = SmallRng::from_seed(rng.random());
-      let mut model = new_model();
-      let width = params.width[rng.random_range(0..params.width.len())];
-      let height = params.height[rng.random_range(0..params.height.len())];
-      let op = opening(width, height, &mut rng);
-      let komi_x_2_count = params
-        .komi_x_2
-        .iter()
-        .copied()
-        .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
-        .count();
-      let komi_x_2 = params
-        .komi_x_2
-        .iter()
-        .copied()
-        .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
-        .nth(rng.random_range(0..komi_x_2_count))
-        .unwrap();
-      async move {
-        let mut player = Player::Red;
-        let mut field = Field::new_from_rng(width, height, &mut rng);
-        for (x, y) in op {
-          let pos = field.to_pos(x, y);
-          assert!(field.put_point(pos, player));
-          field.update_grounded();
-          player = player.next();
-        }
 
-        let visits = episode(&mut field, player, &mut model, komi_x_2, &mut rng)
-          .await
-          .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
+      let visits = episode(&mut field, player, &mut model, komi_x_2, &mut rng)
+        .await
+        .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
 
-        Ok::<_, Error>((field, visits, komi_x_2))
-      }
-    });
+      Ok::<_, Error>((field, visits, komi_x_2))
+    }
+  });
 
-  let mut games = futures::stream::iter(games).buffer_unordered(params.parallel_games);
+  let mut games = futures::stream::iter(games).buffer_unordered(parallel);
 
-  let mut file = File::options().append(true).create(true).open(&params.games)?;
   while let Some(game) = games.next().await {
     let (field, visits, komi_x_2) = game?;
+    let mut file = file
+      .lock()
+      .map_err(|_| anyhow::anyhow!("the games file lock is poisoned"))?;
     write_game(&mut file, &field.into(), &visits, komi_x_2)?;
   }
 
   Ok(())
 }
 
-async fn play<B, R: Rng>(
-  params: PlayParams,
-  device: B::Device,
-  rng: &mut R,
-  should_stop: Arc<AtomicBool>,
-) -> Result<ExitCode>
+/// Splits `total` as evenly as possible into `parts`, giving the remainder to the
+/// first ones.
+fn split(total: usize, parts: usize, index: usize) -> usize {
+  total / parts + usize::from(index < total % parts)
+}
+
+/// Plays `params.count` games across `params.threads` threads.
+///
+/// The games are CPU bound between forward passes - selecting paths, expanding
+/// nodes, replaying the field - so running them concurrently on one thread, as a
+/// single executor does, leaves that work on a single core no matter how many
+/// games are in flight. Here each thread drives its own share of the games while
+/// one evaluator, on this thread, serves all of them from one device.
+fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
 where
   B: Backend,
-  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
+  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug + Send,
   StandardNormal: Distribution<FloatElem<B>>,
   Exp1: Distribution<FloatElem<B>>,
   Open01: Distribution<FloatElem<B>>,
 {
+  // `count` and `parallel_games` stay the totals they always were, so existing
+  // configurations keep their meaning. The games are claimed from one ticket as
+  // threads become free, while the concurrency budget is split up front since it
+  // only bounds how many games a thread juggles at once. More threads than either
+  // total would leave the extra ones with nothing to do.
+  let threads = params.threads.clamp(1, params.count.min(params.parallel_games).max(1));
+  let next_game = AtomicUsize::new(0);
+  let file = Mutex::new(File::options().append(true).create(true).open(&params.games)?);
+  log::info!(
+    "Playing {} games on {} threads, {} concurrent",
+    params.count,
+    threads,
+    params.parallel_games
+  );
+
   match params.model.clone() {
     Some(model_path) => {
       let model = BurnModel::<B>::new(&device, &params.model_config);
@@ -241,27 +290,89 @@ where
       let mut predictor = Predictor { model, device };
 
       // All games share one evaluator: their positions are merged into large
-      // forward passes instead of each game evaluating its own tiny batch.
+      // forward passes instead of each game evaluating its own tiny batch. Only
+      // this thread ever touches the model, so the backend needs nothing of its
+      // own to be safe under threads.
       let (handle, requests) = batch_model::<FloatElem<B>>(predictor.predicts_uncertainty());
-      let games = async {
-        let result = play_games(&params, || handle.clone(), rng, &should_stop).await;
-        // Close the channel so the evaluator terminates with the last game.
+
+      std::thread::scope(|scope| -> Result<()> {
+        let workers = (0..threads)
+          .map(|i| {
+            // Seeded here rather than inside the thread: the seeds come from one
+            // generator, which only this thread can reach.
+            let mut shard_rng = SmallRng::from_seed(rng.random());
+            let parallel = split(params.parallel_games, threads, i);
+            let source = handle.source();
+            let params = &params;
+            let should_stop = should_stop.as_ref();
+            let file = &file;
+            let next_game = &next_game;
+            scope.spawn(move || {
+              futures::executor::block_on(play_games(
+                params,
+                next_game,
+                parallel,
+                || source.clone(),
+                &mut shard_rng,
+                should_stop,
+                file,
+              ))
+            })
+          })
+          .collect::<Vec<_>>();
+        // Every game's handle descends from a worker's source, so once the workers
+        // are gone the channel closes and the evaluator returns.
         drop(handle);
-        result
-      };
-      let (games_result, evaluator_result) = futures::join!(games, run_evaluator(&mut predictor, requests));
-      evaluator_result?;
-      games_result?;
+
+        let evaluator_result = futures::executor::block_on(run_evaluator(&mut predictor, requests, params.batch_games));
+        // Join before reporting either failure, so a panicking worker is never
+        // left running past the end of the scope.
+        let games_results = workers
+          .into_iter()
+          .map(|worker| {
+            worker
+              .join()
+              .map_err(|_| anyhow::anyhow!("a self-play thread panicked"))
+          })
+          .collect::<Vec<_>>();
+        evaluator_result?;
+        for result in games_results {
+          result??;
+        }
+        Ok(())
+      })?;
     }
     None => {
-      let mut seeder = SmallRng::from_seed(rng.random());
-      play_games(
-        &params,
-        || RandomModel(SmallRng::from_seed(seeder.random())),
-        rng,
-        &should_stop,
-      )
-      .await?;
+      std::thread::scope(|scope| -> Result<()> {
+        let workers = (0..threads)
+          .map(|i| {
+            let mut shard_rng = SmallRng::from_seed(rng.random());
+            let mut seeder = SmallRng::from_seed(shard_rng.random());
+            let parallel = split(params.parallel_games, threads, i);
+            let params = &params;
+            let should_stop = should_stop.as_ref();
+            let file = &file;
+            let next_game = &next_game;
+            scope.spawn(move || {
+              futures::executor::block_on(play_games(
+                params,
+                next_game,
+                parallel,
+                || RandomModel(SmallRng::from_seed(seeder.random())),
+                &mut shard_rng,
+                should_stop,
+                file,
+              ))
+            })
+          })
+          .collect::<Vec<_>>();
+        for worker in workers {
+          worker
+            .join()
+            .map_err(|_| anyhow::anyhow!("a self-play thread panicked"))??;
+        }
+        Ok(())
+      })?;
     }
   }
 
@@ -699,7 +810,10 @@ where
     drop(handle);
     result
   };
-  let (games_result, evaluator_result) = futures::join!(games, run_evaluator(&mut predictor, requests));
+  let (games_result, evaluator_result) = futures::join!(
+    games,
+    run_evaluator(&mut predictor, requests, params.parallel_games.div_ceil(2))
+  );
   evaluator_result?;
   games_result?;
 
@@ -719,7 +833,7 @@ where
 
   match action {
     Action::Init(params) => init::<Autodiff<B>>(params, device),
-    Action::Play(params) => futures::executor::block_on(play::<B, _>(params, device, &mut rng, should_stop)),
+    Action::Play(params) => play::<B, _>(params, device, &mut rng, should_stop),
     Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
     Action::Pit(params) => futures::executor::block_on(pit::<B, _>(params, device, &mut rng, should_stop)),
     Action::Count(params) => count(params, &mut rng),

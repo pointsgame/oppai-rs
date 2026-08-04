@@ -14,6 +14,7 @@ futures.workspace = true
 burn = { workspace = true, features = ["autodiff", "autotune", "fusion"] }
 rand.workspace = true
 rand_distr.workspace = true
+num_cpus.workspace = true
 log.workspace = true
 env_logger.workspace = true
 clap = { workspace = true, features = [ "cargo" ] }

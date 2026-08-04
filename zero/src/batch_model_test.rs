@@ -1,4 +1,4 @@
-use crate::batch_model::{Closed, batch_model, run_evaluator};
+use crate::batch_model::{BatchModel, Closed, batch_model, run_evaluator};
 use crate::model::Model;
 use futures::join;
 use ndarray::{Array2, Array3, Array4};
@@ -36,7 +36,7 @@ fn batches_across_games_and_pads_sizes() {
   let game2 = game(1, 5, 2);
   drop(handle);
 
-  let evaluator = async { run_evaluator(&mut model, requests).await.unwrap() };
+  let evaluator = async { run_evaluator(&mut model, requests, usize::MAX).await.unwrap() };
   let ((policy1, value1), (policy2, value2), ()) =
     futures::executor::block_on(async { join!(game1, game2, evaluator) });
 
@@ -91,7 +91,7 @@ fn finished_games_are_not_waited_for() {
   let game3 = game(2);
   drop(handle);
 
-  let evaluator = async { run_evaluator(&mut model, messages).await.unwrap() };
+  let evaluator = async { run_evaluator(&mut model, messages, usize::MAX).await.unwrap() };
   futures::executor::block_on(async { join!(game1, game2, game3, evaluator) });
 
   assert_eq!(*batches.borrow(), vec![3, 2]);
@@ -107,4 +107,113 @@ fn predict_fails_when_evaluator_is_gone() {
   let global = Array2::from_elem((1, 1), 0.0);
   let result = futures::executor::block_on(model.predict(features, global));
   assert_eq!(result.unwrap_err(), Closed);
+}
+
+/// The evaluator dispatches once `batch_games` games are waiting instead of all
+/// of them, which is what leaves the remaining games free to keep selecting while
+/// the device works. Four games with a target of two make two forward passes,
+/// where waiting for all of them would have made one.
+#[test]
+fn a_batch_dispatches_before_every_game_has_submitted() {
+  let batches = RefCell::new(Vec::new());
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>| {
+    let (batch, _, height, width) = inputs.dim();
+    batches.borrow_mut().push(batch);
+    Ok::<_, ()>((
+      Array3::from_elem((batch, height, width), 0.25),
+      Array2::from_elem((batch, 2), 0.5),
+    ))
+  };
+
+  let (handle, messages) = batch_model::<f64>(true);
+  let game = || {
+    let mut model = handle.clone();
+    async move {
+      let features = Array4::from_elem((1, 3, 2, 2), 1.0);
+      let global = Array2::from_elem((1, 1), 0.5);
+      model.predict(features, global).await.unwrap();
+    }
+  };
+
+  let (game1, game2, game3, game4) = (game(), game(), game(), game());
+  drop(handle);
+
+  let evaluator = async { run_evaluator(&mut model, messages, 2).await.unwrap() };
+  futures::executor::block_on(async { join!(game1, game2, game3, game4, evaluator) });
+
+  assert_eq!(*batches.borrow(), vec![2, 2]);
+}
+
+/// The target is capped at the number of games actually in flight, so asking for
+/// bigger batches than there are games must not leave the evaluator waiting for
+/// submissions that can never arrive.
+#[test]
+fn a_target_above_the_game_count_still_dispatches() {
+  let batches = RefCell::new(Vec::new());
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>| {
+    let (batch, _, height, width) = inputs.dim();
+    batches.borrow_mut().push(batch);
+    Ok::<_, ()>((
+      Array3::from_elem((batch, height, width), 0.25),
+      Array2::from_elem((batch, 2), 0.5),
+    ))
+  };
+
+  let (handle, messages) = batch_model::<f64>(true);
+  let game = || {
+    let mut model = handle.clone();
+    async move {
+      let features = Array4::from_elem((1, 3, 2, 2), 1.0);
+      let global = Array2::from_elem((1, 1), 0.5);
+      model.predict(features, global).await.unwrap();
+    }
+  };
+
+  let (game1, game2) = (game(), game());
+  drop(handle);
+
+  let evaluator = async { run_evaluator(&mut model, messages, 10).await.unwrap() };
+  futures::executor::block_on(async { join!(game1, game2, evaluator) });
+
+  assert_eq!(*batches.borrow(), vec![2]);
+}
+
+/// A per-thread clone source must not be counted as a game of its own: were it
+/// counted, the evaluator would wait for a submission from every thread as well
+/// as every game, and the threads never submit anything themselves.
+#[test]
+fn a_clone_source_is_not_counted_as_a_game() {
+  let batches = RefCell::new(Vec::new());
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>| {
+    let (batch, _, height, width) = inputs.dim();
+    batches.borrow_mut().push(batch);
+    Ok::<_, ()>((
+      Array3::from_elem((batch, height, width), 0.25),
+      Array2::from_elem((batch, 2), 0.5),
+    ))
+  };
+
+  let (handle, messages) = batch_model::<f64>(true);
+  // Two "threads", one game each.
+  let sources = [handle.source(), handle.source()];
+  drop(handle);
+  let game = |source: &BatchModel<f64>| {
+    let mut model = source.clone();
+    async move {
+      let features = Array4::from_elem((1, 3, 2, 2), 1.0);
+      let global = Array2::from_elem((1, 1), 0.5);
+      model.predict(features, global).await.unwrap();
+    }
+  };
+
+  let game1 = game(&sources[0]);
+  let game2 = game(&sources[1]);
+  drop(sources);
+
+  let evaluator = async { run_evaluator(&mut model, messages, usize::MAX).await.unwrap() };
+  futures::executor::block_on(async { join!(game1, game2, evaluator) });
+
+  // Both games were served together, so the evaluator counted two of them - not
+  // the two sources on top.
+  assert_eq!(*batches.borrow(), vec![2]);
 }

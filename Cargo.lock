@@ -6706,6 +6706,7 @@ dependencies = [
  "log",
  "ndarray 0.17.2",
  "num-traits",
+ "num_cpus",
  "oppai-field",
  "oppai-sgf",
  "oppai-zero",

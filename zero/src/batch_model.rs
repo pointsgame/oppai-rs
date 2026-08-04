@@ -14,11 +14,22 @@
 //! and waits for its slice of the merged result. The handles also keep the
 //! evaluator's bookkeeping: cloning one announces a new game and dropping it
 //! announces that the game is done, so [`run_evaluator`] always knows how
-//! many games are in flight. It dispatches a forward pass exactly when every
-//! one of them has submitted its positions: between two predictions a game
-//! only does a bounded amount of synchronous work, so each live game always
-//! eventually either submits a request or finishes, and the wait cannot
-//! deadlock. The evaluator terminates once every handle is dropped.
+//! many games are in flight. The evaluator terminates once every handle is
+//! dropped.
+//!
+//! It dispatches a forward pass as soon as `batch_games` of them have submitted
+//! their positions rather than waiting for all of them. Waiting for all is what
+//! makes the device and the CPU take turns: no forward pass starts until the last
+//! game has submitted, and by then every game is blocked on its reply, so nothing
+//! selects while the device works and nothing computes while the games select.
+//! Dispatching a part of them instead leaves the rest still selecting, so the two
+//! overlap. The batch is smaller for it, which is the trade `batch_games` sets.
+//!
+//! The wait still cannot deadlock: the target is capped at the number of games
+//! actually running, and between two predictions a game only does a bounded
+//! amount of synchronous work, so every live game eventually either submits a
+//! request or finishes. A dispatch always takes *all* the requests queued, not
+//! just the target's worth, so no game waits through a batch it was ready for.
 
 use crate::model::Model;
 use futures::{
@@ -71,6 +82,23 @@ pub struct BatchModel<N: Float> {
   /// A handle cannot ask it, since the model behind the channel is not part of
   /// this type, so it is told at construction.
   predicts_uncertainty: bool,
+}
+
+impl<N: Float> BatchModel<N> {
+  /// Another clone source for the same evaluator, which - unlike a clone - does
+  /// not announce a game of its own.
+  ///
+  /// Give one to each thread that plays games, so that every game still descends
+  /// from a handle and gets counted, while the per-thread sources themselves do
+  /// not. Counting them would leave the evaluator waiting for submissions from
+  /// threads rather than games, and those never come.
+  pub fn source(&self) -> Self {
+    BatchModel {
+      messages: self.messages.clone(),
+      counted: false,
+      predicts_uncertainty: self.predicts_uncertainty,
+    }
+  }
 }
 
 impl<N: Float> Clone for BatchModel<N> {
@@ -133,21 +161,34 @@ impl<N: Float> Model<N> for BatchModel<N> {
 }
 
 /// Serves prediction requests from [`BatchModel`] handles with the underlying
-/// model until all handles are dropped, merging the requests of all
-/// concurrently running games into large forward passes.
-pub async fn run_evaluator<N, M>(model: &mut M, mut messages: mpsc::UnboundedReceiver<Message<N>>) -> Result<(), M::E>
+/// model until all handles are dropped, merging the requests of concurrently
+/// running games into large forward passes.
+///
+/// `batch_games` is how many games' requests are enough to dispatch a forward
+/// pass. The games beyond that keep selecting their next positions while the
+/// device works through the batch, so a lower value overlaps the two more and a
+/// higher one makes the batches bigger; the number of games in flight is the
+/// point where it stops mattering, since the evaluator never waits for more games
+/// than are actually running.
+pub async fn run_evaluator<N, M>(
+  model: &mut M,
+  mut messages: mpsc::UnboundedReceiver<Message<N>>,
+  batch_games: usize,
+) -> Result<(), M::E>
 where
   N: Float,
   M: Model<N>,
 {
+  let batch_games = batch_games.max(1);
   let mut active = 0usize;
   let mut pending: Vec<BatchRequest<N>> = Vec::new();
 
   loop {
-    // Wait until every game in flight has submitted its positions, so that
-    // each forward pass batches the requests of all of them. Games that
-    // finish meanwhile announce it and are no longer waited for.
-    while pending.is_empty() || pending.len() < active {
+    // Wait for a batch's worth of games, or for every game in flight if fewer
+    // than that are left - which is what keeps the last games from waiting for
+    // submissions that will never come. Games that finish meanwhile announce it
+    // and are no longer waited for.
+    while pending.len() < batch_games.min(active).max(1) {
       match messages.next().await {
         Some(Message::Started) => active += 1,
         Some(Message::Finished) => active = active.saturating_sub(1),
@@ -157,6 +198,8 @@ where
         None => return Ok(()),
       }
     }
+    // Everything queued goes in, not just the target's worth: a game that was
+    // ready in time should never be held back to the next forward pass.
     let batch = mem::take(&mut pending);
 
     // Merge into one forward pass, zero-padding the spatial dimensions: games

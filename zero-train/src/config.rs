@@ -19,6 +19,8 @@ pub struct PlayParams {
   pub games: PathBuf,
   pub count: usize,
   pub parallel_games: usize,
+  pub threads: usize,
+  pub batch_games: usize,
 }
 
 pub struct TrainParams {
@@ -184,6 +186,31 @@ fn parallel_games_arg(help: &'static str) -> Arg {
     .default_value("32")
 }
 
+fn threads_arg() -> Arg {
+  Arg::new("threads")
+    .long("threads")
+    .help(
+      "How many OS threads play games; the concurrent games are split between them. Defaults to one per \
+       physical core, since the games are CPU bound between forward passes and hyperthreads would only contend \
+       for the same execution units",
+    )
+    .num_args(1)
+    .value_parser(value_parser!(usize))
+}
+
+fn batch_games_arg() -> Arg {
+  Arg::new("batch-games")
+    .long("batch-games")
+    .help(
+      "How many games' positions are enough to dispatch a forward pass, leaving the rest to keep selecting \
+       meanwhile. Capped at the games actually in flight, so a value at or above the concurrent games waits for \
+       all of them and overlaps nothing",
+    )
+    .num_args(1)
+    .value_parser(value_parser!(usize))
+    .default_value("16")
+}
+
 fn weight_decay_arg() -> Arg {
   Arg::new("weight-decay")
     .long("weight-decay")
@@ -236,7 +263,9 @@ pub fn cli_parse() -> (Config, Action) {
     )
     .arg(parallel_games_arg(
       "How many games to play concurrently, merging their positions into shared forward passes",
-    ));
+    ))
+    .arg(threads_arg())
+    .arg(batch_games_arg());
   let train = Command::new("train")
     .about("Train the neural network")
     .arg(width_arg())
@@ -454,6 +483,11 @@ pub fn cli_parse() -> (Config, Action) {
       let games = matches.get_one("games").cloned().unwrap();
       let count = matches.get_one("count").copied().unwrap();
       let parallel_games = matches.get_one("parallel-games").copied().unwrap();
+      let threads = matches
+        .get_one("threads")
+        .copied()
+        .unwrap_or_else(num_cpus::get_physical);
+      let batch_games = matches.get_one("batch-games").copied().unwrap();
       Action::Play(PlayParams {
         width,
         height,
@@ -463,6 +497,8 @@ pub fn cli_parse() -> (Config, Action) {
         games,
         count,
         parallel_games,
+        threads,
+        batch_games,
       })
     }
     Some(("train", matches)) => {
