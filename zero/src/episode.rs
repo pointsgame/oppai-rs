@@ -9,7 +9,7 @@ use oppai_field::{
   field::{Field, NonZeroPos, Pos},
   player::Player,
 };
-use oppai_rotate::rotate::{rotate, rotate_sizes};
+use oppai_rotate::rotate::rotate;
 use rand::distr::uniform::SampleUniform;
 use rand::{Rng, RngExt};
 use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
@@ -53,6 +53,12 @@ impl Visits {
   }
 
   /// Improved stochastic policy values, pushed into an existing vector.
+  ///
+  /// A target with no weight anywhere is left all zeros rather than smoothed
+  /// into some distribution: a zero target contributes no cross-entropy loss,
+  /// so a row with nothing recorded teaches the policy nothing instead of
+  /// teaching it noise. No healthy data has one - a move is only recorded when
+  /// the search chose it, which takes a positively weighted child.
   pub fn policies_to_vec<N: Float + Copy>(
     &self,
     width: u32,
@@ -75,15 +81,6 @@ impl Visits {
 
         let idx = start_idx + (y as usize) * (width as usize) + (x as usize);
         policies[idx] = N::from(weight).unwrap() / N::from(total).unwrap();
-      }
-    } else {
-      let (rotated_width, rotated_height) = rotate_sizes(field_width, field_height, rotation);
-      let uniform_prob = N::one() / N::from(field_width * field_height).unwrap();
-      for y in 0..rotated_height as usize {
-        for x in 0..rotated_width as usize {
-          let idx = start_idx + y * (width as usize) + x;
-          policies[idx] = uniform_prob;
-        }
       }
     }
   }

@@ -1,5 +1,6 @@
 use crate::episode::Visits;
 use crate::examples::{ExampleGame, Examples, TD_VALUE_COEFFS, TD_VALUES};
+use ndarray::Axis;
 use oppai_field::{
   construct_field::construct_field,
   field::{Field, length},
@@ -159,6 +160,46 @@ fn td_scores_of_the_last_position_are_the_final_score() {
   let mut td_scores = Vec::<f64>::new();
   Examples::td_scores_to_vec(16.0, &[], -1.5, &mut td_scores);
   assert_eq!(td_scores, vec![-1.5; TD_VALUES]);
+}
+
+// The last position of a game has no reply, so its opponent policy target is
+// all zeros - a zero target contributes no cross-entropy loss. Every other
+// row's opponent target is the next turn's search distribution. A uniform
+// fallback on the last row would train the opponent heads towards noise once
+// per game.
+#[test]
+fn opponent_policy_of_the_last_position_is_zero() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+  let field = construct_field(
+    &mut rng,
+    "
+    aA..
+    ....
+    ",
+  );
+  let (width, height) = (field.width(), field.height());
+
+  let mut examples = Examples::default();
+  // Every recorded search put all of its weight on the move that was played.
+  let visits = field
+    .moves
+    .iter()
+    .map(|&pos| Visits(vec![(pos, 1.0)], true, 0.0, 0.0, 0.0))
+    .collect();
+  examples.add(0, visits, &field, false, false, &mut rng);
+
+  let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, &mut rng));
+  let rows = examples.len();
+  let batch = examples.batches::<f64>(width, height, zobrist, rows).next().unwrap();
+
+  for (row, example) in examples.examples.iter().enumerate() {
+    let sum = batch.opponent_policies.index_axis(Axis(0), row).sum();
+    if example.position == examples.games[example.game].moves.len() - 1 {
+      assert_eq!(sum, 0.0, "row {row}: the last position must have a zero target");
+    } else {
+      assert!((sum - 1.0).abs() < 1e-12, "row {row}: got {sum}");
+    }
+  }
 }
 
 // Games without recorded search values (old data) fall back to the final

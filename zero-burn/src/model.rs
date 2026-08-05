@@ -1132,6 +1132,12 @@ where
     let soft_policies = soft_policies.clone() / soft_policies.sum_dim(1);
     let soft_opponent_policies = ((opponent_policies.clone() + 1e-7) * policy_mask).powf_scalar(0.25);
     let soft_opponent_policies = soft_opponent_policies.clone() / soft_opponent_policies.sum_dim(1);
+    // A game's final position has no reply and carries an all-zero opponent
+    // target (see `Examples::batch`), which silences the plain opponent loss by
+    // itself. The soft target above is renormalized back into a distribution,
+    // so such rows have to be gated explicitly by the target's total mass -
+    // which is 1 for every ordinary row.
+    let opponent_weight = opponent_policies.clone().sum_dim(1);
 
     let batch = <FloatElem<B> as num_traits::NumCast>::from(batch).unwrap();
     let values_loss = -(out_values * values.clone()).sum() * 0.72 / batch;
@@ -1237,7 +1243,8 @@ where
       -(out_long_optimistic_policies * policies * long_optimistic_weight).sum() * 0.108 / batch;
     let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
     let soft_policies_loss = -(out_soft_policies * soft_policies).sum() * 8.0 / batch;
-    let soft_opponent_policies_loss = -(out_soft_opponent_policies * soft_opponent_policies).sum() * 1.2 / batch;
+    let soft_opponent_policies_loss =
+      -(out_soft_opponent_policies * soft_opponent_policies * opponent_weight).sum() * 1.2 / batch;
     let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
     let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
     // Binary cross-entropy with logits in the numerically stable form

@@ -14,7 +14,7 @@ use oppai_field::{
 };
 use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
 use rand::{Rng, RngExt, seq::SliceRandom};
-use std::{cmp::Ordering, ops::Range, sync::Arc};
+use std::{cmp::Ordering, iter, ops::Range, sync::Arc};
 
 /// Number of TD value horizons.
 pub const TD_VALUES: usize = 3;
@@ -399,19 +399,23 @@ impl Examples {
         example.rotation,
         &mut policies,
       );
-      let default_vists = Visits::default();
-      game
-        .visits
-        .get(example.position - initial_moves + 1)
-        .unwrap_or(&default_vists)
-        .policies_to_vec(
+      // The game's final position has no reply to learn from, so its opponent
+      // policy target is all zeros: cross-entropy against a zero target
+      // contributes nothing, and the row's weight for the renormalized soft
+      // target is derived from this total mass. A uniform fallback would
+      // instead train the opponent heads towards noise on the last row of
+      // every game.
+      match game.visits.get(example.position - initial_moves + 1) {
+        Some(visits) => visits.policies_to_vec(
           width,
           height,
           game.width,
           game.height,
           example.rotation,
           &mut opponent_policies,
-        );
+        ),
+        None => opponent_policies.extend(iter::repeat_n(N::zero(), (width * height) as usize)),
+      }
       Self::values_to_vec::<N>(score, komi_x_2, &mut values);
       Self::td_values_to_vec::<N>(
         game,
