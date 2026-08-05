@@ -2,7 +2,7 @@ use crate::field_features::{field_features, global};
 use crate::mcgs::{Params, Search};
 use crate::model::Model;
 use log::info;
-use ndarray::{Array2, Array3, Axis};
+use ndarray::{Array1, Array2, Array3, Axis};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
 use oppai_field::{
@@ -171,8 +171,14 @@ where
   for _ in 0..raw_policy_moves {
     let features = field_features(field, player, field.width(), field.height(), 0);
     let global = global(field, player, komi_x_2);
+    // The opening is sampled from the trained policy: these moves are meant to
+    // spread the training positions over the openings the net actually plays.
     let (policy, _) = model
-      .predict(features.insert_axis(Axis(0)), global.insert_axis(Axis(0)))
+      .predict(
+        features.insert_axis(Axis(0)),
+        global.insert_axis(Axis(0)),
+        Array1::zeros(1),
+      )
       .await?;
     if let Some(pos) = select_policy_move(field, policy, rng) {
       assert!(field.put_point(pos.get(), player));

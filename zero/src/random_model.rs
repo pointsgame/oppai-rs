@@ -3,7 +3,7 @@ use std::{
   iter::{self, Sum},
 };
 
-use ndarray::{Array2, Array3, Array4};
+use ndarray::{Array1, Array2, Array3, Array4};
 use num_traits::{Float, One};
 use rand::{Rng, RngExt};
 use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
@@ -37,7 +37,12 @@ where
     false
   }
 
-  async fn predict(&mut self, inputs: Array4<N>, _: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(
+    &mut self,
+    inputs: Array4<N>,
+    _: Array2<N>,
+    _: Array1<N>,
+  ) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let (batch, _, height, width) = inputs.dim();
     let length = height * width;
 

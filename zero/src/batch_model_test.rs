@@ -1,13 +1,13 @@
 use crate::batch_model::{BatchModel, Closed, batch_model, run_evaluator};
 use crate::model::Model;
 use futures::join;
-use ndarray::{Array2, Array3, Array4};
+use ndarray::{Array1, Array2, Array3, Array4};
 use std::cell::{Cell, RefCell};
 
 #[test]
 fn batches_across_games_and_pads_sizes() {
   let calls = Cell::new(0usize);
-  let mut model = |inputs: Array4<f64>, global: Array2<f64>| {
+  let mut model = |inputs: Array4<f64>, global: Array2<f64>, optimism: Array1<f64>| {
     calls.set(calls.get() + 1);
     let (batch, channels, height, width) = inputs.dim();
     assert_eq!((batch, channels, height, width), (3, 3, 5, 4));
@@ -15,6 +15,9 @@ fn batches_across_games_and_pads_sizes() {
     // The two games fill their own regions with ones; the padding must be zero.
     assert_eq!(inputs.sum(), (2 * 3 * 3 * 4 + 3 * 5 * 2) as f64);
     assert_eq!(global.sum(), 1.5);
+    // Each game's optimism stays with its own rows, so games searching with
+    // different parameters can share one evaluator.
+    assert_eq!(optimism.to_vec(), vec![0.25, 0.25, 1.0]);
     // Encode (row, y, x) in the policy so splitting and cropping can be verified.
     let policies = Array3::from_shape_fn((batch, height, width), |(i, y, x)| (i * 10000 + y * 100 + x) as f64);
     let values = Array2::from_shape_fn((batch, 2), |(i, j)| (i * 2 + j) as f64);
@@ -23,17 +26,20 @@ fn batches_across_games_and_pads_sizes() {
 
   let (handle, requests) = batch_model::<f64>(true);
 
-  let game = |n: usize, h: usize, w: usize| {
+  let game = |n: usize, h: usize, w: usize, optimism: f64| {
     let mut model = handle.clone();
     async move {
       let features = Array4::from_elem((n, 3, h, w), 1.0);
       let global = Array2::from_elem((n, 1), 0.5);
-      model.predict(features, global).await.unwrap()
+      model
+        .predict(features, global, Array1::from_elem(n, optimism))
+        .await
+        .unwrap()
     }
   };
 
-  let game1 = game(2, 3, 4);
-  let game2 = game(1, 5, 2);
+  let game1 = game(2, 3, 4, 0.25);
+  let game2 = game(1, 5, 2, 1.0);
   drop(handle);
 
   let evaluator = async { run_evaluator(&mut model, requests, usize::MAX).await.unwrap() };
@@ -63,7 +69,7 @@ fn batches_across_games_and_pads_sizes() {
 fn finished_games_are_not_waited_for() {
   // Batch sizes of the consecutive forward passes.
   let batches = RefCell::new(Vec::new());
-  let mut model = |inputs: Array4<f64>, _: Array2<f64>| {
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>, _: Array1<f64>| {
     let (batch, _, height, width) = inputs.dim();
     batches.borrow_mut().push(batch);
     let policies = Array3::from_elem((batch, height, width), 0.25);
@@ -79,7 +85,7 @@ fn finished_games_are_not_waited_for() {
       for _ in 0..predictions {
         let features = Array4::from_elem((1, 3, 2, 2), 1.0);
         let global = Array2::from_elem((1, 1), 0.5);
-        model.predict(features, global).await.unwrap();
+        model.predict(features, global, Array1::zeros(1)).await.unwrap();
       }
     }
   };
@@ -105,7 +111,7 @@ fn predict_fails_when_evaluator_is_gone() {
   let mut model = handle;
   let features = Array4::from_elem((1, 3, 2, 2), 1.0);
   let global = Array2::from_elem((1, 1), 0.0);
-  let result = futures::executor::block_on(model.predict(features, global));
+  let result = futures::executor::block_on(model.predict(features, global, Array1::zeros(1)));
   assert_eq!(result.unwrap_err(), Closed);
 }
 
@@ -116,7 +122,7 @@ fn predict_fails_when_evaluator_is_gone() {
 #[test]
 fn a_batch_dispatches_before_every_game_has_submitted() {
   let batches = RefCell::new(Vec::new());
-  let mut model = |inputs: Array4<f64>, _: Array2<f64>| {
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>, _: Array1<f64>| {
     let (batch, _, height, width) = inputs.dim();
     batches.borrow_mut().push(batch);
     Ok::<_, ()>((
@@ -131,7 +137,7 @@ fn a_batch_dispatches_before_every_game_has_submitted() {
     async move {
       let features = Array4::from_elem((1, 3, 2, 2), 1.0);
       let global = Array2::from_elem((1, 1), 0.5);
-      model.predict(features, global).await.unwrap();
+      model.predict(features, global, Array1::zeros(1)).await.unwrap();
     }
   };
 
@@ -150,7 +156,7 @@ fn a_batch_dispatches_before_every_game_has_submitted() {
 #[test]
 fn a_target_above_the_game_count_still_dispatches() {
   let batches = RefCell::new(Vec::new());
-  let mut model = |inputs: Array4<f64>, _: Array2<f64>| {
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>, _: Array1<f64>| {
     let (batch, _, height, width) = inputs.dim();
     batches.borrow_mut().push(batch);
     Ok::<_, ()>((
@@ -165,7 +171,7 @@ fn a_target_above_the_game_count_still_dispatches() {
     async move {
       let features = Array4::from_elem((1, 3, 2, 2), 1.0);
       let global = Array2::from_elem((1, 1), 0.5);
-      model.predict(features, global).await.unwrap();
+      model.predict(features, global, Array1::zeros(1)).await.unwrap();
     }
   };
 
@@ -184,7 +190,7 @@ fn a_target_above_the_game_count_still_dispatches() {
 #[test]
 fn a_clone_source_is_not_counted_as_a_game() {
   let batches = RefCell::new(Vec::new());
-  let mut model = |inputs: Array4<f64>, _: Array2<f64>| {
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>, _: Array1<f64>| {
     let (batch, _, height, width) = inputs.dim();
     batches.borrow_mut().push(batch);
     Ok::<_, ()>((
@@ -202,7 +208,7 @@ fn a_clone_source_is_not_counted_as_a_game() {
     async move {
       let features = Array4::from_elem((1, 3, 2, 2), 1.0);
       let global = Array2::from_elem((1, 1), 0.5);
-      model.predict(features, global).await.unwrap();
+      model.predict(features, global, Array1::zeros(1)).await.unwrap();
     }
   };
 

@@ -1,5 +1,5 @@
 use either::Either;
-use ndarray::{Array, Array2, Array3, Array4, Axis};
+use ndarray::{Array, Array1, Array2, Array3, Array4, Axis};
 use num_traits::Float;
 
 #[allow(async_fn_in_trait)]
@@ -21,7 +21,20 @@ pub trait Model<N: Float> {
   /// short-term error (standard deviation) of the value - how uncertain the
   /// value estimate is. A model with no estimate to offer leaves it at 0 and
   /// reports [`Model::predicts_uncertainty`] as false.
-  async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E>;
+  ///
+  /// `optimism` carries one weight per position, in `[0, 1]`: how far that
+  /// position's policy is moved from the trained one towards the optimistic
+  /// policy, the head trained on the same target but only on the positions that
+  /// turned out better in the short term than the net expected. The two are
+  /// interpolated in logit space, so `0` returns the policy as trained and `1`
+  /// returns the optimistic policy; a model without that head ignores the
+  /// weights entirely.
+  async fn predict(
+    &mut self,
+    inputs: Array4<N>,
+    global: Array2<N>,
+    optimism: Array1<N>,
+  ) -> Result<(Array3<N>, Array2<N>), Self::E>;
 }
 
 pub trait TrainableModel<N: Float>: Model<N> + Sized {
@@ -36,6 +49,7 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
     opponent_policies: Array3<N>,
     values: Array2<N>,
     td_values: Array3<N>,
+    td_scores: Array2<N>,
     scores: Array2<N>,
     captured: Array4<N>,
     learning_rate: f64,
@@ -44,12 +58,17 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
 
 impl<T, E, N: Float> Model<N> for T
 where
-  T: Fn(Array4<N>, Array2<N>) -> Result<(Array3<N>, Array2<N>), E>,
+  T: Fn(Array4<N>, Array2<N>, Array1<N>) -> Result<(Array3<N>, Array2<N>), E>,
 {
   type E = E;
 
-  async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
-    self(inputs, global)
+  async fn predict(
+    &mut self,
+    inputs: Array4<N>,
+    global: Array2<N>,
+    optimism: Array1<N>,
+  ) -> Result<(Array3<N>, Array2<N>), Self::E> {
+    self(inputs, global, optimism)
   }
 }
 
@@ -60,7 +79,12 @@ impl<N: Float> Model<N> for () {
     false
   }
 
-  async fn predict(&mut self, inputs: Array4<N>, _: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(
+    &mut self,
+    inputs: Array4<N>,
+    _: Array2<N>,
+    _: Array1<N>,
+  ) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let batch_size = inputs.len_of(Axis(0));
     let height = inputs.len_of(Axis(2));
     let width = inputs.len_of(Axis(3));
@@ -84,10 +108,15 @@ impl<N: Float, A: Model<N>, B: Model<N>> Model<N> for Either<A, B> {
     }
   }
 
-  async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(
+    &mut self,
+    inputs: Array4<N>,
+    global: Array2<N>,
+    optimism: Array1<N>,
+  ) -> Result<(Array3<N>, Array2<N>), Self::E> {
     match self {
-      Either::Left(a) => a.predict(inputs, global).await.map_err(Either::Left),
-      Either::Right(b) => b.predict(inputs, global).await.map_err(Either::Right),
+      Either::Left(a) => a.predict(inputs, global, optimism).await.map_err(Either::Left),
+      Either::Right(b) => b.predict(inputs, global, optimism).await.map_err(Either::Right),
     }
   }
 }

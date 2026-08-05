@@ -44,6 +44,9 @@ pub struct Batch<N> {
   /// exponentially time-discounted future search values, converging to the
   /// final game result.
   pub td_values: Array3<N>,
+  /// TD score targets: the same horizons in points instead of win/loss, i.e.
+  /// how the score stands a few turns out, converging to the final score.
+  pub td_scores: Array2<N>,
   pub scores: Array2<N>,
   /// Captured cells at the terminal game state, 2 channels:
   /// the cells captured by the current player and by the opponent.
@@ -306,6 +309,38 @@ impl Examples {
     }
   }
 
+  /// TD score targets for a position, from the perspective of the player to move
+  /// there: the same exponentially weighted blend of the future turns as
+  /// [`Self::td_values_to_vec`] makes of the win probability, made of the score
+  /// in points, with the remaining weight going to `final_score`. `scores` holds
+  /// the score at the position itself and at every turn after it, in points and
+  /// already from that player's perspective.
+  ///
+  /// So a horizon says how the score stands that far out, and the shortest one
+  /// is what the short-term score error head predicts the error of. The value
+  /// targets blend what the searches thought at the time; there is no search
+  /// estimate of the score to blend, so these are the scores the game really
+  /// reached - which is what "the score turned out better than predicted" is
+  /// supposed to mean anyway.
+  pub(crate) fn td_scores_to_vec<N: Float + Zero + One + Copy>(
+    area: f64,
+    scores: &[f64],
+    final_score: f64,
+    td_scores: &mut Vec<N>,
+  ) {
+    for c in TD_VALUE_COEFFS {
+      let now_factor = 1.0 / (1.0 + area * c);
+      let mut weight_left = 1.0;
+      let mut score = 0.0;
+      for &turn_score in scores {
+        let weight = weight_left * now_factor;
+        score += weight * turn_score;
+        weight_left -= weight;
+      }
+      td_scores.push(N::from(score + weight_left * final_score).unwrap());
+    }
+  }
+
   fn values_to_vec<N: Float + Zero + One + Copy>(score: i32, komi_x_2: i32, values: &mut Vec<N>) {
     let score = score * 2 + komi_x_2;
     let scores = match score.cmp(&0) {
@@ -329,6 +364,7 @@ impl Examples {
     let mut opponent_policies = Vec::<N>::with_capacity(range.len() * height as usize * width as usize);
     let mut values = Vec::<N>::with_capacity(range.len() * 2);
     let mut td_values = Vec::<N>::with_capacity(range.len() * TD_VALUES * 2);
+    let mut td_scores = Vec::<N>::with_capacity(range.len() * TD_VALUES);
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
     let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
     for example in self.examples.get(range.clone()).unwrap() {
@@ -386,10 +422,21 @@ impl Examples {
       );
       score_one_hot_to_vec(score, komi_x_2, &mut scores);
       // Replay the rest of the game to get the captured dots at the terminal
-      // state. Grounded state is not updated since it doesn't affect captures.
-      for &(pos, player) in game.moves.iter().skip(example.position) {
-        assert!(field.put_point(pos, player));
+      // state, collecting the score the game stood at on every turn from this
+      // position on for the TD score targets. Grounded state is not updated
+      // since it affects neither the captures nor the score.
+      let komi = f64::from(komi_x_2) / 2.0;
+      let mut turn_scores = Vec::with_capacity(game.moves.len() - example.position);
+      for &(pos, move_player) in game.moves.iter().skip(example.position) {
+        turn_scores.push(f64::from(field.score(player)) + komi);
+        assert!(field.put_point(pos, move_player));
       }
+      Self::td_scores_to_vec::<N>(
+        f64::from(game.width * game.height),
+        &turn_scores,
+        f64::from(score) + komi,
+        &mut td_scores,
+      );
       captured_features_to_vec(&field, player, width, height, example.rotation, &mut captured);
     }
     Batch {
@@ -408,6 +455,9 @@ impl Examples {
       values: Array::from(values).into_shape_with_order((range.len(), 2)).unwrap(),
       td_values: Array::from(td_values)
         .into_shape_with_order((range.len(), TD_VALUES, 2))
+        .unwrap(),
+      td_scores: Array::from(td_scores)
+        .into_shape_with_order((range.len(), TD_VALUES))
         .unwrap(),
       scores: Array::from(scores)
         .into_shape_with_order((range.len(), SCORE_ONE_HOT_SIZE))

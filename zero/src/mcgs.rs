@@ -1,9 +1,10 @@
 use crate::field_features::{
-  CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, field_features_len, field_features_to_vec, global_to_vec,
+  CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, field_features, field_features_len, field_features_to_vec,
+  global as global_features, global_to_vec,
 };
 use crate::model::Model;
 use either::Either;
-use ndarray::{Array, ArrayView2, s};
+use ndarray::{Array, ArrayView2, Axis, s};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
 use oppai_field::{
@@ -363,6 +364,19 @@ pub struct Params {
   /// value error instead of being 1. Takes a net that predicts one; see
   /// [`Model::predicts_uncertainty`].
   pub uncertainty: bool,
+  /// How far the priors an expanded node gets are moved from the net's trained
+  /// policy towards its optimistic one, in `[0, 1]`; 0 uses the trained policy
+  /// as is. See [`Model::predict`] for what the optimistic policy is.
+  pub policy_optimism: f64,
+  /// The optimism of the root's own priors. Deeper in the tree an inflated
+  /// prior is self-correcting - playouts flow in, the values come back bad, and
+  /// visits drain away - but at the root the prior shapes the very visit
+  /// distribution the move is chosen by, and the refutation may not be found
+  /// before the playouts run out. So the root gets its own, more conservative
+  /// weight, and a root inherited from a previous search - whose priors were
+  /// computed at [`Self::policy_optimism`] back when it was an ordinary leaf -
+  /// has them re-predicted at this weight before the next search descends.
+  pub root_policy_optimism: f64,
   /// Base exploration coefficient of the PUCT formula.
   pub cpuct_exploration: f64,
   /// How much the exploration coefficient grows with the logarithm of the total
@@ -392,6 +406,12 @@ impl Params {
   pub const SELF_PLAY: Self = Params {
     forbid_bad: false,
     uncertainty: false,
+    // The trained policy as is: the search's own weights become the next
+    // policy target, and an optimistic prior would bend that target towards
+    // whatever the optimistic head favours instead of towards what the search
+    // found.
+    policy_optimism: 0.0,
+    root_policy_optimism: 0.0,
     cpuct_exploration: 1.05,
     cpuct_exploration_log: 0.28,
     cpuct_utility_stdev_scale: 0.0,
@@ -410,6 +430,16 @@ impl Params {
   pub const PLAY: Self = Params {
     forbid_bad: true,
     uncertainty: true,
+    // Fully optimistic priors below the root. A move that only pays off in the
+    // lines where the position turns out better than the net expects is exactly
+    // what a search is there to find, and one the trained policy - an average
+    // over how those positions really went - ranks far too low to ever be tried.
+    policy_optimism: 1.0,
+    // But mostly the trained policy at the root, where the prior picks the move
+    // rather than steering exploration: the optimistic head favours overplays
+    // that bank on the opponent missing the refutation, and the root is where
+    // an unrefuted one stops costing playouts and becomes the move played.
+    root_policy_optimism: 0.2,
     cpuct_exploration: 1.0,
     cpuct_exploration_log: 0.45,
     cpuct_utility_stdev_scale: 0.85,
@@ -435,6 +465,11 @@ pub struct Search<N: Float> {
   /// computed against subtree value bias buckets that have moved since. The next
   /// search recomputes them before it descends.
   pub stats_stale: bool,
+  /// Whether the root was inherited from a previous search and so still carries
+  /// the priors it got as an ordinary leaf, interpolated at
+  /// [`Params::policy_optimism`]. When the root wants a different optimism, the
+  /// next search re-predicts them before it descends.
+  pub root_priors_stale: bool,
   /// Knobs that differ between self-play and play.
   pub params: Params,
 }
@@ -448,6 +483,7 @@ impl<N: Float> Search<N> {
       bias: std::collections::HashMap::default(),
       dirichlet_noise: false,
       stats_stale: false,
+      root_priors_stale: false,
       params,
     };
 
@@ -1278,6 +1314,61 @@ impl<N: Float + Sum + Copy> Search<N> {
     children
   }
 
+  /// Re-predicts the priors of a root inherited from a previous search.
+  ///
+  /// A reused root was expanded as an ordinary leaf, so the priors its edges
+  /// hold were interpolated at [`Params::policy_optimism`]. When the root wants
+  /// a different optimism, ask the net about this one position again and swap
+  /// the edge priors in place, keeping the children and everything the tree has
+  /// learned about them. Dots are only ever added, so a position cannot repeat
+  /// within a game and no path below the root can transpose back into this
+  /// node: the swap touches the root and nothing else.
+  async fn refresh_root_priors<M: Model<N>>(
+    &mut self,
+    field: &Field,
+    player: Player,
+    model: &mut M,
+    komi_x_2: i32,
+  ) -> Result<(), M::E> {
+    if self.params.root_policy_optimism == self.params.policy_optimism
+      || self.nodes[self.root_idx].children.is_empty()
+      // A noised root deliberately does not carry the net's policy, so there is
+      // nothing to refresh towards. Only self-play noises roots, and it keeps
+      // the two optimisms equal, so this does not come up today.
+      || self.dirichlet_noise
+    {
+      return Ok(());
+    }
+
+    let features = field_features::<N>(field, player, field.width(), field.height(), 0).insert_axis(Axis(0));
+    let global = global_features(field, player, komi_x_2).insert_axis(Axis(0));
+    let optimism = Array::from_elem(1, N::from(self.params.root_policy_optimism).unwrap());
+    let (policies, _) = model.predict(features, global, optimism).await?;
+    let policy = policies.slice(s![0, .., ..]);
+
+    let stride = field.stride;
+    let children = &mut self.nodes[self.root_idx].children;
+    for edge in children.iter_mut() {
+      let x = to_x(stride, edge.pos);
+      let y = to_y(stride, edge.pos);
+      edge.prior = policy[(y as usize, x as usize)];
+    }
+    // Renormalize over the moves the root actually has, as expansion did.
+    let sum: N = children.iter().map(|edge| edge.prior).sum();
+    if sum > N::zero() {
+      for edge in children.iter_mut() {
+        edge.prior = edge.prior / sum;
+      }
+    } else {
+      let uniform = N::one() / N::from(children.len()).unwrap();
+      for edge in children.iter_mut() {
+        edge.prior = uniform;
+      }
+    }
+
+    Ok(())
+  }
+
   pub async fn mcgs<M: Model<N>, R: Rng>(
     &mut self,
     field: &mut Field,
@@ -1288,6 +1379,9 @@ impl<N: Float + Sum + Copy> Search<N> {
   ) -> Result<(), M::E> {
     if self.stats_stale {
       self.recompute_stats();
+    }
+    if mem::take(&mut self.root_priors_stale) {
+      self.refresh_root_priors(field, player, model, komi_x_2).await?;
     }
     let weigh = self.weigh_by_uncertainty(model);
     let mut leafs = iter::repeat_with(|| self.select_path())
@@ -1392,8 +1486,19 @@ impl<N: Float + Sum + Copy> Search<N> {
     )
     .unwrap();
     let global = Array::from_shape_vec((global.len() / GLOBAL_FEATURES, GLOBAL_FEATURES), global).unwrap();
+    // An empty path is the root itself being expanded, and it asks for the
+    // root's own optimism; everything below the root asks for the search-wide
+    // one.
+    let optimism = Array::from_iter(leafs.iter().map(|(path, _)| {
+      N::from(if path.is_empty() {
+        self.params.root_policy_optimism
+      } else {
+        self.params.policy_optimism
+      })
+      .unwrap()
+    }));
 
-    let (policies, values) = model.predict(features, global).await?;
+    let (policies, values) = model.predict(features, global, optimism).await?;
 
     for (i, (path, _)) in leafs.iter().enumerate() {
       Self::make_moves(&self.nodes, field, path, player, false);
@@ -1619,6 +1724,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       self.root_idx = self.add_node(edge_hash);
       self.detach_root_bias();
       self.stats_stale = true;
+      self.root_priors_stale = true;
       NonZeroPos::new(edge_pos)
     } else {
       *self = Self::new(self.params);
@@ -1642,6 +1748,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       self.root_idx = self.add_node(edge_hash);
       self.detach_root_bias();
       self.stats_stale = true;
+      self.root_priors_stale = true;
       true
     } else {
       *self = Self::new(self.params);
@@ -1667,6 +1774,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       bias: mem::take(&mut self.bias),
       dirichlet_noise: self.dirichlet_noise,
       stats_stale: self.stats_stale,
+      root_priors_stale: self.root_priors_stale,
       params: self.params,
     };
 
@@ -2021,6 +2129,7 @@ impl<N: Float + Sum + SampleUniform> Search<N> {
       self.root_idx = self.add_node(hash);
       self.detach_root_bias();
       self.stats_stale = true;
+      self.root_priors_stale = true;
       NonZeroPos::new(pos)
     } else {
       *self = Self::new(self.params);

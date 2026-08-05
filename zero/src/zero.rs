@@ -3,7 +3,7 @@ use crate::{
   mcgs::{Params, PlaySelectionWeight, Search},
   model::Model,
 };
-use ndarray::Axis;
+use ndarray::{Array1, Axis};
 use num_traits::Float;
 use oppai_field::{
   field::{Field, Hash, Pos, to_x, to_y},
@@ -137,7 +137,9 @@ where
   let features = field_features::<N>(field, player, field.width(), field.height(), 0).insert_axis(Axis(0));
   let global = global::<N>(field, player, komi_x_2).insert_axis(Axis(0));
 
-  let (policies, values) = model.predict(features, global).await?;
+  // The policy as trained, without any optimism mixed in: this is the raw
+  // prediction, not a search that has lines to explore.
+  let (policies, values) = model.predict(features, global, Array1::zeros(1)).await?;
 
   let policy = policies.index_axis(Axis(0), 0);
   let value = values[(0, 0)] - values[(0, 1)];

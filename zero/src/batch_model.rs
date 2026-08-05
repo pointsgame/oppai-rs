@@ -36,7 +36,7 @@ use futures::{
   StreamExt,
   channel::{mpsc, oneshot},
 };
-use ndarray::{Array2, Array3, Array4, s};
+use ndarray::{Array1, Array2, Array3, Array4, s};
 use num_traits::Float;
 use std::fmt::{self, Display, Formatter};
 use std::mem;
@@ -46,6 +46,10 @@ use std::mem;
 pub struct BatchRequest<N: Float> {
   features: Array4<N>,
   global: Array2<N>,
+  /// The policy optimism of each position. It travels with the positions rather
+  /// than being a property of the evaluator because the games sharing one
+  /// evaluator need not search with the same parameters.
+  optimism: Array1<N>,
   reply: oneshot::Sender<(Array3<N>, Array2<N>)>,
 }
 
@@ -146,13 +150,19 @@ impl<N: Float> Model<N> for BatchModel<N> {
     self.predicts_uncertainty
   }
 
-  async fn predict(&mut self, inputs: Array4<N>, global: Array2<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(
+    &mut self,
+    inputs: Array4<N>,
+    global: Array2<N>,
+    optimism: Array1<N>,
+  ) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let (reply, result) = oneshot::channel();
     self
       .messages
       .unbounded_send(Message::Request(BatchRequest {
         features: inputs,
         global,
+        optimism,
         reply,
       }))
       .map_err(|_| Closed)?;
@@ -220,6 +230,7 @@ where
 
     let mut features = Array4::zeros((positions, channels, height, width));
     let mut global = Array2::zeros((positions, global_features));
+    let mut optimism = Array1::zeros(positions);
     let mut offset = 0;
     for request in &batch {
       let (n, _, h, w) = request.features.dim();
@@ -227,10 +238,11 @@ where
         .slice_mut(s![offset..offset + n, .., ..h, ..w])
         .assign(&request.features);
       global.slice_mut(s![offset..offset + n, ..]).assign(&request.global);
+      optimism.slice_mut(s![offset..offset + n]).assign(&request.optimism);
       offset += n;
     }
 
-    let (policies, values) = model.predict(features, global).await?;
+    let (policies, values) = model.predict(features, global, optimism).await?;
 
     let mut offset = 0;
     for request in batch {

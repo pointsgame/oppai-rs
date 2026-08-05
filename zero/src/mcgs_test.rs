@@ -47,7 +47,7 @@ fn mcts_first_iterations() {
   futures::executor::block_on(search.mcgs(
     &mut field,
     Player::Red,
-    &mut |inputs: Array4<f64>, _| {
+    &mut |inputs: Array4<f64>, _, _| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0, 0.0])));
       result
     },
@@ -72,7 +72,7 @@ fn mcts_first_iterations() {
   futures::executor::block_on(search.mcgs(
     &mut field,
     Player::Red,
-    &mut |inputs: Array4<f64>, _| {
+    &mut |inputs: Array4<f64>, _, _| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0, 0.0])));
       result
     },
@@ -235,7 +235,7 @@ fn mcts_last_iterations() {
   futures::executor::block_on(search.mcgs(
     &mut field,
     Player::Red,
-    &mut |inputs: Array4<f64>, _| {
+    &mut |inputs: Array4<f64>, _, _| {
       let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5, 0.0])));
       result
     },
@@ -282,7 +282,7 @@ fn subtree_value_bias_correction() {
     futures::executor::block_on(search.mcgs(
       &mut field,
       Player::Red,
-      &mut |inputs: Array4<f64>, _| {
+      &mut |inputs: Array4<f64>, _, _| {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), depth_value(&inputs)));
         result
       },
@@ -447,7 +447,7 @@ fn the_promoted_root_leaves_the_bias_table() {
     futures::executor::block_on(search.mcgs(
       &mut field,
       Player::Black,
-      &mut |inputs: Array4<f64>, _| {
+      &mut |inputs: Array4<f64>, _, _| {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), depth_value(&inputs)));
         result
       },
@@ -474,7 +474,7 @@ fn subtree_value_bias_survives_compaction() {
     ",
   );
   let mut search = Search::<f64>::new(PARAMS);
-  let mut model = |inputs: Array4<f64>, _| {
+  let mut model = |inputs: Array4<f64>, _, _| {
     let result: Result<_, ()> = Ok((uniform_policies(&inputs), depth_value(&inputs)));
     result
   };
@@ -674,7 +674,7 @@ fn uncertainty_weights_propagate_through_the_tree() {
       futures::executor::block_on(search.mcgs(
         &mut field,
         Player::Red,
-        &mut |inputs: Array4<f64>, _| {
+        &mut |inputs: Array4<f64>, _, _| {
           let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, error])));
           result
         },
@@ -729,7 +729,7 @@ fn uncertainty_weights_vary_with_the_predicted_error() {
     futures::executor::block_on(search.mcgs(
       &mut field,
       Player::Red,
-      &mut |inputs: Array4<f64>, _| {
+      &mut |inputs: Array4<f64>, _, _| {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), depth_uncertainty_value(&inputs)));
         result
       },
@@ -799,7 +799,7 @@ fn run_search_with(
     futures::executor::block_on(search.mcgs(
       &mut field,
       Player::Red,
-      &mut |inputs: Array4<f64>, _| {
+      &mut |inputs: Array4<f64>, _, _| {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), value(&inputs)));
         result
       },
@@ -949,7 +949,7 @@ fn run_search_with_terminals(params: Params, iterations: usize) -> Search<f64> {
     futures::executor::block_on(search.mcgs(
       &mut field,
       Player::Red,
-      &mut |inputs: Array4<f64>, _| {
+      &mut |inputs: Array4<f64>, _, _| {
         let result: Result<_, ()> = Ok((uniform_policies(&inputs), depth_uncertainty_value(&inputs)));
         result
       },
@@ -1760,7 +1760,7 @@ fn tree_reuse_refreshes_the_bias_corrections() {
   let mut search = Search::<f64>::new(PARAMS);
   // A depth-dependent value head is what gives the buckets a nonzero observed
   // bias to drift with in the first place.
-  let mut model = |inputs: Array4<f64>, _| {
+  let mut model = |inputs: Array4<f64>, _, _| {
     let result: Result<_, ()> = Ok((uniform_policies(&inputs), depth_value(&inputs)));
     result
   };
@@ -1884,7 +1884,12 @@ impl Model<f64> for NoErrorHead {
     false
   }
 
-  async fn predict(&mut self, inputs: Array4<f64>, _: Array2<f64>) -> Result<(Array3<f64>, Array2<f64>), Self::E> {
+  async fn predict(
+    &mut self,
+    inputs: Array4<f64>,
+    _: Array2<f64>,
+    _: Array1<f64>,
+  ) -> Result<(Array3<f64>, Array2<f64>), Self::E> {
     Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.0])))
   }
 }
@@ -1932,6 +1937,129 @@ fn a_net_without_an_error_head_counts_playouts_equally() {
   }
 }
 
+/// Every position the search submits asks the net for the optimism its
+/// parameters call for, one weight per position of the batch: the root asks
+/// for the root's own weight, everything below it for the search-wide one. A
+/// search that asked for none would silently get the plain policy however the
+/// parameters were set.
+#[test]
+fn the_optimism_of_the_parameters_reaches_the_net() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ......
+    ..aA..
+    ......
+    ",
+  );
+  let asked = std::cell::RefCell::new(Vec::new());
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>, optimism: Array1<f64>| {
+    asked.borrow_mut().push(optimism.to_vec());
+    let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.1])));
+    result
+  };
+
+  let params = Params {
+    policy_optimism: 0.75,
+    root_policy_optimism: 0.25,
+    ..PARAMS
+  };
+  let mut search = Search::<f64>::new(params);
+  for _ in 0..4 {
+    futures::executor::block_on(search.mcgs(&mut field, Player::Red, &mut model, 0, &mut rng)).unwrap();
+  }
+
+  let asked = asked.borrow();
+  // The first batch expands the root alone, at the root's own optimism; the
+  // later ones evaluate several leaves each, all below the root, and every one
+  // of them carries the search-wide weight.
+  assert_eq!(asked[0], vec![0.25]);
+  assert!(asked.len() > 1);
+  for batch in asked.iter().skip(1) {
+    assert!(!batch.is_empty());
+    assert!(batch.iter().all(|&optimism| optimism == 0.75), "got {batch:?}");
+  }
+}
+
+/// Moving the root into a node the previous search expanded as an ordinary
+/// leaf leaves it with priors interpolated at the search-wide optimism. The
+/// next search has to ask the net about that one position again at the root's
+/// own optimism and swap the priors in place, keeping the children and their
+/// visits.
+#[test]
+fn a_reused_root_gets_its_priors_re_predicted_at_root_optimism() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ......
+    ..aA..
+    ......
+    ",
+  );
+  let asked = std::cell::RefCell::new(Vec::new());
+  // The net's policy depends on the optimism, so the swap is observable: the
+  // optimistic policy is uniform, the root one leans on the leftmost column.
+  let mut model = |inputs: Array4<f64>, _: Array2<f64>, optimism: Array1<f64>| {
+    asked.borrow_mut().push(optimism.to_vec());
+    let mut policies = uniform_policies(&inputs);
+    if optimism[0] == 0.25 {
+      let width = policies.len_of(Axis(2));
+      for (i, p) in policies.iter_mut().enumerate() {
+        if i % width == 0 {
+          *p *= 16.0;
+        }
+      }
+    }
+    let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1])));
+    result
+  };
+
+  let params = Params {
+    policy_optimism: 1.0,
+    root_policy_optimism: 0.25,
+    ..PARAMS
+  };
+  let mut search = Search::<f64>::new(params);
+  for _ in 0..8 {
+    futures::executor::block_on(search.mcgs(&mut field, Player::Red, &mut model, 0, &mut rng)).unwrap();
+  }
+
+  let pos = search.next_best_root().unwrap();
+  assert!(field.put_point(pos.get(), Player::Red));
+  let root = &search.nodes[search.root_idx];
+  assert!(!root.children.is_empty(), "the new root should come expanded");
+  let inherited: Vec<u64> = root.children.iter().map(|edge| edge.visits).collect();
+  // Expanded as an inner node, so its priors are the uniform optimistic policy.
+  let priors: Vec<f64> = root.children.iter().map(|edge| edge.prior).collect();
+  assert!(priors.iter().all(|&prior| (prior - priors[0]).abs() < 1e-9));
+
+  asked.borrow_mut().clear();
+  futures::executor::block_on(search.mcgs(&mut field, Player::Black, &mut model, 0, &mut rng)).unwrap();
+
+  // The refresh is a batch of exactly the root position at the root's
+  // optimism, before the playout batch at the search-wide one.
+  let batches = asked.borrow();
+  assert_eq!(batches[0], vec![0.25]);
+  assert!(batches[1..].iter().flatten().all(|&optimism| optimism == 1.0));
+
+  // The priors are the root policy now - no longer uniform, renormalized - and
+  // the children still carry everything the reused subtree earned: the call's
+  // own playouts can only have added to the inherited visits.
+  let root = &search.nodes[search.root_idx];
+  let priors: Vec<f64> = root.children.iter().map(|edge| edge.prior).collect();
+  assert!((priors.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+  assert!(priors.iter().any(|&prior| (prior - priors[0]).abs() > 1e-9));
+  for (edge, &visits) in root.children.iter().zip(&inherited) {
+    assert!(edge.visits >= visits);
+  }
+
+  // The refresh happens once: the root the search now owns is no longer
+  // stale, so the next call submits no second single-position batch.
+  assert!(!search.root_priors_stale);
+}
+
 // Two paths of one batch can land on the same position, and only one of them may
 // be evaluated: a node's visits are what its edges divide up to take their share
 // of its weight, so they have to stay equal to the playouts that reached it, and
@@ -1958,7 +2086,7 @@ fn transposing_paths_of_one_batch_are_evaluated_once() {
       Player::Red,
       // Concentrating the policy on a few points is what makes the readouts of
       // one batch converge and transpose onto each other.
-      &mut |inputs: Array4<f64>, _| {
+      &mut |inputs: Array4<f64>, _, _| {
         let batch = inputs.len_of(Axis(0));
         let height = inputs.len_of(Axis(2));
         let width = inputs.len_of(Axis(3));
@@ -2023,7 +2151,7 @@ fn forced_playouts_do_not_absorb_a_whole_batch() {
     ",
   );
   let mut search = Search::<f64>::new(Params::SELF_PLAY);
-  let mut model = |inputs: Array4<f64>, _| {
+  let mut model = |inputs: Array4<f64>, _, _| {
     let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.1])));
     result
   };
@@ -2074,7 +2202,7 @@ fn childless_nodes_keep_their_playout_count_through_a_recompute() {
     .A.
     ",
   );
-  let mut model = |inputs: Array4<f64>, _| {
+  let mut model = |inputs: Array4<f64>, _, _| {
     let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.1])));
     result
   };

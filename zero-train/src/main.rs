@@ -474,6 +474,7 @@ where
       batch.opponent_policies,
       batch.values,
       batch.td_values,
+      batch.td_scores,
       batch.scores,
       batch.captured,
       learning_rate,
