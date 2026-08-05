@@ -2,6 +2,8 @@ pub mod batch_model;
 #[cfg(test)]
 pub mod batch_model_test;
 pub mod episode;
+#[cfg(test)]
+pub mod episode_test;
 pub mod examples;
 #[cfg(test)]
 pub mod examples_test;

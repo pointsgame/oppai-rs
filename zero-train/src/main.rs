@@ -641,7 +641,7 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
       let field = from_sgf::<Field, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let visits = sgf_to_visits(&node, field.stride);
       games += 1;
-      examples += visits.iter().filter(|v| v.1).count() as u32;
+      examples += visits.iter().filter(|v| v.1 > 0.0).count() as u32;
     }
   }
 

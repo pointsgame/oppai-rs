@@ -19,8 +19,8 @@ fn game(values: [f64; 2]) -> ExampleGame {
     komi_x_2: 0,
     score: 1,
     visits: vec![
-      Visits(Vec::new(), true, 0.0, values[0], 0.0, Vec::new()),
-      Visits(Vec::new(), true, 0.0, values[1], 0.0, Vec::new()),
+      Visits(Vec::new(), 1.0, 0.0, values[0], 0.0, Vec::new()),
+      Visits(Vec::new(), 1.0, 0.0, values[1], 0.0, Vec::new()),
     ],
   }
 }
@@ -102,7 +102,7 @@ fn batch_td_scores_follow_the_game_score() {
 
   let mut examples = Examples::default();
   let visits = (0..field.moves_count())
-    .map(|_| Visits(Vec::new(), true, 0.0, 0.0, 0.0, Vec::new()))
+    .map(|_| Visits(Vec::new(), 1.0, 0.0, 0.0, 0.0, Vec::new()))
     .collect();
   examples.add(komi_x_2, visits, &field, false, false, &mut rng);
 
@@ -184,7 +184,7 @@ fn opponent_policy_of_the_last_position_is_zero() {
   let visits = field
     .moves
     .iter()
-    .map(|&pos| Visits(vec![(pos, 1.0)], true, 0.0, 0.0, 0.0, Vec::new()))
+    .map(|&pos| Visits(vec![(pos, 1.0)], 1.0, 0.0, 0.0, 0.0, Vec::new()))
     .collect();
   examples.add(0, visits, &field, false, false, &mut rng);
 
@@ -224,13 +224,13 @@ fn batch_q_values_follow_the_search() {
   let visits = vec![
     Visits(
       vec![(field.moves[0], 1.0)],
-      true,
+      1.0,
       0.0,
       0.0,
       0.0,
       vec![(field.moves[0], 2.0, 0.5, 1.5), (field.moves[1], 1.0, -0.25, -3.0)],
     ),
-    Visits(vec![(field.moves[1], 1.0)], true, 0.0, 0.0, 0.0, Vec::new()),
+    Visits(vec![(field.moves[1], 1.0)], 1.0, 0.0, 0.0, 0.0, Vec::new()),
   ];
   examples.add(0, visits, &field, false, false, &mut rng);
 

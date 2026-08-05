@@ -2100,6 +2100,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     reduced[best_i] = adjusted;
   }
 
+  /// Get the number of visits the root node holds, the reused subtree
+  /// included. This is what a search's visit budget is measured against.
+  pub fn root_visits(&self) -> u64 {
+    self.nodes[self.root_idx].visits
+  }
+
   /// Get the value of the root node
   pub fn value(&self) -> N {
     self.nodes[self.root_idx].value

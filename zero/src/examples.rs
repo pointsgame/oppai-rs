@@ -141,33 +141,31 @@ impl Examples {
     // Policy and value surprise weighting: redistribute the per-position
     // frequency weights across all full-searched positions of this game.
     // Disabled when `surprise_weighting` is `false`, in which case every full
-    // search gets a flat weight of 1.
-    let full_count = visits.iter().filter(|visits| visits.1).count() as f64;
+    // search gets a flat weight of 1. Everything a full search used to count
+    // one of - the surprise pools, the averages they are measured against -
+    // counts its training weight instead, so positions searched with a reduced
+    // budget once the game was decided contribute proportionally less.
+    let full_weight = visits.iter().map(|visits| visits.1).sum::<f64>();
     let sum_policy_surprise = if surprise_weighting {
-      visits
-        .iter()
-        .filter(|visits| visits.1)
-        .map(|visits| visits.2)
-        .sum::<f64>()
+      visits.iter().map(|visits| visits.1 * visits.2).sum::<f64>()
     } else {
       0.0
     };
 
-    // A cheap search also earns training weight when its policy surprise
-    // stands out even against the game's full searches: only the excess above
-    // 1.5x the full-search average counts, so admission is continuous and
-    // rare.
-    let threshold_to_include_reduced = if full_count > 0.0 {
-      1.5 * sum_policy_surprise / full_count
+    // A search with reduced training weight also earns weight when its policy
+    // surprise stands out even against the game's full searches: only the
+    // excess above 1.5x the full-search average counts, so admission is
+    // continuous and rare. The excess term fills whatever the training weight
+    // leaves - all of it for a cheap search, most of it for a search reduced
+    // once the game was decided - so a surprising position keeps its say no
+    // matter how the game's tail was searched.
+    let threshold_to_include_reduced = if full_weight > 0.0 {
+      1.5 * sum_policy_surprise / full_weight
     } else {
       0.0
     };
     let policy_prop = |visits: &Visits| {
-      if visits.1 {
-        visits.2
-      } else {
-        (visits.2 - threshold_to_include_reduced).max(0.0)
-      }
+      visits.1 * visits.2 + (1.0 - visits.1) * (visits.2 - threshold_to_include_reduced).max(0.0)
     };
     let sum_policy_prop = if surprise_weighting {
       visits.iter().map(policy_prop).sum::<f64>()
@@ -184,17 +182,15 @@ impl Examples {
     let mut value_surprises = vec![0.0; visits.len()];
     if surprise_weighting {
       for (i, visits) in visits.iter().enumerate() {
-        if visits.1 {
-          value_surprises[i] = value_surprise(visits.3, visits.4);
-        }
+        value_surprises[i] = visits.1 * value_surprise(visits.3, visits.4);
       }
     }
     let sum_value_surprise = value_surprises.iter().sum::<f64>();
     // It's possible that the game had very little value surprise, such as if it
     // was lopsided from the start and the expected player won. Scale the value
     // surprise weight down in that case rather than dividing by almost zero.
-    let value_surprise_weight = if full_count > 0.0 {
-      VALUE_SURPRISE_DATA_WEIGHT * (sum_value_surprise / full_count / 0.01).min(1.0)
+    let value_surprise_weight = if full_weight > 0.0 {
+      VALUE_SURPRISE_DATA_WEIGHT * (sum_value_surprise / full_weight / 0.01).min(1.0)
     } else {
       0.0
     };
@@ -216,23 +212,19 @@ impl Examples {
     self.games.push(game);
 
     for (i, visits) in self.games[game_index].visits.iter().enumerate() {
-      // The frequency weight is `(1 - wp - wv) * target_weight + wp * full_count
-      // * policy_prop / sum_policy_prop + wv * full_count * value_surprise
-      // / sum_value_surprise`, averaging 1 across the game's full searches (so
+      // The frequency weight is `(1 - wp - wv) * target_weight + wp * full_weight
+      // * policy_prop / sum_policy_prop + wv * full_weight * value_surprise
+      // / sum_value_surprise`, distributing the game's total target weight (so
       // the expected total amount of data is unchanged) but skewed towards
       // surprising positions. Cheap searches have a flat weight of 0 and only
       // ever enter through their excess policy surprise. A term with no
       // surprise anywhere in the game contributes its share flatly.
-      let mut weight = if visits.1 {
-        1.0 - policy_surprise_weight - value_surprise_weight
-      } else {
-        0.0
-      };
+      let mut weight = (1.0 - policy_surprise_weight - value_surprise_weight) * visits.1;
       if sum_policy_prop > 0.0 {
-        weight += policy_surprise_weight * full_count * policy_prop(visits) / sum_policy_prop;
+        weight += policy_surprise_weight * full_weight * policy_prop(visits) / sum_policy_prop;
       }
       if sum_value_surprise > 0.0 {
-        weight += value_surprise_weight * full_count * value_surprises[i] / sum_value_surprise;
+        weight += value_surprise_weight * full_weight * value_surprises[i] / sum_value_surprise;
       }
       // Write the position `floor(weight)` times, plus once more with probability
       // equal to the fractional part of the weight.

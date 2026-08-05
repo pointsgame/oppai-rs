@@ -16,8 +16,47 @@ use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
 
-const MCTS_SIMS: u32 = 200;
-const MCTS_FULL_SIMS: u32 = 1000;
+/// Root visit budgets of a self-play search. A search runs until its root
+/// holds this many visits, counting the subtree reused from previous turns -
+/// so a cheap search whose inherited subtree already meets the budget does a
+/// single batch and moves on, and the budget is a number of playouts rather
+/// than a number of batches of them.
+pub(crate) const MCTS_VISITS: u32 = 200;
+pub(crate) const MCTS_FULL_VISITS: u32 = 1000;
+
+/// Once the search value has stayed beyond this, towards the same winner, for
+/// [`REDUCE_VISITS_LOOKBACK`] consecutive turns, the game is all but decided:
+/// full searches ramp their visit budget down towards the cheap budget and
+/// their training weight towards [`REDUCED_VISITS_WEIGHT`], both by the square
+/// of how far past the threshold the value sits. Playing the tail out cheaply
+/// keeps the true final score (and with it every score target) while spending
+/// almost nothing on positions whose outcome the net already calls, instead of
+/// resigning and corrupting those targets.
+const REDUCE_VISITS_THRESHOLD: f64 = 0.9;
+const REDUCE_VISITS_LOOKBACK: usize = 3;
+pub(crate) const REDUCED_VISITS_WEIGHT: f64 = 0.1;
+
+/// Visit budget and training weight of a full search, ramped down once the
+/// recent search values say the game is decided. `values` holds every turn's
+/// search value from Red's perspective.
+pub(crate) fn reduced_search(values: &[f64]) -> (u32, f64) {
+  let mut visits = f64::from(MCTS_FULL_VISITS);
+  let mut weight = 1.0;
+  if let Some(window) = values.len().checked_sub(REDUCE_VISITS_LOOKBACK).map(|s| &values[s..]) {
+    let min = window.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = window.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    // Large only when every turn of the window points at the same winner: one
+    // turn leaning the other way pulls it right down.
+    let extreme = min.max(-max).min(1.0);
+    if extreme > REDUCE_VISITS_THRESHOLD {
+      let prop = (extreme - REDUCE_VISITS_THRESHOLD) / (1.0 - REDUCE_VISITS_THRESHOLD);
+      let prop = prop * prop;
+      visits += prop * (f64::from(MCTS_VISITS) - visits);
+      weight += prop * (REDUCED_VISITS_WEIGHT - weight);
+    }
+  }
+  (visits.round() as u32, weight)
+}
 
 /// Search statistics for a single move played in a self-play game.
 ///
@@ -28,8 +67,11 @@ const MCTS_FULL_SIMS: u32 = 1000;
 ///   plain visit counts, which is the same thing with every playout weighing
 ///   one and normalizes to the same target.
 ///
-/// * `.1` - whether this move was decided by a "full" search (and is therefore a
-///   training sample).
+/// * `.1` - the training weight of the row: 1 for a full search, ramped down
+///   towards [`REDUCED_VISITS_WEIGHT`] once the game is all but decided, and 0
+///   for a cheap search. A positive weight is what makes the row a training
+///   sample; data recorded when this was a boolean full-search flag loads as
+///   weight 1 or 0.
 /// * `.2` - policy surprise: the KL divergence from the raw root policy prior
 ///   to the policy training target, used for policy surprise weighting. For
 ///   cheap searches it decides whether the row earns training weight despite
@@ -49,7 +91,7 @@ const MCTS_FULL_SIMS: u32 = 1000;
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct Visits(
   pub Vec<(Pos, f64)>,
-  pub bool,
+  pub f64,
   pub f64,
   pub f64,
   pub f64,
@@ -239,10 +281,14 @@ where
   // the network's true prior rather than the noised one.
   let mut raw_priors = vec![N::zero(); field.length()];
 
+  // Every turn's search value from Red's perspective, driving the visit
+  // reduction of full searches once the game looks decided.
+  let mut search_values: Vec<f64> = Vec::new();
+
   while !field.is_game_over(if player == Player::Red { komi_x_2 } else { -komi_x_2 }) {
     let full_search = rng.random::<f64>() <= 0.25;
 
-    let sims = if full_search {
+    let (target_visits, target_weight) = if full_search {
       // Recorded searches start from a fresh tree: the Dirichlet noise and
       // forced playouts have to shape the entire visit distribution, and visits
       // inherited from previous searches would leak into the policy target and
@@ -258,14 +304,22 @@ where
       let total_concentration = N::from(0.03 * 19.0.powi(2)).unwrap();
       let temperature = interpolate_early(field, N::from(1.25).unwrap(), N::from(1.1).unwrap());
       search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), total_concentration, temperature);
-      MCTS_FULL_SIMS
+      reduced_search(&search_values)
     } else {
-      MCTS_SIMS
+      (MCTS_VISITS, 0.0)
     };
 
-    for _ in 0..sims {
+    // At least one batch even when the reused subtree already meets the
+    // budget, so every move rests on a search of the actual root.
+    loop {
       search.mcgs(field, player, model, komi_x_2, rng).await?;
+      if search.root_visits() >= u64::from(target_visits) {
+        break;
+      }
     }
+
+    let value = search.value().to_f64().unwrap();
+    search_values.push(if player == Player::Red { value } else { -value });
 
     let target: Vec<(Pos, N)> = if full_search {
       // Use pruned weights for full searches with Dirichlet noise.
@@ -289,9 +343,9 @@ where
         .into_iter()
         .map(|(pos, weight)| (pos, weight.to_f64().unwrap()))
         .collect(),
-      full_search,
+      target_weight,
       surprise,
-      search.value().to_f64().unwrap(),
+      value,
       search.raw_value().to_f64().unwrap(),
       search
         .q_values()
