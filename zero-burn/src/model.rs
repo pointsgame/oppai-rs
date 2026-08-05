@@ -638,7 +638,7 @@ impl<B: Backend> ValueHead<B> {
 }
 
 /// Number of channels [`PolicyHead`] predicts.
-const POLICY_OUTPUTS: usize = 6;
+const POLICY_OUTPUTS: usize = 7;
 
 /// Index of the long-term optimistic policy, trained on the games that were won
 /// or whose final score beat the prediction. Nothing reads it outside training:
@@ -650,10 +650,20 @@ const LONG_OPTIMISTIC_POLICY: usize = 4;
 /// its priors towards.
 const OPTIMISTIC_POLICY: usize = 5;
 
+/// Index of the per-move q values: for every cell, the pre-tanh value the
+/// search would settle on for playing there - a whole board of move
+/// evaluations from one forward pass, where the value head only says how good
+/// the position is and the policy only which reply the search would prefer.
+/// Nothing reads it outside training: it is an auxiliary target, there to make
+/// the trunk carry an evaluation of every reply rather than only the chosen
+/// one's.
+const Q_VALUE_POLICY: usize = 6;
+
 /// Policy head output channels:
 /// 0 - policy, 1 - opponent policy,
 /// 2 - soft policy, 3 - soft opponent policy,
-/// 4 - long-term optimistic policy, 5 - short-term optimistic policy.
+/// 4 - long-term optimistic policy, 5 - short-term optimistic policy,
+/// 6 - per-move q values (pre-tanh).
 #[derive(Module, Debug)]
 pub struct PolicyHead<B: Backend> {
   conv1p: Conv2d<B>,
@@ -1039,6 +1049,7 @@ where
     td_scores: Array2<FloatElem<B>>,
     scores: Array2<FloatElem<B>>,
     captured: Array4<FloatElem<B>>,
+    q_values: Array4<FloatElem<B>>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
@@ -1079,6 +1090,12 @@ where
       TensorData::new(into_data_vec(captured), [batch, 2, height, width]),
       &self.predictor.device,
     );
+    let q_values: Tensor<B, 4> = Tensor::from_data(
+      TensorData::new(into_data_vec(q_values), [batch, 2, height, width]),
+      &self.predictor.device,
+    );
+    let q_targets = q_values.clone().slice(s![.., 0..1]).reshape([0, -1]);
+    let q_weights = q_values.slice(s![.., 1..2]).reshape([0, -1]);
     // The captured head predicts the terminal captured state of every board
     // cell, so the loss is masked only by the board mask.
     let mask = inputs.clone().slice(s![.., 0..1]);
@@ -1114,6 +1131,10 @@ where
         .reshape([0, -1]),
       1,
     );
+    let out_q_pretanh = out_policy_logits
+      .clone()
+      .slice(s![.., Q_VALUE_POLICY..Q_VALUE_POLICY + 1, .., ..])
+      .reshape([0, -1]);
     let out_optimistic_policies = log_softmax(
       out_policy_logits
         .slice(s![.., OPTIMISTIC_POLICY..OPTIMISTIC_POLICY + 1, .., ..])
@@ -1254,12 +1275,30 @@ where
       + (-out_captured_logits.abs()).exp().log1p();
     let captured_loss = ((captured_bce * mask).sum_dim(2).sum_dim(3) / mask_sum_hw).sum() * 1.5 / batch;
 
+    // Per-move q loss: each explored move's predicted value against the value
+    // the search settled on for it, as a binary cross-entropy over the implied
+    // win probability - the output is pre-tanh, and `tanh(x) = 2*sigmoid(2x) - 1`
+    // makes `2x` the logit of `(1 + q) / 2`. Each move counts by the square
+    // root of the search weight behind it, so the well-searched replies
+    // dominate without the thin tail vanishing. Unexplored moves carry zero
+    // weight; their logits are also zeroed so that the off-board wall the
+    // policy head subtracts stays out of the arithmetic before the weight
+    // cancels it. The denominator's +1 keeps rows without any recorded q
+    // values (older data) finite - they contribute nothing.
+    let q_mask = q_weights.clone().greater_elem(0.0).float();
+    let q_sqrt_weights = q_weights.sqrt();
+    let q_logits = out_q_pretanh * q_mask * 2.0;
+    let q_target_probs = (q_targets + 1.0) / 2.0;
+    let q_bce = q_logits.clone().clamp_min(0.0) - q_logits.clone() * q_target_probs + (-q_logits.abs()).exp().log1p();
+    let q_values_loss =
+      ((q_bce * q_sqrt_weights.clone()).sum_dim(1) / (q_sqrt_weights.sum_dim(1) + 1.0)).sum() * 1.5 / batch;
+
     let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
     self.predictor.model.visit(&mut norm_visitor);
     let param_l2_norm = norm_visitor.l2_norm();
 
     log::info!(
-      "Loss: value {} td value {} value error {} td score {} score error {} policy {} opponent policy {} soft policy {} soft opponent policy {} optimistic policy {} long optimistic policy {} pdf {} cdf {} captured {} L2 norm {}",
+      "Loss: value {} td value {} value error {} td score {} score error {} policy {} opponent policy {} soft policy {} soft opponent policy {} optimistic policy {} long optimistic policy {} pdf {} cdf {} captured {} q {} L2 norm {}",
       values_loss.clone().into_scalar(),
       td_values_loss.clone().into_scalar(),
       value_error_loss.clone().into_scalar(),
@@ -1274,6 +1313,7 @@ where
       pdf_loss.clone().into_scalar(),
       cdf_loss.clone().into_scalar(),
       captured_loss.clone().into_scalar(),
+      q_values_loss.clone().into_scalar(),
       param_l2_norm,
     );
 
@@ -1290,7 +1330,8 @@ where
       + score_error_loss
       + pdf_loss
       + cdf_loss
-      + captured_loss;
+      + captured_loss
+      + q_values_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(learning_rate, self.predictor.model, grads);
@@ -1630,6 +1671,11 @@ mod tests {
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
         let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
+        // One explored move with a recorded q value and search weight; every
+        // other cell keeps zero weight and stays out of the q loss.
+        let mut q_values = Array4::from_elem((1, 2, 4, 8), 0.0);
+        q_values[(0, 0, 1, 2)] = 0.5;
+        q_values[(0, 1, 1, 2)] = 4.0;
 
         let (out_policies_1, out_values_1) =
           futures::executor::block_on(learner.predict(inputs.clone(), global.clone(), array![0.0])).unwrap();
@@ -1644,6 +1690,7 @@ mod tests {
             td_scores,
             scores,
             captured,
+            q_values,
             0.01,
           )
           .unwrap();

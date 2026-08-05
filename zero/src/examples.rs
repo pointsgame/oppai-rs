@@ -51,6 +51,12 @@ pub struct Batch<N> {
   /// Captured cells at the terminal game state, 2 channels:
   /// the cells captured by the current player and by the opponent.
   pub captured: Array4<N>,
+  /// Per-move q targets, 2 channels: the value the search settled on for each
+  /// explored child of the position, then the search weight behind it. Cells
+  /// the search never explored - and every cell of a position recorded before
+  /// q values were stored - carry zero weight, which masks them out of the
+  /// loss.
+  pub q_values: Array4<N>,
 }
 
 #[derive(Clone, Debug)]
@@ -367,6 +373,7 @@ impl Examples {
     let mut td_scores = Vec::<N>::with_capacity(range.len() * TD_VALUES);
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
     let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
+    let mut q_values = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
     for example in self.examples.get(range.clone()).unwrap() {
       let game = &self.games[example.game];
       let mut field = Field::new(game.width, game.height, zobrist.clone());
@@ -398,6 +405,14 @@ impl Examples {
         game.height,
         example.rotation,
         &mut policies,
+      );
+      game.visits[example.position - initial_moves].q_values_to_vec(
+        width,
+        height,
+        game.width,
+        game.height,
+        example.rotation,
+        &mut q_values,
       );
       // The game's final position has no reply to learn from, so its opponent
       // policy target is all zeros: cross-entropy against a zero target
@@ -467,6 +482,9 @@ impl Examples {
         .into_shape_with_order((range.len(), SCORE_ONE_HOT_SIZE))
         .unwrap(),
       captured: Array::from(captured)
+        .into_shape_with_order((range.len(), 2, height as usize, width as usize))
+        .unwrap(),
+      q_values: Array::from(q_values)
         .into_shape_with_order((range.len(), 2, height as usize, width as usize))
         .unwrap(),
     }

@@ -477,6 +477,7 @@ where
       batch.td_scores,
       batch.scores,
       batch.captured,
+      batch.q_values,
       learning_rate,
     )?;
   }

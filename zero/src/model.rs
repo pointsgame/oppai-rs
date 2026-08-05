@@ -52,6 +52,7 @@ pub trait TrainableModel<N: Float>: Model<N> + Sized {
     td_scores: Array2<N>,
     scores: Array2<N>,
     captured: Array4<N>,
+    q_values: Array4<N>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE>;
 }

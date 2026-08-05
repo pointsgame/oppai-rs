@@ -1827,6 +1827,31 @@ impl<N: Float + Sum + Copy> Search<N> {
     *self = new_search;
   }
 
+  /// The value the search settled on for every explored root child, from the
+  /// root player's perspective, together with the weight of search behind it:
+  /// `(pos, weight, q)`.
+  ///
+  /// This is the per-move q training target: what a single forward pass should
+  /// say the search would conclude about each reply. The weights are the raw
+  /// ones - unlike the policy target, which prunes the weight forced
+  /// exploration spent, a q value is not a preference, so all of the evidence
+  /// behind it is wanted.
+  pub fn q_values(&self) -> impl Iterator<Item = (Pos, N, N)> + '_ {
+    self.nodes[self.root_idx].children.iter().filter_map(|edge| {
+      if edge.visits == 0 {
+        return None;
+      }
+      let &child_idx = self.map.get(&edge.hash)?;
+      let child = &self.nodes[child_idx];
+      let weight = Self::child_weight(child, edge.visits);
+      if weight > N::zero() {
+        Some((edge.pos, weight, -child.value))
+      } else {
+        None
+      }
+    })
+  }
+
   /// Get the weight and prior for each child of the root node
   pub fn weights_with_prior(&self) -> impl Iterator<Item = (Pos, (N, N))> + '_ {
     self.nodes[self.root_idx]

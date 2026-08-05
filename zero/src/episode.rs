@@ -40,8 +40,20 @@ const MCTS_FULL_SIMS: u32 = 1000;
 /// * `.4` - the raw neural net value of the position, without any search, in
 ///   `[-1, 1]` from the perspective of the player to move. Used for value
 ///   surprise weighting.
+/// * `.5` - `(pos, weight, q)` for every explored child of the root: the value
+///   the search settled on for that reply, in `[-1, 1]` from the perspective
+///   of the player to move, and the search weight behind it. The per-move q
+///   training target. Empty in data recorded before it was stored, which the
+///   loss masks out by the zero weight.
 #[derive(Clone, PartialEq, Default, Debug)]
-pub struct Visits(pub Vec<(Pos, f64)>, pub bool, pub f64, pub f64, pub f64);
+pub struct Visits(
+  pub Vec<(Pos, f64)>,
+  pub bool,
+  pub f64,
+  pub f64,
+  pub f64,
+  pub Vec<(Pos, f64, f64)>,
+);
 
 impl Visits {
   pub fn total(&self) -> f64 {
@@ -82,6 +94,36 @@ impl Visits {
         let idx = start_idx + (y as usize) * (width as usize) + (x as usize);
         policies[idx] = N::from(weight).unwrap() / N::from(total).unwrap();
       }
+    }
+  }
+
+  /// Per-move q targets, pushed as two planes: the q value the search settled
+  /// on for each explored child, then the search weight behind it. Cells no
+  /// explored child covers stay zero in both planes, and the zero weight is
+  /// what keeps them out of the loss - including the entire plane of a
+  /// position recorded before q values were stored.
+  pub fn q_values_to_vec<N: Float + Copy>(
+    &self,
+    width: u32,
+    height: u32,
+    field_width: u32,
+    field_height: u32,
+    rotation: u8,
+    planes: &mut Vec<N>,
+  ) {
+    let start_idx = planes.len();
+    let plane = (width * height) as usize;
+
+    planes.extend(iter::repeat_n(N::zero(), 2 * plane));
+
+    for &(pos, weight, q) in &self.5 {
+      let x = to_x(field_width + 1, pos);
+      let y = to_y(field_width + 1, pos);
+      let (x, y) = rotate(field_width, field_height, x, y, rotation);
+
+      let idx = start_idx + (y as usize) * (width as usize) + (x as usize);
+      planes[idx] = N::from(q).unwrap();
+      planes[idx + plane] = N::from(weight).unwrap();
     }
   }
 
@@ -249,6 +291,10 @@ where
       surprise,
       search.value().to_f64().unwrap(),
       search.raw_value().to_f64().unwrap(),
+      search
+        .q_values()
+        .map(|(pos, weight, q)| (pos, weight.to_f64().unwrap(), q.to_f64().unwrap()))
+        .collect(),
     );
 
     let pos = if let Some(pos) = search.next_root_with_temperature(
