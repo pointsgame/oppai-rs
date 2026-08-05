@@ -36,13 +36,14 @@ pub fn visits_to_sgf(mut node: &mut SgfNode<Prop>, visits: &[Visits], stride: u3
         "ZQ".into(),
         q_values
           .iter()
-          .map(|&(pos, weight, q)| {
+          .map(|&(pos, weight, q, score)| {
             format!(
-              "{}{}{}:{}",
+              "{}{}{}:{}:{}",
               from_coordinate(to_x(stride, pos) as u8) as char,
               from_coordinate(to_y(stride, pos) as u8) as char,
               weight,
               q,
+              score,
             )
           })
           .collect(),
@@ -80,11 +81,22 @@ pub fn sgf_to_visits(node: &SgfNode<Prop>, stride: u32) -> Vec<Visits> {
       let q_values = match node.get_property("ZQ") {
         Some(Prop::Unknown(_, entries)) => entries
           .iter()
-          .map(|s| {
+          .filter_map(|s| {
             let x = to_coordinate(s.as_bytes()[0]) as u32;
             let y = to_coordinate(s.as_bytes()[1]) as u32;
-            let (weight, q) = s[2..].split_once(':').unwrap();
-            (to_pos(stride, x, y), weight.parse().unwrap(), q.parse().unwrap())
+            let (weight, rest) = s[2..].split_once(':')?;
+            // Entries recorded before the per-move score was stored have no
+            // second separator. They are dropped rather than given a made-up
+            // score: the loss has a single weight for both targets, so a zero
+            // score would be trained towards as if the search had settled on
+            // it.
+            let (q, score) = rest.split_once(':')?;
+            Some((
+              to_pos(stride, x, y),
+              weight.parse().unwrap(),
+              q.parse().unwrap(),
+              score.parse().unwrap(),
+            ))
           })
           .collect(),
         _ => Vec::new(),
@@ -150,14 +162,62 @@ mod tests {
       0.25,
       -0.125,
       vec![
-        (field.field().to_pos(0, 0), 1.5, 0.5),
-        (field.field().to_pos(2, 0), 24.0, -0.75),
+        (field.field().to_pos(0, 0), 1.5, 0.5, 3.5),
+        (field.field().to_pos(2, 0), 24.0, -0.75, -1.5),
       ],
     )];
     let mut node = to_sgf(&field).unwrap();
     visits_to_sgf(&mut node, &visits, field.field().stride, field.field().moves_count());
     let sgf_visits = sgf_to_visits(&node, field.field().stride);
     assert_eq!(sgf_visits, visits);
+  }
+
+  /// Data recorded when the q entries carried only the value has no per-move
+  /// score to load. Such entries are dropped rather than given a made-up score,
+  /// since one weight covers both targets.
+  #[test]
+  fn load_q_values_recorded_without_scores() {
+    env_logger::try_init().ok();
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+    let field: ExtendedField = construct_field(
+      &mut rng,
+      "
+      ....
+      .aB.
+      .Dc.
+      ....
+      ",
+    )
+    .into();
+    let stride = field.field().stride;
+    let visits = vec![Visits(
+      vec![(field.field().to_pos(0, 0), 1.5)],
+      true,
+      0.625,
+      0.25,
+      -0.125,
+      vec![(field.field().to_pos(0, 0), 1.5, 0.5, 3.5)],
+    )];
+    let mut node = to_sgf(&field).unwrap();
+    visits_to_sgf(&mut node, &visits, stride, field.field().moves_count());
+    let mut sgf_node = &mut node;
+    loop {
+      for property in &mut sgf_node.properties {
+        if let Prop::Unknown(name, values) = property
+          && name == "ZQ"
+        {
+          // The old encoding: coordinates, weight and q value, no score.
+          *values = vec!["aa1.5:0.5".to_string()];
+        }
+      }
+      match sgf_node.children.first_mut() {
+        Some(child) => sgf_node = child,
+        None => break,
+      }
+    }
+    let mut old = visits;
+    old[0].5.clear();
+    assert_eq!(sgf_to_visits(&node, stride), old);
   }
 
   /// Self-play data recorded before uncertainty weighting stores integer visit

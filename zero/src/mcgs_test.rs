@@ -2263,3 +2263,69 @@ fn childless_nodes_keep_their_playout_count_through_a_recompute() {
     }
   }
 }
+
+/// A node's value carries its subtree bias correction, which can push the
+/// average past the `[-1, 1]` a value is defined on, and the training loss
+/// reads the q target as a probability that has to stay in `[0, 1]` - so the
+/// q is clamped back into range. The score has no such range and passes
+/// through as the search left it.
+#[test]
+fn q_values_are_clamped_to_the_value_range() {
+  let mut search = Search::<f64>::new(PARAMS);
+  add_root_child(&mut search, 10, 4, 4, -1.25, 1.0);
+  let child_idx = search.map[&10];
+  search.nodes[child_idx].score = -3.5;
+
+  let q_values: Vec<_> = search.q_values().collect();
+  assert_eq!(q_values.len(), 1);
+  let (pos, weight, q, score) = q_values[0];
+  assert_eq!(pos, 10);
+  assert_eq!(weight, 4.0);
+  assert_eq!(q, 1.0);
+  assert_eq!(score, 3.5);
+}
+
+/// The net's score estimate - the fourth value column - rides the backups into
+/// the tree, so the q targets can say what score the search settled on for
+/// each reply. A root child evaluated once carries exactly the net's estimate,
+/// negated into the root player's perspective.
+#[test]
+fn q_scores_follow_the_net_estimate() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ......
+    ..aA..
+    ......
+    ",
+  );
+  let mut search = Search::<f64>::new(PARAMS);
+
+  // The first batch only expands the root; the following ones descend into
+  // its children.
+  for _ in 0..3 {
+    futures::executor::block_on(search.mcgs(
+      &mut field,
+      Player::Red,
+      &mut |inputs: Array4<f64>, _, _| {
+        let result: Result<_, ()> = Ok((
+          uniform_policies(&inputs),
+          const_value(&inputs, array![1.0, 0.0, 0.0, 2.5]),
+        ));
+        result
+      },
+      0,
+      &mut rng,
+    ))
+    .unwrap();
+  }
+
+  let q_values: Vec<_> = search.q_values().collect();
+  assert!(!q_values.is_empty());
+  // Deeper subtrees mix the estimate across perspectives, but a child whose
+  // only evidence is its own evaluation reports it exactly.
+  assert!(q_values.iter().any(|&(_, _, _, score)| score == -2.5));
+  // And nothing in the tree can exceed an estimate every evaluation agrees on.
+  assert!(q_values.iter().all(|&(_, _, _, score)| score.abs() <= 2.5 + 1e-9));
+}

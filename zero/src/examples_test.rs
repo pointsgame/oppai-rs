@@ -203,10 +203,10 @@ fn opponent_policy_of_the_last_position_is_zero() {
 }
 
 // A row's q target carries, for every explored child of its position, the
-// value the search settled on and the weight behind it - and nothing else:
-// rows recorded without q values (old data) stay all zero weight and so out
-// of the loss. Rotation moves the entries around, so the planes are checked
-// through their rotation-invariant sums.
+// value and score the search settled on and the weight behind them - and
+// nothing else: rows recorded without q values (old data) stay all zero
+// weight and so out of the loss. Rotation moves the entries around, so the
+// planes are checked through their rotation-invariant sums.
 #[test]
 fn batch_q_values_follow_the_search() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
@@ -228,7 +228,7 @@ fn batch_q_values_follow_the_search() {
       0.0,
       0.0,
       0.0,
-      vec![(field.moves[0], 2.0, 0.5), (field.moves[1], 1.0, -0.25)],
+      vec![(field.moves[0], 2.0, 0.5, 1.5), (field.moves[1], 1.0, -0.25, -3.0)],
     ),
     Visits(vec![(field.moves[1], 1.0)], true, 0.0, 0.0, 0.0, Vec::new()),
   ];
@@ -237,17 +237,20 @@ fn batch_q_values_follow_the_search() {
   let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, &mut rng));
   let rows = examples.len();
   let batch = examples.batches::<f64>(width, height, zobrist, rows).next().unwrap();
-  assert_eq!(batch.q_values.dim(), (rows, 2, height as usize, width as usize));
+  assert_eq!(batch.q_values.dim(), (rows, 3, height as usize, width as usize));
 
   for (row, example) in examples.examples.iter().enumerate() {
     let qs = batch.q_values.index_axis(Axis(0), row);
     let q_sum = qs.index_axis(Axis(0), 0).sum();
-    let weight_sum = qs.index_axis(Axis(0), 1).sum();
+    let score_sum = qs.index_axis(Axis(0), 1).sum();
+    let weight_sum = qs.index_axis(Axis(0), 2).sum();
     if example.position == 0 {
       assert!((q_sum - 0.25).abs() < 1e-12, "row {row}: got {q_sum}");
+      assert!((score_sum + 1.5).abs() < 1e-12, "row {row}: got {score_sum}");
       assert!((weight_sum - 3.0).abs() < 1e-12, "row {row}: got {weight_sum}");
     } else {
       assert_eq!(q_sum, 0.0, "row {row}");
+      assert_eq!(score_sum, 0.0, "row {row}");
       assert_eq!(weight_sum, 0.0, "row {row}");
     }
   }

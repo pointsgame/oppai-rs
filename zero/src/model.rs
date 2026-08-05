@@ -17,10 +17,14 @@ pub trait Model<N: Float> {
   }
 
   /// Returns the policies and the values for a batch of positions. The values
-  /// have 3 columns: the win and loss probabilities, and the predicted
-  /// short-term error (standard deviation) of the value - how uncertain the
-  /// value estimate is. A model with no estimate to offer leaves it at 0 and
-  /// reports [`Model::predicts_uncertainty`] as false.
+  /// have 4 columns: the win and loss probabilities, the predicted short-term
+  /// error (standard deviation) of the value - how uncertain the value
+  /// estimate is - and the predicted score of the position in points. A model
+  /// with no error estimate to offer leaves the third at 0 and reports
+  /// [`Model::predicts_uncertainty`] as false; one with no score estimate may
+  /// omit the fourth column entirely, leaving the search's score estimates -
+  /// and with them the per-move q score targets, which only a model that does
+  /// estimate scores ever trains on - at zero.
   ///
   /// `optimism` carries one weight per position, in `[0, 1]`: how far that
   /// position's policy is moved from the trained one towards the optimistic

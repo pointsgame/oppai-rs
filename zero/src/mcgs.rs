@@ -189,6 +189,15 @@ pub struct Node<N: Float> {
   /// bias-corrected NodeUtility used by the MCTS recurrence is derived from this
   /// plus the bucket's observed bias; see [`Search::update_node`].
   pub raw_value: N,
+  /// Expected final score in points, from the perspective of the player to
+  /// move. Propagated recursively like `value` - the node's own estimate plus
+  /// the children's, negated across each edge - but with no bias correction:
+  /// nothing in the search reads it, it is only carried so that the per-move q
+  /// score training target can say what the search settled on for each reply.
+  pub score: N,
+  /// The node's own score estimate: the net's for an ordinary state, the exact
+  /// final score for a terminal one. The `raw_value` of the score.
+  pub raw_score: N,
   /// Q²(n): Expected squared utility, propagated recursively the same way as
   /// `value`: (U(n)² + sum(edge.visits * child.Q²)) / N(n). Squares are
   /// perspective-independent, so no sign flips are needed. Together with
@@ -233,6 +242,8 @@ impl<N: Float> Node<N> {
       own_visits: 0,
       value: N::zero(),
       raw_value: N::zero(),
+      score: N::zero(),
+      raw_score: N::zero(),
       value_sq: N::zero(),
       weight: N::zero(),
       weight_sq: N::zero(),
@@ -344,6 +355,12 @@ impl<N: Float> Default for Node<N> {
 
 pub fn game_result<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> N {
   N::from((field.score(player) * 2 + komi_x_2).signum()).unwrap()
+}
+
+/// The final score of a finished game in points, komi included, from `player`'s
+/// perspective.
+pub fn game_score<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> N {
+  N::from(field.score(player) * 2 + komi_x_2).unwrap() / N::from(2).unwrap()
 }
 
 /// The knobs that differ between generating training data and playing.
@@ -705,11 +722,13 @@ impl<N: Float + Sum + Copy> Search<N> {
     Self::downweight_bad_children(children, sum_weights, params.value_weight_exponent);
 
     let mut sum_values = N::zero();
+    let mut sum_scores = N::zero();
     let mut sum_values_sq = N::zero();
     let mut sum_weights_sq = N::zero();
     for &(child_idx, weight, _, _) in children.iter() {
       let child = &nodes[child_idx];
       sum_values = sum_values + weight * -child.value;
+      sum_scores = sum_scores + weight * -child.score;
       sum_values_sq = sum_values_sq + weight * child.value_sq;
       // Taking only `weight / child.weight_sum` of the child's weight scales
       // every weight inside it by that factor, so the squares scale by its
@@ -758,6 +777,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     // counts with its uncertainty weight, like every child contribution.
     node.value = (node_utility * node.weight + sum_values) / node.weight_sum;
     node.value_sq = (node_utility * node_utility * node.weight + sum_values_sq) / node.weight_sum;
+    node.score = (node.raw_score * node.weight + sum_scores) / node.weight_sum;
   }
 
   /// Recomputes every reachable node from its children, bottom up, refreshing the
@@ -1128,6 +1148,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     &mut self,
     path: &[(usize, usize)],
     result: N,
+    score: N,
     weight: N,
     children: Vec<Edge<N>>,
     bias_key: Option<BiasKey>,
@@ -1154,6 +1175,8 @@ impl<N: Float + Sum + Copy> Search<N> {
     let leaf = &mut self.nodes[leaf_idx];
     if leaf.own_visits == 0 {
       leaf.raw_value = result;
+      leaf.score = score;
+      leaf.raw_score = score;
       leaf.visits = 1;
       leaf.own_visits = 1;
       leaf.weight = weight;
@@ -1185,6 +1208,8 @@ impl<N: Float + Sum + Copy> Search<N> {
       let old_weight_sum = leaf.weight_sum;
       let new_weight_sum = old_weight_sum + weight;
       leaf.raw_value = (leaf.raw_value * old_weight_sum + result * weight) / new_weight_sum;
+      leaf.raw_score = (leaf.raw_score * old_weight_sum + score * weight) / new_weight_sum;
+      leaf.score = leaf.raw_score;
       leaf.value = (leaf.value * old_weight_sum + value * weight) / new_weight_sum;
       leaf.value_sq = (leaf.value_sq * old_weight_sum + value * value * weight) / new_weight_sum;
       leaf.visits += 1;
@@ -1440,11 +1465,12 @@ impl<N: Float + Sum + Copy> Search<N> {
 
       let result = if *terminal || field.is_game_over(red_komi_x_2) {
         // Terminal nodes get no bias correction. Their value is exact, so they
-        // get the maximum weight.
+        // get the maximum weight. The score is the exact final score too.
         let weight = Self::terminal_weight(weigh);
         self.add_result(
           path,
           game_result(field, player, leaf_komi_x_2),
+          game_score(field, player, leaf_komi_x_2),
           weight,
           Vec::new(),
           None,
@@ -1512,13 +1538,17 @@ impl<N: Float + Sum + Copy> Search<N> {
       let policy = policies.slice(s![i, .., ..]);
       let value = values[(i, 0)] - values[(i, 1)];
       let weight = Self::eval_weight(weigh, values[(i, 2)]);
+      // A model without a score estimate leaves the whole tree's scores at 0,
+      // and with them the per-move q score targets - which only the trainable
+      // model, one that does estimate scores, ever reads back.
+      let score = if values.dim().1 > 3 { values[(i, 3)] } else { N::zero() };
 
       let children = self.create_children(field, player, &policy, rng);
       // Bucket the leaf by the local context of the move that created it. The
       // field currently has all of the path's moves played, so `field.moves`
       // ends with this node's move and the move before it.
       let bias_key = Self::bias_key(field);
-      self.add_result(path, value, weight, children, bias_key);
+      self.add_result(path, value, score, weight, children, bias_key);
 
       for _ in 0..path.len() {
         field.undo();
@@ -1827,16 +1857,21 @@ impl<N: Float + Sum + Copy> Search<N> {
     *self = new_search;
   }
 
-  /// The value the search settled on for every explored root child, from the
-  /// root player's perspective, together with the weight of search behind it:
-  /// `(pos, weight, q)`.
+  /// The value and score the search settled on for every explored root child,
+  /// from the root player's perspective, together with the weight of search
+  /// behind them: `(pos, weight, q, score)`.
   ///
   /// This is the per-move q training target: what a single forward pass should
   /// say the search would conclude about each reply. The weights are the raw
   /// ones - unlike the policy target, which prunes the weight forced
   /// exploration spent, a q value is not a preference, so all of the evidence
   /// behind it is wanted.
-  pub fn q_values(&self) -> impl Iterator<Item = (Pos, N, N)> + '_ {
+  ///
+  /// The q is clamped into `[-1, 1]`: a node's value carries its subtree bias
+  /// correction, which can push the average past the range a value is defined
+  /// on, and the training loss reads the target as a probability that has to
+  /// stay in `[0, 1]`.
+  pub fn q_values(&self) -> impl Iterator<Item = (Pos, N, N, N)> + '_ {
     self.nodes[self.root_idx].children.iter().filter_map(|edge| {
       if edge.visits == 0 {
         return None;
@@ -1845,7 +1880,8 @@ impl<N: Float + Sum + Copy> Search<N> {
       let child = &self.nodes[child_idx];
       let weight = Self::child_weight(child, edge.visits);
       if weight > N::zero() {
-        Some((edge.pos, weight, -child.value))
+        let q = (-child.value).min(N::one()).max(-N::one());
+        Some((edge.pos, weight, q, -child.score))
       } else {
         None
       }

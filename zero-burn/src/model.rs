@@ -613,7 +613,7 @@ impl<B: Backend> ValueHead<B> {
     inputs: Tensor<B, 4>,
     mask: Tensor<B, 4>,
     mask_sum_hw: Tensor<B, 4>,
-  ) -> (Tensor<B, 2>, Tensor<B, 2>) {
+  ) -> (Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 2>) {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
@@ -624,8 +624,11 @@ impl<B: Backend> ValueHead<B> {
     let outv2 = self.linear2.forward(outpooled.clone());
     let outv2 = mish(outv2);
     let out_value = self.linear_valuehead.forward(outv2.clone());
-    let out_value_error = self.value_error(outv2);
-    (out_value, out_value_error)
+    let out_value_error = self.value_error(outv2.clone());
+    // The TD score is a single small layer on features this path computes
+    // anyway, unlike the score belief this path is there to skip.
+    let out_td_score = self.linear_td_score.forward(outv2) * TD_SCORE_SCALE;
+    (out_value, out_value_error, out_td_score)
   }
 
   /// Predicted squared short-term value error, from the second value layer.
@@ -638,7 +641,7 @@ impl<B: Backend> ValueHead<B> {
 }
 
 /// Number of channels [`PolicyHead`] predicts.
-const POLICY_OUTPUTS: usize = 7;
+const POLICY_OUTPUTS: usize = 8;
 
 /// Index of the long-term optimistic policy, trained on the games that were won
 /// or whose final score beat the prediction. Nothing reads it outside training:
@@ -659,11 +662,17 @@ const OPTIMISTIC_POLICY: usize = 5;
 /// one's.
 const Q_VALUE_POLICY: usize = 6;
 
+/// Index of the per-move q scores: for every cell, the score in points the
+/// search would settle on for playing there, divided by [`TD_SCORE_SCALE`].
+/// The score's counterpart of [`Q_VALUE_POLICY`], and an auxiliary target all
+/// the same.
+const Q_SCORE_POLICY: usize = 7;
+
 /// Policy head output channels:
 /// 0 - policy, 1 - opponent policy,
 /// 2 - soft policy, 3 - soft opponent policy,
 /// 4 - long-term optimistic policy, 5 - short-term optimistic policy,
-/// 6 - per-move q values (pre-tanh).
+/// 6 - per-move q values (pre-tanh), 7 - per-move q scores (pre-scale).
 #[derive(Module, Debug)]
 pub struct PolicyHead<B: Backend> {
   conv1p: Conv2d<B>,
@@ -830,7 +839,7 @@ impl<B: Backend> Model<B> {
     &self,
     spatial: Tensor<B, 4>,
     global: Tensor<B, 2>,
-  ) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>) {
+  ) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 2>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = self.conv_spatial.forward(spatial);
@@ -842,8 +851,8 @@ impl<B: Backend> Model<B> {
     x = self.norm_trunkfinal.forward(x, mask.clone());
     x = mish(x);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
-    let (value, value_error) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
-    (policy, value, value_error)
+    let (value, value_error, td_score) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
+    (policy, value, value_error, td_score)
   }
 }
 
@@ -974,18 +983,25 @@ where
       &self.device,
     );
     let optimism = Tensor::from_data(TensorData::new(into_data_vec(optimism), [batch, 1, 1]), &self.device);
-    let (policy_logits, value_logits, value_error) = self.model.forward_no_score(inputs, global);
+    let (policy_logits, value_logits, value_error, td_score) = self.model.forward_no_score(inputs, global);
     // TODO: lightweight model that doesn't calculate second layer
     let policy_logits = interpolate_policy(policy_logits, optimism);
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
     // The predicted squared error becomes a standard deviation for the
-    // search's uncertainty weighting.
+    // search's uncertainty weighting. The score estimate is the
+    // longest-horizon TD score, the head whose target converges to the final
+    // score; the search averages it over each subtree into the per-move q
+    // score targets.
     let values = Tensor::cat(
-      vec![softmax(value_logits.slice(s![.., 0..2]), 1), value_error.sqrt()],
+      vec![
+        softmax(value_logits.slice(s![.., 0..2]), 1),
+        value_error.sqrt(),
+        td_score.slice(s![.., 0..1]),
+      ],
       1,
     );
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data_async().await?.into_vec()?)?;
-    let values = Array2::from_shape_vec((batch, 3), values.into_data_async().await?.into_vec()?)?;
+    let values = Array2::from_shape_vec((batch, 4), values.into_data_async().await?.into_vec()?)?;
     Ok((policies, values))
   }
 }
@@ -1091,11 +1107,12 @@ where
       &self.predictor.device,
     );
     let q_values: Tensor<B, 4> = Tensor::from_data(
-      TensorData::new(into_data_vec(q_values), [batch, 2, height, width]),
+      TensorData::new(into_data_vec(q_values), [batch, 3, height, width]),
       &self.predictor.device,
     );
     let q_targets = q_values.clone().slice(s![.., 0..1]).reshape([0, -1]);
-    let q_weights = q_values.slice(s![.., 1..2]).reshape([0, -1]);
+    let q_score_targets = q_values.clone().slice(s![.., 1..2]).reshape([0, -1]);
+    let q_weights = q_values.slice(s![.., 2..3]).reshape([0, -1]);
     // The captured head predicts the terminal captured state of every board
     // cell, so the loss is masked only by the board mask.
     let mask = inputs.clone().slice(s![.., 0..1]);
@@ -1134,6 +1151,10 @@ where
     let out_q_pretanh = out_policy_logits
       .clone()
       .slice(s![.., Q_VALUE_POLICY..Q_VALUE_POLICY + 1, .., ..])
+      .reshape([0, -1]);
+    let out_q_score_prescale = out_policy_logits
+      .clone()
+      .slice(s![.., Q_SCORE_POLICY..Q_SCORE_POLICY + 1, .., ..])
       .reshape([0, -1]);
     let out_optimistic_policies = log_softmax(
       out_policy_logits
@@ -1287,18 +1308,31 @@ where
     // values (older data) finite - they contribute nothing.
     let q_mask = q_weights.clone().greater_elem(0.0).float();
     let q_sqrt_weights = q_weights.sqrt();
-    let q_logits = out_q_pretanh * q_mask * 2.0;
+    let q_logits = out_q_pretanh * q_mask.clone() * 2.0;
     let q_target_probs = (q_targets + 1.0) / 2.0;
     let q_bce = q_logits.clone().clamp_min(0.0) - q_logits.clone() * q_target_probs + (-q_logits.abs()).exp().log1p();
     let q_values_loss =
-      ((q_bce * q_sqrt_weights.clone()).sum_dim(1) / (q_sqrt_weights.sum_dim(1) + 1.0)).sum() * 1.5 / batch;
+      ((q_bce * q_sqrt_weights.clone()).sum_dim(1) / (q_sqrt_weights.clone().sum_dim(1) + 1.0)).sum() * 1.5 / batch;
+
+    // The score's counterpart of the q loss above: each explored move's
+    // predicted score against the score the search settled on for it. Huber
+    // rather than squared error so that a runaway line does not dominate the
+    // gradient, and the same masking and square-root weighting as above - the
+    // mask again keeps the off-board wall out of the arithmetic before the
+    // zero weight cancels it.
+    let q_score_pred = out_q_score_prescale * q_mask * TD_SCORE_SCALE;
+    let q_score_huber = HuberLossConfig::new(12.0)
+      .init()
+      .forward_no_reduction(q_score_pred, q_score_targets);
+    let q_scores_loss =
+      ((q_score_huber * q_sqrt_weights.clone()).sum_dim(1) / (q_sqrt_weights.sum_dim(1) + 1.0)).sum() * 0.0008 / batch;
 
     let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
     self.predictor.model.visit(&mut norm_visitor);
     let param_l2_norm = norm_visitor.l2_norm();
 
     log::info!(
-      "Loss: value {} td value {} value error {} td score {} score error {} policy {} opponent policy {} soft policy {} soft opponent policy {} optimistic policy {} long optimistic policy {} pdf {} cdf {} captured {} q {} L2 norm {}",
+      "Loss: value {} td value {} value error {} td score {} score error {} policy {} opponent policy {} soft policy {} soft opponent policy {} optimistic policy {} long optimistic policy {} pdf {} cdf {} captured {} q {} q score {} L2 norm {}",
       values_loss.clone().into_scalar(),
       td_values_loss.clone().into_scalar(),
       value_error_loss.clone().into_scalar(),
@@ -1314,6 +1348,7 @@ where
       cdf_loss.clone().into_scalar(),
       captured_loss.clone().into_scalar(),
       q_values_loss.clone().into_scalar(),
+      q_scores_loss.clone().into_scalar(),
       param_l2_norm,
     );
 
@@ -1331,7 +1366,8 @@ where
       + pdf_loss
       + cdf_loss
       + captured_loss
-      + q_values_loss;
+      + q_values_loss
+      + q_scores_loss;
 
     let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     self.predictor.model = self.optimizer.step(learning_rate, self.predictor.model, grads);
@@ -1600,11 +1636,13 @@ mod tests {
           array![0.0],
         ))
         .unwrap();
-        // Win and loss probabilities, then the predicted short-term error as a
-        // standard deviation, which the search turns into a playout weight.
-        assert_eq!(values.dim(), (1, 3));
+        // Win and loss probabilities, the predicted short-term error as a
+        // standard deviation, which the search turns into a playout weight,
+        // and the predicted score in points.
+        assert_eq!(values.dim(), (1, 4));
         assert!((values[(0, 0)] + values[(0, 1)] - 1.0).abs() < 1e-4);
         assert!(values[(0, 2)] >= 0.0 && values[(0, 2)].is_finite());
+        assert!(values[(0, 3)].is_finite());
 
         // The same position three times, each row asking for its own optimism:
         // a batch is what the search actually submits, and every row of it has
@@ -1671,11 +1709,13 @@ mod tests {
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
         let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
-        // One explored move with a recorded q value and search weight; every
-        // other cell keeps zero weight and stays out of the q loss.
-        let mut q_values = Array4::from_elem((1, 2, 4, 8), 0.0);
+        // One explored move with a recorded q value, q score and search
+        // weight; every other cell keeps zero weight and stays out of the q
+        // losses.
+        let mut q_values = Array4::from_elem((1, 3, 4, 8), 0.0);
         q_values[(0, 0, 1, 2)] = 0.5;
-        q_values[(0, 1, 1, 2)] = 4.0;
+        q_values[(0, 1, 1, 2)] = 2.5;
+        q_values[(0, 2, 1, 2)] = 4.0;
 
         let (out_policies_1, out_values_1) =
           futures::executor::block_on(learner.predict(inputs.clone(), global.clone(), array![0.0])).unwrap();
