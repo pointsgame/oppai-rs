@@ -34,8 +34,14 @@ pub trait Model<N: Float> {
   /// interpolated in logit space, so `0` returns the policy as trained and `1`
   /// returns the optimistic policy; a model without that head ignores the
   /// weights entirely.
+  ///
+  /// Taken by shared reference so that several predictions can be in flight at
+  /// once: a forward pass needs nothing exclusive of the model, and a batching
+  /// evaluator wants to prepare one batch while another is still on the device,
+  /// which needs both futures to hold the model. A model with state of its own
+  /// keeps it behind a lock.
   async fn predict(
-    &mut self,
+    &self,
     inputs: Array4<N>,
     global: Array2<N>,
     optimism: Array1<N>,
@@ -69,7 +75,7 @@ where
   type E = E;
 
   async fn predict(
-    &mut self,
+    &self,
     inputs: Array4<N>,
     global: Array2<N>,
     optimism: Array1<N>,
@@ -85,12 +91,7 @@ impl<N: Float> Model<N> for () {
     false
   }
 
-  async fn predict(
-    &mut self,
-    inputs: Array4<N>,
-    _: Array2<N>,
-    _: Array1<N>,
-  ) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(&self, inputs: Array4<N>, _: Array2<N>, _: Array1<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let batch_size = inputs.len_of(Axis(0));
     let height = inputs.len_of(Axis(2));
     let width = inputs.len_of(Axis(3));
@@ -115,7 +116,7 @@ impl<N: Float, A: Model<N>, B: Model<N>> Model<N> for Either<A, B> {
   }
 
   async fn predict(
-    &mut self,
+    &self,
     inputs: Array4<N>,
     global: Array2<N>,
     optimism: Array1<N>,

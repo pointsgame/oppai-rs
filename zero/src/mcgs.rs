@@ -1450,7 +1450,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     &mut self,
     field: &Field,
     player: Player,
-    model: &mut M,
+    model: &M,
     komi_x_2: i32,
   ) -> Result<(), M::E> {
     if self.params.root_policy_optimism == self.params.policy_optimism
@@ -1496,7 +1496,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     &mut self,
     field: &mut Field,
     player: Player,
-    model: &mut M,
+    model: &M,
     komi_x_2: i32,
     rng: &mut R,
   ) -> Result<(), M::E> {

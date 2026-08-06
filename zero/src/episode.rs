@@ -229,7 +229,7 @@ where
 pub async fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
-  model: &mut M,
+  model: &M,
   mut komi_x_2: i32,
   rng: &mut R,
 ) -> Result<Vec<Visits>, M::E>

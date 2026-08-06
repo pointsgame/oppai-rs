@@ -110,7 +110,7 @@ where
     let mut iterations = 0;
     let mut field = field.clone();
     while !should_stop() && iterations < max_iterations_count {
-      self.search.mcgs(&mut field, player, &mut self.model, 0, rng).await?;
+      self.search.mcgs(&mut field, player, &self.model, 0, rng).await?;
       iterations += 1;
     }
 
@@ -123,7 +123,7 @@ where
 /// and value; the legal moves are returned weighted by their policy priors
 /// (renormalized over the legal moves) and the value is the estimation.
 pub async fn policy_moves<N, M>(
-  model: &mut M,
+  model: &M,
   field: &Field,
   player: Player,
 ) -> Result<PolicyAnalysis<N>, <M as Model<N>>::E>

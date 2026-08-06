@@ -195,7 +195,7 @@ where
   })
   .map(|()| {
     let mut rng = SmallRng::from_seed(rng.random());
-    let mut model = new_model();
+    let model = new_model();
     let width = params.width[rng.random_range(0..params.width.len())];
     let height = params.height[rng.random_range(0..params.height.len())];
     let op = opening(width, height, &mut rng);
@@ -222,7 +222,7 @@ where
         player = player.next();
       }
 
-      let visits = episode(&mut field, player, &mut model, komi_x_2, &mut rng)
+      let visits = episode(&mut field, player, &model, komi_x_2, &mut rng)
         .await
         .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
 
@@ -287,7 +287,7 @@ where
         &DefaultFileRecorder::<FullPrecisionSettings>::new(),
         &device,
       )?;
-      let mut predictor = Predictor { model, device };
+      let predictor = Predictor { model, device };
 
       // All games share one evaluator: their positions are merged into large
       // forward passes instead of each game evaluating its own tiny batch. Only
@@ -324,7 +324,7 @@ where
         // are gone the channel closes and the evaluator returns.
         drop(handle);
 
-        let evaluator_result = futures::executor::block_on(run_evaluator(&mut predictor, requests, params.batch_games));
+        let evaluator_result = futures::executor::block_on(run_evaluator(&predictor, requests, params.batch_games));
         // Join before reporting either failure, so a panicking worker is never
         // left running past the end of the scope.
         let games_results = workers
@@ -358,7 +358,7 @@ where
                 params,
                 next_game,
                 parallel,
-                || RandomModel(SmallRng::from_seed(seeder.random())),
+                || RandomModel::new(SmallRng::from_seed(seeder.random())),
                 &mut shard_rng,
                 should_stop,
                 file,
@@ -551,7 +551,7 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let mut model_old = Predictor {
+  let model_old = Predictor {
     model: model_old,
     device: device.clone(),
   };
@@ -562,7 +562,7 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let mut model_new = Predictor {
+  let model_new = Predictor {
     model: model_new,
     device,
   };
@@ -611,9 +611,9 @@ where
     }
 
     let result = if i.is_multiple_of(2) {
-      pit::play(&mut field, player, &mut model_new, &mut model_old, 0, rng).await?
+      pit::play(&mut field, player, &model_new, &model_old, 0, rng).await?
     } else {
-      -pit::play(&mut field, player, &mut model_old, &mut model_new, 0, rng).await?
+      -pit::play(&mut field, player, &model_old, &model_new, 0, rng).await?
     };
 
     match result.cmp(&0) {
@@ -690,11 +690,7 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
 /// Recomputes the policy surprise (KL divergence from the model's raw policy
 /// prior to the visit-count target) and the raw network value of every searched
 /// position of a single game.
-async fn recalc_game<N, M, R>(
-  node: SgfNode<Prop>,
-  model: &mut M,
-  rng: &mut R,
-) -> Result<(ExtendedField, Vec<Visits>, i32)>
+async fn recalc_game<N, M, R>(node: SgfNode<Prop>, model: &M, rng: &mut R) -> Result<(ExtendedField, Vec<Visits>, i32)>
 where
   N: Float + Sum,
   M: Model<N>,
@@ -806,8 +802,8 @@ where
     })
     .map(|(_, node)| {
       let mut rng = SmallRng::from_seed(rng.random());
-      let mut model = new_model();
-      async move { recalc_game(node?, &mut model, &mut rng).await }
+      let model = new_model();
+      async move { recalc_game(node?, &model, &mut rng).await }
     });
 
   let mut games = futures::stream::iter(games).buffer_unordered(params.parallel_games);
@@ -837,7 +833,7 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
-  let mut predictor = Predictor { model, device };
+  let predictor = Predictor { model, device };
 
   // All games share one evaluator: the single position each of them expands at
   // a time is merged into one large forward pass instead of being evaluated on
@@ -851,7 +847,7 @@ where
   };
   let (games_result, evaluator_result) = futures::join!(
     games,
-    run_evaluator(&mut predictor, requests, params.parallel_games.div_ceil(2))
+    run_evaluator(&predictor, requests, params.parallel_games.div_ceil(2))
   );
   evaluator_result?;
   games_result?;

@@ -3,6 +3,7 @@ use std::{
   iter::{self, Sum},
 };
 
+use futures::lock::Mutex;
 use ndarray::{Array1, Array2, Array3, Array4};
 use num_traits::{Float, One};
 use rand::{Rng, RngExt};
@@ -10,7 +11,16 @@ use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
 
 use crate::model::Model;
 
-pub struct RandomModel<R>(pub R);
+/// The generator is behind a lock because a model is asked for its predictions
+/// through a shared reference. The lock is only held while the numbers are
+/// drawn, so concurrent predictions still overlap over everything else.
+pub struct RandomModel<R>(Mutex<R>);
+
+impl<R> RandomModel<R> {
+  pub fn new(rng: R) -> Self {
+    RandomModel(Mutex::new(rng))
+  }
+}
 
 fn softmax<N: Float + Sum>(slice: &mut [N]) -> Result<(), ()> {
   let max = *slice
@@ -37,21 +47,20 @@ where
     false
   }
 
-  async fn predict(
-    &mut self,
-    inputs: Array4<N>,
-    _: Array2<N>,
-    _: Array1<N>,
-  ) -> Result<(Array3<N>, Array2<N>), Self::E> {
+  async fn predict(&self, inputs: Array4<N>, _: Array2<N>, _: Array1<N>) -> Result<(Array3<N>, Array2<N>), Self::E> {
     let (batch, _, height, width) = inputs.dim();
     let length = height * width;
 
-    let mut values = iter::repeat_with(|| self.0.sample(StandardNormal) * N::from(0.2).unwrap())
-      .take(batch * 2)
-      .collect::<Vec<N>>();
-    let mut policies = iter::repeat_with(|| self.0.sample(StandardNormal))
-      .take(batch * height * width)
-      .collect::<Vec<N>>();
+    let (mut values, mut policies) = {
+      let rng = &mut *self.0.lock().await;
+      let values = iter::repeat_with(|| rng.sample(StandardNormal) * N::from(0.2).unwrap())
+        .take(batch * 2)
+        .collect::<Vec<N>>();
+      let policies = iter::repeat_with(|| rng.sample(StandardNormal))
+        .take(batch * height * width)
+        .collect::<Vec<N>>();
+      (values, policies)
+    };
 
     for i in 0..batch {
       softmax(&mut policies[i * length..(i + 1) * length])?;

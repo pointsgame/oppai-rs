@@ -88,7 +88,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
     StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
-    if let Ok((moves, estimation)) = policy_moves(&mut self.model, field, player).await {
+    if let Ok((moves, estimation)) = policy_moves(&self.model, field, player).await {
       SimpleAnalysis {
         moves,
         estimation,

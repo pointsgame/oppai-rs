@@ -1024,7 +1024,7 @@ where
   type E = ModelError;
 
   async fn predict(
-    &mut self,
+    &self,
     inputs: Array4<FloatElem<B>>,
     global: Array2<FloatElem<B>>,
     optimism: Array1<FloatElem<B>>,
@@ -1062,7 +1062,7 @@ where
   type E = ModelError;
 
   async fn predict(
-    &mut self,
+    &self,
     inputs: Array4<FloatElem<B>>,
     global: Array2<FloatElem<B>>,
     optimism: Array1<FloatElem<B>>,
@@ -1759,7 +1759,7 @@ mod tests {
       #[test]
       fn $name() {
         let model = Model::<$backend>::new(&$device, &ModelConfig::default());
-        let mut predictor = Predictor {
+        let predictor = Predictor {
           model,
           device: $device,
         };
@@ -1830,7 +1830,7 @@ mod tests {
           device: $device,
         };
         let optimizer = SgdConfig::new().init::<Autodiff<$backend>, Model<_>>();
-        let mut learner = Learner { predictor, optimizer };
+        let learner = Learner { predictor, optimizer };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let global = array![[0.2]];
@@ -1852,7 +1852,7 @@ mod tests {
 
         let (out_policies_1, out_values_1) =
           futures::executor::block_on(learner.predict(inputs.clone(), global.clone(), array![0.0])).unwrap();
-        let mut learner = learner
+        let learner = learner
           .train(
             inputs.clone(),
             global.clone(),

@@ -151,7 +151,7 @@ impl<N: Float> Model<N> for BatchModel<N> {
   }
 
   async fn predict(
-    &mut self,
+    &self,
     inputs: Array4<N>,
     global: Array2<N>,
     optimism: Array1<N>,
@@ -181,7 +181,7 @@ impl<N: Float> Model<N> for BatchModel<N> {
 /// point where it stops mattering, since the evaluator never waits for more games
 /// than are actually running.
 pub async fn run_evaluator<N, M>(
-  model: &mut M,
+  model: &M,
   mut messages: mpsc::UnboundedReceiver<Message<N>>,
   batch_games: usize,
 ) -> Result<(), M::E>

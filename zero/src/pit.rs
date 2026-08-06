@@ -13,8 +13,8 @@ const MCTS_SIMS: u32 = 32;
 pub async fn play<'a, N, M, R>(
   field: &mut Field,
   mut player: Player,
-  mut model1: &'a mut M,
-  mut model2: &'a mut M,
+  mut model1: &'a M,
+  mut model2: &'a M,
   mut komi_x_2: i32,
   rng: &mut R,
 ) -> Result<i32, M::E>
