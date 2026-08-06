@@ -11,8 +11,12 @@ use crate::model::Model;
 
 /// Play's parameters, but without forbidding apriori bad moves: the tests use
 /// tiny boards where pruning corners would change the trees they assert on.
+/// The auxiliary utility terms are turned off too, so the utilities stay pure
+/// win/loss values and the exact numbers the tests assert on hold.
 const PARAMS: Params = Params {
   forbid_bad: false,
+  early_utility_factor: 0.0,
+  score_utility_factor: 0.0,
   ..Params::PLAY
 };
 
@@ -48,7 +52,10 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>, _, _| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![1.0, 0.0, 0.0])));
+      let result: Result<_, ()> = Ok((
+        uniform_policies(&inputs),
+        const_value(&inputs, array![1.0, 0.0, 0.0, 0.0]),
+      ));
       result
     },
     0,
@@ -73,7 +80,10 @@ fn mcts_first_iterations() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>, _, _| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.0, 1.0, 0.0])));
+      let result: Result<_, ()> = Ok((
+        uniform_policies(&inputs),
+        const_value(&inputs, array![0.0, 1.0, 0.0, 0.0]),
+      ));
       result
     },
     0,
@@ -236,7 +246,10 @@ fn mcts_last_iterations() {
     &mut field,
     Player::Red,
     &mut |inputs: Array4<f64>, _, _| {
-      let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.5, 0.5, 0.0])));
+      let result: Result<_, ()> = Ok((
+        uniform_policies(&inputs),
+        const_value(&inputs, array![0.5, 0.5, 0.0, 0.0]),
+      ));
       result
     },
     0,
@@ -254,7 +267,7 @@ fn mcts_last_iterations() {
 /// observed bias for the subtree value bias correction to pick up.
 fn depth_value(inputs: &Array4<f64>) -> Array2<f64> {
   let batch_size = inputs.len_of(Axis(0));
-  let mut value = Array::zeros((batch_size, 3));
+  let mut value = Array::zeros((batch_size, 4));
   for i in 0..batch_size {
     let mass: f64 = inputs.index_axis(Axis(0), i).sum();
     let p = (mass * 0.02).tanh();
@@ -675,7 +688,10 @@ fn uncertainty_weights_propagate_through_the_tree() {
         &mut field,
         Player::Red,
         &mut |inputs: Array4<f64>, _, _| {
-          let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, error])));
+          let result: Result<_, ()> = Ok((
+            uniform_policies(&inputs),
+            const_value(&inputs, array![0.6, 0.4, error, 0.0]),
+          ));
           result
         },
         0,
@@ -1890,7 +1906,10 @@ impl Model<f64> for NoErrorHead {
     _: Array2<f64>,
     _: Array1<f64>,
   ) -> Result<(Array3<f64>, Array2<f64>), Self::E> {
-    Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.0])))
+    Ok((
+      uniform_policies(&inputs),
+      const_value(&inputs, array![0.6, 0.4, 0.0, 0.0]),
+    ))
   }
 }
 
@@ -1956,7 +1975,10 @@ fn the_optimism_of_the_parameters_reaches_the_net() {
   let asked = std::cell::RefCell::new(Vec::new());
   let mut model = |inputs: Array4<f64>, _: Array2<f64>, optimism: Array1<f64>| {
     asked.borrow_mut().push(optimism.to_vec());
-    let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.1])));
+    let result: Result<_, ()> = Ok((
+      uniform_policies(&inputs),
+      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0]),
+    ));
     result
   };
 
@@ -2012,7 +2034,7 @@ fn a_reused_root_gets_its_priors_re_predicted_at_root_optimism() {
         }
       }
     }
-    let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1])));
+    let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1, 0.0])));
     result
   };
 
@@ -2100,7 +2122,7 @@ fn transposing_paths_of_one_batch_are_evaluated_once() {
             }
           }
         }
-        let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1])));
+        let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1, 0.0])));
         result
       },
       0,
@@ -2152,7 +2174,10 @@ fn forced_playouts_do_not_absorb_a_whole_batch() {
   );
   let mut search = Search::<f64>::new(Params::SELF_PLAY);
   let mut model = |inputs: Array4<f64>, _, _| {
-    let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.1])));
+    let result: Result<_, ()> = Ok((
+      uniform_policies(&inputs),
+      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0]),
+    ));
     result
   };
   // One batch to expand the root, then noise, as self-play does.
@@ -2203,7 +2228,10 @@ fn childless_nodes_keep_their_playout_count_through_a_recompute() {
     ",
   );
   let mut model = |inputs: Array4<f64>, _, _| {
-    let result: Result<_, ()> = Ok((uniform_policies(&inputs), const_value(&inputs, array![0.6, 0.4, 0.1])));
+    let result: Result<_, ()> = Ok((
+      uniform_policies(&inputs),
+      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0]),
+    ));
     result
   };
   let mut search = Search::<f64>::new(PARAMS);
@@ -2264,16 +2292,17 @@ fn childless_nodes_keep_their_playout_count_through_a_recompute() {
   }
 }
 
-/// A node's value carries its subtree bias correction, which can push the
-/// average past the `[-1, 1]` a value is defined on, and the training loss
-/// reads the q target as a probability that has to stay in `[0, 1]` - so the
-/// q is clamped back into range. The score has no such range and passes
-/// through as the search left it.
+/// The q target reads the win/loss value, whose averaging can drift past the
+/// `[-1, 1]` a value is defined on, and the training loss reads the q target
+/// as a probability that has to stay in `[0, 1]` - so the q is clamped back
+/// into range. The score has no such range and passes through as the search
+/// left it.
 #[test]
 fn q_values_are_clamped_to_the_value_range() {
   let mut search = Search::<f64>::new(PARAMS);
   add_root_child(&mut search, 10, 4, 4, -1.25, 1.0);
   let child_idx = search.map[&10];
+  search.nodes[child_idx].winloss = -1.25;
   search.nodes[child_idx].score = -3.5;
 
   let q_values: Vec<_> = search.q_values().collect();
@@ -2328,4 +2357,57 @@ fn q_scores_follow_the_net_estimate() {
   assert!(q_values.iter().any(|&(_, _, _, score)| score == -2.5));
   // And nothing in the tree can exceed an estimate every evaluation agrees on.
   assert!(q_values.iter().all(|&(_, _, _, score)| score.abs() <= 2.5 + 1e-9));
+}
+
+/// The utility the search selects moves by carries the auxiliary early-finish
+/// and score terms on top of the win/loss value, while the reported value -
+/// what the training targets and position estimates read - stays the pure
+/// win/loss expectation.
+#[test]
+fn utility_carries_the_auxiliary_terms_the_value_does_not() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ......
+    ..aA..
+    ......
+    ",
+  );
+  let params = Params {
+    early_utility_factor: 0.3,
+    score_utility_factor: 0.1,
+    ..PARAMS
+  };
+  let mut search = Search::<f64>::new(params);
+
+  let winloss = 0.5;
+  let score = 6.0;
+  // The first batch only expands the root, so its node holds exactly one
+  // evaluation of the constructed position and the numbers can be checked
+  // against the formula directly.
+  futures::executor::block_on(search.mcgs(
+    &mut field,
+    Player::Red,
+    &mut |inputs: Array4<f64>, _, _| {
+      let result: Result<_, ()> = Ok((
+        uniform_policies(&inputs),
+        const_value(&inputs, array![0.75, 0.25, 0.0, score]),
+      ));
+      result
+    },
+    0,
+    &mut rng,
+  ))
+  .unwrap();
+
+  let area = (field.width() * field.height()) as f64;
+  let length_value = ((0.32 - field.moves_count() as f64 / area) / 0.1).atan() * std::f64::consts::FRAC_2_PI;
+  let score_value = (score / (area.sqrt() / 2.0)).atan() * std::f64::consts::FRAC_2_PI;
+  let utility = winloss + 0.3 * winloss * length_value + 0.1 * score_value;
+
+  assert!((search.nodes[0].value - utility).abs() < 1e-12);
+  assert!((search.nodes[0].raw_value - utility).abs() < 1e-12);
+  assert_eq!(search.winloss(), winloss);
+  assert_eq!(search.raw_winloss(), winloss);
 }

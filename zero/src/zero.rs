@@ -114,7 +114,7 @@ where
       iterations += 1;
     }
 
-    Ok((self.search.play_selection(), iterations, self.search.value()))
+    Ok((self.search.play_selection(), iterations, self.search.winloss()))
   }
 }
 

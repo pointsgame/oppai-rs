@@ -318,7 +318,10 @@ where
       }
     }
 
-    let value = search.value().to_f64().unwrap();
+    // Clamped like the per-move q targets: the winloss averaging can drift a
+    // hair past the `[-1, 1]` a value is defined on, and the training loss
+    // reads the value target as a probability that has to stay in `[0, 1]`.
+    let value = search.winloss().to_f64().unwrap().clamp(-1.0, 1.0);
     search_values.push(if player == Player::Red { value } else { -value });
 
     let target: Vec<(Pos, N)> = if full_search {
@@ -346,7 +349,7 @@ where
       target_weight,
       surprise,
       value,
-      search.raw_value().to_f64().unwrap(),
+      search.raw_winloss().to_f64().unwrap(),
       search
         .q_values()
         .map(|(pos, weight, q, score)| {

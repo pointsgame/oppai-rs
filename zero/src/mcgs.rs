@@ -189,11 +189,22 @@ pub struct Node<N: Float> {
   /// bias-corrected NodeUtility used by the MCTS recurrence is derived from this
   /// plus the bucket's observed bias; see [`Search::update_node`].
   pub raw_value: N,
+  /// Expected win/loss value in `[-1, 1]` from the perspective of the player to
+  /// move: the utility with the score and early-finish terms left out.
+  /// Propagated recursively like `value` but with no bias correction. The
+  /// search selects moves on `value`; this is what the training targets and the
+  /// reported position estimate read, so they stay a pure win/loss expectation
+  /// however the utility is shaped.
+  pub winloss: N,
+  /// The node's own win/loss estimate: the net's for an ordinary state, the
+  /// exact result for a terminal one. The `raw_value` of the win/loss value.
+  pub raw_winloss: N,
   /// Expected final score in points, from the perspective of the player to
   /// move. Propagated recursively like `value` - the node's own estimate plus
   /// the children's, negated across each edge - but with no bias correction:
-  /// nothing in the search reads it, it is only carried so that the per-move q
-  /// score training target can say what the search settled on for each reply.
+  /// the score's pull on the search is baked into `value` when a leaf is
+  /// evaluated, and this average is only carried so that the per-move q score
+  /// training target can say what the search settled on for each reply.
   pub score: N,
   /// The node's own score estimate: the net's for an ordinary state, the exact
   /// final score for a terminal one. The `raw_value` of the score.
@@ -242,6 +253,8 @@ impl<N: Float> Node<N> {
       own_visits: 0,
       value: N::zero(),
       raw_value: N::zero(),
+      winloss: N::zero(),
+      raw_winloss: N::zero(),
       score: N::zero(),
       raw_score: N::zero(),
       value_sq: N::zero(),
@@ -367,11 +380,11 @@ pub fn game_score<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> N {
 ///
 /// The exploration coefficients multiply a utility, so in principle they scale
 /// with the range of one. The values here are taken from a search whose utility
-/// also carries score terms, giving it a range about 1.4 times as wide as the
-/// pure win/loss utility used here, which would argue for dividing them by that.
-/// They are left as they are because nothing has measured which plays better.
-/// Where the range enters a formula explicitly - the utility a virtual loss pulls
-/// towards, the largest-possible-variance prior of the LCB - it is correctly 1.
+/// carries auxiliary score terms of the same total weight as
+/// [`Self::early_utility_factor`] plus [`Self::score_utility_factor`], about 1.4,
+/// so the ranges match. Where the range enters a formula explicitly - the
+/// utility a virtual loss pulls towards, the largest-possible-variance prior of
+/// the LCB - it is derived from the factors; see [`Self::utility_radius`].
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Params {
   /// Whether to forbid apriori bad moves. Self-play wants to see them so the
@@ -413,6 +426,19 @@ pub struct Params {
   /// FPU reduction applied at the root, where the alternative to a reduction is
   /// exploring widely.
   pub root_fpu_reduction_max: f64,
+  /// Weight of the early-finish term of the utility: the win/loss value scaled
+  /// by how far short of a typical game's length the position sits. Among won
+  /// lines the ones whose terminals come sooner carry more of it, so a decided
+  /// game gets finished rather than played out - and it outweighs
+  /// [`Self::score_utility_factor`], so ending the game sooner is worth more
+  /// than winning by more points. See [`Search::aux_utility`].
+  pub early_utility_factor: f64,
+  /// Weight of the score term of the utility: the expected final score in
+  /// points, squashed so the first few points of a lead matter most and a rout
+  /// saturates. Gives decided games a gradient - the winner still has something
+  /// to gain and the loser something to save - where the pure win/loss value
+  /// has none. See [`Search::aux_utility`].
+  pub score_utility_factor: f64,
 }
 
 impl Params {
@@ -439,6 +465,8 @@ impl Params {
     // teach the policy that a move is worth less than the search spent on it
     // exactly where the search was told to spend more than it wanted to.
     noise_prune_utility_scale: 0.0,
+    early_utility_factor: 0.3,
+    score_utility_factor: 0.1,
   };
 
   /// Playing to win: no search spent on moves that lose points outright, certain
@@ -463,7 +491,20 @@ impl Params {
     root_fpu_reduction_max: 0.1,
     value_weight_exponent: 0.25,
     noise_prune_utility_scale: 0.15,
+    early_utility_factor: 0.3,
+    score_utility_factor: 0.1,
   };
+
+  /// Radius of the utility range. The win/loss value spans `[-1, 1]` and each
+  /// auxiliary term of [`Search::aux_utility`] is a `[-1, 1]` squash scaled by
+  /// its factor, so the factors add up to the widest utility a leaf can back
+  /// up. The formulas that need an explicit range - the loss a virtual loss
+  /// pulls towards, the largest-possible-variance prior of the LCB - read it
+  /// from here, so they stay in step with the factors instead of assuming a
+  /// pure win/loss range.
+  pub fn utility_radius(&self) -> f64 {
+    1.0 + self.early_utility_factor + self.score_utility_factor
+  }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -722,12 +763,14 @@ impl<N: Float + Sum + Copy> Search<N> {
     Self::downweight_bad_children(children, sum_weights, params.value_weight_exponent);
 
     let mut sum_values = N::zero();
+    let mut sum_winlosses = N::zero();
     let mut sum_scores = N::zero();
     let mut sum_values_sq = N::zero();
     let mut sum_weights_sq = N::zero();
     for &(child_idx, weight, _, _) in children.iter() {
       let child = &nodes[child_idx];
       sum_values = sum_values + weight * -child.value;
+      sum_winlosses = sum_winlosses + weight * -child.winloss;
       sum_scores = sum_scores + weight * -child.score;
       sum_values_sq = sum_values_sq + weight * child.value_sq;
       // Taking only `weight / child.weight_sum` of the child's weight scales
@@ -777,6 +820,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     // counts with its uncertainty weight, like every child contribution.
     node.value = (node_utility * node.weight + sum_values) / node.weight_sum;
     node.value_sq = (node_utility * node_utility * node.weight + sum_values_sq) / node.weight_sum;
+    node.winloss = (node.raw_winloss * node.weight + sum_winlosses) / node.weight_sum;
     node.score = (node.raw_score * node.weight + sum_scores) / node.weight_sum;
   }
 
@@ -932,6 +976,53 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
+  /// Where the early-finish squash is centered and how wide it is, both as
+  /// fractions of the field filled. Dots games fill ~0.32 of the field, so
+  /// that is where the squash spends its slope: a term linear in the fill
+  /// would spread the same budget over fills no game ever ends at - a game
+  /// cannot end within the first moves and practically never fills the board -
+  /// leaving only a sliver of gradient for the window where terminals really
+  /// land. The width covers the spread of realistic game lengths around the
+  /// center.
+  const TYPICAL_FINAL_FILL: f64 = 0.32;
+  const FINAL_FILL_SCALE: f64 = 0.1;
+
+  /// The auxiliary utility of a leaf evaluation: what the search plays for
+  /// beyond winning. Added on top of the win/loss value to form the utility the
+  /// tree selects moves by, while the win/loss value itself is carried
+  /// separately for the training targets. `field` holds the position being
+  /// evaluated; `score` is its expected final score - the net's estimate for an
+  /// ordinary leaf, the exact score for a terminal one.
+  ///
+  /// The early-finish term scales the win/loss value by how far short of a
+  /// typical game's length the position sits, squashed through an atan centered
+  /// at [`Self::TYPICAL_FINAL_FILL`]. Within a decided game every move played
+  /// shrinks it, so the lines that reach their terminals earlier back up a
+  /// higher utility to the winner and the game gets finished instead of played
+  /// out. The squash makes the pressure strongest across the fills games
+  /// actually end at, nearly flat through the opening where none can, and -
+  /// through the atan's heavy tails - still felt by a game dragging on past its
+  /// typical length, where the term goes negative for the winner while staying
+  /// bounded.
+  ///
+  /// The score term squashes the expected score through an atan, so that the
+  /// first few points of a lead matter most and a rout saturates. The squash
+  /// scale of `sqrt(area) / 2` is a quarter of the scale a game that fills its
+  /// whole board would want: dots games fill only ~0.32 of the field, and only
+  /// a part of the filled area is captured, so realistic scores run about a
+  /// quarter as large.
+  fn aux_utility(&self, field: &Field, winloss: N, score: N) -> N {
+    let two_over_pi = N::from(std::f64::consts::FRAC_2_PI).unwrap();
+    let area = N::from(field.width() * field.height()).unwrap();
+    let fill = N::from(field.moves_count()).unwrap() / area;
+    let fill_left = N::from(Self::TYPICAL_FINAL_FILL).unwrap() - fill;
+    let length_value = (fill_left / N::from(Self::FINAL_FILL_SCALE).unwrap()).atan() * two_over_pi;
+    let score_scale = area.sqrt() / N::from(2).unwrap();
+    let score_value = (score / score_scale).atan() * two_over_pi;
+    N::from(self.params.early_utility_factor).unwrap() * winloss * length_value
+      + N::from(self.params.score_utility_factor).unwrap() * score_value
+  }
+
   /// Typical utility standard deviation of a node; the observed stdev is
   /// measured relative to it.
   ///
@@ -1044,6 +1135,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     })
     .unwrap();
     let forced_k = N::from(Self::FORCED_PLAYOUTS_K).unwrap();
+    let loss_utility = -N::from(self.params.utility_radius()).unwrap();
     let puct_coeff = self.explore_scaling(total_child_weight, node);
 
     let prior_visited = LazyCell::new(|| {
@@ -1074,15 +1166,15 @@ impl<N: Float + Sum + Copy> Search<N> {
       };
 
       // Virtual losses steer concurrent playouts down different paths by
-      // pulling the utility towards a loss (the utility range radius is 1) and
-      // adding their weight. The floor on the child's weight keeps a single
-      // uncertain evaluation of weight below 0.25 from being wiped out by one
-      // virtual loss.
+      // pulling the utility towards the bottom of its range
+      // ([`Params::utility_radius`]) and adding their weight. The floor on the
+      // child's weight keeps a single uncertain evaluation of weight below
+      // 0.25 from being wiped out by one virtual loss.
       let mut edge_weight = child_weight;
       if edge.virtual_losses > 0 {
         let virtual_losses = N::from(edge.virtual_losses).unwrap();
         let virtual_loss_frac = virtual_losses / (virtual_losses + child_weight.max(N::from(0.25).unwrap()));
-        q = q + (-N::one() - q) * virtual_loss_frac;
+        q = q + (loss_utility - q) * virtual_loss_frac;
         edge_weight = edge_weight + virtual_losses;
       }
       let p = edge.prior;
@@ -1144,10 +1236,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
+  #[allow(clippy::too_many_arguments)]
   fn add_result(
     &mut self,
     path: &[(usize, usize)],
-    result: N,
+    winloss: N,
+    utility: N,
     score: N,
     weight: N,
     children: Vec<Edge<N>>,
@@ -1171,10 +1265,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     // immediately retrieve the bucket's current observed bias to correct its own
     // utility. The corrected utility enters both moments, as in `update_node`.
     let obs_bias = bias_key.map_or(N::zero(), |key| Self::retrieve_bias(&self.bias, &key));
-    let value = result + N::from(Self::BIAS_LAMBDA).unwrap() * obs_bias;
+    let value = utility + N::from(Self::BIAS_LAMBDA).unwrap() * obs_bias;
     let leaf = &mut self.nodes[leaf_idx];
     if leaf.own_visits == 0 {
-      leaf.raw_value = result;
+      leaf.raw_value = utility;
+      leaf.winloss = winloss;
+      leaf.raw_winloss = winloss;
       leaf.score = score;
       leaf.raw_score = score;
       leaf.visits = 1;
@@ -1207,7 +1303,9 @@ impl<N: Float + Sum + Copy> Search<N> {
       // one, so the first expansion's are already right.
       let old_weight_sum = leaf.weight_sum;
       let new_weight_sum = old_weight_sum + weight;
-      leaf.raw_value = (leaf.raw_value * old_weight_sum + result * weight) / new_weight_sum;
+      leaf.raw_value = (leaf.raw_value * old_weight_sum + utility * weight) / new_weight_sum;
+      leaf.raw_winloss = (leaf.raw_winloss * old_weight_sum + winloss * weight) / new_weight_sum;
+      leaf.winloss = leaf.raw_winloss;
       leaf.raw_score = (leaf.raw_score * old_weight_sum + score * weight) / new_weight_sum;
       leaf.score = leaf.raw_score;
       leaf.value = (leaf.value * old_weight_sum + value * weight) / new_weight_sum;
@@ -1467,14 +1565,10 @@ impl<N: Float + Sum + Copy> Search<N> {
         // Terminal nodes get no bias correction. Their value is exact, so they
         // get the maximum weight. The score is the exact final score too.
         let weight = Self::terminal_weight(weigh);
-        self.add_result(
-          path,
-          game_result(field, player, leaf_komi_x_2),
-          game_score(field, player, leaf_komi_x_2),
-          weight,
-          Vec::new(),
-          None,
-        );
+        let winloss = game_result(field, player, leaf_komi_x_2);
+        let score = game_score(field, player, leaf_komi_x_2);
+        let utility = winloss + self.aux_utility(field, winloss, score);
+        self.add_result(path, winloss, utility, score, weight, Vec::new(), None);
         false
       } else {
         field_features_to_vec::<N>(
@@ -1536,19 +1630,21 @@ impl<N: Float + Sum + Copy> Search<N> {
       };
 
       let policy = policies.slice(s![i, .., ..]);
-      let value = values[(i, 0)] - values[(i, 1)];
+      let winloss = values[(i, 0)] - values[(i, 1)];
       let weight = Self::eval_weight(weigh, values[(i, 2)]);
-      // A model without a score estimate leaves the whole tree's scores at 0,
-      // and with them the per-move q score targets - which only the trainable
-      // model, one that does estimate scores, ever reads back.
-      let score = if values.dim().1 > 3 { values[(i, 3)] } else { N::zero() };
+      // A model without a score estimate leaves the column - and so the whole
+      // tree's scores - at 0: its utilities carry no score term and the
+      // per-move q score targets stay zero, which only the trainable model,
+      // one that does estimate scores, ever reads back.
+      let score = values[(i, 3)];
+      let utility = winloss + self.aux_utility(field, winloss, score);
 
       let children = self.create_children(field, player, &policy, rng);
       // Bucket the leaf by the local context of the move that created it. The
       // field currently has all of the path's moves played, so `field.moves`
       // ends with this node's move and the move before it.
       let bias_key = Self::bias_key(field);
-      self.add_result(path, value, score, weight, children, bias_key);
+      self.add_result(path, winloss, utility, score, weight, children, bias_key);
 
       for _ in 0..path.len() {
         field.undo();
@@ -1586,9 +1682,9 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// perspective: Q(a) minus `LCB_STDEVS` standard errors. The variance comes
   /// from the second moment propagated through the graph together with the
   /// value, so both describe the same estimate. To behave well at low playout
-  /// counts a prior that the variance is the largest possible (the values span
-  /// [-1, 1], a range radius of 1) is mixed in with a small weight, which
-  /// diminishes as the evidence grows.
+  /// counts a prior that the variance is the largest possible (the square of
+  /// the utility range radius, [`Params::utility_radius`]) is mixed in with a
+  /// small weight, which diminishes as the evidence grows.
   ///
   /// Returns the bound together with the radius it was shaved by; the radius is
   /// what lets [`Self::pruned_weights`] judge how much wider a child's confidence
@@ -1611,7 +1707,8 @@ impl<N: Float + Sum + Copy> Search<N> {
     // `W / ess³`, which shrinks as the evidence accumulates.
     let ess = weight_sum * weight_sum / weight_sq_sum;
     let prior_weight = weight_sum / (ess * ess * ess);
-    let value_sq = (value_sq * weight_sum + (value_sq + N::one()) * prior_weight) / (weight_sum + prior_weight);
+    let radius = N::from(self.params.utility_radius()).unwrap();
+    let value_sq = (value_sq * weight_sum + (value_sq + radius * radius) * prior_weight) / (weight_sum + prior_weight);
     weight_sum = weight_sum + prior_weight;
     weight_sq_sum = weight_sq_sum + prior_weight * prior_weight;
     let ess = weight_sum * weight_sum / weight_sq_sum;
@@ -1857,20 +1954,21 @@ impl<N: Float + Sum + Copy> Search<N> {
     *self = new_search;
   }
 
-  /// The value and score the search settled on for every explored root child,
-  /// from the root player's perspective, together with the weight of search
-  /// behind them: `(pos, weight, q, score)`.
+  /// The win/loss value and score the search settled on for every explored root
+  /// child, from the root player's perspective, together with the weight of
+  /// search behind them: `(pos, weight, q, score)`.
   ///
   /// This is the per-move q training target: what a single forward pass should
   /// say the search would conclude about each reply. The weights are the raw
   /// ones - unlike the policy target, which prunes the weight forced
   /// exploration spent, a q value is not a preference, so all of the evidence
-  /// behind it is wanted.
+  /// behind it is wanted. The q reads the win/loss value rather than the
+  /// utility the search selects moves by: the training loss treats it as a win
+  /// probability, which the score and early-finish terms are not part of.
   ///
-  /// The q is clamped into `[-1, 1]`: a node's value carries its subtree bias
-  /// correction, which can push the average past the range a value is defined
-  /// on, and the training loss reads the target as a probability that has to
-  /// stay in `[0, 1]`.
+  /// The q is clamped into `[-1, 1]` against floating point drift of the
+  /// averaging, since the training loss reads the target as a probability that
+  /// has to stay in `[0, 1]`.
   pub fn q_values(&self) -> impl Iterator<Item = (Pos, N, N, N)> + '_ {
     self.nodes[self.root_idx].children.iter().filter_map(|edge| {
       if edge.visits == 0 {
@@ -1880,7 +1978,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       let child = &self.nodes[child_idx];
       let weight = Self::child_weight(child, edge.visits);
       if weight > N::zero() {
-        let q = (-child.value).min(N::one()).max(-N::one());
+        let q = (-child.winloss).min(N::one()).max(-N::one());
         Some((edge.pos, weight, q, -child.score))
       } else {
         None
@@ -2106,14 +2204,17 @@ impl<N: Float + Sum + Copy> Search<N> {
     self.nodes[self.root_idx].visits
   }
 
-  /// Get the value of the root node
-  pub fn value(&self) -> N {
-    self.nodes[self.root_idx].value
+  /// Get the win/loss value of the root node, in `[-1, 1]`. Deliberately not
+  /// the utility the search selects moves by: the training targets and
+  /// position estimates read this, and they want a win expectation untouched
+  /// by the score and early-finish terms.
+  pub fn winloss(&self) -> N {
+    self.nodes[self.root_idx].winloss
   }
 
-  /// Get the raw neural net value of the root node, without any search.
-  pub fn raw_value(&self) -> N {
-    self.nodes[self.root_idx].raw_value
+  /// Get the raw neural net win/loss value of the root node, without any search.
+  pub fn raw_winloss(&self) -> N {
+    self.nodes[self.root_idx].raw_winloss
   }
 
   /// Snapshot the policy priors of the root's children into a vector indexed by

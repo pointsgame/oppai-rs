@@ -164,9 +164,8 @@ impl Examples {
     } else {
       0.0
     };
-    let policy_prop = |visits: &Visits| {
-      visits.1 * visits.2 + (1.0 - visits.1) * (visits.2 - threshold_to_include_reduced).max(0.0)
-    };
+    let policy_prop =
+      |visits: &Visits| visits.1 * visits.2 + (1.0 - visits.1) * (visits.2 - threshold_to_include_reduced).max(0.0);
     let sum_policy_prop = if surprise_weighting {
       visits.iter().map(policy_prop).sum::<f64>()
     } else {

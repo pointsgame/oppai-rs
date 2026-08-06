@@ -762,7 +762,7 @@ where
       .collect::<Vec<_>>();
     current.2 = Search::policy_surprise(&target, &priors).to_f64().unwrap();
     if has_value_surprise {
-      current.4 = search.raw_value().to_f64().unwrap();
+      current.4 = search.raw_winloss().to_f64().unwrap();
     }
   }
 

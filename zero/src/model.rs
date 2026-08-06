@@ -21,10 +21,11 @@ pub trait Model<N: Float> {
   /// error (standard deviation) of the value - how uncertain the value
   /// estimate is - and the predicted score of the position in points. A model
   /// with no error estimate to offer leaves the third at 0 and reports
-  /// [`Model::predicts_uncertainty`] as false; one with no score estimate may
-  /// omit the fourth column entirely, leaving the search's score estimates -
-  /// and with them the per-move q score targets, which only a model that does
-  /// estimate scores ever trains on - at zero.
+  /// [`Model::predicts_uncertainty`] as false; one with no score estimate
+  /// leaves the fourth at 0, which unlike the error column is neutral there -
+  /// the search's score estimates, and with them the per-move q score targets,
+  /// which only a model that does estimate scores ever trains on, just stay
+  /// at zero.
   ///
   /// `optimism` carries one weight per position, in `[0, 1]`: how far that
   /// position's policy is moved from the trained one towards the optimistic
@@ -95,7 +96,7 @@ impl<N: Float> Model<N> for () {
     let width = inputs.len_of(Axis(3));
     let policy = N::one() / N::from(width * height).unwrap();
     let policies = Array::from_elem((batch_size, height, width), policy);
-    let mut values = Array::zeros((batch_size, 3));
+    let mut values = Array::zeros((batch_size, 4));
     values
       .slice_mut(ndarray::s![.., 0..2])
       .fill(N::one() / (N::one() + N::one()));

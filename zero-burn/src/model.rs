@@ -633,7 +633,11 @@ impl<B: Backend> ValueHead<B> {
     let out_value = linear(
       outv2.clone(),
       self.linear_valuehead.weight.val().slice(s![.., 0..2]),
-      self.linear_valuehead.bias.as_ref().map(|bias| bias.val().slice(s![0..2])),
+      self
+        .linear_valuehead
+        .bias
+        .as_ref()
+        .map(|bias| bias.val().slice(s![0..2])),
     );
     let out_value_error = self.value_error(outv2.clone());
     // The TD score is a single small layer on features this path computes
@@ -642,7 +646,11 @@ impl<B: Backend> ValueHead<B> {
     let out_td_score = linear(
       outv2,
       self.linear_td_score.weight.val().slice(s![.., 0..1]),
-      self.linear_td_score.bias.as_ref().map(|bias| bias.val().slice(s![0..1])),
+      self
+        .linear_td_score
+        .bias
+        .as_ref()
+        .map(|bias| bias.val().slice(s![0..1])),
     ) * TD_SCORE_SCALE;
     (out_value, out_value_error, out_td_score)
   }
@@ -896,7 +904,9 @@ impl<B: Backend> Model<B> {
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
     x = mish(x);
-    let policy = self.policy_head.forward_inference(x.clone(), mask.clone(), mask_sum_hw.clone());
+    let policy = self
+      .policy_head
+      .forward_inference(x.clone(), mask.clone(), mask_sum_hw.clone());
     let (value, value_error, td_score) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
     (policy, value, value_error, td_score)
   }
