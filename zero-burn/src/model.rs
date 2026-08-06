@@ -10,7 +10,8 @@ use burn::{
     DataError, Tensor, TensorData,
     activation::{log_softmax, mish, sigmoid, softmax, softplus},
     backend::{AutodiffBackend, Backend, ExecutionError},
-    ops::FloatElem,
+    module::{conv2d, linear},
+    ops::{ConvOptions, FloatElem},
     s,
   },
 };
@@ -608,6 +609,12 @@ impl<B: Backend> ValueHead<B> {
     }
   }
 
+  /// The value outputs inference reads: the win/loss logits, the predicted
+  /// short-term squared value error, and the longest-horizon TD score (the
+  /// head whose target converges to the final score). The output projections
+  /// run on slices of their weights, so the TD value distributions and the
+  /// shorter score horizons - auxiliary training targets all - are never
+  /// computed.
   pub fn forward_no_score(
     &self,
     inputs: Tensor<B, 4>,
@@ -623,11 +630,20 @@ impl<B: Backend> ValueHead<B> {
 
     let outv2 = self.linear2.forward(outpooled.clone());
     let outv2 = mish(outv2);
-    let out_value = self.linear_valuehead.forward(outv2.clone());
+    let out_value = linear(
+      outv2.clone(),
+      self.linear_valuehead.weight.val().slice(s![.., 0..2]),
+      self.linear_valuehead.bias.as_ref().map(|bias| bias.val().slice(s![0..2])),
+    );
     let out_value_error = self.value_error(outv2.clone());
     // The TD score is a single small layer on features this path computes
-    // anyway, unlike the score belief this path is there to skip.
-    let out_td_score = self.linear_td_score.forward(outv2) * TD_SCORE_SCALE;
+    // anyway, unlike the score belief this path is there to skip. The longest
+    // horizon comes first in [`TD_VALUE_COEFFS`].
+    let out_td_score = linear(
+      outv2,
+      self.linear_td_score.weight.val().slice(s![.., 0..1]),
+      self.linear_td_score.bias.as_ref().map(|bias| bias.val().slice(s![0..1])),
+    ) * TD_SCORE_SCALE;
     (out_value, out_value_error, out_td_score)
   }
 
@@ -643,15 +659,30 @@ impl<B: Backend> ValueHead<B> {
 /// Number of channels [`PolicyHead`] predicts.
 const POLICY_OUTPUTS: usize = 8;
 
+/// Index of the short-term optimistic policy, the one the search interpolates
+/// its priors towards. It sits right after the policy itself so that the two
+/// channels inference reads form a prefix and the final policy conv can run on
+/// a plain slice of its weight.
+const OPTIMISTIC_POLICY: usize = 1;
+
+/// Number of policy channels inference needs: the policy and the short-term
+/// optimistic policy it is interpolated towards. Every channel past these is
+/// an auxiliary training target.
+const INFERENCE_POLICY_OUTPUTS: usize = OPTIMISTIC_POLICY + 1;
+
+/// Index of the opponent policy, predicting the reply to the move played.
+const OPPONENT_POLICY: usize = 2;
+
+/// Indices of the soft policy and soft opponent policy, trained on flattened
+/// (higher entropy) versions of the same targets.
+const SOFT_POLICY: usize = 3;
+const SOFT_OPPONENT_POLICY: usize = 4;
+
 /// Index of the long-term optimistic policy, trained on the games that were won
 /// or whose final score beat the prediction. Nothing reads it outside training:
 /// it is an auxiliary target, there to make the trunk carry what telling those
 /// games apart takes.
-const LONG_OPTIMISTIC_POLICY: usize = 4;
-
-/// Index of the short-term optimistic policy, the one the search interpolates
-/// its priors towards.
-const OPTIMISTIC_POLICY: usize = 5;
+const LONG_OPTIMISTIC_POLICY: usize = 5;
 
 /// Index of the per-move q values: for every cell, the pre-tanh value the
 /// search would settle on for playing there - a whole board of move
@@ -669,9 +700,9 @@ const Q_VALUE_POLICY: usize = 6;
 const Q_SCORE_POLICY: usize = 7;
 
 /// Policy head output channels:
-/// 0 - policy, 1 - opponent policy,
-/// 2 - soft policy, 3 - soft opponent policy,
-/// 4 - long-term optimistic policy, 5 - short-term optimistic policy,
+/// 0 - policy, 1 - short-term optimistic policy,
+/// 2 - opponent policy, 3 - soft policy, 4 - soft opponent policy,
+/// 5 - long-term optimistic policy,
 /// 6 - per-move q values (pre-tanh), 7 - per-move q scores (pre-scale).
 #[derive(Module, Debug)]
 pub struct PolicyHead<B: Backend> {
@@ -718,7 +749,8 @@ impl<B: Backend> PolicyHead<B> {
     // `biasg` and `bias2` stay learnable affines.
   }
 
-  fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  /// The head up to (not including) the final policy conv.
+  fn features(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
     let outp = self.conv1p.forward(inputs.clone());
     let outg = self.conv1g.forward(inputs);
     let outg = self.biasg.forward(outg, mask.clone());
@@ -727,9 +759,23 @@ impl<B: Backend> PolicyHead<B> {
     let outg = self.linearg.forward(outg).unsqueeze_dims(&[-1, -1]);
 
     let outp = outp + outg;
-    let outp = self.bias2.forward(outp, mask.clone());
-    let outp = mish(outp);
+    let outp = self.bias2.forward(outp, mask);
+    mish(outp)
+  }
+
+  fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+    let outp = self.features(inputs, mask.clone(), mask_sum_hw);
     let outp = self.conv2p.forward(outp);
+    outp - (1.0 - mask) * 5000.0
+  }
+
+  /// Only the first [`INFERENCE_POLICY_OUTPUTS`] channels: everything past
+  /// them is an auxiliary training target, so the final conv runs on a slice
+  /// of its weight instead of computing planes nothing would read.
+  fn forward_inference(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+    let outp = self.features(inputs, mask.clone(), mask_sum_hw);
+    let weight = self.conv2p.weight.val().slice(s![0..INFERENCE_POLICY_OUTPUTS]);
+    let outp = conv2d(outp, weight, None, ConvOptions::new([1, 1], [0, 0], [1, 1], 1));
     outp - (1.0 - mask) * 5000.0
   }
 }
@@ -850,7 +896,7 @@ impl<B: Backend> Model<B> {
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
     x = mish(x);
-    let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
+    let policy = self.policy_head.forward_inference(x.clone(), mask.clone(), mask_sum_hw.clone());
     let (value, value_error, td_score) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
     (policy, value, value_error, td_score)
   }
@@ -984,7 +1030,6 @@ where
     );
     let optimism = Tensor::from_data(TensorData::new(into_data_vec(optimism), [batch, 1, 1]), &self.device);
     let (policy_logits, value_logits, value_error, td_score) = self.model.forward_no_score(inputs, global);
-    // TODO: lightweight model that doesn't calculate second layer
     let policy_logits = interpolate_policy(policy_logits, optimism);
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
     // The predicted squared error becomes a standard deviation for the
@@ -992,14 +1037,7 @@ where
     // longest-horizon TD score, the head whose target converges to the final
     // score; the search averages it over each subtree into the per-move q
     // score targets.
-    let values = Tensor::cat(
-      vec![
-        softmax(value_logits.slice(s![.., 0..2]), 1),
-        value_error.sqrt(),
-        td_score.slice(s![.., 0..1]),
-      ],
-      1,
-    );
+    let values = Tensor::cat(vec![softmax(value_logits, 1), value_error.sqrt(), td_score], 1);
     let policies = Array3::from_shape_vec((batch, height, width), policies.into_data_async().await?.into_vec()?)?;
     let values = Array2::from_shape_vec((batch, 4), values.into_data_async().await?.into_vec()?)?;
     Ok((policies, values))
@@ -1130,15 +1168,24 @@ where
       1,
     );
     let out_opponent_policies = log_softmax(
-      out_policy_logits.clone().slice(s![.., 1..2, .., ..]).reshape([0, -1]),
+      out_policy_logits
+        .clone()
+        .slice(s![.., OPPONENT_POLICY..OPPONENT_POLICY + 1, .., ..])
+        .reshape([0, -1]),
       1,
     );
     let out_soft_policies = log_softmax(
-      out_policy_logits.clone().slice(s![.., 2..3, .., ..]).reshape([0, -1]),
+      out_policy_logits
+        .clone()
+        .slice(s![.., SOFT_POLICY..SOFT_POLICY + 1, .., ..])
+        .reshape([0, -1]),
       1,
     );
     let out_soft_opponent_policies = log_softmax(
-      out_policy_logits.clone().slice(s![.., 3..4, .., ..]).reshape([0, -1]),
+      out_policy_logits
+        .clone()
+        .slice(s![.., SOFT_OPPONENT_POLICY..SOFT_OPPONENT_POLICY + 1, .., ..])
+        .reshape([0, -1]),
       1,
     );
     let out_long_optimistic_policies = log_softmax(
