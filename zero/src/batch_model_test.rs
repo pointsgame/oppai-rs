@@ -1,8 +1,12 @@
 use crate::batch_model::{BatchModel, Closed, batch_model, run_evaluator};
 use crate::model::Model;
+use futures::channel::oneshot;
 use futures::join;
 use ndarray::{Array1, Array2, Array3, Array4};
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
+use std::future::{Future, poll_fn};
+use std::task::Poll;
 
 #[test]
 fn batches_across_games_and_pads_sizes() {
@@ -42,7 +46,7 @@ fn batches_across_games_and_pads_sizes() {
   let game2 = game(1, 5, 2, 1.0);
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, requests, usize::MAX).await.unwrap() };
+  let evaluator = async { run_evaluator(&model, requests, usize::MAX, 2).await.unwrap() };
   let ((policy1, value1), (policy2, value2), ()) =
     futures::executor::block_on(async { join!(game1, game2, evaluator) });
 
@@ -97,7 +101,7 @@ fn finished_games_are_not_waited_for() {
   let game3 = game(2);
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, messages, usize::MAX).await.unwrap() };
+  let evaluator = async { run_evaluator(&model, messages, usize::MAX, 2).await.unwrap() };
   futures::executor::block_on(async { join!(game1, game2, game3, evaluator) });
 
   assert_eq!(*batches.borrow(), vec![3, 2]);
@@ -144,7 +148,7 @@ fn a_batch_dispatches_before_every_game_has_submitted() {
   let (game1, game2, game3, game4) = (game(), game(), game(), game());
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, messages, 2).await.unwrap() };
+  let evaluator = async { run_evaluator(&model, messages, 2, 2).await.unwrap() };
   futures::executor::block_on(async { join!(game1, game2, game3, game4, evaluator) });
 
   assert_eq!(*batches.borrow(), vec![2, 2]);
@@ -178,10 +182,109 @@ fn a_target_above_the_game_count_still_dispatches() {
   let (game1, game2) = (game(), game());
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, messages, 10).await.unwrap() };
+  let evaluator = async { run_evaluator(&model, messages, 10, 2).await.unwrap() };
   futures::executor::block_on(async { join!(game1, game2, evaluator) });
 
   assert_eq!(*batches.borrow(), vec![2]);
+}
+
+/// Lets every other future of the test take a turn before this one continues.
+fn yield_now() -> impl Future<Output = ()> {
+  let mut yielded = false;
+  poll_fn(move |cx| {
+    if yielded {
+      Poll::Ready(())
+    } else {
+      yielded = true;
+      cx.waker().wake_by_ref();
+      Poll::Pending
+    }
+  })
+}
+
+/// A model that holds every forward pass until the test releases it, so that the
+/// test can see how many of them the evaluator keeps going at once and what they
+/// contain.
+#[derive(Default)]
+struct GatedModel {
+  /// The batch size of each pass in flight and the gate that completes it, in
+  /// dispatch order.
+  gates: RefCell<VecDeque<(usize, oneshot::Sender<()>)>>,
+}
+
+impl Model<f64> for GatedModel {
+  type E = ();
+
+  async fn predict(
+    &self,
+    inputs: Array4<f64>,
+    _: Array2<f64>,
+    _: Array1<f64>,
+  ) -> Result<(Array3<f64>, Array2<f64>), Self::E> {
+    let (batch, _, height, width) = inputs.dim();
+    let (gate, released) = oneshot::channel();
+    self.gates.borrow_mut().push_back((batch, gate));
+    released.await.unwrap();
+    Ok((
+      Array3::from_elem((batch, height, width), 0.25),
+      Array2::from_elem((batch, 2), 0.5),
+    ))
+  }
+}
+
+/// The evaluator does not wait for the pass it dispatched: it goes on merging
+/// and dispatching the next one while that one is still being computed, which is
+/// what keeps the device from idling through the merging. It stops at
+/// `in_flight_passes` of them, so that the games left are still gathered into
+/// batches instead of being dispatched one by one.
+#[test]
+fn passes_overlap_up_to_the_limit() {
+  const IN_FLIGHT_PASSES: usize = 2;
+
+  let model = GatedModel::default();
+
+  let (handle, messages) = batch_model::<f64>(true);
+  let game = || {
+    let model = handle.clone();
+    async move {
+      let features = Array4::from_elem((1, 3, 2, 2), 1.0);
+      let global = Array2::from_elem((1, 1), 0.5);
+      model.predict(features, global, Array1::zeros(1)).await.unwrap();
+    }
+  };
+
+  // Six games with a target of two make three passes - one more than may be in
+  // flight at once, so the last one is only dispatched once a slot frees up.
+  let (game1, game2, game3, game4, game5, game6) = (game(), game(), game(), game(), game(), game());
+  drop(handle);
+
+  let evaluator = async { run_evaluator(&model, messages, 2, IN_FLIGHT_PASSES).await.unwrap() };
+
+  // How many passes were in flight before each release, and how big each of the
+  // released ones was.
+  let (mut in_flight, mut batches) = (Vec::new(), Vec::new());
+  let releases = async {
+    for _ in 0..3 {
+      let (batch, gate) = {
+        let mut gates = model.gates.borrow_mut();
+        in_flight.push(gates.len());
+        gates.pop_front().expect("a dispatched pass")
+      };
+      batches.push(batch);
+      gate.send(()).unwrap();
+      // Let the evaluator answer the released pass and dispatch what it can.
+      yield_now().await;
+    }
+  };
+
+  futures::executor::block_on(async { join!(game1, game2, game3, game4, game5, game6, evaluator, releases) });
+
+  // The second pass was assembled and dispatched while the first was still in
+  // flight, and the third only after the first was answered.
+  assert_eq!(in_flight, vec![IN_FLIGHT_PASSES, IN_FLIGHT_PASSES, 1]);
+  // Holding the third one back cost no batch size: its two games waited
+  // together rather than being dispatched one by one.
+  assert_eq!(batches, vec![2, 2, 2]);
 }
 
 /// A per-thread clone source must not be counted as a game of its own: were it
@@ -216,7 +319,7 @@ fn a_clone_source_is_not_counted_as_a_game() {
   let game2 = game(&sources[1]);
   drop(sources);
 
-  let evaluator = async { run_evaluator(&model, messages, usize::MAX).await.unwrap() };
+  let evaluator = async { run_evaluator(&model, messages, usize::MAX, 2).await.unwrap() };
   futures::executor::block_on(async { join!(game1, game2, evaluator) });
 
   // Both games were served together, so the evaluator counted two of them - not

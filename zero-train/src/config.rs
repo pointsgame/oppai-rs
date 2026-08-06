@@ -21,6 +21,7 @@ pub struct PlayParams {
   pub parallel_games: usize,
   pub threads: usize,
   pub batch_games: usize,
+  pub in_flight_passes: usize,
 }
 
 pub struct TrainParams {
@@ -67,6 +68,7 @@ pub struct RecalcParams {
   pub games: Vec<PathBuf>,
   pub games_new: PathBuf,
   pub parallel_games: usize,
+  pub in_flight_passes: usize,
 }
 
 pub enum Action {
@@ -215,6 +217,19 @@ fn batch_games_arg() -> Arg {
     .default_value("16")
 }
 
+fn in_flight_passes_arg() -> Arg {
+  Arg::new("in-flight-passes")
+    .long("in-flight-passes")
+    .help(
+      "How many forward passes may be under way at once. The device idles while a finished pass is read back and \
+       the next batch is merged, which a second pass in flight covers; more than that hides little and only makes \
+       the batches smaller, since a pass dispatched earlier is a pass fewer games make it into",
+    )
+    .num_args(1)
+    .value_parser(value_parser!(usize))
+    .default_value("2")
+}
+
 fn weight_decay_arg() -> Arg {
   Arg::new("weight-decay")
     .long("weight-decay")
@@ -269,7 +284,8 @@ pub fn cli_parse() -> (Config, Action) {
       "How many games to play concurrently, merging their positions into shared forward passes",
     ))
     .arg(threads_arg())
-    .arg(batch_games_arg());
+    .arg(batch_games_arg())
+    .arg(in_flight_passes_arg());
   let train = Command::new("train")
     .about("Train the neural network")
     .arg(width_arg())
@@ -436,7 +452,8 @@ pub fn cli_parse() -> (Config, Action) {
     )
     .arg(parallel_games_arg(
       "How many games to recalculate concurrently, merging their positions into shared forward passes",
-    ));
+    ))
+    .arg(in_flight_passes_arg());
 
   let matches = Command::new(crate_name!())
     .version(crate_version!())
@@ -521,6 +538,7 @@ pub fn cli_parse() -> (Config, Action) {
         .copied()
         .unwrap_or_else(num_cpus::get_physical);
       let batch_games = matches.get_one("batch-games").copied().unwrap();
+      let in_flight_passes = matches.get_one("in-flight-passes").copied().unwrap();
       Action::Play(PlayParams {
         width,
         height,
@@ -532,6 +550,7 @@ pub fn cli_parse() -> (Config, Action) {
         parallel_games,
         threads,
         batch_games,
+        in_flight_passes,
       })
     }
     Some(("train", matches)) => {
@@ -608,12 +627,14 @@ pub fn cli_parse() -> (Config, Action) {
       let games = matches.get_many("games").unwrap().cloned().collect();
       let games_new = matches.get_one("games-new").cloned().unwrap();
       let parallel_games = matches.get_one("parallel-games").copied().unwrap();
+      let in_flight_passes = matches.get_one("in-flight-passes").copied().unwrap();
       Action::Recalc(RecalcParams {
         model,
         model_config,
         games,
         games_new,
         parallel_games,
+        in_flight_passes,
       })
     }
     _ => panic!("no subcommand"),

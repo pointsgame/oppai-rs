@@ -324,7 +324,12 @@ where
         // are gone the channel closes and the evaluator returns.
         drop(handle);
 
-        let evaluator_result = futures::executor::block_on(run_evaluator(&predictor, requests, params.batch_games));
+        let evaluator_result = futures::executor::block_on(run_evaluator(
+          &predictor,
+          requests,
+          params.batch_games,
+          params.in_flight_passes,
+        ));
         // Join before reporting either failure, so a panicking worker is never
         // left running past the end of the scope.
         let games_results = workers
@@ -847,7 +852,12 @@ where
   };
   let (games_result, evaluator_result) = futures::join!(
     games,
-    run_evaluator(&predictor, requests, params.parallel_games.div_ceil(2))
+    run_evaluator(
+      &predictor,
+      requests,
+      params.parallel_games.div_ceil(2),
+      params.in_flight_passes
+    )
   );
   evaluator_result?;
   games_result?;

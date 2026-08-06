@@ -30,11 +30,18 @@
 //! amount of synchronous work, so every live game eventually either submits a
 //! request or finishes. A dispatch always takes *all* the requests queued, not
 //! just the target's worth, so no game waits through a batch it was ready for.
+//!
+//! Dispatching does not wait for the pass it dispatched either: the evaluator
+//! keeps `in_flight_passes` of them going at once, so the batch that follows is
+//! assembled and enqueued while the previous one is still being computed and
+//! read back.
 
 use crate::model::Model;
 use futures::{
   StreamExt,
   channel::{mpsc, oneshot},
+  select_biased,
+  stream::FuturesUnordered,
 };
 use ndarray::{Array1, Array2, Array3, Array4, s};
 use num_traits::Float;
@@ -170,6 +177,59 @@ impl<N: Float> Model<N> for BatchModel<N> {
   }
 }
 
+/// Evaluates one batch in a single forward pass and hands each request its own
+/// slice of the result.
+async fn evaluate<N, M>(model: &M, batch: Vec<BatchRequest<N>>) -> Result<(), M::E>
+where
+  N: Float,
+  M: Model<N>,
+{
+  // Merge into one forward pass, zero-padding the spatial dimensions: games
+  // may play on different board sizes, and the network is masked, so padded
+  // evaluation matches training (which always pads to the config size) and
+  // the padded area gets no policy mass.
+  let channels = batch[0].features.dim().1;
+  let global_features = batch[0].global.dim().1;
+  let mut positions = 0;
+  let mut height = 0;
+  let mut width = 0;
+  for request in &batch {
+    let (n, _, h, w) = request.features.dim();
+    positions += n;
+    height = height.max(h);
+    width = width.max(w);
+  }
+
+  let mut features = Array4::zeros((positions, channels, height, width));
+  let mut global = Array2::zeros((positions, global_features));
+  let mut optimism = Array1::zeros(positions);
+  let mut offset = 0;
+  for request in &batch {
+    let (n, _, h, w) = request.features.dim();
+    features
+      .slice_mut(s![offset..offset + n, .., ..h, ..w])
+      .assign(&request.features);
+    global.slice_mut(s![offset..offset + n, ..]).assign(&request.global);
+    optimism.slice_mut(s![offset..offset + n]).assign(&request.optimism);
+    offset += n;
+  }
+
+  let (policies, values) = model.predict(features, global, optimism).await?;
+
+  let mut offset = 0;
+  for request in batch {
+    let (n, _, h, w) = request.features.dim();
+    let policy = policies.slice(s![offset..offset + n, ..h, ..w]).to_owned();
+    let value = values.slice(s![offset..offset + n, ..]).to_owned();
+    offset += n;
+    // The requesting game may have been dropped meanwhile; nothing to do
+    // about it here.
+    let _ = request.reply.send((policy, value));
+  }
+
+  Ok(())
+}
+
 /// Serves prediction requests from [`BatchModel`] handles with the underlying
 /// model until all handles are dropped, merging the requests of concurrently
 /// running games into large forward passes.
@@ -180,79 +240,69 @@ impl<N: Float> Model<N> for BatchModel<N> {
 /// higher one makes the batches bigger; the number of games in flight is the
 /// point where it stops mattering, since the evaluator never waits for more games
 /// than are actually running.
+///
+/// `in_flight_passes` is how many forward passes may be under way at once. A
+/// pass is not done with the CPU when it reaches the device: its result still
+/// has to be read back, and the batch after it has to be merged and enqueued,
+/// and the device idles through all of that if it has nothing else queued.
+/// A second pass fills that gap - the device starts it as soon as it frees up,
+/// while the previous one is being read back and the next is being assembled.
+/// Beyond that there is little left to hide, one device being all there is to
+/// keep busy, and the batches only get smaller: a pass dispatched earlier is a
+/// pass fewer of the still-selecting games make it into.
 pub async fn run_evaluator<N, M>(
   model: &M,
   mut messages: mpsc::UnboundedReceiver<Message<N>>,
   batch_games: usize,
+  in_flight_passes: usize,
 ) -> Result<(), M::E>
 where
   N: Float,
   M: Model<N>,
 {
   let batch_games = batch_games.max(1);
+  let in_flight_passes = in_flight_passes.max(1);
   let mut active = 0usize;
   let mut pending: Vec<BatchRequest<N>> = Vec::new();
+  let mut in_flight = FuturesUnordered::new();
 
   loop {
     // Wait for a batch's worth of games, or for every game in flight if fewer
     // than that are left - which is what keeps the last games from waiting for
     // submissions that will never come. Games that finish meanwhile announce it
-    // and are no longer waited for.
-    while pending.len() < batch_games.min(active).max(1) {
-      match messages.next().await {
+    // and are no longer waited for. Requests that arrive while every pass slot
+    // is taken wait here too, and join the batch dispatched once one frees up.
+    while in_flight.len() >= in_flight_passes || pending.len() < batch_games.min(active).max(1) {
+      let message = if in_flight.is_empty() {
+        messages.next().await
+      } else {
+        select_biased! {
+          // The passes already dispatched come first: the games waiting on them
+          // have nothing to submit until they are answered, so this is the only
+          // branch that can be making progress when the other one is idle.
+          result = in_flight.next() => {
+            if let Some(result) = result {
+              result?;
+            }
+            continue;
+          },
+          message = messages.next() => message,
+        }
+      };
+      match message {
         Some(Message::Started) => active += 1,
         Some(Message::Finished) => active = active.saturating_sub(1),
         Some(Message::Request(request)) => pending.push(request),
         // All handles are gone: any leftover requests belong to cancelled
-        // games, so there is nobody left to reply to.
+        // games, and so do the passes still in flight, so there is nobody left
+        // to reply to.
         None => return Ok(()),
       }
     }
     // Everything queued goes in, not just the target's worth: a game that was
     // ready in time should never be held back to the next forward pass.
-    let batch = mem::take(&mut pending);
-
-    // Merge into one forward pass, zero-padding the spatial dimensions: games
-    // may play on different board sizes, and the network is masked, so padded
-    // evaluation matches training (which always pads to the config size) and
-    // the padded area gets no policy mass.
-    let channels = batch[0].features.dim().1;
-    let global_features = batch[0].global.dim().1;
-    let mut positions = 0;
-    let mut height = 0;
-    let mut width = 0;
-    for request in &batch {
-      let (n, _, h, w) = request.features.dim();
-      positions += n;
-      height = height.max(h);
-      width = width.max(w);
-    }
-
-    let mut features = Array4::zeros((positions, channels, height, width));
-    let mut global = Array2::zeros((positions, global_features));
-    let mut optimism = Array1::zeros(positions);
-    let mut offset = 0;
-    for request in &batch {
-      let (n, _, h, w) = request.features.dim();
-      features
-        .slice_mut(s![offset..offset + n, .., ..h, ..w])
-        .assign(&request.features);
-      global.slice_mut(s![offset..offset + n, ..]).assign(&request.global);
-      optimism.slice_mut(s![offset..offset + n]).assign(&request.optimism);
-      offset += n;
-    }
-
-    let (policies, values) = model.predict(features, global, optimism).await?;
-
-    let mut offset = 0;
-    for request in batch {
-      let (n, _, h, w) = request.features.dim();
-      let policy = policies.slice(s![offset..offset + n, ..h, ..w]).to_owned();
-      let value = values.slice(s![offset..offset + n, ..]).to_owned();
-      offset += n;
-      // The requesting game may have been dropped meanwhile; nothing to do
-      // about it here.
-      let _ = request.reply.send((policy, value));
-    }
+    // The pass is not awaited here - it is driven by the loop above, which
+    // meanwhile keeps collecting the requests of the games it does not block.
+    in_flight.push(evaluate(model, mem::take(&mut pending)));
   }
 }
