@@ -356,7 +356,11 @@ pub fn cli_parse() -> (Config, Action) {
       Arg::new("gradient-clipping")
         .long("gradient-clipping")
         .short('c')
-        .help("Clip each parameter's gradient L2 norm to this value")
+        .help(
+          "Clip the L2 norm of the whole gradient - every parameter's gradient taken as one vector - to this value. \
+           The loss is a mean over the batch, so a bound stated for a loss summed over the batch has to be divided \
+           by the batch size",
+        )
         .num_args(1)
         .value_parser(value_parser!(f32)),
     )

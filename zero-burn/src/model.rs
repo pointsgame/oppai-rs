@@ -990,6 +990,10 @@ pub struct Predictor<B: Backend> {
 pub struct Learner<B: AutodiffBackend, O> {
   pub predictor: Predictor<B>,
   pub optimizer: O,
+  /// The bound every training step scales the gradient down to when its norm -
+  /// the norm of the whole gradient, see [`gradient_norm`] - exceeds it. `None`
+  /// leaves the gradients as they come out of the backward pass.
+  pub gradient_clipping: Option<f32>,
 }
 
 #[derive(Error, Debug, From)]
@@ -1134,6 +1138,71 @@ impl<B: Backend> ModuleVisitor<B> for ParamNormVisitor<B> {
     let tensor = param.val();
     self.sum_sq = self.sum_sq.clone() + (tensor.clone() * tensor).sum();
   }
+}
+
+struct GradNormVisitor<'a, B: AutodiffBackend> {
+  grads: &'a GradientsParams,
+  sum_sq: Tensor<B::InnerBackend, 1>,
+}
+
+impl<'a, B: AutodiffBackend> GradNormVisitor<'a, B> {
+  fn new(grads: &'a GradientsParams, device: &B::Device) -> Self {
+    Self {
+      grads,
+      sum_sq: Tensor::zeros([1], device),
+    }
+  }
+}
+
+impl<B: AutodiffBackend> ModuleVisitor<B> for GradNormVisitor<'_, B> {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
+    if let Some(grad) = self.grads.get::<B::InnerBackend, D>(param.id) {
+      self.sum_sq = self.sum_sq.clone() + grad.square().sum();
+    }
+  }
+}
+
+struct GradScaleVisitor<'a, B: AutodiffBackend> {
+  grads: &'a mut GradientsParams,
+  scale: FloatElem<B>,
+}
+
+impl<B: AutodiffBackend> ModuleVisitor<B> for GradScaleVisitor<'_, B> {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
+    if let Some(grad) = self.grads.remove::<B::InnerBackend, D>(param.id) {
+      self
+        .grads
+        .register::<B::InnerBackend, D>(param.id, grad.mul_scalar(self.scale));
+    }
+  }
+}
+
+/// The L2 norm of the model's whole gradient, every parameter's gradient taken
+/// as a single vector. It is the norm of the gradient of the loss as it is
+/// defined here, a mean over the batch, so a norm stated for a loss summed over
+/// the batch is this one times the batch size.
+fn gradient_norm<B: AutodiffBackend>(model: &Model<B>, grads: &GradientsParams, device: &B::Device) -> FloatElem<B> {
+  let mut visitor = GradNormVisitor::<B>::new(grads, device);
+  model.visit(&mut visitor);
+  visitor.sum_sq.sqrt().into_scalar()
+}
+
+/// Multiply every gradient by the same factor, which scaling the whole gradient
+/// down to a bound needs: it leaves the direction of the update alone, unlike
+/// bounding each parameter's gradient on its own, which would also make the
+/// bound depend on how the parameters happen to be split into tensors.
+fn scale_gradients<B: AutodiffBackend>(
+  model: &Model<B>,
+  grads: GradientsParams,
+  scale: FloatElem<B>,
+) -> GradientsParams {
+  let mut grads = grads;
+  let mut visitor = GradScaleVisitor::<B> {
+    grads: &mut grads,
+    scale,
+  };
+  model.visit(&mut visitor);
+  grads
 }
 
 impl<B, O> OppaiTrainableModel<FloatElem<B>> for Learner<B, O>
@@ -1468,7 +1537,22 @@ where
       + q_values_loss
       + q_scores_loss;
 
-    let grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
+    let mut grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
+    // Logged every batch next to the losses, because whether the bound is set
+    // well is only visible from how often it engages: it is there to catch the
+    // occasional outlier batch, so it should stay clear of the ordinary ones.
+    let grad_norm = gradient_norm(&self.predictor.model, &grads, &self.predictor.device);
+    let max_norm = self
+      .gradient_clipping
+      .and_then(<FloatElem<B> as num_traits::NumCast>::from)
+      .filter(|&max_norm| grad_norm > max_norm);
+    match max_norm {
+      Some(max_norm) => {
+        log::info!("Gradient norm: {} clipped to {}", grad_norm, max_norm);
+        grads = scale_gradients(&self.predictor.model, grads, max_norm / grad_norm);
+      }
+      None => log::info!("Gradient norm: {}", grad_norm),
+    }
     self.predictor.model = self.optimizer.step(learning_rate, self.predictor.model, grads);
 
     Ok(self)
@@ -1482,8 +1566,9 @@ where
 mod tests {
   #[cfg(feature = "ndarray")]
   use super::{
-    ConvOrGpool, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, VALUE_VARIANCE_FLOOR, interpolate_policy,
-    score_bins, score_mean_and_variance, squared_softplus_with_gradient_floor, stdevs_excess_weight,
+    ConvOrGpool, GLOBAL_FEATURES, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, VALUE_VARIANCE_FLOOR,
+    gradient_norm, interpolate_policy, scale_gradients, score_bins, score_mean_and_variance,
+    squared_softplus_with_gradient_floor, stdevs_excess_weight,
   };
   use super::{Learner, Model, ModelConfig, Predictor};
   #[cfg(feature = "flex")]
@@ -1494,6 +1579,7 @@ mod tests {
   #[cfg(feature = "ndarray")]
   use burn::{
     backend::{NdArray, ndarray::NdArrayDevice},
+    optim::GradientsParams,
     tensor::{Tensor, TensorData, activation::softmax},
   };
   use ndarray::{Array2, Array3, Array4, Axis, array};
@@ -1531,6 +1617,28 @@ mod tests {
     for (grad, expected) in grads.into_iter().zip(expected) {
       assert!((grad - expected).abs() < 1e-3);
     }
+  }
+
+  /// The norm being clipped is that of the whole gradient rather than of each
+  /// parameter on its own, so scaling the gradient by the ratio of a bound to
+  /// that norm brings it to exactly the bound - and every parameter's gradient
+  /// takes the same factor, leaving the direction of the update as it was.
+  #[test]
+  #[cfg(feature = "ndarray")]
+  fn scaling_brings_the_whole_gradient_to_the_bound() {
+    let device = NdArrayDevice::Cpu;
+    let model = Model::<Autodiff<NdArray>>::new(&device, &ModelConfig::default());
+    let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
+    let global = Tensor::zeros([1, GLOBAL_FEATURES], &device);
+    let (policy_logits, value_logits, _, _) = model.forward_no_score(inputs, global);
+    let grads = GradientsParams::from_grads((policy_logits.sum() + value_logits.sum()).backward(), &model);
+
+    let unclipped = gradient_norm(&model, &grads, &device);
+    assert!(unclipped > 0.0);
+
+    let max_norm = unclipped / 4.0;
+    let clipped = scale_gradients(&model, grads, max_norm / unclipped);
+    assert!((gradient_norm(&model, &clipped, &device) - max_norm).abs() < unclipped * 1e-4);
   }
 
   /// Only the samples that beat the net's own short-term prediction train the
@@ -1830,7 +1938,13 @@ mod tests {
           device: $device,
         };
         let optimizer = SgdConfig::new().init::<Autodiff<$backend>, Model<_>>();
-        let learner = Learner { predictor, optimizer };
+        // Clipped, so that the whole step - including scaling the gradients on
+        // the device - is what gets exercised here.
+        let learner = Learner {
+          predictor,
+          optimizer,
+          gradient_clipping: Some(1.0),
+        };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
         let global = array![[0.2]];

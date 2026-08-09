@@ -13,7 +13,6 @@ use burn::backend::Rocm;
 use burn::backend::Wgpu;
 use burn::{
   backend::Autodiff,
-  grad_clipping::GradientClippingConfig,
   module::Module,
   optim::{Optimizer, SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
   record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
@@ -400,10 +399,11 @@ where
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
     &device,
   )?;
+  // The gradients are clipped by their combined norm before the step instead of
+  // by the optimizer, which would bound every parameter's norm on its own.
   let optimizer = SgdConfig::new()
     .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
-    .with_gradient_clipping(params.gradient_clipping.map(GradientClippingConfig::Norm))
     .init::<B, BurnModel<_>>();
   let item = Recorder::<B>::load_item(
     &DefaultFileRecorder::<FullPrecisionSettings>::new(),
@@ -434,7 +434,11 @@ where
     model,
     device: device.clone(),
   };
-  let mut learner = Learner { predictor, optimizer };
+  let mut learner = Learner {
+    predictor,
+    optimizer,
+    gradient_clipping: params.gradient_clipping,
+  };
 
   let mut examples = Examples::default();
   for path in params.games {
