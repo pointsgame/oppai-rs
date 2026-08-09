@@ -1,138 +1,47 @@
 use rand::{Rng, RngExt};
-use rand_distr::{Distribution, Normal, weighted::WeightedIndex};
+use rand_distr::{Distribution, weighted::WeightedIndex};
 
-const PADDING: u32 = 4;
+/// Picks a random offset for a pattern of the given size placed on a field of
+/// the given size.
+///
+/// The pattern is kept around the center of the field: the offset deviates from
+/// it by at most a sixth of the field size. The deviation is symmetrical, so
+/// there is no skew towards either side regardless of the parity of the sizes -
+/// when the free space can't be split evenly the two offsets closest to the
+/// center are both allowed instead of preferring one of them.
+fn offset<R: Rng>(field_size: u32, size: u32, rng: &mut R) -> u32 {
+  let free = field_size.saturating_sub(size);
+  let deviation = field_size / 6;
+  // Both bounds are clamped by the same condition (`deviation > free / 2`),
+  // hence clamping can't make the range asymmetrical.
+  let min = (free / 2).saturating_sub(deviation);
+  let max = (free / 2 + free % 2 + deviation).min(free);
 
-fn normal_range<R: Rng>(min: u32, max: u32, rng: &mut R) -> u32 {
-  if min >= max {
-    return min;
-  }
-  let mean = (min + max) as f64 / 2.0;
-  let std_dev = (max - min) as f64 / 6.0;
-  let distr = Normal::new(mean, std_dev).unwrap();
-
-  loop {
-    let val = rng.sample(distr).round() as i64;
-    if val >= min as i64 && val < max as i64 {
-      return val as u32;
-    }
-  }
+  rng.random_range(min..=max)
 }
 
-fn random<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
-  let weigths = WeightedIndex::new([1, 2]).unwrap();
-  let counts = [2, 4];
-
-  let count = counts[weigths.sample(rng)];
-
-  let mut result = Vec::new();
-
-  for _ in 0..count {
-    let (x, y) = loop {
-      let x = normal_range(PADDING, width - PADDING, rng);
-      let y = normal_range(PADDING, height - PADDING, rng);
-      if !result.contains(&(x, y)) {
-        break (x, y);
-      }
-    };
-    result.push((x, y));
-  }
-
-  result
-}
-
-fn crosses<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
-  let weigths = WeightedIndex::new([1, 1, 1, 1]).unwrap();
-  let counts = [1, 2, 3, 4];
-
-  let count = counts[weigths.sample(rng)];
-
-  let mut result = Vec::new();
-
-  for _ in 0..count {
-    // Collect all positions that don't clash with an already placed cross. On
-    // small fields there might be no room left, in which case we just stop and
-    // return whatever was placed so far instead of looping forever.
-    let candidates = (PADDING..width - PADDING - 1)
-      .flat_map(|x| (PADDING..height - PADDING - 1).map(move |y| (x, y)))
-      .filter(|&(x, y)| {
-        !result
-          .iter()
-          .any(|&(x1, y1)| x - 1 <= x1 && x1 <= x + 2 && y - 1 <= y1 && y1 <= y + 2)
-      })
-      .collect::<Vec<_>>();
-
-    if candidates.is_empty() {
-      break;
-    }
-
-    let (x, y) = candidates[rng.random_range(0..candidates.len())];
-
-    if rng.random() {
-      // XO
-      // OX
-      result.push((x, y));
-      result.push((x + 1, y));
-      result.push((x + 1, y + 1));
-      result.push((x, y + 1));
-    } else {
-      // OX
-      // XO
-      result.push((x + 1, y));
-      result.push((x + 1, y + 1));
-      result.push((x, y + 1));
-      result.push((x, y));
-    }
-  }
-
-  result
-}
-
-fn double_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
-  let rotation = rng.random_range(0..4);
+fn cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
+  let rotation = rng.random();
   let x_points;
   let o_points;
 
-  match rotation {
-    0 => {
-      // XOOX
-      // OXXO
-      x_points = [(0, 0), (1, 1), (2, 1), (3, 0)];
-      o_points = [(0, 1), (1, 0), (2, 0), (3, 1)];
-    }
-    1 => {
-      // OXXO
-      // XOOX
-      x_points = [(0, 1), (1, 0), (2, 0), (3, 1)];
-      o_points = [(0, 0), (1, 1), (2, 1), (3, 0)];
-    }
-    2 => {
-      // XO
-      // OX
-      // OX
-      // XO
-      x_points = [(0, 0), (1, 1), (1, 2), (0, 3)];
-      o_points = [(1, 0), (0, 1), (0, 2), (1, 3)];
-    }
-    3 => {
-      // OX
-      // XO
-      // XO
-      // OX
-      x_points = [(1, 0), (0, 1), (0, 2), (1, 3)];
-      o_points = [(0, 0), (1, 1), (1, 2), (0, 3)];
-    }
-    _ => unreachable!(),
+  if rotation {
+    // XO
+    // OX
+    x_points = [(0, 0), (1, 1)];
+    o_points = [(0, 1), (1, 0)];
+  } else {
+    // OX
+    // XO
+    x_points = [(0, 1), (1, 0)];
+    o_points = [(0, 0), (1, 1)];
   }
 
-  let (w, h) = if rotation < 2 { (4, 2) } else { (2, 4) };
-
-  let x_offset = normal_range(PADDING, width - PADDING - w + 1, rng);
-  let y_offset = normal_range(PADDING, height - PADDING - h + 1, rng);
+  let x_offset = offset(width, 2, rng);
+  let y_offset = offset(height, 2, rng);
 
   let mut result = Vec::new();
-
-  for i in 0..4 {
+  for i in 0..2 {
     result.push((x_offset + x_points[i].0, y_offset + x_points[i].1));
     result.push((x_offset + o_points[i].0, y_offset + o_points[i].1));
   }
@@ -181,8 +90,8 @@ fn triple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)>
 
   let (w, h) = if rotation < 2 { (3, 4) } else { (4, 3) };
 
-  let x_offset = normal_range(PADDING, width - PADDING - w + 1, rng);
-  let y_offset = normal_range(PADDING, height - PADDING - h + 1, rng);
+  let x_offset = offset(width, w, rng);
+  let y_offset = offset(height, h, rng);
 
   let mut result = Vec::new();
   for i in 0..4 {
@@ -194,13 +103,11 @@ fn triple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)>
 }
 
 pub fn opening<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
-  let weigths = WeightedIndex::new([1, 8, 4, 2]).unwrap();
+  let weigths = WeightedIndex::new([8, 1]).unwrap();
 
   match weigths.sample(rng) {
-    0 => random(width, height, rng),
-    1 => crosses(width, height, rng),
-    2 => double_cross(width, height, rng),
-    3 => triple_cross(width, height, rng),
+    0 => cross(width, height, rng),
+    1 => triple_cross(width, height, rng),
     _ => unreachable!(),
   }
 }

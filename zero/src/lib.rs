@@ -15,6 +15,8 @@ pub mod mcgs;
 pub mod mcgs_test;
 pub mod model;
 pub mod opening;
+#[cfg(test)]
+pub mod opening_test;
 pub mod pit;
 pub mod random_model;
 pub mod zero;
