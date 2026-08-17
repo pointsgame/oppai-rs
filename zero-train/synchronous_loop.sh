@@ -9,8 +9,8 @@ set -euo pipefail
 	# Games are stored in BASEDIR/games as games_{N}.sgf.gz, where N is the number of
 	# the model that played them. Models and optimizer states are stored in
 	# BASEDIR/models as model_{N}.mpk / optimizer_{N}.mpk, together with
-	# model_swa_{N}.mpk holding the averaged weights that are used for self-play
-	# and pitting.
+	# model_swa_{N}.mpk holding the averaged weights. Self-play and pitting
+	# always use the plain, non-averaged model.
 	#
 	# The very first cycle plays its games without a model (random play); the
 	# network is initialized only before the first training step.
@@ -110,13 +110,13 @@ set -euo pipefail
 		REJECTED=0
 
 		if ((TO_PLAY > 0)); then
-			# The averaged weights are the ones to play with when they exist. On
-			# the very first cycle there is no model at all and the games are
-			# played with a random model.
+			# Games are played with the plain weights of the latest model, not
+			# with the averaged ones: the averaged weights lag behind and play
+			# more uniformly, while training wants the freshest and most varied
+			# positions. On the very first cycle there is no model at all and the
+			# games are played with a random model.
 			PLAY_MODEL_ARGS=()
-			if [[ -e "$MODELSDIR"/model_swa_"$N".mpk ]]; then
-				PLAY_MODEL_ARGS=(--model "$MODELSDIR"/model_swa_"$N".mpk)
-			elif [[ -e "$MODELSDIR"/model_"$N".mpk ]]; then
+			if [[ -e "$MODELSDIR"/model_"$N".mpk ]]; then
 				PLAY_MODEL_ARGS=(--model "$MODELSDIR"/model_"$N".mpk)
 			fi
 
@@ -196,15 +196,14 @@ set -euo pipefail
 			--batch-size "$BATCHSIZE" 2>&1 | tee -a "$LOGSDIR"/train.log
 
 		if [[ "$USEGATING" == 1 ]]; then
-			OLD_MODEL="$MODELSDIR"/model_swa_"$N".mpk
-			[[ -e "$OLD_MODEL" ]] || OLD_MODEL="$MODELSDIR"/model_"$N".mpk
-
+			# Gating compares the models exactly as they are played, so it pits
+			# the plain weights rather than the averaged ones.
 			echo "Pit"
 			STATUS=0
 			time "$BIN" --backend "$BACKEND" pit "${PIT_CONFIG_ARGS[@]}" \
 				--width $WIDTHS --height $HEIGHTS \
-				--model "$OLD_MODEL" \
-				--model-new "$MODELSDIR"/model_swa_"$((N + 1))".mpk \
+				--model "$MODELSDIR"/model_"$N".mpk \
+				--model-new "$MODELSDIR"/model_"$((N + 1))".mpk \
 				--games "$GAMESDIR"/pit_"$((N + 1))".sgf.gz \
 				--count "$PIT_GAMES" \
 				--win-rate-threshold "$WIN_RATE_THRESHOLD" 2>&1 | tee -a "$LOGSDIR"/pit.log || STATUS=$?
