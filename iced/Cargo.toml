@@ -12,7 +12,6 @@ futures.workspace = true
 iced = { version = "0.14", features = ["canvas", "image"] }
 rand.workspace = true
 log.workspace = true
-strum.workspace = true
 clap = { workspace = true, features = ["cargo"] }
 humantime.workspace = true
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
@@ -54,12 +53,11 @@ oppai-field = { path = "../field", features = ["serde"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [features]
-default = ["dsu", "ndarray", "vulkan"]
+default = ["dsu", "flex", "vulkan"]
 dsu = ["oppai-field/dsu", "oppai-ais/dsu"]
 cuda = ["oppai-zero-burn/cuda", "burn/cuda"]
 rocm = ["oppai-zero-burn/rocm", "burn/rocm"]
 flex = ["oppai-zero-burn/flex", "burn/flex"]
-ndarray = ["oppai-zero-burn/ndarray", "burn/ndarray"]
 vulkan = ["oppai-zero-burn/vulkan", "burn/vulkan"]
 webgpu = ["oppai-zero-burn/webgpu", "burn/webgpu"]
 

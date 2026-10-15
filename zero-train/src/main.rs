@@ -1,30 +1,12 @@
 mod config;
 
 use anyhow::{Error, Result};
-#[cfg(feature = "cuda")]
-use burn::backend::Cuda;
-#[cfg(feature = "flex")]
-use burn::backend::Flex;
-#[cfg(feature = "ndarray")]
-use burn::backend::NdArray;
-#[cfg(feature = "rocm")]
-use burn::backend::Rocm;
-#[cfg(any(feature = "vulkan", feature = "webgpu"))]
-use burn::backend::Wgpu;
 use burn::{
-  backend::Autodiff,
   module::Module,
-  optim::{Optimizer, SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
-  record::{DefaultFileRecorder, FullPrecisionSettings, Record, Recorder},
-  tensor::{
-    backend::{AutodiffBackend, Backend, Device, DeviceId},
-    ops::FloatElem,
-  },
+  optim::{SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
+  tensor::Device,
 };
-use config::{
-  Action, Backend as ConfigBackend, Config, CountParams, InitParams, PitParams, PlayParams, RecalcParams, TrainParams,
-  cli_parse,
-};
+use config::{Action, Config, CountParams, InitParams, PitParams, PlayParams, RecalcParams, TrainParams, cli_parse};
 use flate2::{Compression, read::MultiGzDecoder, write::GzEncoder};
 use futures::StreamExt;
 use num_traits::Float;
@@ -46,6 +28,7 @@ use oppai_zero::{
   pit,
   random_model::RandomModel,
 };
+use oppai_zero_burn::device::list_devices;
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor, ema_update};
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
 use rand::{Rng, RngExt, SeedableRng, distr::uniform::SampleUniform, make_rng, rngs::SmallRng};
@@ -65,25 +48,16 @@ use std::{
   },
 };
 
-fn init<B>(params: InitParams, device: B::Device) -> Result<ExitCode>
-where
-  B: AutodiffBackend,
-{
-  let mut model = BurnModel::<B>::new(&device, &params.model_config);
+fn init(params: InitParams, device: Device) -> Result<ExitCode> {
+  let mut model = BurnModel::new(&device, &params.model_config);
   model.initialize(&device);
-  model.save_file(params.model, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  model.save_file(params.model)?;
 
   let optimizer = SgdConfig::new()
     .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
-    .init::<B, BurnModel<_>>();
-  let record = optimizer.to_record();
-  let item = record.into_item::<FullPrecisionSettings>();
-  Recorder::<B>::save_item(
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    item,
-    params.optimizer,
-  )?;
+    .init();
+  optimizer.save(params.optimizer)?;
 
   Ok(ExitCode::SUCCESS)
 }
@@ -255,14 +229,7 @@ fn split(total: usize, parts: usize, index: usize) -> usize {
 /// single executor does, leaves that work on a single core no matter how many
 /// games are in flight. Here each thread drives its own share of the games while
 /// one evaluator, on this thread, serves all of them from one device.
-fn play<B, R: Rng>(params: PlayParams, device: B::Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
-where
-  B: Backend,
-  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug + Send,
-  StandardNormal: Distribution<FloatElem<B>>,
-  Exp1: Distribution<FloatElem<B>>,
-  Open01: Distribution<FloatElem<B>>,
-{
+fn play<R: Rng>(params: PlayParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
   // `count` and `parallel_games` stay the totals they always were, so existing
   // configurations keep their meaning. The games are claimed from one ticket as
   // threads become free, while the concurrency budget is split up front since it
@@ -280,19 +247,14 @@ where
 
   match params.model.clone() {
     Some(model_path) => {
-      let model = BurnModel::<B>::new(&device, &params.model_config);
-      let model = model.load_file(
-        model_path,
-        &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-        &device,
-      )?;
+      let model = BurnModel::new(&device, &params.model_config).try_load_file(model_path)?;
       let predictor = Predictor { model, device };
 
       // All games share one evaluator: their positions are merged into large
       // forward passes instead of each game evaluating its own tiny batch. Only
       // this thread ever touches the model, so the backend needs nothing of its
       // own to be safe under threads.
-      let (handle, requests) = batch_model::<FloatElem<B>>(predictor.predicts_uncertainty());
+      let (handle, requests) = batch_model::<f32>(predictor.predicts_uncertainty());
 
       std::thread::scope(|scope| -> Result<()> {
         let workers = (0..threads)
@@ -358,7 +320,7 @@ where
             let file = &file;
             let next_game = &next_game;
             scope.spawn(move || {
-              futures::executor::block_on(play_games(
+              futures::executor::block_on(play_games::<f32, _, _, _>(
                 params,
                 next_game,
                 parallel,
@@ -383,34 +345,15 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn train<B, R: Rng>(
-  params: TrainParams,
-  device: B::Device,
-  rng: &mut R,
-  should_stop: Arc<AtomicBool>,
-) -> Result<ExitCode>
-where
-  B: AutodiffBackend,
-  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
-{
-  let model = BurnModel::<B>::new(&device, &params.model_config);
-  let model = model.load_file(
-    params.model,
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    &device,
-  )?;
+fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
+  let model = BurnModel::new(&device, &params.model_config).try_load_file(params.model)?;
   // The gradients are clipped by their combined norm before the step instead of
   // by the optimizer, which would bound every parameter's norm on its own.
   let optimizer = SgdConfig::new()
     .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
     .with_momentum(Some(MomentumConfig::new()))
-    .init::<B, BurnModel<_>>();
-  let item = Recorder::<B>::load_item(
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    &mut params.optimizer.clone(),
-  )?;
-  let record = Record::from_item::<FullPrecisionSettings>(item, &device);
-  let optimizer = optimizer.load_record(record);
+    .init()
+    .load(&params.optimizer)?;
   // The SWA model is an exponential moving average of the trained weights,
   // updated every `swa_period` batches and saved separately; it's the model to
   // export for self-play while training continues from the raw weights.
@@ -420,13 +363,7 @@ where
     .then(|| {
       params.model_swa.as_ref().map_or_else(
         || Ok(model.clone()),
-        |path| {
-          BurnModel::<B>::new(&device, &params.model_config).load_file(
-            path,
-            &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-            &device,
-          )
-        },
+        |path| BurnModel::new(&device, &params.model_config).try_load_file(path),
       )
     })
     .transpose()?;
@@ -524,53 +461,25 @@ where
     }
   }
 
-  learner
-    .predictor
-    .model
-    .save_file(params.model_new, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+  learner.predictor.model.save_file(params.model_new)?;
 
   if let (Some(swa), Some(path)) = (swa_model, params.model_swa_new) {
-    swa.save_file(path, &DefaultFileRecorder::<FullPrecisionSettings>::new())?;
+    swa.save_file(path)?;
   }
 
-  let record = learner.optimizer.to_record();
-  let item = record.into_item::<FullPrecisionSettings>();
-  Recorder::<B>::save_item(
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    item,
-    params.optimizer_new,
-  )?;
+  learner.optimizer.save(params.optimizer_new)?;
 
   Ok(ExitCode::SUCCESS)
 }
 
-async fn pit<B, R: Rng>(
-  params: PitParams,
-  device: B::Device,
-  rng: &mut R,
-  should_stop: Arc<AtomicBool>,
-) -> Result<ExitCode>
-where
-  B: Backend,
-  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
-{
-  let model_old = BurnModel::<B>::new(&device, &params.model_config);
-  let model_old = model_old.load_file(
-    params.model,
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    &device,
-  )?;
+async fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
+  let model_old = BurnModel::new(&device, &params.model_config).try_load_file(params.model)?;
   let model_old = Predictor {
     model: model_old,
     device: device.clone(),
   };
 
-  let model_new = BurnModel::<B>::new(&device, &params.model_config_new);
-  let model_new = model_new.load_file(
-    params.model_new,
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    &device,
-  )?;
+  let model_new = BurnModel::new(&device, &params.model_config_new).try_load_file(params.model_new)?;
   let model_new = Predictor {
     model: model_new,
     device,
@@ -826,28 +735,19 @@ where
   Ok(())
 }
 
-async fn recalc<B, R: Rng>(
+async fn recalc<R: Rng>(
   params: RecalcParams,
-  device: B::Device,
+  device: Device,
   rng: &mut R,
   should_stop: Arc<AtomicBool>,
-) -> Result<ExitCode>
-where
-  B: Backend,
-  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
-{
-  let model = BurnModel::<B>::new(&device, &params.model_config);
-  let model = model.load_file(
-    params.model.clone(),
-    &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-    &device,
-  )?;
+) -> Result<ExitCode> {
+  let model = BurnModel::new(&device, &params.model_config).try_load_file(params.model.clone())?;
   let predictor = Predictor { model, device };
 
   // All games share one evaluator: the single position each of them expands at
   // a time is merged into one large forward pass instead of being evaluated on
   // its own, which would leave the device almost entirely idle.
-  let (handle, requests) = batch_model::<FloatElem<B>>(predictor.predicts_uncertainty());
+  let (handle, requests) = batch_model::<f32>(predictor.predicts_uncertainty());
   let games = async {
     let result = recalc_games(&params, || handle.clone(), rng, &should_stop).await;
     // Close the channel so the evaluator terminates with the last game.
@@ -869,24 +769,21 @@ where
   Ok(ExitCode::SUCCESS)
 }
 
-fn run<B>(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<ExitCode>
-where
-  B: Backend,
-  FloatElem<B>: Float + Sum + SampleUniform + Display + Debug,
-  StandardNormal: Distribution<FloatElem<B>>,
-  Exp1: Distribution<FloatElem<B>>,
-  Open01: Distribution<FloatElem<B>>,
-{
-  let device = B::Device::from_id(DeviceId::new(config.device_type, config.device_id));
+fn run(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
+  let device = config.device;
   let mut rng = config.seed.map_or_else(make_rng, SmallRng::seed_from_u64);
 
   match action {
-    Action::Init(params) => init::<Autodiff<B>>(params, device),
-    Action::Play(params) => play::<B, _>(params, device, &mut rng, should_stop),
-    Action::Train(params) => train::<Autodiff<B>, _>(params, device, &mut rng, should_stop),
-    Action::Pit(params) => futures::executor::block_on(pit::<B, _>(params, device, &mut rng, should_stop)),
+    Action::Init(params) => init(params, device.autodiff()),
+    Action::Play(params) => play(params, device, &mut rng, should_stop),
+    Action::Train(params) => train(params, device.autodiff(), &mut rng, should_stop),
+    Action::Pit(params) => futures::executor::block_on(pit(params, device, &mut rng, should_stop)),
     Action::Count(params) => count(params, &mut rng),
-    Action::Recalc(params) => futures::executor::block_on(recalc::<B, _>(params, device, &mut rng, should_stop)),
+    Action::Recalc(params) => futures::executor::block_on(recalc(params, device, &mut rng, should_stop)),
+    Action::Devices => {
+      list_devices();
+      Ok(ExitCode::SUCCESS)
+    }
   }
 }
 
@@ -906,16 +803,5 @@ fn main() -> Result<ExitCode> {
 
   let (config, action) = cli_parse();
 
-  match config.backend {
-    #[cfg(feature = "flex")]
-    ConfigBackend::Flex => run::<Flex>(config, action, should_stop),
-    #[cfg(feature = "ndarray")]
-    ConfigBackend::Ndarray => run::<NdArray>(config, action, should_stop),
-    #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-    ConfigBackend::Wgpu => run::<Wgpu>(config, action, should_stop),
-    #[cfg(feature = "cuda")]
-    ConfigBackend::Cuda => run::<Cuda>(config, action, should_stop),
-    #[cfg(feature = "rocm")]
-    ConfigBackend::Rocm => run::<Rocm>(config, action, should_stop),
-  }
+  run(config, action, should_stop)
 }

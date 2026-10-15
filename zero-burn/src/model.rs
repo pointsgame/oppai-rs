@@ -5,19 +5,17 @@ use burn::{
     conv::{Conv2d, Conv2dConfig},
     loss::HuberLossConfig,
   },
-  optim::{GradientsParams, Optimizer},
+  optim::{GradientsParams, ModuleOptimizer},
   tensor::{
-    DataError, Tensor, TensorData,
+    DataError, Device, ExecutionError, Tensor, TensorData,
     activation::{log_softmax, mish, sigmoid, softmax, softplus},
-    backend::{AutodiffBackend, Backend, ExecutionError},
     module::{conv2d, linear},
-    ops::{ConvOptions, FloatElem},
+    ops::ConvOptions,
     s,
   },
 };
 use derive_more::From;
 use ndarray::{Array, Array1, Array2, Array3, Array4, Dimension, ShapeError};
-use num_traits::Float;
 use oppai_zero::{
   examples::TD_VALUES,
   field_features::{CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE},
@@ -89,13 +87,13 @@ fn mish_gain() -> f64 {
 /// Reinitialize a weight tensor:
 /// sample from `N(0, (scale * gain / sqrt(fan_in))^2)`, or fill with zeros when `scale == 0`.
 /// Zero scale is how Fixup makes a residual branch start as the identity function.
-fn init_weight<B: Backend, const D: usize>(
+fn init_weight<const D: usize>(
   shape: [usize; D],
   fan_in: usize,
   scale: f64,
   gain: f64,
-  device: &B::Device,
-) -> Param<Tensor<B, D>> {
+  device: &Device,
+) -> Param<Tensor<D>> {
   if scale <= 0.0 {
     Initializer::Zeros.init(shape, device)
   } else {
@@ -105,20 +103,20 @@ fn init_weight<B: Backend, const D: usize>(
 }
 
 /// Reinitialize a convolution's weights. `fan_in = in_channels * kernel_h * kernel_w`.
-fn init_conv<B: Backend>(conv: &mut Conv2d<B>, scale: f64, gain: f64, device: &B::Device) {
+fn init_conv(conv: &mut Conv2d, scale: f64, gain: f64, device: &Device) {
   let [out_c, in_c, kh, kw] = conv.weight.val().dims();
   conv.weight = init_weight([out_c, in_c, kh, kw], in_c * kh * kw, scale, gain, device);
 }
 
 /// Reinitialize a linear layer's weights (and bias, if present). The burn weight layout is
 /// `[d_input, d_output]`, so `fan_in = d_input`.
-fn init_linear<B: Backend>(
-  linear: &mut Linear<B>,
+fn init_linear(
+  linear: &mut Linear,
   weight_scale: f64,
   weight_gain: f64,
   bias_scale: f64,
   bias_gain: f64,
-  device: &B::Device,
+  device: &Device,
 ) {
   let [d_in, d_out] = linear.weight.val().dims();
   linear.weight = init_weight([d_in, d_out], d_in, weight_scale, weight_gain, device);
@@ -128,13 +126,13 @@ fn init_linear<B: Backend>(
 }
 
 #[derive(Module, Debug)]
-pub struct NormMask<B: Backend> {
-  beta: Param<Tensor<B, 4>>,
-  gamma: Option<Param<Tensor<B, 4>>>,
+pub struct NormMask {
+  beta: Param<Tensor<4>>,
+  gamma: Option<Param<Tensor<4>>>,
 }
 
-impl<B: Backend> NormMask<B> {
-  pub fn new(device: &B::Device, channels: usize, gamma: bool) -> Self {
+impl NormMask {
+  pub fn new(device: &Device, channels: usize, gamma: bool) -> Self {
     Self {
       beta: Param::from_tensor(Tensor::zeros([1, channels, 1, 1], device)),
       // Centered at 1: gamma starts at zero and is applied as `gamma + 1`,
@@ -148,7 +146,7 @@ impl<B: Backend> NormMask<B> {
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>) -> Tensor<B, 4> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>) -> Tensor<4> {
     match self.gamma {
       Some(ref gamma) => (inputs * (gamma.val() + 1.0) + self.beta.val()) * mask,
       None => (inputs + self.beta.val()) * mask,
@@ -157,15 +155,15 @@ impl<B: Backend> NormMask<B> {
 }
 
 #[derive(Module, Debug)]
-pub struct ConvAndGPool<B: Backend> {
-  conv1r: Conv2d<B>,
-  conv1g: Conv2d<B>,
-  normg: NormMask<B>,
-  linearg: Linear<B>,
+pub struct ConvAndGPool {
+  conv1r: Conv2d,
+  conv1g: Conv2d,
+  normg: NormMask,
+  linearg: Linear,
 }
 
-impl<B: Backend> ConvAndGPool<B> {
-  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
+impl ConvAndGPool {
+  pub fn new(device: &Device, config: &ModelConfig) -> Self {
     let residual_inner_channels = config.residual_inner_channels();
     Self {
       conv1r: Conv2dConfig::new(
@@ -191,7 +189,7 @@ impl<B: Backend> ConvAndGPool<B> {
 
   /// Splits the input variance between the regular (`r`) and global-pooling (`g`) branches
   /// so they add back up to roughly `scale`.
-  fn initialize(&mut self, scale: f64, device: &B::Device) {
+  fn initialize(&mut self, scale: f64, device: &Device) {
     let gain = mish_gain();
     let r_scale = 0.8_f64;
     let g_scale = 0.6_f64;
@@ -208,7 +206,7 @@ impl<B: Backend> ConvAndGPool<B> {
     // `normg` stays a learnable affine (fixup uses no fixed scale here).
   }
 
-  fn gpool(inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  fn gpool(inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     // min size: 16, max size: 40, avg: (40 + 16) / 2 = 28
     let mask_sum_hw_sqrt_offset = mask_sum_hw.clone().sqrt() - 28.0;
 
@@ -223,7 +221,7 @@ impl<B: Backend> ConvAndGPool<B> {
     Tensor::cat(vec![out_pool1, out_pool2, out_pool3], 1)
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let outr = self.conv1r.forward(inputs.clone());
     let outg = self.conv1g.forward(inputs);
     let outg = self.normg.forward(outg, mask.clone());
@@ -239,14 +237,14 @@ impl<B: Backend> ConvAndGPool<B> {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Module, Debug)]
-pub enum ConvOrGpool<B: Backend> {
-  Conv(Conv2d<B>),
-  Gpool(ConvAndGPool<B>),
+pub enum ConvOrGpool {
+  Conv(Conv2d),
+  Gpool(ConvAndGPool),
 }
 
-impl<B: Backend> ConvOrGpool<B> {
+impl ConvOrGpool {
   pub fn new(
-    device: &B::Device,
+    device: &Device,
     config: &ModelConfig,
     gpool: bool,
     in_channels: usize,
@@ -265,7 +263,7 @@ impl<B: Backend> ConvOrGpool<B> {
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     match self {
       Self::Conv(conv) => conv.forward(inputs),
       Self::Gpool(gpool) => gpool.forward(inputs, mask, mask_sum_hw),
@@ -274,14 +272,14 @@ impl<B: Backend> ConvOrGpool<B> {
 }
 
 #[derive(Module, Debug)]
-pub struct NormActConv<B: Backend> {
-  norm: NormMask<B>,
-  convgpool: ConvOrGpool<B>,
+pub struct NormActConv {
+  norm: NormMask,
+  convgpool: ConvOrGpool,
 }
 
-impl<B: Backend> NormActConv<B> {
+impl NormActConv {
   pub fn new(
-    device: &B::Device,
+    device: &Device,
     config: &ModelConfig,
     gamma: bool,
     gpool: bool,
@@ -297,14 +295,14 @@ impl<B: Backend> NormActConv<B> {
 
   /// only the convolution is rescaled; the norm stays a learnable affine
   /// since fixup applies no fixed scale to it.
-  fn initialize(&mut self, scale: f64, device: &B::Device) {
+  fn initialize(&mut self, scale: f64, device: &Device) {
     match &mut self.convgpool {
       ConvOrGpool::Conv(conv) => init_conv(conv, scale, mish_gain(), device),
       ConvOrGpool::Gpool(gpool) => gpool.initialize(scale, device),
     }
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let out = self.norm.forward(inputs, mask.clone());
     let out = mish(out);
     self.convgpool.forward(out, mask, mask_sum_hw)
@@ -312,13 +310,13 @@ impl<B: Backend> NormActConv<B> {
 }
 
 #[derive(Module, Debug)]
-pub struct InnerResidualBlock<B: Backend> {
-  normactconv1: NormActConv<B>,
-  normactconv2: NormActConv<B>,
+pub struct InnerResidualBlock {
+  normactconv1: NormActConv,
+  normactconv2: NormActConv,
 }
 
-impl<B: Backend> InnerResidualBlock<B> {
-  pub fn new(device: &B::Device, config: &ModelConfig, gpool: bool) -> Self {
+impl InnerResidualBlock {
+  pub fn new(device: &Device, config: &ModelConfig, gpool: bool) -> Self {
     let residual_inner_channels = config.residual_inner_channels();
     Self {
       normactconv1: NormActConv::new(
@@ -348,12 +346,12 @@ impl<B: Backend> InnerResidualBlock<B> {
 
   /// Scale the first conv, and zero-initialize the second conv so the block starts
   /// as the identity and only gradually learns a residual.
-  fn initialize(&mut self, fixup_scale: f64, device: &B::Device) {
+  fn initialize(&mut self, fixup_scale: f64, device: &Device) {
     self.normactconv1.initialize(fixup_scale, device);
     self.normactconv2.initialize(0.0, device);
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let out = self
       .normactconv1
       .forward(inputs.clone(), mask.clone(), mask_sum_hw.clone());
@@ -363,14 +361,14 @@ impl<B: Backend> InnerResidualBlock<B> {
 }
 
 #[derive(Module, Debug)]
-pub struct ResidualBlock<B: Backend> {
-  normactconvp: NormActConv<B>,
-  inner: Vec<InnerResidualBlock<B>>,
-  normactconvq: NormActConv<B>,
+pub struct ResidualBlock {
+  normactconvp: NormActConv,
+  inner: Vec<InnerResidualBlock>,
+  normactconvq: NormActConv,
 }
 
-impl<B: Backend> ResidualBlock<B> {
-  pub fn new(device: &B::Device, config: &ModelConfig, gpool: bool) -> Self {
+impl ResidualBlock {
+  pub fn new(device: &Device, config: &ModelConfig, gpool: bool) -> Self {
     Self {
       normactconvp: NormActConv::new(
         device,
@@ -399,7 +397,7 @@ impl<B: Backend> ResidualBlock<B> {
   /// Each of the `1 + residual_size` stages gets the geometric share
   /// `fixup_scale^(1/(1+residual_size))` of the block's scale, and the final `1x1`
   /// conv is zero-initialized so the whole nested block starts as the identity.
-  fn initialize(&mut self, fixup_scale: f64, device: &B::Device) {
+  fn initialize(&mut self, fixup_scale: f64, device: &Device) {
     let inner_scale = fixup_scale.powf(1.0 / (1.0 + self.inner.len() as f64));
     self.normactconvp.initialize(inner_scale, device);
     for inner in &mut self.inner {
@@ -408,7 +406,7 @@ impl<B: Backend> ResidualBlock<B> {
     self.normactconvq.initialize(0.0, device);
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let mut out = self
       .normactconvp
       .forward(inputs.clone(), mask.clone(), mask_sum_hw.clone());
@@ -426,7 +424,7 @@ impl<B: Backend> ResidualBlock<B> {
 /// vanishing gradient when `x` goes very negative. The detach trick keeps the
 /// forward value exact while routing gradients through the floored path,
 /// whose derivative is `grad_floor + (1 - grad_floor) * sigmoid(x)`.
-fn squared_softplus_with_gradient_floor<B: Backend>(x: Tensor<B, 2>, grad_floor: f64) -> Tensor<B, 2> {
+fn squared_softplus_with_gradient_floor(x: Tensor<2>, grad_floor: f64) -> Tensor<2> {
   let value = softplus(x.clone() * 0.5, 1.0).powi_scalar(2);
   let grad_path = x.clone() * grad_floor + softplus(x, 1.0) * (1.0 - grad_floor);
   grad_path.clone() + (value - grad_path).detach()
@@ -440,18 +438,18 @@ const TD_SCORE_SCALE: f64 = 20.0;
 const SCORE_ERROR_SCALE: f64 = 150.0;
 
 /// Everything [`ValueHead`] predicts about a batch of positions.
-pub struct ValuePredictions<B: Backend> {
+pub struct ValuePredictions {
   /// `(win, loss)` logit pairs: the main value trained towards the final result
   /// first, then one pair per TD horizon, shortest horizon last.
-  pub value: Tensor<B, 2>,
+  pub value: Tensor<2>,
   /// Predicted squared error of the shortest-horizon TD value.
-  pub value_error: Tensor<B, 2>,
+  pub value_error: Tensor<2>,
   /// Predicted score at each TD horizon, in points, shortest horizon last.
-  pub td_score: Tensor<B, 2>,
+  pub td_score: Tensor<2>,
   /// Predicted squared error of the shortest-horizon TD score, in points squared.
-  pub score_error: Tensor<B, 2>,
+  pub score_error: Tensor<2>,
   /// Log-distribution of the terminal score over the score bins.
-  pub score: Tensor<B, 2>,
+  pub score: Tensor<2>,
 }
 
 /// Value head output channels of `linear_valuehead`:
@@ -459,33 +457,33 @@ pub struct ValuePredictions<B: Backend> {
 /// then `(win, loss)` logit pairs for each of the `TD_VALUES` horizons,
 /// shortest horizon last.
 #[derive(Module, Debug)]
-pub struct ValueHead<B: Backend> {
-  conv1: Conv2d<B>,
-  bias1: NormMask<B>,
-  linear2: Linear<B>,
-  linear_valuehead: Linear<B>,
+pub struct ValueHead {
+  conv1: Conv2d,
+  bias1: NormMask,
+  linear2: Linear,
+  linear_valuehead: Linear,
   /// Predicts the squared error of the shortest-horizon TD value, i.e. how
   /// uncertain the value estimate of this position is in the short term.
-  linear_error: Linear<B>,
+  linear_error: Linear,
   /// Predicts the score at each TD horizon, in points.
-  linear_td_score: Linear<B>,
+  linear_td_score: Linear,
   /// Predicts the squared error of the shortest-horizon TD score, i.e. how
   /// uncertain that score is - the score's counterpart of `linear_error`.
-  linear_score_error: Linear<B>,
+  linear_score_error: Linear,
   // Score belief components
-  linear_s2: Linear<B>,
-  linear_s2off: Linear<B>,
-  linear_s3: Linear<B>,
-  linear_smix: Linear<B>,
-  score_belief_offset_bias: Param<Tensor<B, 1>>,
+  linear_s2: Linear,
+  linear_s2off: Linear,
+  linear_s3: Linear,
+  linear_smix: Linear,
+  score_belief_offset_bias: Param<Tensor<1>>,
 }
 
-impl<B: Backend> ValueHead<B> {
-  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
+impl ValueHead {
+  pub fn new(device: &Device, config: &ModelConfig) -> Self {
     let offset_bias_data: Vec<f32> = (0..SCORE_ONE_HOT_SIZE as i32)
       .map(|i| 0.002 * ((i - (SCORE_ONE_HOT_SIZE - 1) as i32 / 2) as f32))
       .collect();
-    let offset_bias_tensor: Tensor<B, 1> =
+    let offset_bias_tensor: Tensor<1> =
       Tensor::from_data(TensorData::new(offset_bias_data, [SCORE_ONE_HOT_SIZE]), device);
 
     Self {
@@ -510,7 +508,7 @@ impl<B: Backend> ValueHead<B> {
 
   /// Pre-pooling layers keep unit-ish variance while the output
   /// projections are scaled down so the head starts near-neutral.
-  fn initialize(&mut self, device: &B::Device) {
+  fn initialize(&mut self, device: &Device) {
     let gain = mish_gain();
     let bias_scale = 0.2_f64;
     let scorebelief_output_scale = 0.5_f64;
@@ -541,7 +539,7 @@ impl<B: Backend> ValueHead<B> {
     // `bias1` stays a learnable affine.
   }
 
-  fn gpool(inputs: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  fn gpool(inputs: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     // min size: 16, max size: 40, avg: (40 + 16) / 2 = 28
     let mask_sum_hw_sqrt_offset = mask_sum_hw.clone().sqrt() - 28.0;
 
@@ -555,7 +553,7 @@ impl<B: Backend> ValueHead<B> {
     Tensor::cat(vec![out_pool1, out_pool2, out_pool3], 1)
   }
 
-  pub fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> ValuePredictions<B> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> ValuePredictions {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
@@ -617,10 +615,10 @@ impl<B: Backend> ValueHead<B> {
   /// computed.
   pub fn forward_no_score(
     &self,
-    inputs: Tensor<B, 4>,
-    mask: Tensor<B, 4>,
-    mask_sum_hw: Tensor<B, 4>,
-  ) -> (Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 2>) {
+    inputs: Tensor<4>,
+    mask: Tensor<4>,
+    mask_sum_hw: Tensor<4>,
+  ) -> (Tensor<2>, Tensor<2>, Tensor<2>) {
     let outv1 = self.conv1.forward(inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
@@ -658,7 +656,7 @@ impl<B: Backend> ValueHead<B> {
   /// Predicted squared short-term value error, from the second value layer.
   /// Shared by both forward paths so that the value the search weights by is
   /// exactly the one the error head was trained to produce.
-  fn value_error(&self, outv2: Tensor<B, 2>) -> Tensor<B, 2> {
+  fn value_error(&self, outv2: Tensor<2>) -> Tensor<2> {
     // Squared softplus keeps the predicted squared error positive.
     squared_softplus_with_gradient_floor(self.linear_error.forward(outv2), 0.05) * 0.25
   }
@@ -713,17 +711,17 @@ const Q_SCORE_POLICY: usize = 7;
 /// 5 - long-term optimistic policy,
 /// 6 - per-move q values (pre-tanh), 7 - per-move q scores (pre-scale).
 #[derive(Module, Debug)]
-pub struct PolicyHead<B: Backend> {
-  conv1p: Conv2d<B>,
-  conv1g: Conv2d<B>,
-  biasg: NormMask<B>,
-  linearg: Linear<B>,
-  bias2: NormMask<B>,
-  conv2p: Conv2d<B>,
+pub struct PolicyHead {
+  conv1p: Conv2d,
+  conv1g: Conv2d,
+  biasg: NormMask,
+  linearg: Linear,
+  bias2: NormMask,
+  conv2p: Conv2d,
 }
 
-impl<B: Backend> PolicyHead<B> {
-  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
+impl PolicyHead {
+  pub fn new(device: &Device, config: &ModelConfig) -> Self {
     Self {
       conv1p: Conv2dConfig::new([config.inner_channels, config.p1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
@@ -747,7 +745,7 @@ impl<B: Backend> PolicyHead<B> {
 
   /// Split variance between the regular and global-pool branches,
   /// and scale down the final policy conv (identity gain) so initial logits are small.
-  fn initialize(&mut self, device: &B::Device) {
+  fn initialize(&mut self, device: &Device) {
     let gain = mish_gain();
     let scale_output = 0.3_f64;
     init_conv(&mut self.conv1p, 0.8, gain, device);
@@ -758,12 +756,12 @@ impl<B: Backend> PolicyHead<B> {
   }
 
   /// The head up to (not including) the final policy conv.
-  fn features(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  fn features(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let outp = self.conv1p.forward(inputs.clone());
     let outg = self.conv1g.forward(inputs);
     let outg = self.biasg.forward(outg, mask.clone());
     let outg = mish(outg);
-    let outg = ConvAndGPool::<B>::gpool(outg, mask.clone(), mask_sum_hw).reshape([0, -1]);
+    let outg = ConvAndGPool::gpool(outg, mask.clone(), mask_sum_hw).reshape([0, -1]);
     let outg = self.linearg.forward(outg).unsqueeze_dims(&[-1, -1]);
 
     let outp = outp + outg;
@@ -771,7 +769,7 @@ impl<B: Backend> PolicyHead<B> {
     mish(outp)
   }
 
-  fn forward(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let outp = self.features(inputs, mask.clone(), mask_sum_hw);
     let outp = self.conv2p.forward(outp);
     outp - (1.0 - mask) * 5000.0
@@ -780,7 +778,7 @@ impl<B: Backend> PolicyHead<B> {
   /// Only the first [`INFERENCE_POLICY_OUTPUTS`] channels: everything past
   /// them is an auxiliary training target, so the final conv runs on a slice
   /// of its weight instead of computing planes nothing would read.
-  fn forward_inference(&self, inputs: Tensor<B, 4>, mask: Tensor<B, 4>, mask_sum_hw: Tensor<B, 4>) -> Tensor<B, 4> {
+  fn forward_inference(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let outp = self.features(inputs, mask.clone(), mask_sum_hw);
     let weight = self.conv2p.weight.val().slice(s![0..INFERENCE_POLICY_OUTPUTS]);
     let outp = conv2d(outp, weight, None, ConvOptions::new([1, 1], [0, 0], [1, 1], 1));
@@ -789,12 +787,12 @@ impl<B: Backend> PolicyHead<B> {
 }
 
 #[derive(Module, Debug)]
-pub struct CapturedHead<B: Backend> {
-  conv: Conv2d<B>,
+pub struct CapturedHead {
+  conv: Conv2d,
 }
 
-impl<B: Backend> CapturedHead<B> {
-  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
+impl CapturedHead {
+  pub fn new(device: &Device, config: &ModelConfig) -> Self {
     Self {
       conv: Conv2dConfig::new([config.inner_channels, 2], [1, 1])
         .with_padding(PaddingConfig2d::Same)
@@ -804,28 +802,28 @@ impl<B: Backend> CapturedHead<B> {
   }
 
   /// Scale down the output conv (identity gain) so initial logits are small.
-  fn initialize(&mut self, device: &B::Device) {
+  fn initialize(&mut self, device: &Device) {
     init_conv(&mut self.conv, 0.2, 1.0, device);
   }
 
-  fn forward(&self, inputs: Tensor<B, 4>) -> Tensor<B, 4> {
+  fn forward(&self, inputs: Tensor<4>) -> Tensor<4> {
     self.conv.forward(inputs)
   }
 }
 
 #[derive(Module, Debug)]
-pub struct Model<B: Backend> {
-  conv_spatial: Conv2d<B>,
-  linear_global: Linear<B>,
-  residuals: Vec<ResidualBlock<B>>,
-  norm_trunkfinal: NormMask<B>,
-  value_head: ValueHead<B>,
-  policy_head: PolicyHead<B>,
-  captured_head: CapturedHead<B>,
+pub struct Model {
+  conv_spatial: Conv2d,
+  linear_global: Linear,
+  residuals: Vec<ResidualBlock>,
+  norm_trunkfinal: NormMask,
+  value_head: ValueHead,
+  policy_head: PolicyHead,
+  captured_head: CapturedHead,
 }
 
-impl<B: Backend> Model<B> {
-  pub fn new(device: &B::Device, config: &ModelConfig) -> Self {
+impl Model {
+  pub fn new(device: &Device, config: &ModelConfig) -> Self {
     Self {
       conv_spatial: Conv2dConfig::new([CHANNELS, config.inner_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
@@ -849,7 +847,7 @@ impl<B: Backend> Model<B> {
   /// is scaled by `1/sqrt(num_blocks)`, keeping activation and gradient variance stable
   /// through depth without any explicit normalization. Must be called once on a freshly
   /// created model before training; it is a no-op to call again before loading weights.
-  pub fn initialize(&mut self, device: &B::Device) {
+  pub fn initialize(&mut self, device: &Device) {
     let gain = mish_gain();
     init_conv(&mut self.conv_spatial, 0.8, gain, device);
     {
@@ -868,11 +866,7 @@ impl<B: Backend> Model<B> {
     self.captured_head.initialize(device);
   }
 
-  pub fn forward(
-    &self,
-    spatial: Tensor<B, 4>,
-    global: Tensor<B, 2>,
-  ) -> (Tensor<B, 4>, ValuePredictions<B>, Tensor<B, 4>) {
+  pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = self.conv_spatial.forward(spatial);
@@ -891,9 +885,9 @@ impl<B: Backend> Model<B> {
 
   pub fn forward_no_score(
     &self,
-    spatial: Tensor<B, 4>,
-    global: Tensor<B, 2>,
-  ) -> (Tensor<B, 4>, Tensor<B, 2>, Tensor<B, 2>, Tensor<B, 2>) {
+    spatial: Tensor<4>,
+    global: Tensor<2>,
+  ) -> (Tensor<4>, Tensor<2>, Tensor<2>, Tensor<2>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = self.conv_spatial.forward(spatial);
@@ -925,11 +919,7 @@ impl<B: Backend> Model<B> {
 /// position and a revelation in a quiet one. The floor on the variance keeps a
 /// supremely confident prediction from turning a rounding error into a huge
 /// surprise.
-fn stdevs_excess_weight<B: Backend>(
-  surprise: Tensor<B, 2>,
-  predicted_sq_error: Tensor<B, 2>,
-  variance_floor: f64,
-) -> Tensor<B, 2> {
+fn stdevs_excess_weight(surprise: Tensor<2>, predicted_sq_error: Tensor<2>, variance_floor: f64) -> Tensor<2> {
   let stdevs_excess = surprise / (predicted_sq_error + variance_floor).sqrt();
   sigmoid((stdevs_excess - 1.5) * 3.0)
 }
@@ -941,7 +931,7 @@ const SCORE_VARIANCE_FLOOR: f64 = 0.25;
 
 /// The score each bin of the score belief stands for, in points, as a row to
 /// broadcast over a batch of distributions.
-fn score_bins<B: Backend>(device: &B::Device) -> Tensor<B, 2> {
+fn score_bins(device: &Device) -> Tensor<2> {
   let center = (SCORE_ONE_HOT_SIZE / 2) as f32;
   let bins = (0..SCORE_ONE_HOT_SIZE).map(|i| i as f32 - center).collect::<Vec<_>>();
   Tensor::from_data(TensorData::new(bins, [1, SCORE_ONE_HOT_SIZE]), device)
@@ -950,7 +940,7 @@ fn score_bins<B: Backend>(device: &B::Device) -> Tensor<B, 2> {
 /// Mean and variance, in points, of a distribution over the score bins - of the
 /// score belief the net predicts, or of the one-hot target it is trained on,
 /// whose mean is then simply the score the game ended at.
-fn score_mean_and_variance<B: Backend>(probs: Tensor<B, 2>, bins: Tensor<B, 2>) -> (Tensor<B, 2>, Tensor<B, 2>) {
+fn score_mean_and_variance(probs: Tensor<2>, bins: Tensor<2>) -> (Tensor<2>, Tensor<2>) {
   let mean = (probs.clone() * bins.clone()).sum_dim(1);
   let mean_sq = (probs * bins.powi_scalar(2)).sum_dim(1);
   // Guard against numerical imprecision producing a negative variance.
@@ -972,24 +962,24 @@ fn score_mean_and_variance<B: Backend>(probs: Tensor<B, 2>, bins: Tensor<B, 2>) 
 /// happened to be confident about. The two normalizing constants dropped along
 /// the way are per position, so the softmax that follows divides them out
 /// anyway.
-fn interpolate_policy<B: Backend>(policy_logits: Tensor<B, 4>, optimism: Tensor<B, 3>) -> Tensor<B, 3> {
-  let policy: Tensor<B, 3> = policy_logits.clone().slice(s![.., 0..1, .., ..]).squeeze_dim(1);
-  let optimistic: Tensor<B, 3> = policy_logits
+fn interpolate_policy(policy_logits: Tensor<4>, optimism: Tensor<3>) -> Tensor<3> {
+  let policy: Tensor<3> = policy_logits.clone().slice(s![.., 0..1, .., ..]).squeeze_dim(1);
+  let optimistic: Tensor<3> = policy_logits
     .slice(s![.., OPTIMISTIC_POLICY..OPTIMISTIC_POLICY + 1, .., ..])
     .squeeze_dim(1);
   policy.clone() + (optimistic - policy) * optimism
 }
 
 #[derive(Clone)]
-pub struct Predictor<B: Backend> {
-  pub model: Model<B>,
-  pub device: B::Device,
+pub struct Predictor {
+  pub model: Model,
+  pub device: Device,
 }
 
 #[derive(Clone)]
-pub struct Learner<B: AutodiffBackend, O> {
-  pub predictor: Predictor<B>,
-  pub optimizer: O,
+pub struct Learner {
+  pub predictor: Predictor,
+  pub optimizer: ModuleOptimizer,
   /// The bound every training step scales the gradient down to when its norm -
   /// the norm of the whole gradient, see [`gradient_norm`] - exceeds it. `None`
   /// leaves the gradients as they come out of the backward pass.
@@ -1020,19 +1010,15 @@ fn into_data_vec<A: Clone, D: Dimension>(array: Array<A, D>) -> Vec<A> {
   vec
 }
 
-impl<B> OppaiModel<FloatElem<B>> for Predictor<B>
-where
-  B: Backend,
-  FloatElem<B>: Float,
-{
+impl OppaiModel<f32> for Predictor {
   type E = ModelError;
 
   async fn predict(
     &self,
-    inputs: Array4<FloatElem<B>>,
-    global: Array2<FloatElem<B>>,
-    optimism: Array1<FloatElem<B>>,
-  ) -> Result<(Array3<FloatElem<B>>, Array2<FloatElem<B>>), Self::E> {
+    inputs: Array4<f32>,
+    global: Array2<f32>,
+    optimism: Array1<f32>,
+  ) -> Result<(Array3<f32>, Array2<f32>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
@@ -1052,25 +1038,24 @@ where
     // score; the search averages it over each subtree into the per-move q
     // score targets.
     let values = Tensor::cat(vec![softmax(value_logits, 1), value_error.sqrt(), td_score], 1);
-    let policies = Array3::from_shape_vec((batch, height, width), policies.into_data_async().await?.into_vec()?)?;
-    let values = Array2::from_shape_vec((batch, 4), values.into_data_async().await?.into_vec()?)?;
+    let policies = Array3::from_shape_vec(
+      (batch, height, width),
+      policies.into_data_async().await?.try_into_vec()?,
+    )?;
+    let values = Array2::from_shape_vec((batch, 4), values.into_data_async().await?.try_into_vec()?)?;
     Ok((policies, values))
   }
 }
 
-impl<B, O> OppaiModel<FloatElem<B>> for Learner<B, O>
-where
-  B: Backend + AutodiffBackend,
-  FloatElem<B>: Float,
-{
+impl OppaiModel<f32> for Learner {
   type E = ModelError;
 
   async fn predict(
     &self,
-    inputs: Array4<FloatElem<B>>,
-    global: Array2<FloatElem<B>>,
-    optimism: Array1<FloatElem<B>>,
-  ) -> Result<(Array3<FloatElem<B>>, Array2<FloatElem<B>>), Self::E> {
+    inputs: Array4<f32>,
+    global: Array2<f32>,
+    optimism: Array1<f32>,
+  ) -> Result<(Array3<f32>, Array2<f32>), Self::E> {
     self.predictor.predict(inputs, global, optimism).await
   }
 }
@@ -1079,20 +1064,20 @@ struct ParamCollector {
   params: Vec<TensorData>,
 }
 
-impl<B: Backend> ModuleVisitor<B> for ParamCollector {
-  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
+impl ModuleVisitor for ParamCollector {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<D>>) {
     self.params.push(param.val().into_data());
   }
 }
 
-struct EmaMapper<'a, B: Backend> {
+struct EmaMapper<'a> {
   params: std::collections::VecDeque<TensorData>,
   factor: f64,
-  device: &'a B::Device,
+  device: &'a Device,
 }
 
-impl<B: Backend> ModuleMapper<B> for EmaMapper<'_, B> {
-  fn map_float<const D: usize>(&mut self, param: Param<Tensor<B, D>>) -> Param<Tensor<B, D>> {
+impl ModuleMapper for EmaMapper<'_> {
+  fn map_float<const D: usize>(&mut self, param: Param<Tensor<D>>) -> Param<Tensor<D>> {
     let data = self.params.pop_front().expect("model architectures must match");
     let current = Tensor::from_data(data, self.device);
     let (id, average, mapper) = param.consume();
@@ -1106,7 +1091,7 @@ impl<B: Backend> ModuleMapper<B> for EmaMapper<'_, B> {
 /// parameters of the two models by module traversal order. With
 /// `factor = 1 / swa_scale`, `swa_scale` snapshots are averaged in
 /// expectation, smoothing out the noise of the last training steps.
-pub fn ema_update<B: Backend>(average: Model<B>, model: &Model<B>, factor: f64, device: &B::Device) -> Model<B> {
+pub fn ema_update(average: Model, model: &Model, factor: f64, device: &Device) -> Model {
   let mut collector = ParamCollector { params: Vec::new() };
   model.visit(&mut collector);
   let mut mapper = EmaMapper {
@@ -1117,62 +1102,60 @@ pub fn ema_update<B: Backend>(average: Model<B>, model: &Model<B>, factor: f64, 
   average.map(&mut mapper)
 }
 
-struct ParamNormVisitor<B: Backend> {
-  sum_sq: Tensor<B, 1>,
+struct ParamNormVisitor {
+  sum_sq: Tensor<1>,
 }
 
-impl<B: Backend> ParamNormVisitor<B> {
-  fn new(device: &B::Device) -> Self {
+impl ParamNormVisitor {
+  fn new(device: &Device) -> Self {
     Self {
       sum_sq: Tensor::zeros([1], device),
     }
   }
 
-  fn l2_norm(self) -> FloatElem<B> {
+  fn l2_norm(self) -> f32 {
     self.sum_sq.sqrt().into_scalar()
   }
 }
 
-impl<B: Backend> ModuleVisitor<B> for ParamNormVisitor<B> {
-  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
+impl ModuleVisitor for ParamNormVisitor {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<D>>) {
     let tensor = param.val();
     self.sum_sq = self.sum_sq.clone() + (tensor.clone() * tensor).sum();
   }
 }
 
-struct GradNormVisitor<'a, B: AutodiffBackend> {
+struct GradNormVisitor<'a> {
   grads: &'a GradientsParams,
-  sum_sq: Tensor<B::InnerBackend, 1>,
+  sum_sq: Tensor<1>,
 }
 
-impl<'a, B: AutodiffBackend> GradNormVisitor<'a, B> {
-  fn new(grads: &'a GradientsParams, device: &B::Device) -> Self {
+impl<'a> GradNormVisitor<'a> {
+  fn new(grads: &'a GradientsParams, device: &Device) -> Self {
     Self {
       grads,
-      sum_sq: Tensor::zeros([1], device),
+      sum_sq: Tensor::zeros([1], &device.clone().without_autodiff()),
     }
   }
 }
 
-impl<B: AutodiffBackend> ModuleVisitor<B> for GradNormVisitor<'_, B> {
-  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
-    if let Some(grad) = self.grads.get::<B::InnerBackend, D>(param.id) {
+impl ModuleVisitor for GradNormVisitor<'_> {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<D>>) {
+    if let Some(grad) = self.grads.get::<D>(param.id) {
       self.sum_sq = self.sum_sq.clone() + grad.square().sum();
     }
   }
 }
 
-struct GradScaleVisitor<'a, B: AutodiffBackend> {
+struct GradScaleVisitor<'a> {
   grads: &'a mut GradientsParams,
-  scale: FloatElem<B>,
+  scale: f32,
 }
 
-impl<B: AutodiffBackend> ModuleVisitor<B> for GradScaleVisitor<'_, B> {
-  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<B, D>>) {
-    if let Some(grad) = self.grads.remove::<B::InnerBackend, D>(param.id) {
-      self
-        .grads
-        .register::<B::InnerBackend, D>(param.id, grad.mul_scalar(self.scale));
+impl ModuleVisitor for GradScaleVisitor<'_> {
+  fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<D>>) {
+    if let Some(grad) = self.grads.remove::<D>(param.id) {
+      self.grads.register::<D>(param.id, grad.mul_scalar(self.scale));
     }
   }
 }
@@ -1181,8 +1164,8 @@ impl<B: AutodiffBackend> ModuleVisitor<B> for GradScaleVisitor<'_, B> {
 /// as a single vector. It is the norm of the gradient of the loss as it is
 /// defined here, a mean over the batch, so a norm stated for a loss summed over
 /// the batch is this one times the batch size.
-fn gradient_norm<B: AutodiffBackend>(model: &Model<B>, grads: &GradientsParams, device: &B::Device) -> FloatElem<B> {
-  let mut visitor = GradNormVisitor::<B>::new(grads, device);
+fn gradient_norm(model: &Model, grads: &GradientsParams, device: &Device) -> f32 {
+  let mut visitor = GradNormVisitor::new(grads, device);
   model.visit(&mut visitor);
   visitor.sum_sq.sqrt().into_scalar()
 }
@@ -1191,13 +1174,9 @@ fn gradient_norm<B: AutodiffBackend>(model: &Model<B>, grads: &GradientsParams, 
 /// down to a bound needs: it leaves the direction of the update alone, unlike
 /// bounding each parameter's gradient on its own, which would also make the
 /// bound depend on how the parameters happen to be split into tensors.
-fn scale_gradients<B: AutodiffBackend>(
-  model: &Model<B>,
-  grads: GradientsParams,
-  scale: FloatElem<B>,
-) -> GradientsParams {
+fn scale_gradients(model: &Model, grads: GradientsParams, scale: f32) -> GradientsParams {
   let mut grads = grads;
-  let mut visitor = GradScaleVisitor::<B> {
+  let mut visitor = GradScaleVisitor {
     grads: &mut grads,
     scale,
   };
@@ -1205,26 +1184,21 @@ fn scale_gradients<B: AutodiffBackend>(
   grads
 }
 
-impl<B, O> OppaiTrainableModel<FloatElem<B>> for Learner<B, O>
-where
-  B: Backend + AutodiffBackend,
-  FloatElem<B>: Float,
-  O: Optimizer<Model<B>, B>,
-{
+impl OppaiTrainableModel<f32> for Learner {
   type TE = ModelError;
 
   fn train(
     mut self,
-    inputs: Array4<FloatElem<B>>,
-    global: Array2<FloatElem<B>>,
-    policies: Array3<FloatElem<B>>,
-    opponent_policies: Array3<FloatElem<B>>,
-    values: Array2<FloatElem<B>>,
-    td_values: Array3<FloatElem<B>>,
-    td_scores: Array2<FloatElem<B>>,
-    scores: Array2<FloatElem<B>>,
-    captured: Array4<FloatElem<B>>,
-    q_values: Array4<FloatElem<B>>,
+    inputs: Array4<f32>,
+    global: Array2<f32>,
+    policies: Array3<f32>,
+    opponent_policies: Array3<f32>,
+    values: Array2<f32>,
+    td_values: Array3<f32>,
+    td_scores: Array2<f32>,
+    scores: Array2<f32>,
+    captured: Array4<f32>,
+    q_values: Array4<f32>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE> {
     let (batch, channels, height, width) = inputs.dim();
@@ -1248,11 +1222,11 @@ where
       TensorData::new(into_data_vec(values), [batch, 2]),
       &self.predictor.device,
     );
-    let td_values: Tensor<B, 3> = Tensor::from_data(
+    let td_values: Tensor<3> = Tensor::from_data(
       TensorData::new(into_data_vec(td_values), [batch, TD_VALUES, 2]),
       &self.predictor.device,
     );
-    let td_scores: Tensor<B, 2> = Tensor::from_data(
+    let td_scores: Tensor<2> = Tensor::from_data(
       TensorData::new(into_data_vec(td_scores), [batch, TD_VALUES]),
       &self.predictor.device,
     );
@@ -1265,7 +1239,7 @@ where
       TensorData::new(into_data_vec(captured), [batch, 2, height, width]),
       &self.predictor.device,
     );
-    let q_values: Tensor<B, 4> = Tensor::from_data(
+    let q_values: Tensor<4> = Tensor::from_data(
       TensorData::new(into_data_vec(q_values), [batch, 3, height, width]),
       &self.predictor.device,
     );
@@ -1349,7 +1323,7 @@ where
     // which is 1 for every ordinary row.
     let opponent_weight = opponent_policies.clone().sum_dim(1);
 
-    let batch = <FloatElem<B> as num_traits::NumCast>::from(batch).unwrap();
+    let batch = <f32 as num_traits::NumCast>::from(batch).unwrap();
     let values_loss = -(out_values * values.clone()).sum() * 0.72 / batch;
     let td_values_loss = (0..TD_VALUES)
       .map(|i| {
@@ -1501,22 +1475,22 @@ where
 
     log::info!(
       "Loss: value {} td value {} value error {} td score {} score error {} policy {} opponent policy {} soft policy {} soft opponent policy {} optimistic policy {} long optimistic policy {} pdf {} cdf {} captured {} q {} q score {} L2 norm {}",
-      values_loss.clone().into_scalar(),
-      td_values_loss.clone().into_scalar(),
-      value_error_loss.clone().into_scalar(),
-      td_scores_loss.clone().into_scalar(),
-      score_error_loss.clone().into_scalar(),
-      policies_loss.clone().into_scalar(),
-      opponent_policies_loss.clone().into_scalar(),
-      soft_policies_loss.clone().into_scalar(),
-      soft_opponent_policies_loss.clone().into_scalar(),
-      optimistic_policies_loss.clone().into_scalar(),
-      long_optimistic_policies_loss.clone().into_scalar(),
-      pdf_loss.clone().into_scalar(),
-      cdf_loss.clone().into_scalar(),
-      captured_loss.clone().into_scalar(),
-      q_values_loss.clone().into_scalar(),
-      q_scores_loss.clone().into_scalar(),
+      values_loss.clone().into_scalar::<f32>(),
+      td_values_loss.clone().into_scalar::<f32>(),
+      value_error_loss.clone().into_scalar::<f32>(),
+      td_scores_loss.clone().into_scalar::<f32>(),
+      score_error_loss.clone().into_scalar::<f32>(),
+      policies_loss.clone().into_scalar::<f32>(),
+      opponent_policies_loss.clone().into_scalar::<f32>(),
+      soft_policies_loss.clone().into_scalar::<f32>(),
+      soft_opponent_policies_loss.clone().into_scalar::<f32>(),
+      optimistic_policies_loss.clone().into_scalar::<f32>(),
+      long_optimistic_policies_loss.clone().into_scalar::<f32>(),
+      pdf_loss.clone().into_scalar::<f32>(),
+      cdf_loss.clone().into_scalar::<f32>(),
+      captured_loss.clone().into_scalar::<f32>(),
+      q_values_loss.clone().into_scalar::<f32>(),
+      q_scores_loss.clone().into_scalar::<f32>(),
       param_l2_norm,
     );
 
@@ -1544,7 +1518,7 @@ where
     let grad_norm = gradient_norm(&self.predictor.model, &grads, &self.predictor.device);
     let max_norm = self
       .gradient_clipping
-      .and_then(<FloatElem<B> as num_traits::NumCast>::from)
+      .and_then(<f32 as num_traits::NumCast>::from)
       .filter(|&max_norm| grad_norm > max_norm);
     match max_norm {
       Some(max_norm) => {
@@ -1559,29 +1533,23 @@ where
   }
 }
 
-#[cfg(all(
-  test,
-  any(feature = "flex", feature = "ndarray", feature = "vulkan", feature = "webgpu")
-))]
+#[cfg(all(test, any(feature = "flex", feature = "vulkan", feature = "webgpu")))]
 mod tests {
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   use super::{
     ConvOrGpool, GLOBAL_FEATURES, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, VALUE_VARIANCE_FLOOR,
     gradient_norm, interpolate_policy, scale_gradients, score_bins, score_mean_and_variance,
     squared_softplus_with_gradient_floor, stdevs_excess_weight,
   };
   use super::{Learner, Model, ModelConfig, Predictor};
-  #[cfg(feature = "flex")]
-  use burn::backend::{Flex, flex::FlexDevice};
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  use burn::backend::{Wgpu, wgpu::WgpuDevice};
-  use burn::{backend::Autodiff, optim::SgdConfig};
-  #[cfg(feature = "ndarray")]
+  use burn::tensor::DeviceKind;
+  #[cfg(feature = "flex")]
   use burn::{
-    backend::{NdArray, ndarray::NdArrayDevice},
     optim::GradientsParams,
     tensor::{Tensor, TensorData, activation::softmax},
   };
+  use burn::{optim::SgdConfig, tensor::Device};
   use ndarray::{Array2, Array3, Array4, Axis, array};
   use oppai_zero::{
     examples::TD_VALUES,
@@ -1599,20 +1567,20 @@ mod tests {
   // plain softplus, never dropping below the floor even for very negative
   // inputs.
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn squared_softplus_gradient_floor() {
-    let device = NdArrayDevice::Cpu;
-    let x = Tensor::<Autodiff<NdArray>, 2>::from_floats([[-20.0, 0.0, 20.0]], &device).require_grad();
+    let device = Device::flex();
+    let x = Tensor::<2>::from_floats([[-20.0, 0.0, 20.0]], &device.clone().autodiff()).require_grad();
     let out = squared_softplus_with_gradient_floor(x.clone(), 0.05);
 
-    let values = out.clone().into_data().to_vec::<f32>().unwrap();
+    let values = out.clone().into_data().try_to_vec::<f32>().unwrap();
     let expected = [0.0f32, 0.480453, 100.000908];
     for (value, expected) in values.into_iter().zip(expected) {
       assert!((value - expected).abs() < 1e-3);
     }
 
     let grads = out.sum().backward();
-    let grads = x.grad(&grads).unwrap().into_data().to_vec::<f32>().unwrap();
+    let grads = x.grad(&grads).unwrap().into_data().try_to_vec::<f32>().unwrap();
     let expected = [0.05f32, 0.525, 1.0];
     for (grad, expected) in grads.into_iter().zip(expected) {
       assert!((grad - expected).abs() < 1e-3);
@@ -1624,10 +1592,10 @@ mod tests {
   /// that norm brings it to exactly the bound - and every parameter's gradient
   /// takes the same factor, leaving the direction of the update as it was.
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn scaling_brings_the_whole_gradient_to_the_bound() {
-    let device = NdArrayDevice::Cpu;
-    let model = Model::<Autodiff<NdArray>>::new(&device, &ModelConfig::default());
+    let device = Device::flex();
+    let model = Model::new(&device.clone().autodiff(), &ModelConfig::default());
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
     let global = Tensor::zeros([1, GLOBAL_FEATURES], &device);
     let (policy_logits, value_logits, _, _) = model.forward_no_score(inputs, global);
@@ -1646,16 +1614,16 @@ mod tests {
   /// they beat it by. A position that went as predicted - or worse - must count
   /// for next to nothing, or the head just relearns the plain policy.
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn optimistic_weight_follows_the_surprise() {
-    let device = NdArrayDevice::Cpu;
+    let device = Device::flex();
     // A predicted error of 0.25 is a predicted standard deviation of 0.5, so
     // the threshold sits at a surprise of 0.75.
-    let surprise = Tensor::<NdArray, 2>::from_floats([[-1.0], [0.0], [0.75], [1.5], [3.0]], &device);
-    let predicted_sq_error = Tensor::<NdArray, 2>::from_floats([[0.25], [0.25], [0.25], [0.25], [0.25]], &device);
+    let surprise = Tensor::<2>::from_floats([[-1.0], [0.0], [0.75], [1.5], [3.0]], &device);
+    let predicted_sq_error = Tensor::<2>::from_floats([[0.25], [0.25], [0.25], [0.25], [0.25]], &device);
     let weights = stdevs_excess_weight(surprise, predicted_sq_error, VALUE_VARIANCE_FLOOR)
       .into_data()
-      .to_vec::<f32>()
+      .try_to_vec::<f32>()
       .unwrap();
 
     // Worse than predicted, and as predicted: all but ignored.
@@ -1671,11 +1639,11 @@ mod tests {
     // predicted error means something entirely different there: a predicted
     // squared error of 100 points is a standard deviation of 10, so 15 points
     // more than predicted is what half weight takes.
-    let surprise = Tensor::<NdArray, 2>::from_floats([[0.75], [15.0]], &device);
-    let predicted_sq_error = Tensor::<NdArray, 2>::from_floats([[100.0], [100.0]], &device);
+    let surprise = Tensor::<2>::from_floats([[0.75], [15.0]], &device);
+    let predicted_sq_error = Tensor::<2>::from_floats([[100.0], [100.0]], &device);
     let weights = stdevs_excess_weight(surprise, predicted_sq_error, SCORE_VARIANCE_FLOOR)
       .into_data()
-      .to_vec::<f32>()
+      .try_to_vec::<f32>()
       .unwrap();
     assert!(weights[0] < 0.02, "got {}", weights[0]);
     assert!((weights[1] - 0.5).abs() < 1e-2, "got {}", weights[1]);
@@ -1687,10 +1655,10 @@ mod tests {
   /// variance and a hedged one a large variance, and the mean of the one-hot
   /// target has to be exactly the score the game ended at.
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn score_belief_mean_and_variance() {
-    let device = NdArrayDevice::Cpu;
-    let bins = score_bins::<NdArray>(&device);
+    let device = Device::flex();
+    let bins = score_bins(&device);
     let center = SCORE_ONE_HOT_SIZE / 2;
 
     // Row 0: all of the mass on a score of 7, the way the training target
@@ -1699,11 +1667,11 @@ mod tests {
     probs[0][center + 7] = 1.0;
     probs[1][center - 3] = 0.5;
     probs[1][center + 11] = 0.5;
-    let probs = Tensor::<NdArray, 2>::from_data(TensorData::new(probs.concat(), [2, SCORE_ONE_HOT_SIZE]), &device);
+    let probs = Tensor::<2>::from_data(TensorData::new(probs.concat(), [2, SCORE_ONE_HOT_SIZE]), &device);
 
     let (mean, variance) = score_mean_and_variance(probs, bins);
-    let mean = mean.into_data().to_vec::<f32>().unwrap();
-    let variance = variance.into_data().to_vec::<f32>().unwrap();
+    let mean = mean.into_data().try_to_vec::<f32>().unwrap();
+    let variance = variance.into_data().try_to_vec::<f32>().unwrap();
 
     assert!((mean[0] - 7.0).abs() < 1e-3, "got {}", mean[0]);
     assert!(variance[0] < 1e-3, "got {}", variance[0]);
@@ -1718,22 +1686,21 @@ mod tests {
   /// probabilities they give it, and every position of a batch is blended by
   /// its own weight.
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn interpolate_policy_between_the_heads() {
-    let device = NdArrayDevice::Cpu;
+    let device = Device::flex();
     // Two positions of a single cell each, so the softmax is over one channel
     // pair per row and the logits are the policies up to normalization.
     let mut logits = [[0.0f32; 2]; POLICY_OUTPUTS];
     logits[0] = [1.0, -1.0];
     logits[OPTIMISTIC_POLICY] = [-3.0, 5.0];
-    let logits: Tensor<NdArray, 4> =
-      Tensor::<NdArray, 2>::from_floats(logits, &device).reshape([1, POLICY_OUTPUTS, 1, 2]);
+    let logits: Tensor<4> = Tensor::<2>::from_floats(logits, &device).reshape([1, POLICY_OUTPUTS, 1, 2]);
 
     let blend = |optimism: f32| {
-      let optimism = Tensor::<NdArray, 3>::from_floats([[[optimism]]], &device);
+      let optimism = Tensor::<3>::from_floats([[[optimism]]], &device);
       interpolate_policy(logits.clone(), optimism)
         .into_data()
-        .to_vec::<f32>()
+        .try_to_vec::<f32>()
         .unwrap()
     };
 
@@ -1744,21 +1711,21 @@ mod tests {
 
     // Each row is blended by its own weight, not by the batch's.
     let logits = logits.clone().repeat_dim(0, 2);
-    let optimism = Tensor::<NdArray, 3>::from_floats([[[0.0]], [[1.0]]], &device);
+    let optimism = Tensor::<3>::from_floats([[[0.0]], [[1.0]]], &device);
     let blended = interpolate_policy(logits, optimism)
       .into_data()
-      .to_vec::<f32>()
+      .try_to_vec::<f32>()
       .unwrap();
     assert_eq!(blended, vec![1.0, -1.0, -3.0, 5.0]);
   }
 
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn forward() {
-    let model = Model::<NdArray>::new(&NdArrayDevice::Cpu, &ModelConfig::default());
+    let model = Model::new(&Device::flex(), &ModelConfig::default());
     let (policy_logits, predictions, _) = model.forward(
-      Tensor::ones([1, CHANNELS, 4, 8], &NdArrayDevice::Cpu),
-      Tensor::ones([1, 1], &NdArrayDevice::Cpu),
+      Tensor::ones([1, CHANNELS, 4, 8], &Device::flex()),
+      Tensor::ones([1, 1], &Device::flex()),
     );
     let values = predictions.value;
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
@@ -1766,16 +1733,20 @@ mod tests {
       policies
         .clone()
         .into_data()
-        .to_vec::<f32>()
+        .try_to_vec::<f32>()
         .unwrap()
         .iter()
         .all(|p| (0.0..=1.0).contains(p))
     );
-    assert!(policies.iter_dim(0).all(|p| (p.sum().into_scalar() - 1.0) < 0.001));
+    assert!(
+      policies
+        .iter_dim(0)
+        .all(|p| (p.sum().into_scalar::<f32>() - 1.0) < 0.001)
+    );
     assert!(
       values
         .into_data()
-        .to_vec::<f32>()
+        .try_to_vec::<f32>()
         .unwrap()
         .iter()
         .all(|v| (-1.0..=1.0).contains(v))
@@ -1786,15 +1757,15 @@ mod tests {
   // zero-initialized conv so each block starts as the identity, and the model still produces a
   // valid, finite policy distribution.
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn initialize_zeroes_residual_branches() {
-    let device = NdArrayDevice::Cpu;
-    let mut model = Model::<NdArray>::new(&device, &ModelConfig::default());
+    let device = Device::flex();
+    let mut model = Model::new(&device, &ModelConfig::default());
     model.initialize(&device);
 
-    let assert_zero = |convgpool: &ConvOrGpool<NdArray>| match convgpool {
+    let assert_zero = |convgpool: &ConvOrGpool| match convgpool {
       ConvOrGpool::Conv(conv) => {
-        let abs_sum = conv.weight.val().abs().sum().into_scalar();
+        let abs_sum = conv.weight.val().abs().sum().into_scalar::<f32>();
         assert_eq!(abs_sum, 0.0, "residual branch output conv must be zero-initialized");
       }
       ConvOrGpool::Gpool(_) => panic!("residual branch output should be a plain conv"),
@@ -1816,12 +1787,12 @@ mod tests {
     assert!(
       policies
         .iter_dim(0)
-        .all(|p| (p.sum().into_scalar() - 1.0).abs() < 0.001)
+        .all(|p| (p.sum().into_scalar::<f32>() - 1.0).abs() < 0.001)
     );
     assert!(
       values
         .into_data()
-        .to_vec::<f32>()
+        .try_to_vec::<f32>()
         .unwrap()
         .iter()
         .all(|v| v.is_finite())
@@ -1831,15 +1802,15 @@ mod tests {
   // With factor 1 the average must become an exact copy of the model, and with
   // factor 0 it must stay unchanged - the two endpoints of the EMA lerp.
   #[test]
-  #[cfg(feature = "ndarray")]
+  #[cfg(feature = "flex")]
   fn ema_update_endpoints() {
     use super::ema_update;
 
-    let device = NdArrayDevice::Cpu;
+    let device = Device::flex();
     let config = ModelConfig::default();
-    let mut average = Model::<NdArray>::new(&device, &config);
+    let mut average = Model::new(&device, &config);
     average.initialize(&device);
-    let mut model = Model::<NdArray>::new(&device, &config);
+    let mut model = Model::new(&device, &config);
     model.initialize(&device);
 
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
@@ -1863,14 +1834,12 @@ mod tests {
   }
 
   macro_rules! predict_test {
-    ($name:ident, $backend:ty, $device:expr) => {
+    ($name:ident, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<$backend>::new(&$device, &ModelConfig::default());
-        let predictor = Predictor {
-          model,
-          device: $device,
-        };
+        let device = $device;
+        let model = Model::new(&device, &ModelConfig::default());
+        let predictor = Predictor { model, device };
         let (policies, values) = futures::executor::block_on(predictor.predict(
           Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
           array![[0.2]],
@@ -1922,22 +1891,18 @@ mod tests {
   }
 
   #[cfg(feature = "flex")]
-  predict_test!(predict_flex, Flex, FlexDevice);
-  #[cfg(feature = "ndarray")]
-  predict_test!(predict_ndarray, NdArray, NdArrayDevice::Cpu);
+  predict_test!(predict_flex, Device::flex());
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  predict_test!(predict_wgpu, Wgpu, WgpuDevice::DefaultDevice);
+  predict_test!(predict_wgpu, Device::wgpu(DeviceKind::DefaultDevice));
 
   macro_rules! train_test {
-    ($name:ident, $backend:ty, $device:expr) => {
+    ($name:ident, $device:expr) => {
       #[test]
       fn $name() {
-        let model = Model::<Autodiff<$backend>>::new(&$device, &ModelConfig::default());
-        let predictor = Predictor {
-          model,
-          device: $device,
-        };
-        let optimizer = SgdConfig::new().init::<Autodiff<$backend>, Model<_>>();
+        let device = $device.autodiff();
+        let model = Model::new(&device, &ModelConfig::default());
+        let predictor = Predictor { model, device };
+        let optimizer = SgdConfig::new().init();
         // Clipped, so that the whole step - including scaling the gradients on
         // the device - is what gets exercised here.
         let learner = Learner {
@@ -1991,9 +1956,7 @@ mod tests {
   }
 
   #[cfg(feature = "flex")]
-  train_test!(train_flex, Flex, FlexDevice);
-  #[cfg(feature = "ndarray")]
-  train_test!(train_ndarray, NdArray, NdArrayDevice::Cpu);
+  train_test!(train_flex, Device::flex());
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  train_test!(train_wgpu, Wgpu, WgpuDevice::DefaultDevice);
+  train_test!(train_wgpu, Device::wgpu(DeviceKind::DefaultDevice));
 }

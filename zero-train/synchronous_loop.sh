@@ -8,8 +8,8 @@ set -euo pipefail
 	#
 	# Games are stored in BASEDIR/games as games_{N}.sgf.gz, where N is the number of
 	# the model that played them. Models and optimizer states are stored in
-	# BASEDIR/models as model_{N}.mpk / optimizer_{N}.mpk, together with
-	# model_swa_{N}.mpk holding the averaged weights. Self-play and pitting
+	# BASEDIR/models as model_{N}.bpk / optimizer_{N}.bpk, together with
+	# model_swa_{N}.bpk holding the averaged weights. Self-play and pitting
 	# always use the plain, non-averaged model.
 	#
 	# The very first cycle plays its games without a model (random play); the
@@ -20,15 +20,15 @@ set -euo pipefail
 	# training.
 
 	if [[ $# -lt 2 ]]; then
-		echo "Usage: $0 BASEDIR BACKEND [USEGATING]"
+		echo "Usage: $0 BASEDIR DEVICE [USEGATING]"
 		echo "Assumes the oppai-zero-train executable is already built with 'cargo build --release'."
 		echo "BASEDIR containing self-play games and models"
-		echo "BACKEND backend to use, like 'Rocm' or 'Flex'"
+		echo "DEVICE device to use, like 'auto', 'rocm:0' or 'flex' (see 'oppai-zero-train devices')"
 		echo "USEGATING = 1 to pit each new model against the previous one and reject it if it does not reach the win rate threshold, 0 to not use gating (default)"
 		exit 0
 	fi
 	BASEDIR="$(realpath "$1")"
-	BACKEND="$2"
+	DEVICE="$2"
 	USEGATING="${3:-0}"
 
 	GITROOTDIR="$(git rev-parse --show-toplevel)"
@@ -85,10 +85,10 @@ set -euo pipefail
 
 	# Continue from the latest model if there is one.
 	N=0
-	for f in "$MODELSDIR"/model_*.mpk; do
+	for f in "$MODELSDIR"/model_*.bpk; do
 		[[ -e "$f" ]] || continue
 		n="${f##*/model_}"
-		n="${n%.mpk}"
+		n="${n%.bpk}"
 		[[ "$n" =~ ^[0-9]+$ ]] || continue
 		((n > N)) && N=$n
 	done
@@ -103,7 +103,7 @@ set -euo pipefail
 		# full extra cycle is played instead.
 		TO_PLAY="$NUM_GAMES_PER_CYCLE"
 		if ((REJECTED == 0)) && [[ -e "$GAMESDIR"/games_"$N".sgf.gz ]]; then
-			PLAYED=$("$BIN" --backend "$BACKEND" count --games "$GAMESDIR"/games_"$N".sgf.gz |
+			PLAYED=$("$BIN" --device "$DEVICE" count --games "$GAMESDIR"/games_"$N".sgf.gz |
 				sed -n 's/^Games: \([0-9]*\);.*/\1/p')
 			TO_PLAY=$((NUM_GAMES_PER_CYCLE - PLAYED))
 		fi
@@ -116,12 +116,12 @@ set -euo pipefail
 			# positions. On the very first cycle there is no model at all and the
 			# games are played with a random model.
 			PLAY_MODEL_ARGS=()
-			if [[ -e "$MODELSDIR"/model_"$N".mpk ]]; then
-				PLAY_MODEL_ARGS=(--model "$MODELSDIR"/model_"$N".mpk)
+			if [[ -e "$MODELSDIR"/model_"$N".bpk ]]; then
+				PLAY_MODEL_ARGS=(--model "$MODELSDIR"/model_"$N".bpk)
 			fi
 
 			echo "Self-play"
-			time "$BIN" --backend "$BACKEND" play "${CONFIG_ARGS[@]}" \
+			time "$BIN" --device "$DEVICE" play "${CONFIG_ARGS[@]}" \
 				"${PLAY_MODEL_ARGS[@]}" \
 				--width $WIDTHS --height $HEIGHTS \
 				--games "$GAMESDIR"/games_"$N".sgf.gz \
@@ -132,11 +132,11 @@ set -euo pipefail
 				--komi-x2 $KOMIS_X2 2>&1 | tee -a "$LOGSDIR"/play.log
 		fi
 
-		if [[ ! -e "$MODELSDIR"/model_"$N".mpk ]]; then
+		if [[ ! -e "$MODELSDIR"/model_"$N".bpk ]]; then
 			echo "Init"
-			time "$BIN" --backend "$BACKEND" init "${CONFIG_ARGS[@]}" \
-				--model "$MODELSDIR"/model_"$N".mpk \
-				--optimizer "$MODELSDIR"/optimizer_"$N".mpk 2>&1 | tee -a "$LOGSDIR"/init.log
+			time "$BIN" --device "$DEVICE" init "${CONFIG_ARGS[@]}" \
+				--model "$MODELSDIR"/model_"$N".bpk \
+				--optimizer "$MODELSDIR"/optimizer_"$N".bpk 2>&1 | tee -a "$LOGSDIR"/init.log
 		fi
 
 		# Train on the games of the last WINDOW cycles that exist. The games of
@@ -150,8 +150,8 @@ set -euo pipefail
 			[[ -e "$GAMESDIR"/games_"$i".sgf.gz ]] && OLD_GAMES+=("$GAMESDIR"/games_"$i".sgf.gz)
 		done
 		if ((${#OLD_GAMES[@]} > 0)); then
-			CURRENT_MODEL="$MODELSDIR"/model_swa_"$N".mpk
-			[[ -e "$CURRENT_MODEL" ]] || CURRENT_MODEL="$MODELSDIR"/model_"$N".mpk
+			CURRENT_MODEL="$MODELSDIR"/model_swa_"$N".bpk
+			[[ -e "$CURRENT_MODEL" ]] || CURRENT_MODEL="$MODELSDIR"/model_"$N".bpk
 
 			echo "Recalculate surprise"
 			# The recalculated games are only valid for this cycle's model, so the
@@ -159,7 +159,7 @@ set -euo pipefail
 			# hence the removal.
 			RECALC_GAMES="$BASEDIR"/games_recalc.sgf.gz
 			rm -f "$RECALC_GAMES"
-			time "$BIN" --backend "$BACKEND" recalc-surprise "${CONFIG_ARGS[@]}" \
+			time "$BIN" --device "$DEVICE" recalc-surprise "${CONFIG_ARGS[@]}" \
 				--model "$CURRENT_MODEL" \
 				--games "${OLD_GAMES[@]}" \
 				--games-new "$RECALC_GAMES" \
@@ -169,9 +169,9 @@ set -euo pipefail
 
 		# The moving average continues from the previous one when it exists,
 		# otherwise it starts from the loaded model.
-		SWA_ARGS=(--model-swa-new "$MODELSDIR"/model_swa_"$((N + 1))".mpk)
-		if [[ -e "$MODELSDIR"/model_swa_"$N".mpk ]]; then
-			SWA_ARGS+=(--model-swa "$MODELSDIR"/model_swa_"$N".mpk)
+		SWA_ARGS=(--model-swa-new "$MODELSDIR"/model_swa_"$((N + 1))".bpk)
+		if [[ -e "$MODELSDIR"/model_swa_"$N".bpk ]]; then
+			SWA_ARGS+=(--model-swa "$MODELSDIR"/model_swa_"$N".bpk)
 		fi
 
 		# Only the first training ramps the learning rate up, to warm up the fresh
@@ -183,12 +183,12 @@ set -euo pipefail
 		fi
 
 		echo "Train"
-		time "$BIN" --backend "$BACKEND" train "${CONFIG_ARGS[@]}" \
+		time "$BIN" --device "$DEVICE" train "${CONFIG_ARGS[@]}" \
 			--width "$TRAIN_WIDTH" --height "$TRAIN_HEIGHT" \
-			--model "$MODELSDIR"/model_"$N".mpk \
-			--optimizer "$MODELSDIR"/optimizer_"$N".mpk \
-			--model-new "$MODELSDIR"/model_"$((N + 1))".mpk \
-			--optimizer-new "$MODELSDIR"/optimizer_"$((N + 1))".mpk \
+			--model "$MODELSDIR"/model_"$N".bpk \
+			--optimizer "$MODELSDIR"/optimizer_"$N".bpk \
+			--model-new "$MODELSDIR"/model_"$((N + 1))".bpk \
+			--optimizer-new "$MODELSDIR"/optimizer_"$((N + 1))".bpk \
 			"${SWA_ARGS[@]}" \
 			--games "${GAMES[@]}" \
 			"${LR_ARGS[@]}" \
@@ -200,10 +200,10 @@ set -euo pipefail
 			# the plain weights rather than the averaged ones.
 			echo "Pit"
 			STATUS=0
-			time "$BIN" --backend "$BACKEND" pit "${PIT_CONFIG_ARGS[@]}" \
+			time "$BIN" --device "$DEVICE" pit "${PIT_CONFIG_ARGS[@]}" \
 				--width $WIDTHS --height $HEIGHTS \
-				--model "$MODELSDIR"/model_"$N".mpk \
-				--model-new "$MODELSDIR"/model_"$((N + 1))".mpk \
+				--model "$MODELSDIR"/model_"$N".bpk \
+				--model-new "$MODELSDIR"/model_"$((N + 1))".bpk \
 				--games "$GAMESDIR"/pit_"$((N + 1))".sgf.gz \
 				--count "$PIT_GAMES" \
 				--win-rate-threshold "$WIN_RATE_THRESHOLD" 2>&1 | tee -a "$LOGSDIR"/pit.log || STATUS=$?
@@ -211,9 +211,9 @@ set -euo pipefail
 				# Rejected: drop the new model and play another cycle of games
 				# with the previous one; the next training will start over from
 				# the same model with more data.
-				rm -f "$MODELSDIR"/model_"$((N + 1))".mpk \
-					"$MODELSDIR"/optimizer_"$((N + 1))".mpk \
-					"$MODELSDIR"/model_swa_"$((N + 1))".mpk
+				rm -f "$MODELSDIR"/model_"$((N + 1))".bpk \
+					"$MODELSDIR"/optimizer_"$((N + 1))".bpk \
+					"$MODELSDIR"/model_swa_"$((N + 1))".bpk
 				REJECTED=1
 				continue
 			elif ((STATUS != 0)); then

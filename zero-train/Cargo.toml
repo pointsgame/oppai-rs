@@ -21,24 +21,22 @@ clap = { workspace = true, features = [ "cargo" ] }
 anyhow.workspace = true
 flate2.workspace = true
 sgf-parse.workspace = true
-strum.workspace = true
 ctrlc = "3.5"
 oppai-field = { path = "../field" }
 oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
-oppai-zero-burn = { path = "../zero-burn" }
+oppai-zero-burn = { path = "../zero-burn", default-features = false }
 oppai-zero-sgf = { path = "../zero-sgf" }
 
 [dev-dependencies]
 rand_xoshiro.workspace = true
 
 [features]
-default = ["dsu", "unsafe", "ndarray", "vulkan"]
+default = ["dsu", "unsafe", "flex", "vulkan"]
 dsu = ["oppai-field/dsu"]
 unsafe = ["oppai-field/unsafe"]
-cuda = ["burn/cuda"]
-rocm = ["burn/rocm"]
-flex = ["burn/flex"]
-ndarray = ["burn/ndarray"]
-vulkan = ["burn/vulkan"]
-webgpu = ["burn/webgpu"]
+cuda = ["oppai-zero-burn/cuda", "burn/cuda"]
+rocm = ["oppai-zero-burn/rocm", "burn/rocm"]
+flex = ["oppai-zero-burn/flex", "burn/flex"]
+vulkan = ["oppai-zero-burn/vulkan", "burn/vulkan"]
+webgpu = ["oppai-zero-burn/webgpu", "burn/webgpu"]

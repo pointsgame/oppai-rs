@@ -5,27 +5,11 @@ mod config;
 #[cfg(target_arch = "wasm32")]
 mod worker_message;
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::Backend as ConfigBackend;
 use crate::config::{Config, cli_parse};
 #[cfg(target_arch = "wasm32")]
 use crate::worker_message::{Request, Response};
-#[cfg(all(feature = "cuda", not(target_arch = "wasm32")))]
-use burn::backend::Cuda;
-#[cfg(all(feature = "flex", not(target_arch = "wasm32")))]
-use burn::backend::Flex;
-#[cfg(all(feature = "ndarray", not(target_arch = "wasm32")))]
-use burn::backend::NdArray;
-#[cfg(all(feature = "rocm", not(target_arch = "wasm32")))]
-use burn::backend::Rocm;
-#[cfg(all(any(feature = "vulkan", feature = "webgpu"), not(target_arch = "wasm32")))]
-use burn::backend::Wgpu;
 #[cfg(not(target_arch = "wasm32"))]
-use burn::{
-  module::Module,
-  record::{DefaultFileRecorder, FullPrecisionSettings},
-  tensor::backend::{Backend, Device, DeviceId},
-};
+use burn::module::Module;
 use canvas_field::{CanvasField, CanvasMessage, Label};
 #[cfg(not(target_arch = "wasm32"))]
 use either::Either;
@@ -73,7 +57,7 @@ use std::sync::{
 use std::{fs, fs::File, sync::Mutex};
 
 #[cfg(not(target_arch = "wasm32"))]
-type IcedModel<B> = Either<(), Predictor<B>>;
+type IcedModel = Either<(), Predictor>;
 
 pub fn main() -> iced::Result {
   #[cfg(not(target_arch = "wasm32"))]
@@ -89,40 +73,21 @@ pub fn main() -> iced::Result {
   let config = cli_parse();
 
   #[cfg(not(target_arch = "wasm32"))]
-  return match config.backend {
-    #[cfg(feature = "cuda")]
-    ConfigBackend::Cuda => run::<Cuda>(config),
-    #[cfg(feature = "flex")]
-    ConfigBackend::Flex => run::<Flex>(config),
-    #[cfg(feature = "ndarray")]
-    ConfigBackend::Ndarray => run::<NdArray>(config),
-    #[cfg(feature = "rocm")]
-    ConfigBackend::Rocm => run::<Rocm>(config),
-    #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-    ConfigBackend::Wgpu => run::<Wgpu>(config),
-  };
+  return run(config);
 
   #[cfg(target_arch = "wasm32")]
   run_app(config, ())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn run<B>(config: Config) -> iced::Result
-where
-  B: Backend<FloatElem = f32>,
-{
-  let device = B::Device::from_id(DeviceId::new(config.device_type, config.device_id));
+fn run(config: Config) -> iced::Result {
+  let device = config.device.clone();
   let model = config.model.as_ref().map(|model_path| {
-    let model = BurnModel::<B>::new(&device, &config.model_config);
-    model
-      .load_file(
-        model_path,
-        &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-        &device,
-      )
+    BurnModel::new(&device, &config.model_config)
+      .try_load_file(model_path)
       .expect("Failed to load model file.")
   });
-  let model: IcedModel<B> = match model {
+  let model: IcedModel = match model {
     Some(model) => Either::Right(Predictor { model, device }),
     None => Either::Left(()),
   };

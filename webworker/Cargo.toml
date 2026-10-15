@@ -8,7 +8,6 @@ edition = "2024"
 
 [dependencies]
 futures.workspace = true
-either.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

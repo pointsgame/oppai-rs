@@ -1,38 +1,17 @@
+#[cfg(not(target_arch = "wasm32"))]
+use burn::tensor::Device;
 use clap::{Arg, ArgAction, Command, crate_authors, crate_description, crate_name, crate_version, value_parser};
 use oppai_ais::cli::*;
 use oppai_ais::oppai::Config as AIConfig;
 use oppai_initial::initial::InitialPosition;
 #[cfg(not(target_arch = "wasm32"))]
-use oppai_zero_burn::model::ModelConfig;
+use oppai_zero_burn::{
+  device::{DEVICE_HELP, parse_device},
+  model::ModelConfig,
+};
 use std::time::Duration;
-#[cfg(not(target_arch = "wasm32"))]
-use strum::{EnumString, VariantNames};
 
 use crate::canvas_config::{CanvasConfig, Rgb};
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
-pub enum Backend {
-  #[cfg(feature = "cuda")]
-  Cuda,
-  #[cfg(feature = "flex")]
-  Flex,
-  #[cfg(feature = "ndarray")]
-  Ndarray,
-  #[cfg(feature = "rocm")]
-  Rocm,
-  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  Wgpu,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl Default for Backend {
-  fn default() -> Self {
-    Self::VARIANTS[0]
-      .parse()
-      .expect("at least one backend feature must be enabled")
-  }
-}
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -48,11 +27,7 @@ pub struct Config {
   #[cfg(not(target_arch = "wasm32"))]
   pub model_config: ModelConfig,
   #[cfg(not(target_arch = "wasm32"))]
-  pub backend: Backend,
-  #[cfg(not(target_arch = "wasm32"))]
-  pub device_type: u16,
-  #[cfg(not(target_arch = "wasm32"))]
-  pub device_id: u16,
+  pub device: Device,
   pub time: Duration,
 }
 
@@ -71,11 +46,7 @@ impl Default for Config {
       #[cfg(not(target_arch = "wasm32"))]
       model_config: ModelConfig::default(),
       #[cfg(not(target_arch = "wasm32"))]
-      backend: Backend::default(),
-      #[cfg(not(target_arch = "wasm32"))]
-      device_type: 0,
-      #[cfg(not(target_arch = "wasm32"))]
-      device_id: 0,
+      device: Device::default(),
       time: Duration::from_secs(5),
     }
   }
@@ -227,28 +198,12 @@ pub fn cli_parse() -> Config {
         .num_args(1),
     )
     .arg(
-      Arg::new("backend")
-        .long("backend")
-        .help("Backend to use for neural network inference")
+      Arg::new("device")
+        .long("device")
+        .help(DEVICE_HELP)
         .num_args(1)
-        .value_parser(value_parser!(Backend))
-        .default_value(Backend::VARIANTS[0]),
-    )
-    .arg(
-      Arg::new("device-type")
-        .long("device-type")
-        .help("Device type id used to construct the backend device")
-        .num_args(1)
-        .value_parser(value_parser!(u16))
-        .default_value("0"),
-    )
-    .arg(
-      Arg::new("device-id")
-        .long("device-id")
-        .help("Device index id used to construct the backend device")
-        .num_args(1)
-        .value_parser(value_parser!(u16))
-        .default_value("0"),
+        .value_parser(parse_device)
+        .default_value("auto"),
     );
 
   #[cfg(not(target_arch = "wasm32"))]
@@ -303,11 +258,7 @@ pub fn cli_parse() -> Config {
       ModelConfig::from_file(path).expect("Failed to load the model config file.")
     });
   #[cfg(not(target_arch = "wasm32"))]
-  let backend = matches.get_one("backend").copied().unwrap();
-  #[cfg(not(target_arch = "wasm32"))]
-  let device_type = matches.get_one("device-type").copied().unwrap();
-  #[cfg(not(target_arch = "wasm32"))]
-  let device_id = matches.get_one("device-id").copied().unwrap();
+  let device = matches.get_one::<Device>("device").cloned().unwrap();
 
   Config {
     width,
@@ -333,11 +284,7 @@ pub fn cli_parse() -> Config {
     #[cfg(not(target_arch = "wasm32"))]
     model_config,
     #[cfg(not(target_arch = "wasm32"))]
-    backend,
-    #[cfg(not(target_arch = "wasm32"))]
-    device_type,
-    #[cfg(not(target_arch = "wasm32"))]
-    device_id,
+    device,
     time,
   }
 }

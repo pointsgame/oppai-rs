@@ -4,28 +4,10 @@
 
 mod config;
 
-use crate::config::{Backend as ConfigBackend, Config, cli_parse};
+use crate::config::{Config, cli_parse};
 use anyhow::Result;
-#[cfg(feature = "cuda")]
-use burn::backend::Cuda;
-#[cfg(feature = "flex")]
-use burn::backend::Flex;
-#[cfg(feature = "ndarray")]
-use burn::backend::NdArray;
-#[cfg(feature = "rocm")]
-use burn::backend::Rocm;
-#[cfg(any(feature = "vulkan", feature = "webgpu"))]
-use burn::backend::Wgpu;
-use burn::{
-  module::Module,
-  record::{DefaultFileRecorder, FullPrecisionSettings},
-  tensor::{
-    backend::{Backend, Device, DeviceId},
-    ops::FloatElem,
-  },
-};
+use burn::module::Module;
 use either::Either;
-use num_traits::Float;
 use oppai_ai::{ai::AI, analysis::Analysis};
 use oppai_ais::{
   oppai::{InConfidence, Oppai},
@@ -38,39 +20,25 @@ use oppai_zero_burn::model::{Model as BurnModel, Predictor};
 use rand::{make_rng, rngs::SmallRng};
 use std::{
   default::Default,
-  fmt::{Debug, Display},
   fs::File,
   io::{self, BufRead, BufReader, Read, Write},
-  iter::Sum,
   path::Path,
   sync::Arc,
 };
 
-type CliModel<B> = Either<(), Predictor<B>>;
+type CliModel = Either<(), Predictor>;
 
-struct State<B: Backend>
-where
-  FloatElem<B>: Float + Sum + Display + Debug,
-{
+struct State {
   field: Field,
   rng: SmallRng,
-  oppai: Oppai<FloatElem<B>, CliModel<B>>,
+  oppai: Oppai<f32, CliModel>,
 }
 
-fn run<B>(config: Config, patterns: Arc<Patterns>) -> Result<()>
-where
-  B: Backend,
-  FloatElem<B>: Float + Sum + Display + Debug,
-{
-  let device = B::Device::from_id(DeviceId::new(config.device_type, config.device_id));
+fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
+  let device = config.device.clone();
   let model = config.model.as_ref().map(|model_path| {
-    let model = BurnModel::<B>::new(&device, &config.model_config);
-    model
-      .load_file(
-        model_path,
-        &DefaultFileRecorder::<FullPrecisionSettings>::new(),
-        &device,
-      )
+    BurnModel::new(&device, &config.model_config)
+      .try_load_file(model_path)
       .expect("Failed to load model file.")
   });
   let mut input = BufReader::new(io::stdin());
@@ -85,14 +53,14 @@ where
     let response = match request {
       Request::Init { width, height } => {
         let mut rng = make_rng::<SmallRng>();
-        let model: CliModel<B> = match &model {
+        let model: CliModel = match &model {
           Some(model) => Either::Right(Predictor {
             model: model.clone(),
             device: device.clone(),
           }),
           None => Either::Left(()),
         };
-        state_option = Some(State::<B> {
+        state_option = Some(State {
           field: Field::new_from_rng(width, height, &mut rng),
           rng,
           oppai: Oppai::new(width, height, config.ai.clone(), patterns.clone(), model),
@@ -208,16 +176,5 @@ fn main() -> Result<()> {
   }
   let patterns_arc = Arc::new(patterns);
 
-  match config.backend {
-    #[cfg(feature = "cuda")]
-    ConfigBackend::Cuda => run::<Cuda>(config, patterns_arc),
-    #[cfg(feature = "flex")]
-    ConfigBackend::Flex => run::<Flex>(config, patterns_arc),
-    #[cfg(feature = "ndarray")]
-    ConfigBackend::Ndarray => run::<NdArray>(config, patterns_arc),
-    #[cfg(feature = "rocm")]
-    ConfigBackend::Rocm => run::<Rocm>(config, patterns_arc),
-    #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-    ConfigBackend::Wgpu => run::<Wgpu>(config, patterns_arc),
-  }
+  run(config, patterns_arc)
 }

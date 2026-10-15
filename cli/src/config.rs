@@ -1,23 +1,12 @@
+use burn::tensor::Device;
 use clap::{Arg, Command, value_parser};
 use oppai_ais::cli::*;
 use oppai_ais::oppai::Config as AIConfig;
-use oppai_zero_burn::model::ModelConfig;
+use oppai_zero_burn::{
+  device::{DEVICE_HELP, parse_device},
+  model::ModelConfig,
+};
 use std::time::Duration;
-use strum::{EnumString, VariantNames};
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
-pub enum Backend {
-  #[cfg(feature = "cuda")]
-  Cuda,
-  #[cfg(feature = "flex")]
-  Flex,
-  #[cfg(feature = "ndarray")]
-  Ndarray,
-  #[cfg(feature = "rocm")]
-  Rocm,
-  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  Wgpu,
-}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Config {
@@ -26,9 +15,7 @@ pub struct Config {
   pub patterns_cache: Option<String>,
   pub model: Option<String>,
   pub model_config: ModelConfig,
-  pub backend: Backend,
-  pub device_type: u16,
-  pub device_id: u16,
+  pub device: Device,
   pub uct_iterations: usize,
   pub minimax_depth: u32,
   pub time_gap: Duration,
@@ -69,28 +56,12 @@ pub fn cli_parse() -> Config {
         .num_args(1),
     )
     .arg(
-      Arg::new("backend")
-        .long("backend")
-        .help("Backend to use for neural network inference")
+      Arg::new("device")
+        .long("device")
+        .help(DEVICE_HELP)
         .num_args(1)
-        .value_parser(value_parser!(Backend))
-        .required(true),
-    )
-    .arg(
-      Arg::new("device-type")
-        .long("device-type")
-        .help("Device type id used to construct the backend device")
-        .num_args(1)
-        .value_parser(value_parser!(u16))
-        .default_value("0"),
-    )
-    .arg(
-      Arg::new("device-id")
-        .long("device-id")
-        .help("Device index id used to construct the backend device")
-        .num_args(1)
-        .value_parser(value_parser!(u16))
-        .default_value("0"),
+        .value_parser(parse_device)
+        .default_value("auto"),
     )
     .arg(
       Arg::new("minimax-depth")
@@ -136,9 +107,7 @@ pub fn cli_parse() -> Config {
       .map_or_else(ModelConfig::default, |path| {
         ModelConfig::from_file(path).expect("Failed to load the model config file.")
       }),
-    backend: matches.get_one("backend").copied().unwrap(),
-    device_type: matches.get_one("device-type").copied().unwrap(),
-    device_id: matches.get_one("device-id").copied().unwrap(),
+    device: matches.get_one::<Device>("device").cloned().unwrap(),
     uct_iterations: matches.get_one("uct-iterations").copied().unwrap(),
     minimax_depth: matches.get_one("minimax-depth").copied().unwrap(),
     time_gap: matches

@@ -1,7 +1,10 @@
+use burn::tensor::Device;
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version, value_parser};
-use oppai_zero_burn::model::ModelConfig;
+use oppai_zero_burn::{
+  device::{DEVICE_HELP, parse_device},
+  model::ModelConfig,
+};
 use std::path::PathBuf;
-use strum::{EnumString, VariantNames};
 
 pub struct InitParams {
   pub model: PathBuf,
@@ -78,26 +81,11 @@ pub enum Action {
   Pit(PitParams),
   Count(CountParams),
   Recalc(RecalcParams),
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumString, VariantNames)]
-pub enum Backend {
-  #[cfg(feature = "cuda")]
-  Cuda,
-  #[cfg(feature = "flex")]
-  Flex,
-  #[cfg(feature = "ndarray")]
-  Ndarray,
-  #[cfg(feature = "rocm")]
-  Rocm,
-  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  Wgpu,
+  Devices,
 }
 
 pub struct Config {
-  pub backend: Backend,
-  pub device_type: u16,
-  pub device_id: u16,
+  pub device: Device,
   pub seed: Option<u64>,
 }
 
@@ -423,6 +411,7 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(f64))
         .default_value("0.55"),
     );
+  let devices = Command::new("devices").about("List the compute devices that can be passed to --device");
   let count = Command::new("count").about("Count games and trainable examples").arg(
     Arg::new("games")
       .long("games")
@@ -469,30 +458,15 @@ pub fn cli_parse() -> (Config, Action) {
     .subcommand(pit)
     .subcommand(count)
     .subcommand(recalc)
+    .subcommand(devices)
     .subcommand_required(true)
     .arg(
-      Arg::new("backend")
-        .long("backend")
-        .help("Backend to use")
+      Arg::new("device")
+        .long("device")
+        .help(DEVICE_HELP)
         .num_args(1)
-        .value_parser(value_parser!(Backend))
-        .required(true),
-    )
-    .arg(
-      Arg::new("device-type")
-        .long("device-type")
-        .help("Device type id used to construct the backend device")
-        .num_args(1)
-        .value_parser(value_parser!(u16))
-        .default_value("0"),
-    )
-    .arg(
-      Arg::new("device-id")
-        .long("device-id")
-        .help("Device index id used to construct the backend device")
-        .num_args(1)
-        .value_parser(value_parser!(u16))
-        .default_value("0"),
+        .value_parser(parse_device)
+        .default_value("auto"),
     )
     .arg(
       Arg::new("seed")
@@ -503,17 +477,10 @@ pub fn cli_parse() -> (Config, Action) {
     )
     .get_matches();
 
-  let backend = matches.get_one("backend").copied().unwrap();
-  let device_type = matches.get_one("device-type").copied().unwrap();
-  let device_id = matches.get_one("device-id").copied().unwrap();
+  let device = matches.get_one::<Device>("device").cloned().unwrap();
   let seed = matches.get_one("seed").copied();
 
-  let config = Config {
-    backend,
-    device_type,
-    device_id,
-    seed,
-  };
+  let config = Config { device, seed };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {
@@ -641,6 +608,7 @@ pub fn cli_parse() -> (Config, Action) {
         in_flight_passes,
       })
     }
+    Some(("devices", _)) => Action::Devices,
     _ => panic!("no subcommand"),
   };
 
