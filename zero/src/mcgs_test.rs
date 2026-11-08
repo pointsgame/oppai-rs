@@ -2411,3 +2411,109 @@ fn utility_carries_the_auxiliary_terms_the_value_does_not() {
   assert_eq!(search.winloss(), winloss);
   assert_eq!(search.raw_winloss(), winloss);
 }
+
+/// What expanding a node took from the net: its win/loss value, its score, its
+/// weight and its priors by move.
+type Expansion = (f64, f64, f64, Vec<(Pos, f64)>);
+
+/// The [`Expansion`] of every node of the tree but the root.
+fn expanded_nodes(search: &Search<f64>) -> std::collections::HashMap<Hash, Expansion> {
+  search
+    .map
+    .iter()
+    .filter(|&(_, &node_idx)| node_idx != search.root_idx && !search.nodes[node_idx].children.is_empty())
+    .map(|(&hash, &node_idx)| {
+      let node = &search.nodes[node_idx];
+      let mut priors = node
+        .children
+        .iter()
+        .map(|edge| (edge.pos, edge.prior))
+        .collect::<Vec<_>>();
+      priors.sort_by_key(|&(pos, _)| pos);
+      (hash, (node.raw_winloss, node.raw_score, node.weight, priors))
+    })
+    .collect()
+}
+
+// Self-play clears the tree before every recorded search, and the fresh search
+// walks back into positions the dropped tree had evaluated already. Those are
+// expanded from the kept evaluations, exactly as the net answered then, and only
+// the rest reach the net.
+#[test]
+fn clear_keeps_the_evaluations_of_the_dropped_tree() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ........
+    ........
+    ...aA...
+    ...Aa...
+    ........
+    ........
+    ",
+  );
+  let asked = std::cell::Cell::new(0);
+  let model = |inputs: Array4<f64>, _: Array2<f64>, _: Array1<f64>| {
+    asked.set(asked.get() + inputs.len_of(Axis(0)));
+    // A policy and a score that differ from one position to another, so that a
+    // position expanded from the wrong evaluation would show.
+    let mut policies = uniform_policies(&inputs);
+    let mut values = depth_value(&inputs);
+    for i in 0..inputs.len_of(Axis(0)) {
+      let mass: f64 = inputs.index_axis(Axis(0), i).sum();
+      for (j, p) in policies.index_axis_mut(Axis(0), i).iter_mut().enumerate() {
+        *p *= 1.0 + ((mass + j as f64) * 0.37).sin().abs();
+      }
+      values[(i, 3)] = mass;
+    }
+    let result: Result<_, ()> = Ok((policies, values));
+    result
+  };
+
+  let mut search = Search::<f64>::new(PARAMS);
+  for _ in 0..16 {
+    futures::executor::block_on(search.mcgs(&mut field, Player::Red, &model, 0, &mut rng)).unwrap();
+  }
+  let before = expanded_nodes(&search);
+  assert!(!before.is_empty());
+
+  search.clear();
+  assert_eq!(search.nodes.len(), 1);
+  assert!(search.map.is_empty());
+  assert_eq!(
+    search
+      .evaluations
+      .keys()
+      .copied()
+      .collect::<std::collections::HashSet<_>>(),
+    before.keys().copied().collect()
+  );
+
+  asked.set(0);
+  for _ in 0..16 {
+    futures::executor::block_on(search.mcgs(&mut field, Player::Red, &model, 0, &mut rng)).unwrap();
+  }
+  let after = expanded_nodes(&search);
+  let taken = after.keys().filter(|hash| before.contains_key(hash)).count();
+  assert!(taken > 0);
+  for (hash, expansion) in &after {
+    if let Some(kept) = before.get(hash) {
+      assert_eq!(expansion, kept);
+      assert!(!search.evaluations.contains_key(hash));
+    }
+  }
+  // Nothing in this tree is childless, so the net saw exactly the root and the
+  // positions the dropped tree had not expanded.
+  assert!(
+    search
+      .nodes
+      .iter()
+      .all(|node| node.own_visits == 0 || !node.children.is_empty())
+  );
+  assert_eq!(asked.get(), 1 + after.len() - taken);
+
+  // The evaluations no search took back are forgotten with the next move.
+  search.compact();
+  assert!(search.evaluations.is_empty());
+}

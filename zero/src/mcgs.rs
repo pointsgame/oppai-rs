@@ -366,6 +366,25 @@ impl<N: Float> Default for Node<N> {
   }
 }
 
+/// What expanding a node took from the net, kept by [`Search::clear`] so that
+/// the fresh tree can expand the same position again without asking for it.
+///
+/// Self-play clears the tree before every recorded search, and the fresh search
+/// walks back into positions the dropped tree had already evaluated. Those are
+/// only the subtree the previous searches left under the new root, so this
+/// saves a few percent of the forward passes rather than a large share.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Evaluation<N: Float> {
+  /// The net's win/loss value, [`Node::raw_winloss`].
+  pub winloss: N,
+  /// The net's score, [`Node::raw_score`].
+  pub score: N,
+  /// The weight the evaluation counts with, [`Node::weight`].
+  pub weight: N,
+  /// The node's edges with their priors, everything else zeroed.
+  pub children: Vec<Edge<N>>,
+}
+
 pub fn game_result<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> N {
   N::from((field.score(player) * 2 + komi_x_2).signum()).unwrap()
 }
@@ -528,6 +547,10 @@ pub struct Search<N: Float> {
   /// [`Params::policy_optimism`]. When the root wants a different optimism, the
   /// next search re-predicts them before it descends.
   pub root_priors_stale: bool,
+  /// Evaluations of the positions a [`Self::clear`] dropped from the tree,
+  /// keyed by their hash. Expanding one of them takes it from here instead of
+  /// asking the net; the rest are forgotten by the next [`Self::compact`].
+  pub evaluations: HashMap<Hash, Evaluation<N>>,
   /// Knobs that differ between self-play and play.
   pub params: Params,
 }
@@ -542,6 +565,7 @@ impl<N: Float> Search<N> {
       dirichlet_noise: false,
       stats_stale: false,
       root_priors_stale: false,
+      evaluations: HashMap::default(),
       params,
     };
 
@@ -1570,6 +1594,23 @@ impl<N: Float + Sum + Copy> Search<N> {
         let utility = winloss + self.aux_utility(field, winloss, score);
         self.add_result(path, winloss, utility, score, weight, Vec::new(), None);
         false
+      } else if let Some(evaluation) = path
+        .last()
+        .map(|&(node_idx, edge_idx)| self.nodes[node_idx].children[edge_idx].hash)
+        .and_then(|hash| self.evaluations.remove(&hash))
+      {
+        // Evaluated before the tree was cleared: expand it exactly as the net's
+        // answer did then, without asking again.
+        let Evaluation {
+          winloss,
+          score,
+          weight,
+          children,
+        } = evaluation;
+        let utility = winloss + self.aux_utility(field, winloss, score);
+        let bias_key = Self::bias_key(field);
+        self.add_result(path, winloss, utility, score, weight, children, bias_key);
+        false
       } else {
         field_features_to_vec::<N>(
           field,
@@ -1885,8 +1926,43 @@ impl<N: Float + Sum + Copy> Search<N> {
 
   /// Reset the search to a fresh empty tree, dropping all reused state
   /// including the subtree value bias buckets.
+  ///
+  /// Only the net's evaluations of the dropped nodes are kept, see
+  /// [`Evaluation`]: they are what a fresh search has to recompute, and they
+  /// carry nothing the search learned. So the next searches have to ask with
+  /// the same model and komi the evaluations were made with.
+  ///
+  /// Kept are the nodes with children, which are expanded exactly once, so the
+  /// raw values they hold are the net's own. A childless one has no such: every
+  /// playout reaching it evaluates it again, after the first time as an exact
+  /// terminal, and its values are an average of those. The root is left out as
+  /// well, because its priors are not the net's either - noise and temperature
+  /// reshape them, and so does [`Self::refresh_root_priors`]. The rest of the
+  /// priors are never touched after expansion.
   pub fn clear(&mut self) {
+    let mut evaluations = mem::take(&mut self.evaluations);
+    for (&hash, &node_idx) in &self.map {
+      let node = &mut self.nodes[node_idx];
+      if node_idx == self.root_idx || node.children.is_empty() {
+        continue;
+      }
+      let mut children = mem::take(&mut node.children);
+      for edge in &mut children {
+        edge.visits = 0;
+        edge.virtual_losses = 0;
+      }
+      evaluations.insert(
+        hash,
+        Evaluation {
+          winloss: node.raw_winloss,
+          score: node.raw_score,
+          weight: node.weight,
+          children,
+        },
+      );
+    }
     *self = Self::new(self.params);
+    self.evaluations = evaluations;
   }
 
   /// Compact the search tree by removing unused nodes
@@ -1902,6 +1978,12 @@ impl<N: Float + Sum + Copy> Search<N> {
       dirichlet_noise: self.dirichlet_noise,
       stats_stale: self.stats_stale,
       root_priors_stale: self.root_priors_stale,
+      // The evaluations a search after `clear` did not take back are dropped.
+      // Positions only grow, so most of them now lie off the game - behind a
+      // move that was not played - and telling the others apart would take the
+      // positions, not just their hashes. Keeping all of them would instead pile
+      // up a game's worth of untaken evaluations, one search after another.
+      evaluations: HashMap::default(),
       params: self.params,
     };
 
