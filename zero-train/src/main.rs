@@ -21,7 +21,7 @@ use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   batch_model::{batch_model, run_evaluator},
   episode::{Visits, episode},
-  examples::Examples,
+  examples::{Examples, is_validation_game},
   mcgs::{Params, Search},
   model::{Model, TrainableModel},
   opening::opening,
@@ -378,7 +378,8 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
   };
 
   let mut examples = Examples::default();
-  for path in params.games {
+  let mut validation = Examples::default();
+  for path in &params.games {
     for node in read_games(path)? {
       let node = node?;
       let field = from_sgf::<Field, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
@@ -403,6 +404,11 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
         ));
       }
 
+      let examples = if is_validation_game(&field, komi_x_2, params.validation_fraction) {
+        &mut validation
+      } else {
+        &mut examples
+      };
       examples.add(
         komi_x_2,
         visits,
@@ -414,14 +420,31 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     }
   }
 
+  log::info!(
+    "Training on {} examples of {} games, validating on {} examples of {} games",
+    examples.len(),
+    examples.games.len(),
+    validation.len(),
+    validation.games.len()
+  );
+  let zobrist = Arc::new(Zobrist::new(length(params.width, params.height) * 3, rng));
+  validate(
+    &learner,
+    &validation,
+    params.width,
+    params.height,
+    params.batch_size,
+    zobrist.clone(),
+    "before",
+  );
+
   examples.shuffle(rng);
   let batches_count = examples.batches_count(params.batch_size);
   // By default average a snapshot every half-epoch, so a single training run
   // contributes two snapshots to the moving average.
   let swa_period = params.swa_period.unwrap_or((batches_count / 2).max(1));
-  let zobrist = Arc::new(Zobrist::new(length(params.width, params.height) * 3, rng));
   for (i, batch) in examples
-    .batches(params.width, params.height, zobrist, params.batch_size)
+    .batches(params.width, params.height, zobrist.clone(), params.batch_size)
     .enumerate()
     .skip(params.skip)
   {
@@ -461,6 +484,16 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     }
   }
 
+  validate(
+    &learner,
+    &validation,
+    params.width,
+    params.height,
+    params.batch_size,
+    zobrist,
+    "after",
+  );
+
   learner.predictor.model.save_file(params.model_new)?;
 
   if let (Some(swa), Some(path)) = (swa_model, params.model_swa_new) {
@@ -470,6 +503,54 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
   learner.optimizer.save(params.optimizer_new)?;
 
   Ok(ExitCode::SUCCESS)
+}
+
+/// Logs every loss term of the model averaged over the validation examples,
+/// `when` saying at which point of the training run.
+fn validate(
+  learner: &Learner,
+  validation: &Examples,
+  width: u32,
+  height: u32,
+  batch_size: usize,
+  zobrist: Arc<Zobrist<u64>>,
+  when: &str,
+) {
+  if validation.is_empty() {
+    return;
+  }
+  let mut sums: Vec<(&'static str, f64)> = Vec::new();
+  let mut rows = 0;
+  for batch in validation.batches(width, height, zobrist, batch_size) {
+    // The terms are means over the batch, so they are weighed by its rows.
+    let batch_rows = batch.inputs.dim().0;
+    let losses = learner
+      .losses(
+        batch.inputs,
+        batch.global,
+        batch.policies,
+        batch.opponent_policies,
+        batch.values,
+        batch.td_values,
+        batch.td_scores,
+        batch.scores,
+        batch.captured,
+        batch.q_values,
+      )
+      .values();
+    if sums.is_empty() {
+      sums = losses.iter().map(|&(name, _)| (name, 0.0)).collect();
+    }
+    for ((_, sum), (_, loss)) in sums.iter_mut().zip(losses) {
+      *sum += f64::from(loss) * batch_rows as f64;
+    }
+    rows += batch_rows;
+  }
+  let mut message = format!("Validation loss {when}:");
+  for (name, sum) in sums {
+    message += &format!(" {} {}", name, sum / rows as f64);
+  }
+  log::info!("{}", message);
 }
 
 async fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {

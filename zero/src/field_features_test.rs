@@ -1,5 +1,5 @@
-use crate::field_features::{SCORE_ONE_HOT_SIZE, field_features, score_one_hot};
-use ndarray::prelude::{array, s};
+use crate::field_features::{SCORE_ONE_HOT_SIZE, add_unrotated_policy, field_features, rotation_sizes, score_one_hot};
+use ndarray::prelude::{Array2, array, s};
 use oppai_field::construct_field::construct_field;
 use oppai_field::player::Player;
 use rand::SeedableRng;
@@ -433,4 +433,38 @@ fn score_one_hot_fractional_negative_komi() {
 
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 1], 0.5);
   assert_eq!(score[SCORE_ONE_HOT_SIZE / 2 - 2], 0.5);
+}
+
+// A policy predicted for a rotated position reads back into the field's own
+// coordinates: a net that just points at the mover's dots points at them on the
+// field, whichever rotation it saw the field under - the transposing ones on a
+// rectangle included, which only fit the padded square.
+#[test]
+fn unrotated_policy_points_back_at_the_field() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    aa.A.
+    ..a..
+    .A...
+    ",
+  );
+  let (width, height) = rotation_sizes(field.width(), field.height());
+  assert_eq!((width, height), (5, 5));
+  let expected = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0)
+    .slice(s![1, .., ..])
+    .to_owned();
+  for rotation in 0..oppai_rotate::rotate::ROTATIONS {
+    let features = field_features::<f64>(&field, Player::Red, width, height, rotation);
+    let mut policy = Array2::zeros((field.height() as usize, field.width() as usize));
+    add_unrotated_policy(
+      features.slice(s![1, .., ..]),
+      field.width(),
+      field.height(),
+      rotation,
+      1.0,
+      &mut policy,
+    );
+    assert_eq!(policy, expected, "rotation {rotation}");
+  }
 }

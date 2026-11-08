@@ -11,10 +11,14 @@ use crate::model::Model;
 
 /// Play's parameters, but without forbidding apriori bad moves: the tests use
 /// tiny boards where pruning corners would change the trees they assert on.
+/// Every position goes to the net as it is, so the tests can tell what the net
+/// is asked.
 /// The auxiliary utility terms are turned off too, so the utilities stay pure
 /// win/loss values and the exact numbers the tests assert on hold.
 const PARAMS: Params = Params {
   forbid_bad: false,
+  random_symmetry: false,
+  root_symmetries: 1,
   early_utility_factor: 0.0,
   score_utility_factor: 0.0,
   ..Params::PLAY
@@ -2516,4 +2520,122 @@ fn clear_keeps_the_evaluations_of_the_dropped_tree() {
   // The evaluations no search took back are forgotten with the next move.
   search.compact();
   assert!(search.evaluations.is_empty());
+}
+
+/// A policy that commutes with the board's symmetries: every cell is worth one
+/// plus the mover's dots next to it, read from the mover's dots plane of the
+/// input. A net like that predicts the same, in field coordinates, under every
+/// rotation, so a search may draw any of them.
+fn neighbour_policies(inputs: &Array4<f64>) -> Array3<f64> {
+  let (batch_size, _, height, width) = inputs.dim();
+  Array3::from_shape_fn((batch_size, height, width), |(i, y, x)| {
+    let own = |dx: isize, dy: isize| {
+      let (x, y) = (x as isize + dx, y as isize + dy);
+      if x < 0 || y < 0 || x >= width as isize || y >= height as isize {
+        0.0
+      } else {
+        inputs[(i, 1, y as usize, x as usize)]
+      }
+    };
+    1.0 + own(-1, 0) + own(1, 0) + own(0, -1) + own(0, 1)
+  })
+}
+
+/// The priors [`neighbour_policies`] gives every legal move of the position
+/// `field` holds, worked out on the field itself.
+fn neighbour_priors(field: &oppai_field::field::Field, player: Player) -> Vec<(Pos, f64)> {
+  let mut priors = (field.min_pos()..=field.max_pos())
+    .filter(|&pos| field.is_putting_allowed(pos))
+    .map(|pos| {
+      let own = field
+        .directions(pos)
+        .iter()
+        .filter(|&&pos| field.cell(pos).is_players_point(player))
+        .count();
+      (pos, 1.0 + own as f64)
+    })
+    .collect::<Vec<_>>();
+  let sum: f64 = priors.iter().map(|&(_, prior)| prior).sum();
+  for (_, prior) in &mut priors {
+    *prior /= sum;
+  }
+  priors.sort_by_key(|&(pos, _)| pos);
+  priors
+}
+
+fn edge_priors(node: &Node<f64>) -> Vec<(Pos, f64)> {
+  let mut priors = node
+    .children
+    .iter()
+    .map(|edge| (edge.pos, edge.prior))
+    .collect::<Vec<_>>();
+  priors.sort_by_key(|&(pos, _)| pos);
+  priors
+}
+
+fn assert_priors_eq(actual: &[(Pos, f64)], expected: &[(Pos, f64)]) {
+  assert_eq!(actual.len(), expected.len());
+  for (&(pos, actual), &(expected_pos, expected)) in actual.iter().zip(expected) {
+    assert_eq!(pos, expected_pos);
+    assert!((actual - expected).abs() < 1e-12, "{pos}: {actual} != {expected}");
+  }
+}
+
+// Under random symmetries every position goes to the net rotated and padded to a
+// square, the root under several distinct rotations at once, and every policy
+// is read back into field coordinates: a net that commutes with the symmetries
+// gives each node exactly the priors it would give the unrotated position.
+#[test]
+fn random_symmetries_read_the_policy_back_into_the_field() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .......
+    .aaA...
+    ...Aa..
+    .......
+    ",
+  );
+  let params = Params {
+    random_symmetry: true,
+    root_symmetries: 4,
+    ..PARAMS
+  };
+  let batches = std::cell::RefCell::new(Vec::new());
+  let model = |inputs: Array4<f64>, _: Array2<f64>, _: Array1<f64>| {
+    batches.borrow_mut().push(inputs.dim());
+    let result: Result<_, ()> = Ok((neighbour_policies(&inputs), depth_value(&inputs)));
+    result
+  };
+
+  let mut search = Search::<f64>::new(params);
+  for _ in 0..8 {
+    futures::executor::block_on(search.mcgs(&mut field, Player::Red, &model, 0, &mut rng)).unwrap();
+  }
+
+  // The root went alone, under four rotations; everything went as a square.
+  let batches = batches.borrow();
+  assert_eq!(batches[0], (4, crate::field_features::CHANNELS, 7, 7));
+  assert!(batches.iter().all(|&(_, _, height, width)| (height, width) == (7, 7)));
+
+  assert_priors_eq(
+    &edge_priors(&search.nodes[search.root_idx]),
+    &neighbour_priors(&field, Player::Red),
+  );
+  let mut checked = 0;
+  for edge in &search.nodes[search.root_idx].children {
+    if let Some(&child_idx) = search.map.get(&edge.hash)
+      && !search.nodes[child_idx].children.is_empty()
+    {
+      assert!(field.put_point(edge.pos, Player::Red));
+      assert_priors_eq(
+        &edge_priors(&search.nodes[child_idx]),
+        &neighbour_priors(&field, Player::Black),
+      );
+      field.undo();
+      checked += 1;
+    }
+  }
+  assert!(checked > 1);
 }

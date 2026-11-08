@@ -1184,11 +1184,26 @@ fn scale_gradients(model: &Model, grads: GradientsParams, scale: f32) -> Gradien
   grads
 }
 
-impl OppaiTrainableModel<f32> for Learner {
-  type TE = ModelError;
+/// Every term of the training loss, each already weighted and averaged over the
+/// batch, named as they are logged and in that order.
+pub struct Losses(pub [(&'static str, Tensor<1>); 16]);
 
-  fn train(
-    mut self,
+impl Losses {
+  /// The terms as numbers, reading them back from the device.
+  pub fn values(self) -> Vec<(&'static str, f32)> {
+    self
+      .0
+      .into_iter()
+      .map(|(name, loss)| (name, loss.into_scalar::<f32>()))
+      .collect()
+  }
+}
+
+impl Learner {
+  /// The loss terms of a batch for the model as it is.
+  #[allow(clippy::too_many_arguments)]
+  pub fn losses(
+    &self,
     inputs: Array4<f32>,
     global: Array2<f32>,
     policies: Array3<f32>,
@@ -1199,8 +1214,7 @@ impl OppaiTrainableModel<f32> for Learner {
     scores: Array2<f32>,
     captured: Array4<f32>,
     q_values: Array4<f32>,
-    learning_rate: f64,
-  ) -> Result<Self, Self::TE> {
+  ) -> Losses {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
@@ -1469,47 +1483,68 @@ impl OppaiTrainableModel<f32> for Learner {
     let q_scores_loss =
       ((q_score_huber * q_sqrt_weights.clone()).sum_dim(1) / (q_sqrt_weights.sum_dim(1) + 1.0)).sum() * 0.0008 / batch;
 
+    Losses([
+      ("value", values_loss),
+      ("td value", td_values_loss),
+      ("value error", value_error_loss),
+      ("td score", td_scores_loss),
+      ("score error", score_error_loss),
+      ("policy", policies_loss),
+      ("opponent policy", opponent_policies_loss),
+      ("soft policy", soft_policies_loss),
+      ("soft opponent policy", soft_opponent_policies_loss),
+      ("optimistic policy", optimistic_policies_loss),
+      ("long optimistic policy", long_optimistic_policies_loss),
+      ("pdf", pdf_loss),
+      ("cdf", cdf_loss),
+      ("captured", captured_loss),
+      ("q", q_values_loss),
+      ("q score", q_scores_loss),
+    ])
+  }
+}
+
+impl OppaiTrainableModel<f32> for Learner {
+  type TE = ModelError;
+
+  fn train(
+    mut self,
+    inputs: Array4<f32>,
+    global: Array2<f32>,
+    policies: Array3<f32>,
+    opponent_policies: Array3<f32>,
+    values: Array2<f32>,
+    td_values: Array3<f32>,
+    td_scores: Array2<f32>,
+    scores: Array2<f32>,
+    captured: Array4<f32>,
+    q_values: Array4<f32>,
+    learning_rate: f64,
+  ) -> Result<Self, Self::TE> {
+    let Losses(losses) = self.losses(
+      inputs,
+      global,
+      policies,
+      opponent_policies,
+      values,
+      td_values,
+      td_scores,
+      scores,
+      captured,
+      q_values,
+    );
+
     let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
     self.predictor.model.visit(&mut norm_visitor);
     let param_l2_norm = norm_visitor.l2_norm();
 
-    log::info!(
-      "Loss: value {} td value {} value error {} td score {} score error {} policy {} opponent policy {} soft policy {} soft opponent policy {} optimistic policy {} long optimistic policy {} pdf {} cdf {} captured {} q {} q score {} L2 norm {}",
-      values_loss.clone().into_scalar::<f32>(),
-      td_values_loss.clone().into_scalar::<f32>(),
-      value_error_loss.clone().into_scalar::<f32>(),
-      td_scores_loss.clone().into_scalar::<f32>(),
-      score_error_loss.clone().into_scalar::<f32>(),
-      policies_loss.clone().into_scalar::<f32>(),
-      opponent_policies_loss.clone().into_scalar::<f32>(),
-      soft_policies_loss.clone().into_scalar::<f32>(),
-      soft_opponent_policies_loss.clone().into_scalar::<f32>(),
-      optimistic_policies_loss.clone().into_scalar::<f32>(),
-      long_optimistic_policies_loss.clone().into_scalar::<f32>(),
-      pdf_loss.clone().into_scalar::<f32>(),
-      cdf_loss.clone().into_scalar::<f32>(),
-      captured_loss.clone().into_scalar::<f32>(),
-      q_values_loss.clone().into_scalar::<f32>(),
-      q_scores_loss.clone().into_scalar::<f32>(),
-      param_l2_norm,
-    );
+    let mut message = String::from("Loss:");
+    for (name, loss) in &losses {
+      message += &format!(" {} {}", name, loss.clone().into_scalar::<f32>());
+    }
+    log::info!("{} L2 norm {}", message, param_l2_norm);
 
-    let loss = values_loss
-      + td_values_loss
-      + value_error_loss
-      + policies_loss
-      + opponent_policies_loss
-      + soft_policies_loss
-      + soft_opponent_policies_loss
-      + optimistic_policies_loss
-      + long_optimistic_policies_loss
-      + td_scores_loss
-      + score_error_loss
-      + pdf_loss
-      + cdf_loss
-      + captured_loss
-      + q_values_loss
-      + q_scores_loss;
+    let loss = losses.into_iter().map(|(_, loss)| loss).reduce(|a, b| a + b).unwrap();
 
     let mut grads = GradientsParams::from_grads(loss.backward(), &self.predictor.model);
     // Logged every batch next to the losses, because whether the bound is set
@@ -1953,6 +1988,63 @@ mod tests {
         assert!((out_values_1 - out_values_2).iter().all(|v| v.abs() > 0.0));
       }
     };
+  }
+
+  // The loss terms validation reads are those of training, named as the
+  // training log names them: computing them leaves the model as it is, and a
+  // training step on the batch brings them down.
+  #[cfg(feature = "flex")]
+  #[test]
+  fn losses_are_the_training_terms() {
+    let device = Device::flex().autodiff();
+    let model = Model::new(&device, &ModelConfig::default());
+    let predictor = Predictor { model, device };
+    let mut learner = Learner {
+      predictor,
+      optimizer: SgdConfig::new().init(),
+      gradient_clipping: None,
+    };
+
+    let mut q_values = Array4::from_elem((1, 3, 4, 8), 0.0);
+    q_values[(0, 0, 1, 2)] = 0.5;
+    q_values[(0, 2, 1, 2)] = 4.0;
+    let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
+    scores[(0, SCORE_ONE_HOT_SIZE / 2)] = 1.0;
+    let batch = (
+      Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
+      array![[0.2]],
+      Array3::from_elem((1, 4, 8), 1.0 / 32.0),
+      Array3::from_elem((1, 4, 8), 1.0 / 32.0),
+      array![[1.0, 0.0]],
+      Array3::from_elem((1, TD_VALUES, 2), 0.5),
+      Array2::from_elem((1, TD_VALUES), 3.0),
+      scores,
+      Array4::from_elem((1, 2, 4, 8), 0.0),
+      q_values,
+    );
+    let losses = |learner: &Learner| {
+      let b = batch.clone();
+      learner
+        .losses(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9)
+        .values()
+    };
+
+    let before = losses(&learner);
+    assert_eq!(before, losses(&learner));
+    let names = before.iter().map(|&(name, _)| name).collect::<Vec<_>>();
+    assert_eq!(names.len(), 16);
+    assert_eq!(names.iter().collect::<std::collections::HashSet<_>>().len(), 16);
+    assert_eq!(&names[..2], &["value", "td value"]);
+    assert!(before.iter().all(|&(_, loss)| loss.is_finite()));
+
+    for _ in 0..4 {
+      let b = batch.clone();
+      learner = learner
+        .train(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, 0.01)
+        .unwrap();
+    }
+    let total = |losses: &[(&str, f32)]| losses.iter().map(|&(_, loss)| loss).sum::<f32>();
+    assert!(total(&losses(&learner)) < total(&before));
   }
 
   #[cfg(feature = "flex")]

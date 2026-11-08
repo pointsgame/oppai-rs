@@ -1,6 +1,6 @@
 use std::iter;
 
-use ndarray::{Array, Array1, Array3};
+use ndarray::{Array, Array1, Array2, Array3, ArrayView2};
 use num_traits::{Float, One, Zero};
 use oppai_field::cell::Cell;
 use oppai_field::field::{Field, NonZeroPos};
@@ -226,6 +226,38 @@ pub fn field_features<N: Float + Zero + One + Copy>(
   Array::from(features)
     .into_shape_with_order((CHANNELS, height as usize, width as usize))
     .unwrap()
+}
+
+/// Input sizes that fit the field under every rotation: a square of its longer
+/// side. The rotations that transpose a rectangular field swap its sides, and
+/// padding to a square lets positions evaluated under different rotations
+/// share one batch.
+#[inline]
+pub fn rotation_sizes(width: u32, height: u32) -> (u32, u32) {
+  let side = width.max(height);
+  (side, side)
+}
+
+/// Adds `scale` times a policy predicted for the field evaluated under
+/// `rotation` to `policy`, read back into field coordinates: `policy` is
+/// indexed by `(y, x)` of the field itself, whatever the rotation was. Called
+/// once per rotation with `scale` the reciprocal of their number, it averages
+/// the predictions of several rotations.
+pub fn add_unrotated_policy<N: Float>(
+  predicted: ArrayView2<N>,
+  width: u32,
+  height: u32,
+  rotation: u8,
+  scale: N,
+  policy: &mut Array2<N>,
+) {
+  for y in 0..height {
+    for x in 0..width {
+      let (rx, ry) = rotate(width, height, x, y, rotation);
+      let cell = &mut policy[(y as usize, x as usize)];
+      *cell = *cell + scale * predicted[(ry as usize, rx as usize)];
+    }
+  }
 }
 
 pub const SCORE_ONE_HOT_SIZE: usize = 1001;

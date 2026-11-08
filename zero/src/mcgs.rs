@@ -1,16 +1,17 @@
 use crate::field_features::{
-  CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, field_features, field_features_len, field_features_to_vec,
-  global as global_features, global_to_vec,
+  CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, add_unrotated_policy, field_features_len, field_features_to_vec,
+  global_to_vec, rotation_sizes,
 };
 use crate::model::Model;
 use either::Either;
-use ndarray::{Array, ArrayView2, Axis, s};
+use ndarray::{Array, Array2, Array3, ArrayView2};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
 use oppai_field::{
   field::{Field, Hash, NonZeroPos, Pos},
   player::Player,
 };
+use oppai_rotate::rotate::ROTATIONS;
 use rand::seq::SliceRandom;
 use rand::{Rng, RngExt};
 use rand_distr::uniform::SampleUniform;
@@ -413,6 +414,19 @@ pub struct Params {
   /// value error instead of being 1. Takes a net that predicts one; see
   /// [`Model::predicts_uncertainty`].
   pub uncertainty: bool,
+  /// Whether every position goes to the net under a random one of the board's
+  /// eight symmetries, the policy read back into field coordinates. The net is
+  /// only approximately symmetric, and evaluating everything in one orientation
+  /// repeats its orientation-specific mistakes at every node of every search -
+  /// self-play would then train them back into its own targets. Under random
+  /// orientations they are noise that averages out instead.
+  pub random_symmetry: bool,
+  /// How many distinct symmetries the root is evaluated under when it is
+  /// expanded or its priors are refreshed, their predictions averaged. The root
+  /// prior is what the policy target and the played move rest on most
+  /// directly, so it gets the less noisy estimate for a few extra positions per
+  /// search. 1 evaluates it like any other node.
+  pub root_symmetries: usize,
   /// How far the priors an expanded node gets are moved from the net's trained
   /// policy towards its optimistic one, in `[0, 1]`; 0 uses the trained policy
   /// as is. See [`Model::predict`] for what the optimistic policy is.
@@ -468,6 +482,8 @@ impl Params {
   pub const SELF_PLAY: Self = Params {
     forbid_bad: false,
     uncertainty: false,
+    random_symmetry: true,
+    root_symmetries: 4,
     // The trained policy as is: the search's own weights become the next
     // policy target, and an optimistic prior would bend that target towards
     // whatever the optimistic head favours instead of towards what the search
@@ -494,6 +510,8 @@ impl Params {
   pub const PLAY: Self = Params {
     forbid_bad: true,
     uncertainty: true,
+    random_symmetry: true,
+    root_symmetries: 4,
     // Fully optimistic priors below the root. A move that only pays off in the
     // lines where the position turns out better than the net expects is exactly
     // what a search is there to find, and one the trained policy - an average
@@ -1380,6 +1398,90 @@ impl<N: Float + Sum + Copy> Search<N> {
 
   const PARALLEL_READOUTS: usize = 8;
 
+  /// The symmetries a position goes to the net under: [`Params::root_symmetries`]
+  /// distinct ones for the root, a single one for any other node. A single one
+  /// is random when [`Params::random_symmetry`] asks for it and the identity
+  /// otherwise; several are always distinct random ones.
+  fn draw_rotations<R: Rng>(&self, root: bool, rng: &mut R) -> Vec<u8> {
+    let count = if root {
+      self.params.root_symmetries.clamp(1, ROTATIONS as usize)
+    } else {
+      1
+    };
+    if count == 1 {
+      vec![if self.params.random_symmetry {
+        rng.random_range(0..ROTATIONS)
+      } else {
+        0
+      }]
+    } else {
+      let mut rotations = (0..ROTATIONS).collect::<Vec<_>>();
+      let (chosen, _) = rotations.partial_shuffle(rng, count);
+      chosen.to_vec()
+    }
+  }
+
+  /// The input sizes positions go to the net with. The field's own while only
+  /// the identity is ever drawn; once any rotation may be, a square that every
+  /// one of them fits, so that the positions of a batch share their sizes
+  /// whichever rotations they drew.
+  fn input_sizes(&self, field: &Field) -> (u32, u32) {
+    if self.params.random_symmetry || self.params.root_symmetries > 1 {
+      rotation_sizes(field.width(), field.height())
+    } else {
+      (field.width(), field.height())
+    }
+  }
+
+  /// Pushes the inputs of the position `field` holds, once per rotation, padded
+  /// to `sizes`.
+  fn push_inputs(
+    field: &Field,
+    player: Player,
+    komi_x_2: i32,
+    rotations: &[u8],
+    (width, height): (u32, u32),
+    features: &mut Vec<N>,
+    global: &mut Vec<N>,
+  ) {
+    for &rotation in rotations {
+      field_features_to_vec::<N>(field, player, width, height, rotation, HISTORY_CHANNELS, features);
+      global_to_vec(field, player, komi_x_2, global);
+    }
+  }
+
+  /// Reads the prediction of one position back from the `rotations.len()` rows
+  /// of a batch starting at `offset`, as [`Self::push_inputs`] laid them out:
+  /// the policy in field coordinates and the four value columns, each averaged
+  /// over the rotations. The probabilities are averaged rather than the logits,
+  /// so a move only one orientation sees keeps a share of its prior.
+  fn read_prediction(
+    policies: &Array3<N>,
+    values: &Array2<N>,
+    offset: usize,
+    rotations: &[u8],
+    field: &Field,
+  ) -> (Array2<N>, [N; 4]) {
+    let scale = N::one() / N::from(rotations.len()).unwrap();
+    let mut policy = Array2::zeros((field.height() as usize, field.width() as usize));
+    let mut value = [N::zero(); 4];
+    for (i, &rotation) in rotations.iter().enumerate() {
+      let row = offset + i;
+      add_unrotated_policy(
+        policies.index_axis(ndarray::Axis(0), row),
+        field.width(),
+        field.height(),
+        rotation,
+        scale,
+        &mut policy,
+      );
+      for (column, value) in value.iter_mut().enumerate() {
+        *value = *value + scale * values[(row, column)];
+      }
+    }
+    (policy, value)
+  }
+
   fn make_moves(nodes: &[Node<N>], field: &mut Field, path: &[(usize, usize)], mut player: Player, ground: bool) {
     for &(node_idx, edge_idx) in path {
       let pos = nodes[node_idx].children[edge_idx].pos;
@@ -1470,12 +1572,13 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// learned about them. Dots are only ever added, so a position cannot repeat
   /// within a game and no path below the root can transpose back into this
   /// node: the swap touches the root and nothing else.
-  async fn refresh_root_priors<M: Model<N>>(
+  async fn refresh_root_priors<M: Model<N>, R: Rng>(
     &mut self,
     field: &Field,
     player: Player,
     model: &M,
     komi_x_2: i32,
+    rng: &mut R,
   ) -> Result<(), M::E> {
     if self.params.root_policy_optimism == self.params.policy_optimism
       || self.nodes[self.root_idx].children.is_empty()
@@ -1487,11 +1590,25 @@ impl<N: Float + Sum + Copy> Search<N> {
       return Ok(());
     }
 
-    let features = field_features::<N>(field, player, field.width(), field.height(), 0).insert_axis(Axis(0));
-    let global = global_features(field, player, komi_x_2).insert_axis(Axis(0));
-    let optimism = Array::from_elem(1, N::from(self.params.root_policy_optimism).unwrap());
-    let (policies, _) = model.predict(features, global, optimism).await?;
-    let policy = policies.slice(s![0, .., ..]);
+    let rotations = self.draw_rotations(true, rng);
+    let (width, height) = self.input_sizes(field);
+    let mut features = Vec::with_capacity(field_features_len(width, height) * rotations.len());
+    let mut global = Vec::with_capacity(GLOBAL_FEATURES * rotations.len());
+    Self::push_inputs(
+      field,
+      player,
+      komi_x_2,
+      &rotations,
+      (width, height),
+      &mut features,
+      &mut global,
+    );
+    let features =
+      Array::from_shape_vec((rotations.len(), CHANNELS, height as usize, width as usize), features).unwrap();
+    let global = Array::from_shape_vec((rotations.len(), GLOBAL_FEATURES), global).unwrap();
+    let optimism = Array::from_elem(rotations.len(), N::from(self.params.root_policy_optimism).unwrap());
+    let (policies, values) = model.predict(features, global, optimism).await?;
+    let (policy, _) = Self::read_prediction(&policies, &values, 0, &rotations, field);
 
     let stride = field.stride;
     let children = &mut self.nodes[self.root_idx].children;
@@ -1528,7 +1645,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       self.recompute_stats();
     }
     if mem::take(&mut self.root_priors_stale) {
-      self.refresh_root_priors(field, player, model, komi_x_2).await?;
+      self.refresh_root_priors(field, player, model, komi_x_2, rng).await?;
     }
     let weigh = self.weigh_by_uncertainty(model);
     let mut leafs = iter::repeat_with(|| self.select_path())
@@ -1565,9 +1682,14 @@ impl<N: Float + Sum + Copy> Search<N> {
       }
     });
 
-    let features_len = field_features_len(field.width(), field.height());
+    let (width, height) = self.input_sizes(field);
+    let features_len = field_features_len(width, height);
     let mut features = Vec::with_capacity(features_len * leafs.len());
     let mut global = Vec::with_capacity(GLOBAL_FEATURES * leafs.len());
+    let mut optimism = Vec::with_capacity(leafs.len());
+    // The symmetries each leaf left to the net goes under, one row of the batch
+    // per symmetry, in the order of the leaves.
+    let mut leaf_rotations = Vec::with_capacity(leafs.len());
     let red_komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
 
     leafs.retain(|(path, terminal)| {
@@ -1612,16 +1734,27 @@ impl<N: Float + Sum + Copy> Search<N> {
         self.add_result(path, winloss, utility, score, weight, children, bias_key);
         false
       } else {
-        field_features_to_vec::<N>(
+        // An empty path is the root itself being expanded: it goes under the
+        // root's symmetries and asks for the root's own optimism; everything
+        // below the root asks for the search-wide one.
+        let rotations = self.draw_rotations(path.is_empty(), rng);
+        Self::push_inputs(
           field,
           player,
-          field.width(),
-          field.height(),
-          0,
-          HISTORY_CHANNELS,
+          leaf_komi_x_2,
+          &rotations,
+          (width, height),
           &mut features,
+          &mut global,
         );
-        global_to_vec(field, player, leaf_komi_x_2, &mut global);
+        let leaf_optimism = N::from(if path.is_empty() {
+          self.params.root_policy_optimism
+        } else {
+          self.params.policy_optimism
+        })
+        .unwrap();
+        optimism.extend(iter::repeat_n(leaf_optimism, rotations.len()));
+        leaf_rotations.push(rotations);
         true
       };
 
@@ -1637,31 +1770,17 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
 
     let features = Array::from_shape_vec(
-      (
-        features.len() / features_len,
-        CHANNELS,
-        field.height() as usize,
-        field.width() as usize,
-      ),
+      (features.len() / features_len, CHANNELS, height as usize, width as usize),
       features,
     )
     .unwrap();
     let global = Array::from_shape_vec((global.len() / GLOBAL_FEATURES, GLOBAL_FEATURES), global).unwrap();
-    // An empty path is the root itself being expanded, and it asks for the
-    // root's own optimism; everything below the root asks for the search-wide
-    // one.
-    let optimism = Array::from_iter(leafs.iter().map(|(path, _)| {
-      N::from(if path.is_empty() {
-        self.params.root_policy_optimism
-      } else {
-        self.params.policy_optimism
-      })
-      .unwrap()
-    }));
+    let optimism = Array::from_vec(optimism);
 
     let (policies, values) = model.predict(features, global, optimism).await?;
 
-    for (i, (path, _)) in leafs.iter().enumerate() {
+    let mut offset = 0;
+    for ((path, _), rotations) in leafs.iter().zip(&leaf_rotations) {
       Self::make_moves(&self.nodes, field, path, player, false);
 
       let player = if path.len().is_multiple_of(2) {
@@ -1670,17 +1789,17 @@ impl<N: Float + Sum + Copy> Search<N> {
         player.next()
       };
 
-      let policy = policies.slice(s![i, .., ..]);
-      let winloss = values[(i, 0)] - values[(i, 1)];
-      let weight = Self::eval_weight(weigh, values[(i, 2)]);
+      let (policy, [win, loss, error, score]) = Self::read_prediction(&policies, &values, offset, rotations, field);
+      offset += rotations.len();
+      let winloss = win - loss;
+      let weight = Self::eval_weight(weigh, error);
       // A model without a score estimate leaves the column - and so the whole
       // tree's scores - at 0: its utilities carry no score term and the
       // per-move q score targets stay zero, which only the trainable model,
       // one that does estimate scores, ever reads back.
-      let score = values[(i, 3)];
       let utility = winloss + self.aux_utility(field, winloss, score);
 
-      let children = self.create_children(field, player, &policy, rng);
+      let children = self.create_children(field, player, &policy.view(), rng);
       // Bucket the leaf by the local context of the move that created it. The
       // field currently has all of the path's moves played, so `field.moves`
       // ends with this node's move and the move before it.

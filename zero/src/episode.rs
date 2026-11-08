@@ -1,15 +1,15 @@
-use crate::field_features::{field_features, global};
+use crate::field_features::{add_unrotated_policy, field_features, global, rotation_sizes};
 use crate::mcgs::{Params, Search};
 use crate::model::Model;
 use log::info;
-use ndarray::{Array1, Array2, Array3, Axis};
+use ndarray::{Array1, Array2, Axis};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
 use oppai_field::{
   field::{Field, NonZeroPos, Pos},
   player::Player,
 };
-use oppai_rotate::rotate::rotate;
+use oppai_rotate::rotate::{ROTATIONS, rotate};
 use rand::distr::uniform::SampleUniform;
 use rand::{Rng, RngExt};
 use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
@@ -198,7 +198,8 @@ fn interpolate_early<N: Float>(field: &Field, early_value: N, value: N) -> N {
   value + (early_value - value) * N::from(0.5).unwrap().powf(halflives)
 }
 
-fn select_policy_move<N, R>(field: &Field, policy: Array3<N>, rng: &mut R) -> Option<NonZeroPos>
+/// Samples a move from `policy`, indexed by `(y, x)` of the field.
+fn select_policy_move<N, R>(field: &Field, policy: &Array2<N>, rng: &mut R) -> Option<NonZeroPos>
 where
   N: Float + Sum + SampleUniform,
   R: Rng,
@@ -208,14 +209,14 @@ where
   for pos in field.min_pos()..=field.max_pos() {
     if field.is_putting_allowed(pos) {
       let (x, y) = field.to_xy(pos);
-      sum = sum + policy[(0, y as usize, x as usize)];
+      sum = sum + policy[(y as usize, x as usize)];
     }
   }
   let mut sample = rng.random_range(N::zero()..sum);
   for pos in field.min_pos()..=field.max_pos() {
     if field.is_putting_allowed(pos) {
       let (x, y) = field.to_xy(pos);
-      let policy = policy[(0, y as usize, x as usize)];
+      let policy = policy[(y as usize, x as usize)];
       if policy >= sample {
         return NonZeroPos::new(pos);
       } else {
@@ -252,18 +253,31 @@ where
   info!("Playing {} raw policy moves", raw_policy_moves);
 
   for _ in 0..raw_policy_moves {
-    let features = field_features(field, player, field.width(), field.height(), 0);
+    // Under a random symmetry, like every evaluation of the search, so that the
+    // openings do not inherit the orientation-specific preferences of the net.
+    let rotation = rng.random_range(0..ROTATIONS);
+    let (width, height) = rotation_sizes(field.width(), field.height());
+    let features = field_features(field, player, width, height, rotation);
     let global = global(field, player, komi_x_2);
     // The opening is sampled from the trained policy: these moves are meant to
     // spread the training positions over the openings the net actually plays.
-    let (policy, _) = model
+    let (predicted, _) = model
       .predict(
         features.insert_axis(Axis(0)),
         global.insert_axis(Axis(0)),
         Array1::zeros(1),
       )
       .await?;
-    if let Some(pos) = select_policy_move(field, policy, rng) {
+    let mut policy = Array2::zeros((field.height() as usize, field.width() as usize));
+    add_unrotated_policy(
+      predicted.index_axis(Axis(0), 0),
+      field.width(),
+      field.height(),
+      rotation,
+      N::one(),
+      &mut policy,
+    );
+    if let Some(pos) = select_policy_move(field, &policy, rng) {
       assert!(field.put_point(pos.get(), player));
       field.update_grounded();
       player = player.next();

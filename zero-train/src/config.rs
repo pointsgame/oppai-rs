@@ -47,6 +47,7 @@ pub struct TrainParams {
   pub batch_size: usize,
   pub skip: usize,
   pub ignore_surprise: bool,
+  pub validation_fraction: f64,
 }
 
 pub struct PitParams {
@@ -376,6 +377,18 @@ pub fn cli_parse() -> (Config, Action) {
         .help("Ignore policy surprise values when weighting training samples")
         .num_args(0)
         .action(clap::ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("validation-fraction")
+        .long("validation-fraction")
+        .help(
+          "Fraction of the games held out of training to measure the loss on, before and after the training. \
+           Which games are held out depends only on the games themselves, so a game stays held out in every \
+           training run; 0 trains on all of them",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("0.05"),
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
@@ -544,6 +557,7 @@ pub fn cli_parse() -> (Config, Action) {
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
       let ignore_surprise = matches.get_flag("ignore-surprise");
+      let validation_fraction = matches.get_one("validation-fraction").copied().unwrap();
       Action::Train(TrainParams {
         width,
         height,
@@ -564,6 +578,7 @@ pub fn cli_parse() -> (Config, Action) {
         batch_size,
         skip,
         ignore_surprise,
+        validation_fraction,
       })
     }
     Some(("pit", matches)) => {

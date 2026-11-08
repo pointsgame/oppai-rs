@@ -268,3 +268,63 @@ fn td_values_fall_back_to_final_result() {
     assert_eq!(td_values[2 * i + 1], 0.0);
   }
 }
+
+// Every copy of a position is written once, under a random symmetry, instead of
+// once under each of them; the symmetries a rectangle cannot fit transposed are
+// never drawn for it.
+#[test]
+fn each_copy_goes_under_one_random_symmetry() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+  let field = construct_field(
+    &mut rng,
+    "
+    aA..
+    ....
+    ",
+  );
+
+  let mut examples = Examples::default();
+  let games = 64;
+  for _ in 0..games {
+    let visits = field
+      .moves
+      .iter()
+      .map(|&pos| Visits(vec![(pos, 1.0)], 1.0, 0.0, 0.0, 0.0, Vec::new()))
+      .collect();
+    examples.add(0, visits, &field, false, false, &mut rng);
+  }
+
+  assert_eq!(examples.len(), games * field.moves.len());
+  let rotations = examples
+    .examples
+    .iter()
+    .map(|example| example.rotation)
+    .collect::<std::collections::HashSet<_>>();
+  assert_eq!(rotations, (0..oppai_rotate::rotate::MIRRORS).collect());
+}
+
+// The validation set is a fixed part of the games: a game falls on the same side
+// every time it is asked about, and about the asked fraction of games is held
+// out.
+#[test]
+fn validation_games_are_a_stable_fraction() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+  let mut field = Field::new_from_rng(8, 8, &mut rng);
+  let mut held_out = 0;
+  let games = 2000;
+  for game in 0..games as u32 {
+    field.clear();
+    // Different games: no two place the same pair of dots.
+    let red = game % 64;
+    let black = (red + 1 + game / 64) % 64;
+    assert!(field.put_point(field.to_pos(red % 8, red / 8), Player::Red));
+    assert!(field.put_point(field.to_pos(black % 8, black / 8), Player::Black));
+    let komi_x_2 = (game % 3) as i32 - 1;
+    let validation = crate::examples::is_validation_game(&field, komi_x_2, 0.05);
+    assert_eq!(validation, crate::examples::is_validation_game(&field, komi_x_2, 0.05));
+    assert!(!crate::examples::is_validation_game(&field, komi_x_2, 0.0));
+    assert!(crate::examples::is_validation_game(&field, komi_x_2, 1.0));
+    held_out += usize::from(validation);
+  }
+  assert!((50..=150).contains(&held_out), "held out {held_out} of {games}");
+}

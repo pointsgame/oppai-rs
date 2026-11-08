@@ -49,7 +49,7 @@ set -euo pipefail
 	PARALLEL_GAMES=32                                            # How many games to play or recalculate concurrently, merging their positions into shared forward passes
 	BATCH_GAMES=16                                               # How many games' positions are enough to dispatch a forward pass during self-play
 	THREADS=                                                     # How many OS threads play games; empty for the default of one per physical core
-	WINDOW=8                                                     # Train on the games of this many most recent cycles
+	WINDOW=8                                                     # Train on the games of this many most recent cycles; each training writes a position once under a random symmetry, so a position is trained about this many times in total
 	BATCHSIZE=256
 	LEARNING_RATE=0.01            # Constant learning rate for every training after the first one
 	LEARNING_RATE_START=0.0000001 # Learning rate at the first batch of the first training, kept low to warm up momentum

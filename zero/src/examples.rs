@@ -125,6 +125,34 @@ fn value_surprise(target: f64, predicted: f64) -> f64 {
 /// usable on positions with unknown last moves.
 const HISTORY_KEEP_PROBABILITY: f64 = 0.98;
 
+/// Whether a game belongs to the validation set held out of training, which
+/// takes the fraction `fraction` of the games.
+///
+/// Decided by a hash of the game itself rather than drawn at random, so that a
+/// game falls on the same side in every training run. The training window keeps
+/// a game for several runs, and one trained on in an earlier run would be no
+/// test of a later one.
+pub fn is_validation_game(field: &Field, komi_x_2: i32, fraction: f64) -> bool {
+  // FNV-1a over the game, then the splitmix64 finalizer to spread its bits.
+  let mut hash = 0xcbf2_9ce4_8422_2325u64;
+  let mut add = |value: u64| {
+    hash ^= value;
+    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+  };
+  add(u64::from(field.width()));
+  add(u64::from(field.height()));
+  add(komi_x_2 as u64);
+  for (pos, player) in field.colored_moves() {
+    add(pos as u64);
+    add(player as u64);
+  }
+  hash = (hash ^ (hash >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+  hash = (hash ^ (hash >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+  hash ^= hash >> 31;
+  // The top 53 bits, a uniform number in `[0, 1)`.
+  ((hash >> 11) as f64 / (1u64 << 53) as f64) < fraction
+}
+
 impl Examples {
   pub fn add<R: Rng>(
     &mut self,
@@ -227,20 +255,26 @@ impl Examples {
       }
       // Write the position `floor(weight)` times, plus once more with probability
       // equal to the fractional part of the weight.
+      //
+      // Each copy goes under one random symmetry rather than under all of them.
+      // Writing all of them would train every position eight times per pass, and
+      // the training window passes over a game once per cycle it stays in, so a
+      // position would be trained dozens of times - enough for the value head to
+      // memorize the outcomes of the games. The examples are rebuilt for every
+      // training run, so the passes still see a position under fresh symmetries.
       let copies = weight.floor() as usize + usize::from(weight > 0.0 && rng.random::<f64>() < weight.fract());
       for _ in 0..copies {
-        for rotation in 0..rotations {
-          let mut history = 0;
-          while history < HISTORY_CHANNELS && rng.random::<f64>() < HISTORY_KEEP_PROBABILITY {
-            history += 1;
-          }
-          self.examples.push(Example {
-            game: game_index,
-            position: initial_moves + i,
-            rotation,
-            history: history as u8,
-          });
+        let rotation = rng.random_range(0..rotations);
+        let mut history = 0;
+        while history < HISTORY_CHANNELS && rng.random::<f64>() < HISTORY_KEEP_PROBABILITY {
+          history += 1;
         }
+        self.examples.push(Example {
+          game: game_index,
+          position: initial_moves + i,
+          rotation,
+          history: history as u8,
+        });
       }
     }
   }
