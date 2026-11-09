@@ -45,6 +45,7 @@ pub struct TrainParams {
   pub weight_decay: f32,
   pub gradient_clipping: Option<f32>,
   pub mixed_precision: bool,
+  pub gradient_checkpointing: bool,
   pub batch_size: usize,
   pub skip: usize,
   pub ignore_surprise: bool,
@@ -370,9 +371,20 @@ pub fn cli_parse() -> (Config, Action) {
       Arg::new("mixed-precision")
         .long("mixed-precision")
         .help(
-          "Compute the convolutions in brain floating point while keeping the weights, the optimizer and everything \
-           else in single precision. Convolutions in single precision cannot use the matrix units of many GPUs, so \
-           this makes training many times faster",
+          "Compute the convolutions and the transformer's projections in brain floating point while keeping the \
+           weights, the optimizer and everything else in single precision. They cannot use the matrix units of many \
+           GPUs in single precision, so this makes training many times faster",
+        )
+        .action(clap::ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("gradient-checkpointing")
+        .long("gradient-checkpointing")
+        .help(
+          "Recompute the outputs of the cheap operations during the backward pass instead of keeping them from the \
+           forward one. Training memory is mostly what the forward pass keeps, and this cuts it by about a quarter \
+           for the convolutional network and more for the transformer, whose attention keeps several board area \
+           squared sized tensors per layer",
         )
         .action(clap::ArgAction::SetTrue),
     )
@@ -615,6 +627,7 @@ pub fn cli_parse() -> (Config, Action) {
       let weight_decay = matches.get_one("weight-decay").copied().unwrap();
       let gradient_clipping = matches.get_one::<f32>("gradient-clipping").copied();
       let mixed_precision = matches.get_flag("mixed-precision");
+      let gradient_checkpointing = matches.get_flag("gradient-checkpointing");
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
       let ignore_surprise = matches.get_flag("ignore-surprise");
@@ -637,6 +650,7 @@ pub fn cli_parse() -> (Config, Action) {
         weight_decay,
         gradient_clipping,
         mixed_precision,
+        gradient_checkpointing,
         batch_size,
         skip,
         ignore_surprise,

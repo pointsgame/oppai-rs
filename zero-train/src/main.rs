@@ -873,7 +873,14 @@ fn run(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<E
   match action {
     Action::Init(params) => init(params, device.autodiff()),
     Action::Play(params) => play(params, device, &mut rng, should_stop),
-    Action::Train(params) => train(params, device.autodiff(), &mut rng, should_stop),
+    Action::Train(params) => {
+      let device = if params.gradient_checkpointing {
+        device.autodiff().gradient_checkpointing()
+      } else {
+        device.autodiff()
+      };
+      train(params, device, &mut rng, should_stop)
+    }
     Action::Pit(params) => futures::executor::block_on(pit(params, device, &mut rng, should_stop)),
     Action::Count(params) => count(params, &mut rng),
     Action::Recalc(params) => futures::executor::block_on(recalc(params, device, &mut rng, should_stop)),

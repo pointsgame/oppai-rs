@@ -50,7 +50,8 @@ set -euo pipefail
 	BATCH_GAMES=16                                               # How many games' positions are enough to dispatch a forward pass during self-play
 	THREADS=                                                     # How many OS threads play games; empty for the default of one per physical core
 	HALF=1                                                       # 1 to evaluate the network in half precision in self-play, surprise recalculation and pitting, many times faster on GPUs
-	MIXED_PRECISION=1                                            # 1 to compute the convolutions of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
+	MIXED_PRECISION=1                                            # 1 to compute the convolutions and projections of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
+	GRADIENT_CHECKPOINTING=0                                     # 1 to recompute cheap activations in the backward pass instead of keeping them, cutting training memory by about a quarter, more for a transformer
 	WINDOW=8                                                     # Train on the games of this many most recent cycles; each training writes a position once under a random symmetry, so a position is trained about this many times in total
 	BATCHSIZE=64                  # Training memory is mostly the activations kept for the backward pass, about 9 GB for a batch of 64 at 24x24 with mixed precision
 	LEARNING_RATE=0.01            # Constant learning rate for every training after the first one, stated for a batch of 256 and scaled to BATCHSIZE below
@@ -99,6 +100,11 @@ set -euo pipefail
 	MIXED_PRECISION_ARGS=()
 	if [[ "$MIXED_PRECISION" == 1 ]]; then
 		MIXED_PRECISION_ARGS=(--mixed-precision)
+	fi
+
+	GRADIENT_CHECKPOINTING_ARGS=()
+	if [[ "$GRADIENT_CHECKPOINTING" == 1 ]]; then
+		GRADIENT_CHECKPOINTING_ARGS=(--gradient-checkpointing)
 	fi
 
 	THREADS_ARGS=()
@@ -217,6 +223,7 @@ set -euo pipefail
 			"${LR_ARGS[@]}" \
 			--gradient-clipping "$GRADIENT_CLIPPING" \
 			"${MIXED_PRECISION_ARGS[@]}" \
+			"${GRADIENT_CHECKPOINTING_ARGS[@]}" \
 			--batch-size "$BATCHSIZE" 2>&1 | tee -a "$LOGSDIR"/train.log
 
 		if [[ "$USEGATING" == 1 ]]; then
