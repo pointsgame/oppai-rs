@@ -185,6 +185,10 @@ pub(crate) fn conv2d_same(inputs: Tensor<4>, weight: Tensor<4>) -> Tensor<4> {
 /// [`Projection`](crate::transformer::Projection) modules it maps -
 /// the ones nearly all the work of the network is done by - leaving every
 /// other parameter as it is.
+///
+/// TODO: switch to burn's automatic mixed precision once it has one, which
+/// would also make the casts around every convolution and projection
+/// unnecessary.
 struct ComputeCaster {
   dtype: FloatDType,
   /// Whether each module entered and not yet exited is one to cast.
@@ -1358,6 +1362,10 @@ fn gradient_norm(model: &Model, grads: &GradientsParams, device: &Device) -> f32
 /// down to a bound needs: it leaves the direction of the update alone, unlike
 /// bounding each parameter's gradient on its own, which would also make the
 /// bound depend on how the parameters happen to be split into tensors.
+///
+/// TODO: switch to burn's gradient clipping once it can clip by the norm of
+/// the whole gradient; its `GradientClipping::Norm` bounds every parameter's
+/// gradient on its own.
 fn scale_gradients(model: &Model, grads: GradientsParams, scale: f32) -> GradientsParams {
   let mut grads = grads;
   let mut visitor = GradScaleVisitor {
@@ -1809,6 +1817,8 @@ mod tests {
     squared_softplus_with_gradient_floor, stdevs_excess_weight,
   };
   use super::{HeadsConfig, Learner, Model, ModelConfig, Predictor, TransformerConfig};
+  #[cfg(feature = "flex")]
+  use crate::optimizer::{OptimizerConfig, OptimizerKind};
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   use burn::tensor::DeviceKind;
   #[cfg(feature = "flex")]
@@ -2443,12 +2453,15 @@ mod tests {
 
   macro_rules! train_test {
     ($name:ident, $device:expr, $config:expr) => {
+      train_test!($name, $device, $config, SgdConfig::new().init());
+    };
+    ($name:ident, $device:expr, $config:expr, $optimizer:expr) => {
       #[test]
       fn $name() {
         let device = $device.autodiff();
         let model = Model::new(&device, &$config);
         let predictor = Predictor { model, device };
-        let optimizer = SgdConfig::new().init();
+        let optimizer = $optimizer;
         // Clipped, so that the whole step - including scaling the gradients on
         // the device - is what gets exercised here.
         let learner = Learner {
@@ -2737,6 +2750,35 @@ mod tests {
   train_test!(train_flex, Device::flex(), ModelConfig::default());
   #[cfg(feature = "flex")]
   train_test!(train_transformer_flex, Device::flex(), transformer_config());
+  // Every optimizer, with its groups, steps both networks.
+  #[cfg(feature = "flex")]
+  train_test!(
+    train_adamw_flex,
+    Device::flex(),
+    ModelConfig::default(),
+    OptimizerConfig::new(OptimizerKind::AdamW, 1).init()
+  );
+  #[cfg(feature = "flex")]
+  train_test!(
+    train_transformer_adamw_flex,
+    Device::flex(),
+    transformer_config(),
+    OptimizerConfig::new(OptimizerKind::AdamW, 1).init()
+  );
+  #[cfg(feature = "flex")]
+  train_test!(
+    train_muon_flex,
+    Device::flex(),
+    ModelConfig::default(),
+    OptimizerConfig::new(OptimizerKind::Muon, 1).init()
+  );
+  #[cfg(feature = "flex")]
+  train_test!(
+    train_transformer_muon_flex,
+    Device::flex(),
+    transformer_config(),
+    OptimizerConfig::new(OptimizerKind::Muon, 1).init()
+  );
   #[cfg(feature = "flex")]
   train_test!(
     train_transformer_fixed_rope_flex,

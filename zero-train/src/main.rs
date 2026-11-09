@@ -59,7 +59,7 @@ fn init(params: InitParams, device: Device) -> Result<ExitCode> {
 
   let optimizer = SgdConfig::new()
     .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
-    .with_momentum(Some(MomentumConfig::new()))
+    .with_momentum(Some(MomentumConfig::new().with_dampening(0.0)))
     .init();
   optimizer.save(params.optimizer)?;
 
@@ -353,11 +353,18 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
   let model = BurnModel::new(&device, &params.model_config).try_load_file(params.model)?;
   // The gradients are clipped by their combined norm before the step instead of
   // by the optimizer, which would bound every parameter's norm on its own.
-  let optimizer = SgdConfig::new()
-    .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
-    .with_momentum(Some(MomentumConfig::new()))
-    .init()
-    .load(&params.optimizer)?;
+  log::info!(
+    "Optimizer {} with weight decay {} and {}, learning rate from {} to {}",
+    params.optimizer_config.kind,
+    params.optimizer_config.weight_decay,
+    params.optimizer_config.lookahead.map_or_else(
+      || "no lookahead".to_string(),
+      |lookahead| format!("lookahead of {} steps by {}", lookahead.steps, lookahead.alpha)
+    ),
+    params.learning_rate_start,
+    params.learning_rate_end
+  );
+  let optimizer = params.optimizer_config.init().load(&params.optimizer)?;
   // The SWA model is an exponential moving average of the trained weights,
   // updated every `swa_period` batches and saved separately; it's the model to
   // export for self-play while training continues from the raw weights.

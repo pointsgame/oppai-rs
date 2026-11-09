@@ -3,6 +3,7 @@ use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_ver
 use oppai_zero_burn::{
   device::{DEVICE_HELP, parse_device},
   model::ModelConfig,
+  optimizer::{Lookahead, OptimizerConfig, OptimizerKind},
 };
 use std::path::PathBuf;
 
@@ -42,7 +43,7 @@ pub struct TrainParams {
   pub games: Vec<PathBuf>,
   pub learning_rate_start: f64,
   pub learning_rate_end: f64,
-  pub weight_decay: f32,
+  pub optimizer_config: OptimizerConfig,
   pub gradient_clipping: Option<f32>,
   pub mixed_precision: bool,
   pub gradient_checkpointing: bool,
@@ -340,21 +341,67 @@ pub fn cli_parse() -> (Config, Action) {
       Arg::new("learning-rate-start")
         .long("learning-rate-start")
         .short('l')
-        .help("Learning rate at the first batch (kept low to warm up momentum)")
+        .help("Learning rate at the first batch, kept low to warm up momentum [default: a tenth of the last one]")
         .num_args(1)
-        .value_parser(value_parser!(f64))
-        .default_value("0.00001"),
+        .value_parser(value_parser!(f64)),
     )
     .arg(
       Arg::new("learning-rate-end")
         .long("learning-rate-end")
         .short('e')
-        .help("Learning rate at the last batch")
+        .help(
+          "Learning rate at the last batch [default: 0.0001 for sgd, whose learning rate is that of a loss averaged \
+           over the batch and has to grow linearly with the batch size; 0.00004 * sqrt(batch size / 256) for adamw \
+           and muon, whose steps do not depend on the scale of the gradient]",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(f64)),
+    )
+    .arg(
+      Arg::new("optimizer-kind")
+        .long("optimizer-kind")
+        .help(
+          "Update rule: sgd - with momentum; adamw - Adam with decoupled weight decay; muon - orthogonalized \
+           momentum for the weights of the hidden layers, convolution filters taken as matrices of output channels \
+           by input patches, and adamw for every other parameter. Changing it starts the optimizer state afresh",
+        )
+        .num_args(1)
+        .value_parser(OptimizerKind::NAMES)
+        .default_value("sgd"),
+    )
+    .arg(
+      Arg::new("weight-decay")
+        .long("weight-decay")
+        .short('w')
+        .help(
+          "Weight decay of the weights of the hidden layers, the input layer and the heads; the attention's \
+           projections get half of it and the biases, offsets and rotary frequencies nearly none. With sgd it is an \
+           L2 penalty, with adamw and muon the weights shrink by learning rate * weight decay every step \
+           [default: 0.000000004 for sgd, 0.005 * sqrt(batch size / 256) for adamw and muon]",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(f64)),
+    )
+    .arg(
+      Arg::new("lookahead-steps")
+        .long("lookahead-steps")
+        .help("Steps of a lookahead cycle: after this many steps, the weights move back toward where the cycle began")
+        .num_args(1)
+        .value_parser(value_parser!(u64).range(1..))
+        .default_value("6"),
+    )
+    .arg(
+      Arg::new("lookahead-alpha")
+        .long("lookahead-alpha")
+        .help(
+          "How far toward where its steps took them the weights move at the end of a lookahead cycle. The steps \
+           within a cycle are made this many times longer, so that a cycle covers the same distance. 1 disables \
+           lookahead",
+        )
         .num_args(1)
         .value_parser(value_parser!(f64))
-        .default_value("0.0001"),
+        .default_value("0.5"),
     )
-    .arg(weight_decay_arg())
     .arg(
       Arg::new("gradient-clipping")
         .long("gradient-clipping")
@@ -622,13 +669,43 @@ pub fn cli_parse() -> (Config, Action) {
       let swa_scale = matches.get_one("swa-scale").copied().unwrap();
       let swa_period = matches.get_one("swa-period").copied();
       let games = matches.get_many("games").unwrap().cloned().collect();
-      let learning_rate_start = matches.get_one("learning-rate-start").cloned().unwrap();
-      let learning_rate_end = matches.get_one("learning-rate-end").cloned().unwrap();
-      let weight_decay = matches.get_one("weight-decay").copied().unwrap();
       let gradient_clipping = matches.get_one::<f32>("gradient-clipping").copied();
       let mixed_precision = matches.get_flag("mixed-precision");
       let gradient_checkpointing = matches.get_flag("gradient-checkpointing");
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
+      let kind = matches
+        .get_one::<String>("optimizer-kind")
+        .unwrap()
+        .parse::<OptimizerKind>()
+        .unwrap();
+      let learning_rate_end = matches
+        .get_one("learning-rate-end")
+        .copied()
+        .unwrap_or_else(|| kind.default_learning_rate(batch_size));
+      let learning_rate_start = matches
+        .get_one("learning-rate-start")
+        .copied()
+        .unwrap_or(learning_rate_end / 10.0);
+      let alpha = matches.get_one::<f64>("lookahead-alpha").copied().unwrap();
+      if !(alpha > 0.0 && alpha <= 1.0) {
+        clap::Error::raw(
+          clap::error::ErrorKind::ValueValidation,
+          "--lookahead-alpha has to be in (0, 1]\n",
+        )
+        .exit();
+      }
+      let optimizer_config = OptimizerConfig {
+        kind,
+        weight_decay: matches
+          .get_one("weight-decay")
+          .copied()
+          .unwrap_or_else(|| kind.default_weight_decay(batch_size)),
+        lookahead: (alpha < 1.0).then(|| Lookahead {
+          steps: matches.get_one::<u64>("lookahead-steps").copied().unwrap() as usize,
+          alpha,
+        }),
+        batch_size,
+      };
       let skip = matches.get_one("skip").copied().unwrap();
       let ignore_surprise = matches.get_flag("ignore-surprise");
       let validation_fraction = matches.get_one("validation-fraction").copied().unwrap();
@@ -647,7 +724,7 @@ pub fn cli_parse() -> (Config, Action) {
         games,
         learning_rate_start,
         learning_rate_end,
-        weight_decay,
+        optimizer_config,
         gradient_clipping,
         mixed_precision,
         gradient_checkpointing,

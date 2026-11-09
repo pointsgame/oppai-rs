@@ -54,9 +54,10 @@ set -euo pipefail
 	GRADIENT_CHECKPOINTING=0                                     # 1 to recompute cheap activations in the backward pass instead of keeping them, cutting training memory by about a quarter, more for a transformer
 	WINDOW=8                                                     # Train on the games of this many most recent cycles; each training writes a position once under a random symmetry, so a position is trained about this many times in total
 	BATCHSIZE=64                  # Training memory is mostly the activations kept for the backward pass, about 9 GB for a batch of 64 at 24x24 with mixed precision
-	LEARNING_RATE=0.01            # Constant learning rate for every training after the first one, stated for a batch of 256 and scaled to BATCHSIZE below
-	LEARNING_RATE_START=0.0000001 # Learning rate at the first batch of the first training, kept low to warm up momentum, stated for a batch of 256
-	LEARNING_RATE_END=0.01        # Learning rate at the last batch of the first training, stated for a batch of 256
+	OPTIMIZER=sgd                 # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
+	LEARNING_RATE=                # Constant learning rate for every training after the first one, stated for a batch of 256 and scaled to BATCHSIZE below; empty for 0.01 with sgd and 0.00004 with adamw and muon
+	LEARNING_RATE_START=          # Learning rate at the first batch of the first training, kept low to warm up the fresh optimizer state, stated for a batch of 256; empty for 0.0000001 with sgd and 0.000002 with adamw and muon
+	LEARNING_RATE_END=            # Learning rate at the last batch of the first training, stated for a batch of 256; empty for LEARNING_RATE
 	PIT_GAMES=50                  # Gating games per side, the total number of games is twice this
 	WIN_RATE_THRESHOLD=0.55       # Win rate the new model has to reach against the previous one to be accepted
 
@@ -67,19 +68,35 @@ set -euo pipefail
 	# Bound on the norm of the whole gradient, so that a batch that happens to
 	# produce an enormous gradient nudges the weights instead of wrecking them.
 	# The 2500 is the bound for a network whose normalization layers carry no
-	# batch statistics, stated for a loss summed over a batch of 256 samples. It
-	# grows with the square root of the batch size - averaging more samples
-	# shrinks the noise it is there to catch - and dividing by the batch size
-	# restates it for the loss trained on here, which is a mean over the batch
-	# rather than a sum.
-	GRADIENT_CLIPPING=$(awk -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", 2500 * sqrt(b / 256) / b }')
+	# batch statistics trained with SGD, stated for a loss summed over a batch of
+	# 256 samples; Adam and Muon normalize their steps, so a big gradient does
+	# less harm there, and their bound is looser. It grows with the square root
+	# of the batch size - averaging more samples shrinks the noise it is there to
+	# catch - and dividing by the batch size restates it for the loss trained on
+	# here, which is a mean over the batch rather than a sum.
+	if [[ "$OPTIMIZER" == sgd ]]; then
+		GRADIENT_CLIPPING_BOUND=2500
+		: "${LEARNING_RATE:=0.01}" "${LEARNING_RATE_START:=0.0000001}"
+	else
+		GRADIENT_CLIPPING_BOUND=11000
+		: "${LEARNING_RATE:=0.00004}" "${LEARNING_RATE_START:=0.000002}"
+	fi
+	: "${LEARNING_RATE_END:=$LEARNING_RATE}"
+	GRADIENT_CLIPPING=$(awk -v c="$GRADIENT_CLIPPING_BOUND" -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", c * sqrt(b / 256) / b }')
 
-	# The loss is a mean over the batch, so a step moves the weights as far
-	# whatever the batch size; scaling the learning rates with it keeps how far
+	# The loss is a mean over the batch, so an SGD step moves the weights as far
+	# whatever the batch size; scaling its learning rates with it keeps how far
 	# each trained position moves them, and so the learning rates above mean the
-	# same for any BATCHSIZE.
+	# same for any BATCHSIZE. Adam and Muon steps do not depend on the scale of
+	# the gradient at all, and their learning rates grow with the square root of
+	# the batch size instead, as averaging more samples makes their direction
+	# more reliable.
 	scale_learning_rate() {
-		awk -v r="$1" -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", r * b / 256 }'
+		if [[ "$OPTIMIZER" == sgd ]]; then
+			awk -v r="$1" -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", r * b / 256 }'
+		else
+			awk -v r="$1" -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", r * sqrt(b / 256) }'
+		fi
 	}
 	LEARNING_RATE=$(scale_learning_rate "$LEARNING_RATE")
 	LEARNING_RATE_START=$(scale_learning_rate "$LEARNING_RATE_START")
@@ -204,7 +221,7 @@ set -euo pipefail
 		fi
 
 		# Only the first training ramps the learning rate up, to warm up the fresh
-		# momentum; afterwards it stays constant.
+		# optimizer state; afterwards it stays constant.
 		if ((N == 0)); then
 			LR_ARGS=(--learning-rate-start "$LEARNING_RATE_START" --learning-rate-end "$LEARNING_RATE_END")
 		else
@@ -221,6 +238,7 @@ set -euo pipefail
 			"${SWA_ARGS[@]}" \
 			--games "${GAMES[@]}" \
 			"${LR_ARGS[@]}" \
+			--optimizer-kind "$OPTIMIZER" \
 			--gradient-clipping "$GRADIENT_CLIPPING" \
 			"${MIXED_PRECISION_ARGS[@]}" \
 			"${GRADIENT_CHECKPOINTING_ARGS[@]}" \
