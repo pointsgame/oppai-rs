@@ -379,7 +379,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     predictor,
     optimizer,
     gradient_clipping: params.gradient_clipping,
-    convolution_dtype: params.mixed_precision.then_some(FloatDType::BF16),
+    compute_dtype: params.mixed_precision.then_some(FloatDType::BF16),
   };
 
   let mut examples = Examples::default();
@@ -534,7 +534,7 @@ fn validate(
     let batch_rows = batch.inputs.dim().0;
     let losses = predictor
       .losses(
-        learner.convolution_dtype,
+        learner.compute_dtype,
         batch.inputs,
         batch.global,
         batch.policies,

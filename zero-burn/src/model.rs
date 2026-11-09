@@ -1,5 +1,6 @@
+use crate::{resnet::ResidualBlock, transformer::TransformerBlock};
 use burn::{
-  module::{Initializer, Module, ModuleMapper, ModuleVisitor, Param},
+  module::{Devices, Initializer, Module, ModuleMapper, ModuleVisitor, Param},
   nn::{
     Linear, LinearConfig, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
@@ -8,7 +9,7 @@ use burn::{
   optim::{GradientsParams, ModuleOptimizer},
   store::{ModuleRecord, RecordError},
   tensor::{
-    DataError, Device, ExecutionError, FloatDType, Tensor, TensorData,
+    DType, DataError, Device, ExecutionError, FloatDType, Tensor, TensorData,
     activation::{log_softmax, mish, sigmoid, softmax, softplus},
     module::{conv2d, linear},
     ops::ConvOptions,
@@ -26,15 +27,9 @@ use serde::{Deserialize, Serialize};
 use std::{fs::File, io::BufReader, path::Path};
 use thiserror::Error;
 
-/// Model architecture hyperparameters. A model must be created with the same
-/// config it was trained with for the weights to load.
+/// Sizes of the policy, value and captured heads, which every trunk shares.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct ModelConfig {
-  pub inner_channels: usize,
-  pub residual_blocks: usize,
-  pub residual_size: usize,
-  pub gpool_every: usize,
-  pub gpool_channels: usize,
+pub struct HeadsConfig {
   pub v1_channels: usize,
   pub p1_channels: usize,
   pub g1_channels: usize,
@@ -43,7 +38,19 @@ pub struct ModelConfig {
   pub num_scorebeliefs: usize,
 }
 
-impl Default for ModelConfig {
+/// Hyperparameters of a [`ResNet`].
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ResNetConfig {
+  pub inner_channels: usize,
+  pub residual_blocks: usize,
+  pub residual_size: usize,
+  pub gpool_every: usize,
+  pub gpool_channels: usize,
+  #[serde(flatten)]
+  pub heads: HeadsConfig,
+}
+
+impl Default for ResNetConfig {
   fn default() -> Self {
     Self {
       inner_channels: 192,
@@ -51,21 +58,69 @@ impl Default for ModelConfig {
       residual_size: 2,
       gpool_every: 2,
       gpool_channels: 32,
-      v1_channels: 32,
-      p1_channels: 32,
-      g1_channels: 32,
-      v2_size: 80,
-      sbv2_size: 80,
-      num_scorebeliefs: 6,
+      heads: HeadsConfig {
+        v1_channels: 32,
+        p1_channels: 32,
+        g1_channels: 32,
+        v2_size: 80,
+        sbv2_size: 80,
+        num_scorebeliefs: 6,
+      },
     }
   }
 }
 
-impl ModelConfig {
+impl ResNetConfig {
   pub fn residual_inner_channels(&self) -> usize {
     self.inner_channels / 2
   }
+}
 
+/// Hyperparameters of a [`Transformer`].
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct TransformerConfig {
+  /// Channels of the trunk the blocks add their residuals to.
+  pub inner_channels: usize,
+  /// Channels the attention and feed-forward layers inside a block work in.
+  pub mid_channels: usize,
+  pub transformer_blocks: usize,
+  /// Attention and feed-forward layer pairs per block.
+  pub transformer_size: usize,
+  /// Attention heads; `mid_channels` is split evenly between them, and each
+  /// head's share has to be a multiple of 4 for the 2D rotary encoding.
+  pub attention_heads: usize,
+  /// Hidden channels of the feed-forward layers.
+  pub ffn_channels: usize,
+  #[serde(flatten)]
+  pub heads: HeadsConfig,
+}
+
+impl TransformerConfig {
+  pub fn head_channels(&self) -> usize {
+    self.mid_channels / self.attention_heads
+  }
+}
+
+/// Model architecture hyperparameters. A model must be created with the same
+/// config it was trained with for the weights to load.
+///
+/// The file format has no tag: the trunk is told apart by the fields only one
+/// of them has, so the config files written before there was a choice still
+/// read as the [`ResNet`] they describe.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ModelConfig {
+  ResNet(ResNetConfig),
+  Transformer(TransformerConfig),
+}
+
+impl Default for ModelConfig {
+  fn default() -> Self {
+    Self::ResNet(ResNetConfig::default())
+  }
+}
+
+impl ModelConfig {
   pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ModelConfigError> {
     let file = File::open(path)?;
     Ok(serde_json::from_reader(BufReader::new(file))?)
@@ -81,14 +136,14 @@ pub enum ModelConfigError {
 }
 
 // Activation gain for mish, used to keep activation variance stable through the deep residual trunk.
-fn mish_gain() -> f64 {
+pub(crate) fn mish_gain() -> f64 {
   2.210277_f64.sqrt()
 }
 
 /// Reinitialize a weight tensor:
 /// sample from `N(0, (scale * gain / sqrt(fan_in))^2)`, or fill with zeros when `scale == 0`.
 /// Zero scale is how Fixup makes a residual branch start as the identity function.
-fn init_weight<const D: usize>(
+pub(crate) fn init_weight<const D: usize>(
   shape: [usize; D],
   fan_in: usize,
   scale: f64,
@@ -112,33 +167,37 @@ fn init_conv(conv: &mut Conv2d, scale: f64, gain: f64, device: &Device) {
 /// A stride 1 convolution padded to keep the spatial size, which is every
 /// convolution of the network. It computes in the float type of its weight and
 /// returns the float type of its input: a model normally has both in one type,
-/// but [`Model::with_convolution_dtype`] casts the convolution weights alone.
-fn conv2d_same(inputs: Tensor<4>, weight: Tensor<4>) -> Tensor<4> {
+/// but [`Model::with_compute_dtype`] casts the convolution weights alone.
+pub(crate) fn conv2d_same(inputs: Tensor<4>, weight: Tensor<4>) -> Tensor<4> {
   let [_, _, kernel_height, kernel_width] = weight.dims();
   let options = ConvOptions::new([1, 1], [kernel_height / 2, kernel_width / 2], [1, 1], 1);
   let dtype = inputs.dtype();
   conv2d(inputs.cast(weight.dtype()), weight, None, options).cast(dtype)
 }
 
-/// Casts the weights of the [`Conv2d`] modules it maps, leaving every other
-/// parameter as it is.
-struct ConvolutionCaster {
+/// Casts the weights of the [`Conv2d`] and
+/// [`Projection`](crate::transformer::Projection) modules it maps -
+/// the ones nearly all the work of the network is done by - leaving every
+/// other parameter as it is.
+struct ComputeCaster {
   dtype: FloatDType,
-  /// Whether each module entered and not yet exited is a [`Conv2d`].
-  in_conv: Vec<bool>,
+  /// Whether each module entered and not yet exited is one to cast.
+  in_compute: Vec<bool>,
 }
 
-impl ModuleMapper for ConvolutionCaster {
+impl ModuleMapper for ComputeCaster {
   fn enter_module(&mut self, _name: &str, container_type: &str) {
-    self.in_conv.push(container_type == "Struct:Conv2d");
+    self
+      .in_compute
+      .push(container_type == "Struct:Conv2d" || container_type == "Struct:Projection");
   }
 
   fn exit_module(&mut self, _name: &str, _container_type: &str) {
-    self.in_conv.pop();
+    self.in_compute.pop();
   }
 
   fn map_float<const D: usize>(&mut self, param: Param<Tensor<D>>) -> Param<Tensor<D>> {
-    if self.in_conv.last() == Some(&true) {
+    if self.in_compute.last() == Some(&true) {
       param.map(|tensor| tensor.cast(self.dtype))
     } else {
       param
@@ -147,7 +206,7 @@ impl ModuleMapper for ConvolutionCaster {
 }
 
 /// [`Conv2d::forward`] through [`conv2d_same`].
-fn conv_forward(conv: &Conv2d, inputs: Tensor<4>) -> Tensor<4> {
+pub(crate) fn conv_forward(conv: &Conv2d, inputs: Tensor<4>) -> Tensor<4> {
   debug_assert!(
     conv.stride == [1, 1]
       && conv.dilation == [1, 1]
@@ -214,27 +273,22 @@ pub struct ConvAndGPool {
 }
 
 impl ConvAndGPool {
-  pub fn new(device: &Device, config: &ModelConfig) -> Self {
-    let residual_inner_channels = config.residual_inner_channels();
+  /// A `3x3` convolution from `channels` to `channels - gpool_channels`,
+  /// whose output gets the globally pooled `gpool_channels` added to it.
+  pub fn new(device: &Device, channels: usize, gpool_channels: usize) -> Self {
     Self {
-      conv1r: Conv2dConfig::new(
-        [residual_inner_channels, residual_inner_channels - config.gpool_channels],
-        [3, 3],
-      )
-      .with_padding(PaddingConfig2d::Same)
-      .with_bias(false)
-      .init(device),
-      conv1g: Conv2dConfig::new([residual_inner_channels, config.gpool_channels], [3, 3])
+      conv1r: Conv2dConfig::new([channels, channels - gpool_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      normg: NormMask::new(device, config.gpool_channels, false),
-      linearg: LinearConfig::new(
-        3 * config.gpool_channels,
-        residual_inner_channels - config.gpool_channels,
-      )
-      .with_bias(false)
-      .init(device),
+      conv1g: Conv2dConfig::new([channels, gpool_channels], [3, 3])
+        .with_padding(PaddingConfig2d::Same)
+        .with_bias(false)
+        .init(device),
+      normg: NormMask::new(device, gpool_channels, false),
+      linearg: LinearConfig::new(3 * gpool_channels, channels - gpool_channels)
+        .with_bias(false)
+        .init(device),
     }
   }
 
@@ -294,16 +348,18 @@ pub enum ConvOrGpool {
 }
 
 impl ConvOrGpool {
+  /// A global pooling convolution when `gpool_channels` is given, whose
+  /// output channels are `in_channels - gpool_channels` rather than
+  /// `out_channels`.
   pub fn new(
     device: &Device,
-    config: &ModelConfig,
-    gpool: bool,
+    gpool_channels: Option<usize>,
     in_channels: usize,
     out_channels: usize,
     kernel_size: [usize; 2],
   ) -> Self {
-    if gpool {
-      Self::Gpool(ConvAndGPool::new(device, config))
+    if let Some(gpool_channels) = gpool_channels {
+      Self::Gpool(ConvAndGPool::new(device, in_channels, gpool_channels))
     } else {
       Self::Conv(
         Conv2dConfig::new([in_channels, out_channels], kernel_size)
@@ -324,29 +380,28 @@ impl ConvOrGpool {
 
 #[derive(Module, Debug)]
 pub struct NormActConv {
-  norm: NormMask,
-  convgpool: ConvOrGpool,
+  pub(crate) norm: NormMask,
+  pub(crate) convgpool: ConvOrGpool,
 }
 
 impl NormActConv {
   pub fn new(
     device: &Device,
-    config: &ModelConfig,
     gamma: bool,
-    gpool: bool,
+    gpool_channels: Option<usize>,
     in_channels: usize,
     out_channels: usize,
     kernel_size: [usize; 2],
   ) -> Self {
     Self {
       norm: NormMask::new(device, in_channels, gamma),
-      convgpool: ConvOrGpool::new(device, config, gpool, in_channels, out_channels, kernel_size),
+      convgpool: ConvOrGpool::new(device, gpool_channels, in_channels, out_channels, kernel_size),
     }
   }
 
   /// only the convolution is rescaled; the norm stays a learnable affine
   /// since fixup applies no fixed scale to it.
-  fn initialize(&mut self, scale: f64, device: &Device) {
+  pub(crate) fn initialize(&mut self, scale: f64, device: &Device) {
     match &mut self.convgpool {
       ConvOrGpool::Conv(conv) => init_conv(conv, scale, mish_gain(), device),
       ConvOrGpool::Gpool(gpool) => gpool.initialize(scale, device),
@@ -357,115 +412,6 @@ impl NormActConv {
     let out = self.norm.forward(inputs, mask.clone());
     let out = mish(out);
     self.convgpool.forward(out, mask, mask_sum_hw)
-  }
-}
-
-#[derive(Module, Debug)]
-pub struct InnerResidualBlock {
-  normactconv1: NormActConv,
-  normactconv2: NormActConv,
-}
-
-impl InnerResidualBlock {
-  pub fn new(device: &Device, config: &ModelConfig, gpool: bool) -> Self {
-    let residual_inner_channels = config.residual_inner_channels();
-    Self {
-      normactconv1: NormActConv::new(
-        device,
-        config,
-        false,
-        gpool,
-        residual_inner_channels,
-        residual_inner_channels,
-        [3, 3],
-      ),
-      normactconv2: NormActConv::new(
-        device,
-        config,
-        true,
-        false,
-        if gpool {
-          residual_inner_channels - config.gpool_channels
-        } else {
-          residual_inner_channels
-        },
-        residual_inner_channels,
-        [3, 3],
-      ),
-    }
-  }
-
-  /// Scale the first conv, and zero-initialize the second conv so the block starts
-  /// as the identity and only gradually learns a residual.
-  fn initialize(&mut self, fixup_scale: f64, device: &Device) {
-    self.normactconv1.initialize(fixup_scale, device);
-    self.normactconv2.initialize(0.0, device);
-  }
-
-  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
-    let out = self
-      .normactconv1
-      .forward(inputs.clone(), mask.clone(), mask_sum_hw.clone());
-    let out = self.normactconv2.forward(out, mask, mask_sum_hw);
-    inputs + out
-  }
-}
-
-#[derive(Module, Debug)]
-pub struct ResidualBlock {
-  normactconvp: NormActConv,
-  inner: Vec<InnerResidualBlock>,
-  normactconvq: NormActConv,
-}
-
-impl ResidualBlock {
-  pub fn new(device: &Device, config: &ModelConfig, gpool: bool) -> Self {
-    Self {
-      normactconvp: NormActConv::new(
-        device,
-        config,
-        false,
-        false,
-        config.inner_channels,
-        config.residual_inner_channels(),
-        [1, 1],
-      ),
-      inner: (0..config.residual_size)
-        .map(|i| InnerResidualBlock::new(device, config, gpool && i == 0))
-        .collect(),
-      normactconvq: NormActConv::new(
-        device,
-        config,
-        true,
-        false,
-        config.residual_inner_channels(),
-        config.inner_channels,
-        [1, 1],
-      ),
-    }
-  }
-
-  /// Each of the `1 + residual_size` stages gets the geometric share
-  /// `fixup_scale^(1/(1+residual_size))` of the block's scale, and the final `1x1`
-  /// conv is zero-initialized so the whole nested block starts as the identity.
-  fn initialize(&mut self, fixup_scale: f64, device: &Device) {
-    let inner_scale = fixup_scale.powf(1.0 / (1.0 + self.inner.len() as f64));
-    self.normactconvp.initialize(inner_scale, device);
-    for inner in &mut self.inner {
-      inner.initialize(inner_scale, device);
-    }
-    self.normactconvq.initialize(0.0, device);
-  }
-
-  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
-    let mut out = self
-      .normactconvp
-      .forward(inputs.clone(), mask.clone(), mask_sum_hw.clone());
-    for inner in &self.inner {
-      out = inner.forward(out, mask.clone(), mask_sum_hw.clone());
-    }
-    let out = self.normactconvq.forward(out, mask, mask_sum_hw);
-    inputs + out
   }
 }
 
@@ -530,7 +476,7 @@ pub struct ValueHead {
 }
 
 impl ValueHead {
-  pub fn new(device: &Device, config: &ModelConfig) -> Self {
+  pub fn new(device: &Device, inner_channels: usize, config: &HeadsConfig) -> Self {
     let offset_bias_data: Vec<f32> = (0..SCORE_ONE_HOT_SIZE as i32)
       .map(|i| 0.002 * ((i - (SCORE_ONE_HOT_SIZE - 1) as i32 / 2) as f32))
       .collect();
@@ -538,7 +484,7 @@ impl ValueHead {
       Tensor::from_data(TensorData::new(offset_bias_data, [SCORE_ONE_HOT_SIZE]), device);
 
     Self {
-      conv1: Conv2dConfig::new([config.inner_channels, config.v1_channels], [1, 1])
+      conv1: Conv2dConfig::new([inner_channels, config.v1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -772,13 +718,13 @@ pub struct PolicyHead {
 }
 
 impl PolicyHead {
-  pub fn new(device: &Device, config: &ModelConfig) -> Self {
+  pub fn new(device: &Device, inner_channels: usize, config: &HeadsConfig) -> Self {
     Self {
-      conv1p: Conv2dConfig::new([config.inner_channels, config.p1_channels], [1, 1])
+      conv1p: Conv2dConfig::new([inner_channels, config.p1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      conv1g: Conv2dConfig::new([config.inner_channels, config.g1_channels], [1, 1])
+      conv1g: Conv2dConfig::new([inner_channels, config.g1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -843,9 +789,9 @@ pub struct CapturedHead {
 }
 
 impl CapturedHead {
-  pub fn new(device: &Device, config: &ModelConfig) -> Self {
+  pub fn new(device: &Device, inner_channels: usize) -> Self {
     Self {
-      conv: Conv2dConfig::new([config.inner_channels, 2], [1, 1])
+      conv: Conv2dConfig::new([inner_channels, 2], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -862,56 +808,56 @@ impl CapturedHead {
   }
 }
 
-#[derive(Module, Debug)]
-pub struct Model {
-  conv_spatial: Conv2d,
-  linear_global: Linear,
-  residuals: Vec<ResidualBlock>,
-  norm_trunkfinal: NormMask,
-  value_head: ValueHead,
-  policy_head: PolicyHead,
-  captured_head: CapturedHead,
+/// A block of a trunk, which adds a residual to the trunk's channels.
+pub trait TrunkBlock: Module {
+  /// What every block of a trunk needs for a forward pass and is the same for
+  /// all of them, so that it is computed once per pass.
+  type Context;
+
+  fn context(&self, mask: &Tensor<4>) -> Self::Context;
+
+  /// Fixup initialization of the block: it has to start as the identity, and
+  /// `fixup_scale` is the scale its residual branch gets otherwise.
+  fn initialize(&mut self, fixup_scale: f64, device: &Device);
+
+  fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>, context: &Self::Context) -> Tensor<4>;
 }
 
-impl Model {
-  /// The model with the weights of its convolutions cast to `dtype`, and with
-  /// them the convolutions themselves (see [`conv2d_same`]), while everything
-  /// else stays in the type it is in. Convolutions are nearly all the work of
-  /// the network, and in single precision many GPUs cannot run them on their
-  /// matrix units, so a half precision type makes them many times faster. The
-  /// casts are part of the autodiff graph, so the gradients still reach the
-  /// original weights, and the backward pass of the convolutions runs in
-  /// `dtype` as well.
-  pub fn with_convolution_dtype(self, dtype: FloatDType) -> Self {
-    self.map(&mut ConvolutionCaster {
-      dtype,
-      in_conv: Vec::new(),
-    })
-  }
+/// The network around a trunk: the input embedding, the trunk of residual
+/// blocks, and the heads reading the trunk's output.
+#[derive(Module, Debug)]
+pub struct Net<T> {
+  pub(crate) conv_spatial: Conv2d,
+  pub(crate) linear_global: Linear,
+  pub(crate) residuals: Vec<T>,
+  pub(crate) norm_trunkfinal: NormMask,
+  pub(crate) value_head: ValueHead,
+  pub(crate) policy_head: PolicyHead,
+  pub(crate) captured_head: CapturedHead,
+}
 
-  /// Creates the model and loads its weights from `path`. The weights are cast
-  /// to the device's default float type, so a model saved in full precision
-  /// can be evaluated in half precision on a device configured for it.
-  pub fn load<P: AsRef<Path>>(device: &Device, config: &ModelConfig, path: P) -> Result<Self, RecordError> {
-    Self::new(device, config).try_load_record(ModuleRecord::load(path)?.cast_to_module_dtype())
-  }
+/// The convolutional network, of nested bottleneck residual blocks.
+pub type ResNet = Net<ResidualBlock>;
 
-  pub fn new(device: &Device, config: &ModelConfig) -> Self {
+/// The network whose trunk is made of attention: nested bottleneck blocks of
+/// transformer layers.
+pub type Transformer = Net<TransformerBlock>;
+
+impl<T: TrunkBlock> Net<T> {
+  fn with_residuals(device: &Device, inner_channels: usize, heads: &HeadsConfig, residuals: Vec<T>) -> Self {
     Self {
-      conv_spatial: Conv2dConfig::new([CHANNELS, config.inner_channels], [3, 3])
+      conv_spatial: Conv2dConfig::new([CHANNELS, inner_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
-      linear_global: LinearConfig::new(GLOBAL_FEATURES, config.inner_channels)
+      linear_global: LinearConfig::new(GLOBAL_FEATURES, inner_channels)
         .with_bias(false)
         .init(device),
-      residuals: (0..config.residual_blocks)
-        .map(|i| ResidualBlock::new(device, config, (i + 1) % config.gpool_every == 0))
-        .collect(),
-      norm_trunkfinal: NormMask::new(device, config.inner_channels, false),
-      value_head: ValueHead::new(device, config),
-      policy_head: PolicyHead::new(device, config),
-      captured_head: CapturedHead::new(device, config),
+      residuals,
+      norm_trunkfinal: NormMask::new(device, inner_channels, false),
+      value_head: ValueHead::new(device, inner_channels, heads),
+      policy_head: PolicyHead::new(device, inner_channels, heads),
+      captured_head: CapturedHead::new(device, inner_channels),
     }
   }
 
@@ -939,17 +885,26 @@ impl Model {
     self.captured_head.initialize(device);
   }
 
-  pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
+  /// The embedding and the trunk: the features the heads read, the board
+  /// mask, and its area.
+  fn trunk(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, Tensor<4>, Tensor<4>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = conv_forward(&self.conv_spatial, spatial);
     let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
     let mut x = x_spatial + x_global;
-    for residual in &self.residuals {
-      x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
+    if let Some(first) = self.residuals.first() {
+      let context = first.context(&mask);
+      for residual in &self.residuals {
+        x = residual.forward(x, mask.clone(), mask_sum_hw.clone(), &context);
+      }
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
-    x = mish(x);
+    (mish(x), mask, mask_sum_hw)
+  }
+
+  pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
+    let (x, mask, mask_sum_hw) = self.trunk(spatial, global);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
     let captured = self.captured_head.forward(x.clone());
     let value = self.value_head.forward(x, mask, mask_sum_hw);
@@ -961,21 +916,151 @@ impl Model {
     spatial: Tensor<4>,
     global: Tensor<2>,
   ) -> (Tensor<4>, Tensor<2>, Tensor<2>, Tensor<2>) {
-    let mask = spatial.clone().slice(s![.., 0..1]);
-    let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let x_spatial = conv_forward(&self.conv_spatial, spatial);
-    let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
-    let mut x = x_spatial + x_global;
-    for residual in &self.residuals {
-      x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
-    }
-    x = self.norm_trunkfinal.forward(x, mask.clone());
-    x = mish(x);
+    let (x, mask, mask_sum_hw) = self.trunk(spatial, global);
     let policy = self
       .policy_head
       .forward_inference(x.clone(), mask.clone(), mask_sum_hw.clone());
     let (value, value_error, td_score) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
     (policy, value, value_error, td_score)
+  }
+}
+
+impl ResNet {
+  pub fn new(device: &Device, config: &ResNetConfig) -> Self {
+    let residuals = (0..config.residual_blocks)
+      .map(|i| ResidualBlock::new(device, config, (i + 1) % config.gpool_every == 0))
+      .collect();
+    Self::with_residuals(device, config.inner_channels, &config.heads, residuals)
+  }
+}
+
+impl Transformer {
+  pub fn new(device: &Device, config: &TransformerConfig) -> Self {
+    let residuals = (0..config.transformer_blocks)
+      .map(|_| TransformerBlock::new(device, config))
+      .collect();
+    Self::with_residuals(device, config.inner_channels, &config.heads, residuals)
+  }
+}
+
+/// The network of either kind, as its config says.
+///
+/// It is a module whose parameters are those of the network it holds, under
+/// the very same paths: which kind of network a record is for is told by the
+/// config alone, so the records saved when there was only the [`ResNet`] load
+/// as they are, and a record of the other kind fails to load for missing
+/// parameters.
+#[derive(Clone, Debug)]
+pub enum Model {
+  ResNet(ResNet),
+  Transformer(Transformer),
+}
+
+/// Applies the same expression to the network of either kind.
+macro_rules! with_net {
+  ($model:expr, $net:ident => $body:expr) => {
+    match $model {
+      Model::ResNet($net) => $body,
+      Model::Transformer($net) => $body,
+    }
+  };
+}
+
+/// Like [`with_net`], but wraps the result back into the kind it came from.
+macro_rules! map_net {
+  ($model:expr, $net:ident => $body:expr) => {
+    match $model {
+      Model::ResNet($net) => Model::ResNet($body),
+      Model::Transformer($net) => Model::Transformer($body),
+    }
+  };
+}
+
+impl Module for Model {
+  fn collect_devices(&self, devices: Devices) -> Devices {
+    with_net!(self, net => net.collect_devices(devices))
+  }
+
+  fn fork(self, device: &Device) -> Self {
+    map_net!(self, net => net.fork(device))
+  }
+
+  fn to_device(self, device: &Device) -> Self {
+    map_net!(self, net => net.to_device(device))
+  }
+
+  fn train(self) -> Self {
+    map_net!(self, net => net.train())
+  }
+
+  fn valid(&self) -> Self {
+    map_net!(self, net => net.valid())
+  }
+
+  fn materialize(self) -> Self {
+    map_net!(self, net => net.materialize())
+  }
+
+  fn visit<Visitor: ModuleVisitor>(&self, visitor: &mut Visitor) {
+    with_net!(self, net => net.visit(visitor))
+  }
+
+  fn map<Mapper: ModuleMapper>(self, mapper: &mut Mapper) -> Self {
+    map_net!(self, net => net.map(mapper))
+  }
+}
+
+impl Model {
+  pub fn new(device: &Device, config: &ModelConfig) -> Self {
+    match config {
+      ModelConfig::ResNet(config) => Self::ResNet(ResNet::new(device, config)),
+      ModelConfig::Transformer(config) => Self::Transformer(Transformer::new(device, config)),
+    }
+  }
+
+  /// Creates the model and loads its weights from `path`. The weights are cast
+  /// to the device's default float type, so a model saved in full precision
+  /// can be evaluated in half precision on a device configured for it.
+  pub fn load<P: AsRef<Path>>(device: &Device, config: &ModelConfig, path: P) -> Result<Self, RecordError> {
+    Self::new(device, config).try_load_record(ModuleRecord::load(path)?.cast_to_module_dtype())
+  }
+
+  /// The model with the weights of its convolutions and projections cast to
+  /// `dtype`, and with them the convolutions and projections themselves (see
+  /// [`conv2d_same`] and [`Projection`](crate::transformer::Projection)),
+  /// while everything else stays in the type it is in. Those are nearly all
+  /// the work of the network, and in single precision many GPUs cannot run
+  /// them on their matrix units, so a half precision type makes them many
+  /// times faster. The casts are part of the autodiff graph, so the gradients
+  /// still reach the original weights, and the backward pass of what was cast
+  /// runs in `dtype` as well.
+  pub fn with_compute_dtype(self, dtype: FloatDType) -> Self {
+    self.map(&mut ComputeCaster {
+      dtype,
+      in_compute: Vec::new(),
+    })
+  }
+
+  /// See [`Net::initialize`].
+  pub fn initialize(&mut self, device: &Device) {
+    with_net!(self, net => net.initialize(device))
+  }
+
+  pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
+    with_net!(self, net => net.forward(spatial, global))
+  }
+
+  pub fn forward_no_score(
+    &self,
+    spatial: Tensor<4>,
+    global: Tensor<2>,
+  ) -> (Tensor<4>, Tensor<2>, Tensor<2>, Tensor<2>) {
+    with_net!(self, net => net.forward_no_score(spatial, global))
+  }
+
+  /// The float type the network takes its inputs in.
+  fn input_dtype(&self) -> DType {
+    with_net!(self, net => net.conv_spatial.weight.val().dtype())
   }
 }
 
@@ -1057,12 +1142,12 @@ pub struct Learner {
   /// the norm of the whole gradient, see [`gradient_norm`] - exceeds it. `None`
   /// leaves the gradients as they come out of the backward pass.
   pub gradient_clipping: Option<f32>,
-  /// The float type the convolutions compute in during training, `None` for
-  /// the type of the weights. See [`Model::with_convolution_dtype`]; brain floating
-  /// point keeps the range of single precision, so the small gradients of a
-  /// loss averaged over a batch do not underflow the way they do in the 16 bit
-  /// IEEE type.
-  pub convolution_dtype: Option<FloatDType>,
+  /// The float type the convolutions and projections compute in during
+  /// training, `None` for the type of the weights. See
+  /// [`Model::with_compute_dtype`]; brain floating point keeps the range of
+  /// single precision, so the small gradients of a loss averaged over a batch
+  /// do not underflow the way they do in the 16 bit IEEE type.
+  pub compute_dtype: Option<FloatDType>,
 }
 
 #[derive(Error, Debug, From)]
@@ -1103,7 +1188,7 @@ impl OppaiModel<f32> for Predictor {
     // precision (see [`Model::load`]); everything after it runs in single
     // precision, so the softmaxes and what the search reads back are as precise
     // as they would be anyway.
-    let dtype = self.model.conv_spatial.weight.val().dtype();
+    let dtype = self.model.input_dtype();
     let inputs = Tensor::<4>::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
@@ -1305,11 +1390,12 @@ impl Predictor {
   }
 
   /// The loss terms of a batch for the model as it is, with the convolutions
-  /// computing in `convolution_dtype` (see [`Model::with_convolution_dtype`]).
+  /// and projections computing in `compute_dtype` (see
+  /// [`Model::with_compute_dtype`]).
   #[allow(clippy::too_many_arguments)]
   pub fn losses(
     &self,
-    convolution_dtype: Option<FloatDType>,
+    compute_dtype: Option<FloatDType>,
     inputs: Array4<f32>,
     global: Array2<f32>,
     policies: Array3<f32>,
@@ -1367,8 +1453,8 @@ impl Predictor {
     // cell, so the loss is masked only by the board mask.
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let model = match convolution_dtype {
-      Some(dtype) => self.model.clone().with_convolution_dtype(dtype),
+    let model = match compute_dtype {
+      Some(dtype) => self.model.clone().with_compute_dtype(dtype),
       None => self.model.clone(),
     };
     let (out_policy_logits, out_value, out_captured_logits) = model.forward(inputs, global);
@@ -1629,7 +1715,7 @@ impl Learner {
     q_values: Array4<f32>,
   ) -> Losses {
     self.predictor.losses(
-      self.convolution_dtype,
+      self.compute_dtype,
       inputs,
       global,
       policies,
@@ -1716,7 +1802,7 @@ mod tests {
     gradient_norm, interpolate_policy, scale_gradients, score_bins, score_mean_and_variance,
     squared_softplus_with_gradient_floor, stdevs_excess_weight,
   };
-  use super::{Learner, Model, ModelConfig, Predictor};
+  use super::{HeadsConfig, Learner, Model, ModelConfig, Predictor, TransformerConfig};
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   use burn::tensor::DeviceKind;
   #[cfg(feature = "flex")]
@@ -1732,10 +1818,68 @@ mod tests {
     model::{Model as OppaiModel, TrainableModel},
   };
 
+  /// A transformer small enough for the tests to train: two heads of 8
+  /// channels, the fewest the 2D rotary encoding takes.
+  fn transformer_config() -> ModelConfig {
+    ModelConfig::Transformer(TransformerConfig {
+      inner_channels: 32,
+      mid_channels: 16,
+      transformer_blocks: 2,
+      transformer_size: 2,
+      attention_heads: 2,
+      ffn_channels: 24,
+      heads: HeadsConfig {
+        v1_channels: 8,
+        p1_channels: 8,
+        g1_channels: 8,
+        v2_size: 16,
+        sbv2_size: 16,
+        num_scorebeliefs: 2,
+      },
+    })
+  }
+
+  /// Declares a test running `$body` - a function of a [`ModelConfig`] - for
+  /// the default network and for a transformer.
+  macro_rules! for_both_trunks {
+    ($resnet:ident, $transformer:ident, $body:ident) => {
+      #[test]
+      fn $resnet() {
+        $body(ModelConfig::default());
+      }
+
+      #[test]
+      fn $transformer() {
+        $body(transformer_config());
+      }
+    };
+  }
+
   #[test]
   fn default_config_file_matches_default() {
     let config = ModelConfig::from_file(concat!(env!("CARGO_MANIFEST_DIR"), "/configs/b5c192nbt.json")).unwrap();
     assert_eq!(config, ModelConfig::default());
+  }
+
+  /// The config files carry no tag, so which network one is for is told by
+  /// its fields alone.
+  #[test]
+  fn config_files_tell_the_trunks_apart() {
+    for entry in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/configs")).unwrap() {
+      let path = entry.unwrap().path();
+      let config = ModelConfig::from_file(&path).unwrap();
+      let name = path.file_stem().unwrap().to_str().unwrap();
+      assert_eq!(
+        matches!(config, ModelConfig::Transformer(_)),
+        name.ends_with("tf"),
+        "{name}"
+      );
+    }
+    let json = serde_json::to_string(&transformer_config()).unwrap();
+    assert_eq!(
+      serde_json::from_str::<ModelConfig>(&json).unwrap(),
+      transformer_config()
+    );
   }
 
   // The forward value is squared softplus, while the gradient is that of the
@@ -1762,15 +1906,21 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "flex")]
+  for_both_trunks!(
+    scaling_brings_the_whole_gradient_to_the_bound,
+    scaling_brings_the_whole_gradient_to_the_bound_transformer,
+    scaling_brings_the_whole_gradient_to_the_bound_with
+  );
+
   /// The norm being clipped is that of the whole gradient rather than of each
   /// parameter on its own, so scaling the gradient by the ratio of a bound to
   /// that norm brings it to exactly the bound - and every parameter's gradient
   /// takes the same factor, leaving the direction of the update as it was.
-  #[test]
   #[cfg(feature = "flex")]
-  fn scaling_brings_the_whole_gradient_to_the_bound() {
+  fn scaling_brings_the_whole_gradient_to_the_bound_with(config: ModelConfig) {
     let device = Device::flex();
-    let model = Model::new(&device.clone().autodiff(), &ModelConfig::default());
+    let model = Model::new(&device.clone().autodiff(), &config);
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
     let global = Tensor::zeros([1, GLOBAL_FEATURES], &device);
     let (policy_logits, value_logits, _, _) = model.forward_no_score(inputs, global);
@@ -1894,10 +2044,12 @@ mod tests {
     assert_eq!(blended, vec![1.0, -1.0, -3.0, 5.0]);
   }
 
-  #[test]
   #[cfg(feature = "flex")]
-  fn forward() {
-    let model = Model::new(&Device::flex(), &ModelConfig::default());
+  for_both_trunks!(forward, forward_transformer, forward_with);
+
+  #[cfg(feature = "flex")]
+  fn forward_with(config: ModelConfig) {
+    let model = Model::new(&Device::flex(), &config);
     let (policy_logits, predictions, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &Device::flex()),
       Tensor::ones([1, 1], &Device::flex()),
@@ -1946,7 +2098,10 @@ mod tests {
       ConvOrGpool::Gpool(_) => panic!("residual branch output should be a plain conv"),
     };
 
-    for residual in &model.residuals {
+    let Model::ResNet(net) = &model else {
+      panic!("the default network is a ResNet");
+    };
+    for residual in &net.residuals {
       assert_zero(&residual.normactconvq.convgpool);
       for inner in &residual.inner {
         assert_zero(&inner.normactconv2.convgpool);
@@ -1974,15 +2129,104 @@ mod tests {
     );
   }
 
-  // With factor 1 the average must become an exact copy of the model, and with
-  // factor 0 it must stay unchanged - the two endpoints of the EMA lerp.
+  // The same Fixup invariant for the transformer: the convolution out of every
+  // block is zero, so each block starts as the identity however its transformer
+  // layers are initialized.
   #[test]
   #[cfg(feature = "flex")]
-  fn ema_update_endpoints() {
+  fn initialize_zeroes_transformer_branches() {
+    let device = Device::flex();
+    let mut model = Model::new(&device, &transformer_config());
+    model.initialize(&device);
+    let Model::Transformer(net) = &model else {
+      panic!("the config is a transformer's");
+    };
+    for residual in &net.residuals {
+      let ConvOrGpool::Conv(conv) = &residual.normactconvq.convgpool else {
+        panic!("the block's output should be a plain conv");
+      };
+      assert_eq!(conv.weight.val().abs().sum().into_scalar::<f32>(), 0.0);
+    }
+  }
+
+  /// The paths of every float parameter, in traversal order.
+  #[cfg(feature = "flex")]
+  #[derive(Default)]
+  struct PathCollector {
+    path: Vec<String>,
+    paths: Vec<String>,
+  }
+
+  #[cfg(feature = "flex")]
+  impl burn::module::ModuleVisitor for PathCollector {
+    fn enter_module(&mut self, name: &str, _container_type: &str) {
+      self.path.push(name.to_string());
+    }
+
+    fn exit_module(&mut self, _name: &str, _container_type: &str) {
+      self.path.pop();
+    }
+
+    fn visit_float<const D: usize>(&mut self, _param: &burn::module::Param<Tensor<D>>) {
+      self.paths.push(self.path.join("."));
+    }
+  }
+
+  // Wrapping a network into the model leaves its parameters' paths as they
+  // are, so the records saved before there was a choice of trunk still load,
+  // while a record of one kind of network does not load into the other.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn records_keep_the_paths_of_the_network() {
+    use super::{ResNet, ResNetConfig};
+    use burn::module::Module;
+    let device = Device::flex();
+    let net = ResNet::new(&device, &ResNetConfig::default());
+    let mut net_paths = PathCollector::default();
+    net.visit(&mut net_paths);
+    let model = Model::ResNet(net.clone());
+    let mut model_paths = PathCollector::default();
+    model.visit(&mut model_paths);
+    assert_eq!(model_paths.paths, net_paths.paths);
+    assert!(
+      net_paths
+        .paths
+        .iter()
+        .any(|path| path == "residuals.0.normactconvp.norm.beta")
+    );
+
+    let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
+    let global = Tensor::ones([1, 1], &device);
+    let loaded = Model::new(&device, &ModelConfig::default())
+      .try_load_record(net.clone().into_record())
+      .unwrap();
+    loaded
+      .forward_no_score(inputs.clone(), global.clone())
+      .0
+      .into_data()
+      .assert_eq(&net.forward_no_score(inputs, global).0.into_data(), true);
+
+    assert!(
+      Model::new(&device, &transformer_config())
+        .try_load_record(net.into_record())
+        .is_err()
+    );
+  }
+
+  #[cfg(feature = "flex")]
+  for_both_trunks!(
+    ema_update_endpoints,
+    ema_update_endpoints_transformer,
+    ema_update_endpoints_with
+  );
+
+  // With factor 1 the average must become an exact copy of the model, and with
+  // factor 0 it must stay unchanged - the two endpoints of the EMA lerp.
+  #[cfg(feature = "flex")]
+  fn ema_update_endpoints_with(config: ModelConfig) {
     use super::ema_update;
 
     let device = Device::flex();
-    let config = ModelConfig::default();
     let mut average = Model::new(&device, &config);
     average.initialize(&device);
     let mut model = Model::new(&device, &config);
@@ -2009,11 +2253,11 @@ mod tests {
   }
 
   macro_rules! predict_test {
-    ($name:ident, $device:expr) => {
+    ($name:ident, $device:expr, $config:expr) => {
       #[test]
       fn $name() {
         let device = $device;
-        let model = Model::new(&device, &ModelConfig::default());
+        let model = Model::new(&device, &$config);
         let predictor = Predictor { model, device };
         let (policies, values) = futures::executor::block_on(predictor.predict(
           Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
@@ -2066,7 +2310,9 @@ mod tests {
   }
 
   #[cfg(feature = "flex")]
-  predict_test!(predict_flex, Device::flex());
+  predict_test!(predict_flex, Device::flex(), ModelConfig::default());
+  #[cfg(feature = "flex")]
+  predict_test!(predict_transformer_flex, Device::flex(), transformer_config());
 
   /// Casts every float parameter, which is what loading a model on a device
   /// configured for half precision does to it.
@@ -2081,18 +2327,24 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "flex")]
+  for_both_trunks!(
+    half_precision_predicts_what_single_precision_does,
+    half_precision_predicts_what_single_precision_does_transformer,
+    half_precision_predicts_what_single_precision_does_with
+  );
+
   // A model in half precision takes the same single precision inputs and gives
   // back the same single precision outputs, up to the rounding of its weights
   // and activations.
   #[cfg(feature = "flex")]
-  #[test]
-  fn half_precision_predicts_what_single_precision_does() {
+  fn half_precision_predicts_what_single_precision_does_with(config: ModelConfig) {
     use burn::{module::Module, tensor::FloatDType};
     let device = Device::flex();
-    let mut model = Model::new(&device, &ModelConfig::default());
+    let mut model = Model::new(&device, &config);
     model.initialize(&device);
     let half = model.clone().map(&mut CastMapper(FloatDType::F16));
-    assert_eq!(half.conv_spatial.weight.val().dtype(), burn::tensor::DType::F16);
+    assert_eq!(half.input_dtype(), burn::tensor::DType::F16);
     let single = Predictor {
       model,
       device: device.clone(),
@@ -2125,14 +2377,24 @@ mod tests {
     );
   }
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  predict_test!(predict_wgpu, Device::wgpu(DeviceKind::DefaultDevice));
+  predict_test!(
+    predict_wgpu,
+    Device::wgpu(DeviceKind::DefaultDevice),
+    ModelConfig::default()
+  );
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
+  predict_test!(
+    predict_transformer_wgpu,
+    Device::wgpu(DeviceKind::DefaultDevice),
+    transformer_config()
+  );
 
   macro_rules! train_test {
-    ($name:ident, $device:expr) => {
+    ($name:ident, $device:expr, $config:expr) => {
       #[test]
       fn $name() {
         let device = $device.autodiff();
-        let model = Model::new(&device, &ModelConfig::default());
+        let model = Model::new(&device, &$config);
         let predictor = Predictor { model, device };
         let optimizer = SgdConfig::new().init();
         // Clipped, so that the whole step - including scaling the gradients on
@@ -2141,7 +2403,7 @@ mod tests {
           predictor,
           optimizer,
           gradient_clipping: Some(1.0),
-          convolution_dtype: None,
+          compute_dtype: None,
         };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
@@ -2188,20 +2450,26 @@ mod tests {
     };
   }
 
+  #[cfg(feature = "flex")]
+  for_both_trunks!(
+    losses_are_the_training_terms,
+    losses_are_the_training_terms_transformer,
+    losses_are_the_training_terms_with
+  );
+
   // The loss terms validation reads are those of training, named as the
   // training log names them: computing them leaves the model as it is, and a
   // training step on the batch brings them down.
   #[cfg(feature = "flex")]
-  #[test]
-  fn losses_are_the_training_terms() {
+  fn losses_are_the_training_terms_with(config: ModelConfig) {
     let device = Device::flex().autodiff();
-    let model = Model::new(&device, &ModelConfig::default());
+    let model = Model::new(&device, &config);
     let predictor = Predictor { model, device };
     let mut learner = Learner {
       predictor,
       optimizer: SgdConfig::new().init(),
       gradient_clipping: None,
-      convolution_dtype: None,
+      compute_dtype: None,
     };
 
     let mut q_values = Array4::from_elem((1, 3, 4, 8), 0.0);
@@ -2259,26 +2527,32 @@ mod tests {
     assert!(total(&losses(&learner)) < total(&before));
   }
 
+  #[cfg(feature = "flex")]
+  for_both_trunks!(
+    mixed_precision_trains_like_single_precision,
+    mixed_precision_trains_like_single_precision_transformer,
+    mixed_precision_trains_like_single_precision_with
+  );
+
   // Convolutions in brain floating point give the losses and the gradient that
   // single precision ones do, up to rounding - and do round, so they really run
   // in the other type - while the weights stay in single precision.
   #[cfg(feature = "flex")]
-  #[test]
-  fn mixed_precision_trains_like_single_precision() {
+  fn mixed_precision_trains_like_single_precision_with(config: ModelConfig) {
     use burn::{
       module::Module,
       tensor::{DType, FloatDType},
     };
     let device = Device::flex().autodiff();
-    let model = Model::new(&device, &ModelConfig::default());
-    let learner = |convolution_dtype| Learner {
+    let model = Model::new(&device, &config);
+    let learner = |compute_dtype| Learner {
       predictor: Predictor {
         model: model.clone(),
         device: device.clone(),
       },
       optimizer: SgdConfig::new().init(),
       gradient_clipping: None,
-      convolution_dtype,
+      compute_dtype,
     };
     let single = learner(None);
     let mixed = learner(Some(FloatDType::BF16));
@@ -2342,12 +2616,50 @@ mod tests {
     assert!((norms - 1.0).abs() < 1e-2, "{norms}");
 
     // The learner keeps its weights in single precision; only the copy the
-    // forward pass runs on has its convolution weights - and nothing else - cast.
-    assert_eq!(mixed.predictor.model.conv_spatial.weight.val().dtype(), DType::F32);
-    let cast = model.with_convolution_dtype(FloatDType::BF16);
-    assert_eq!(cast.conv_spatial.weight.val().dtype(), DType::BF16);
-    assert_eq!(cast.captured_head.conv.weight.val().dtype(), DType::BF16);
-    assert_eq!(cast.linear_global.weight.val().dtype(), DType::F32);
+    // forward pass runs on has the weights of its convolutions and projections
+    // - and nothing else - cast.
+    let dtypes = |model: &Model| {
+      let mut collector = DTypeCollector::default();
+      model.visit(&mut collector);
+      collector.dtypes
+    };
+    assert!(
+      dtypes(&mixed.predictor.model)
+        .iter()
+        .all(|&(_, dtype)| dtype == DType::F32)
+    );
+    let cast = dtypes(&model.with_compute_dtype(FloatDType::BF16));
+    for (container, dtype) in &cast {
+      let computes = container == "Struct:Conv2d" || container == "Struct:Projection";
+      assert_eq!(*dtype, if computes { DType::BF16 } else { DType::F32 }, "{container}");
+    }
+    assert!(cast.iter().any(|(container, _)| container == "Struct:Conv2d"));
+    assert!(cast.iter().any(|(container, _)| container == "Struct:Linear"));
+  }
+
+  /// The float type of every float parameter, with the type of the module
+  /// holding it.
+  #[cfg(feature = "flex")]
+  #[derive(Default)]
+  struct DTypeCollector {
+    containers: Vec<String>,
+    dtypes: Vec<(String, burn::tensor::DType)>,
+  }
+
+  #[cfg(feature = "flex")]
+  impl burn::module::ModuleVisitor for DTypeCollector {
+    fn enter_module(&mut self, _name: &str, container_type: &str) {
+      self.containers.push(container_type.to_string());
+    }
+
+    fn exit_module(&mut self, _name: &str, _container_type: &str) {
+      self.containers.pop();
+    }
+
+    fn visit_float<const D: usize>(&mut self, param: &burn::module::Param<Tensor<D>>) {
+      let container = self.containers.last().cloned().unwrap_or_default();
+      self.dtypes.push((container, param.val().dtype()));
+    }
   }
 
   /// Every float parameter's gradient, flattened into one vector in traversal
@@ -2370,7 +2682,19 @@ mod tests {
   }
 
   #[cfg(feature = "flex")]
-  train_test!(train_flex, Device::flex());
+  train_test!(train_flex, Device::flex(), ModelConfig::default());
+  #[cfg(feature = "flex")]
+  train_test!(train_transformer_flex, Device::flex(), transformer_config());
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  train_test!(train_wgpu, Device::wgpu(DeviceKind::DefaultDevice));
+  train_test!(
+    train_wgpu,
+    Device::wgpu(DeviceKind::DefaultDevice),
+    ModelConfig::default()
+  );
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
+  train_test!(
+    train_transformer_wgpu,
+    Device::wgpu(DeviceKind::DefaultDevice),
+    transformer_config()
+  );
 }
