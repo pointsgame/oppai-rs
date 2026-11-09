@@ -49,6 +49,7 @@ set -euo pipefail
 	PARALLEL_GAMES=32                                            # How many games to play or recalculate concurrently, merging their positions into shared forward passes
 	BATCH_GAMES=16                                               # How many games' positions are enough to dispatch a forward pass during self-play
 	THREADS=                                                     # How many OS threads play games; empty for the default of one per physical core
+	HALF=1                                                       # 1 to evaluate the network in half precision in self-play, surprise recalculation and pitting, many times faster on GPUs; training always runs in single precision
 	WINDOW=8                                                     # Train on the games of this many most recent cycles; each training writes a position once under a random symmetry, so a position is trained about this many times in total
 	BATCHSIZE=256
 	LEARNING_RATE=0.01            # Constant learning rate for every training after the first one
@@ -76,6 +77,11 @@ set -euo pipefail
 	if [[ -n "$MODEL_CONFIG" ]]; then
 		CONFIG_ARGS=(--model-config "$MODEL_CONFIG")
 		PIT_CONFIG_ARGS=(--model-config "$MODEL_CONFIG" --model-config-new "$MODEL_CONFIG")
+	fi
+
+	HALF_ARGS=()
+	if [[ "$HALF" == 1 ]]; then
+		HALF_ARGS=(--half)
 	fi
 
 	THREADS_ARGS=()
@@ -121,7 +127,7 @@ set -euo pipefail
 			fi
 
 			echo "Self-play"
-			time "$BIN" --device "$DEVICE" play "${CONFIG_ARGS[@]}" \
+			time "$BIN" --device "$DEVICE" "${HALF_ARGS[@]}" play "${CONFIG_ARGS[@]}" \
 				"${PLAY_MODEL_ARGS[@]}" \
 				--width $WIDTHS --height $HEIGHTS \
 				--games "$GAMESDIR"/games_"$N".sgf.gz \
@@ -159,7 +165,7 @@ set -euo pipefail
 			# hence the removal.
 			RECALC_GAMES="$BASEDIR"/games_recalc.sgf.gz
 			rm -f "$RECALC_GAMES"
-			time "$BIN" --device "$DEVICE" recalc-surprise "${CONFIG_ARGS[@]}" \
+			time "$BIN" --device "$DEVICE" "${HALF_ARGS[@]}" recalc-surprise "${CONFIG_ARGS[@]}" \
 				--model "$CURRENT_MODEL" \
 				--games "${OLD_GAMES[@]}" \
 				--games-new "$RECALC_GAMES" \
@@ -200,7 +206,7 @@ set -euo pipefail
 			# the plain weights rather than the averaged ones.
 			echo "Pit"
 			STATUS=0
-			time "$BIN" --device "$DEVICE" pit "${PIT_CONFIG_ARGS[@]}" \
+			time "$BIN" --device "$DEVICE" "${HALF_ARGS[@]}" pit "${PIT_CONFIG_ARGS[@]}" \
 				--width $WIDTHS --height $HEIGHTS \
 				--model "$MODELSDIR"/model_"$N".bpk \
 				--model-new "$MODELSDIR"/model_"$((N + 1))".bpk \

@@ -6,8 +6,9 @@ use burn::{
     loss::HuberLossConfig,
   },
   optim::{GradientsParams, ModuleOptimizer},
+  store::{ModuleRecord, RecordError},
   tensor::{
-    DataError, Device, ExecutionError, Tensor, TensorData,
+    DataError, Device, ExecutionError, FloatDType, Tensor, TensorData,
     activation::{log_softmax, mish, sigmoid, softmax, softplus},
     module::{conv2d, linear},
     ops::ConvOptions,
@@ -823,6 +824,13 @@ pub struct Model {
 }
 
 impl Model {
+  /// Creates the model and loads its weights from `path`. The weights are cast
+  /// to the device's default float type, so a model saved in full precision
+  /// can be evaluated in half precision on a device configured for it.
+  pub fn load<P: AsRef<Path>>(device: &Device, config: &ModelConfig, path: P) -> Result<Self, RecordError> {
+    Self::new(device, config).try_load_record(ModuleRecord::load(path)?.cast_to_module_dtype())
+  }
+
   pub fn new(device: &Device, config: &ModelConfig) -> Self {
     Self {
       conv_spatial: Conv2dConfig::new([CHANNELS, config.inner_channels], [3, 3])
@@ -1020,16 +1028,30 @@ impl OppaiModel<f32> for Predictor {
     optimism: Array1<f32>,
   ) -> Result<(Array3<f32>, Array2<f32>), Self::E> {
     let (batch, channels, height, width) = inputs.dim();
-    let inputs = Tensor::from_data(
+    // The network runs in the float type of its weights, which may be half
+    // precision (see [`Model::load`]); everything after it runs in single
+    // precision, so the softmaxes and what the search reads back are as precise
+    // as they would be anyway.
+    let dtype = self.model.conv_spatial.weight.val().dtype();
+    let inputs = Tensor::<4>::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
       &self.device,
-    );
-    let global = Tensor::from_data(
+    )
+    .cast(dtype);
+    let global = Tensor::<2>::from_data(
       TensorData::new(into_data_vec(global), [batch, GLOBAL_FEATURES]),
       &self.device,
-    );
-    let optimism = Tensor::from_data(TensorData::new(into_data_vec(optimism), [batch, 1, 1]), &self.device);
+    )
+    .cast(dtype);
+    let optimism = Tensor::<3>::from_data(TensorData::new(into_data_vec(optimism), [batch, 1, 1]), &self.device)
+      .cast(FloatDType::F32);
     let (policy_logits, value_logits, value_error, td_score) = self.model.forward_no_score(inputs, global);
+    let (policy_logits, value_logits, value_error, td_score) = (
+      policy_logits.cast(FloatDType::F32),
+      value_logits.cast(FloatDType::F32),
+      value_error.cast(FloatDType::F32),
+      td_score.cast(FloatDType::F32),
+    );
     let policy_logits = interpolate_policy(policy_logits, optimism);
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
     // The predicted squared error becomes a standard deviation for the
@@ -1927,6 +1949,63 @@ mod tests {
 
   #[cfg(feature = "flex")]
   predict_test!(predict_flex, Device::flex());
+
+  /// Casts every float parameter, which is what loading a model on a device
+  /// configured for half precision does to it.
+  #[cfg(feature = "flex")]
+  struct CastMapper(burn::tensor::FloatDType);
+
+  #[cfg(feature = "flex")]
+  impl burn::module::ModuleMapper for CastMapper {
+    fn map_float<const D: usize>(&mut self, param: burn::module::Param<Tensor<D>>) -> burn::module::Param<Tensor<D>> {
+      let (id, tensor, mapper) = param.consume();
+      burn::module::Param::from_mapped_value(id, tensor.cast(self.0), mapper)
+    }
+  }
+
+  // A model in half precision takes the same single precision inputs and gives
+  // back the same single precision outputs, up to the rounding of its weights
+  // and activations.
+  #[cfg(feature = "flex")]
+  #[test]
+  fn half_precision_predicts_what_single_precision_does() {
+    use burn::{module::Module, tensor::FloatDType};
+    let device = Device::flex();
+    let mut model = Model::new(&device, &ModelConfig::default());
+    model.initialize(&device);
+    let half = model.clone().map(&mut CastMapper(FloatDType::F16));
+    assert_eq!(half.conv_spatial.weight.val().dtype(), burn::tensor::DType::F16);
+    let single = Predictor {
+      model,
+      device: device.clone(),
+    };
+    let half = Predictor { model: half, device };
+    let inputs = Array4::from_shape_fn((2, CHANNELS, 4, 8), |(b, c, y, x)| {
+      if c == 0 || (b + c + y * 3 + x) % 4 == 0 {
+        1.0
+      } else {
+        0.0
+      }
+    });
+    let global = Array2::from_elem((2, 1), 0.2);
+    let optimism = array![0.0, 0.5];
+    let (single_policies, single_values) =
+      futures::executor::block_on(single.predict(inputs.clone(), global.clone(), optimism.clone())).unwrap();
+    let (half_policies, half_values) = futures::executor::block_on(half.predict(inputs, global, optimism)).unwrap();
+    assert!(
+      (&half_policies - &single_policies).iter().all(|d| d.abs() < 1e-2),
+      "{half_policies} vs {single_policies}"
+    );
+    // Half precision keeps about three significant digits, so the score, which
+    // is in points rather than a probability, is compared relative to its size.
+    assert!(
+      half_values
+        .iter()
+        .zip(single_values.iter())
+        .all(|(half, single)| (half - single).abs() < 1e-2 * single.abs().max(1.0)),
+      "{half_values} vs {single_values}"
+    );
+  }
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   predict_test!(predict_wgpu, Device::wgpu(DeviceKind::DefaultDevice));
 

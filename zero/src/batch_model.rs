@@ -47,6 +47,7 @@ use ndarray::{Array1, Array2, Array3, Array4, s};
 use num_traits::Float;
 use std::fmt::{self, Display, Formatter};
 use std::mem;
+use std::time::{Duration, Instant};
 
 /// One game's positions awaiting evaluation, along with the channel its slice
 /// of the merged result is sent back through.
@@ -265,8 +266,10 @@ where
   let mut active = 0usize;
   let mut pending: Vec<BatchRequest<N>> = Vec::new();
   let mut in_flight = FuturesUnordered::new();
+  let mut throughput = Throughput::new();
 
   loop {
+    throughput.report_every(REPORT_PERIOD);
     // Wait for a batch's worth of games, or for every game in flight if fewer
     // than that are left - which is what keeps the last games from waiting for
     // submissions that will never come. Games that finish meanwhile announce it
@@ -284,6 +287,9 @@ where
             if let Some(result) = result {
               result?;
             }
+            if in_flight.is_empty() {
+              throughput.drained();
+            }
             continue;
           },
           message = messages.next() => message,
@@ -296,13 +302,113 @@ where
         // All handles are gone: any leftover requests belong to cancelled
         // games, and so do the passes still in flight, so there is nobody left
         // to reply to.
-        None => return Ok(()),
+        None => {
+          throughput.report();
+          return Ok(());
+        }
       }
     }
+    throughput.dispatched(&pending, in_flight.is_empty());
     // Everything queued goes in, not just the target's worth: a game that was
     // ready in time should never be held back to the next forward pass.
     // The pass is not awaited here - it is driven by the loop above, which
     // meanwhile keeps collecting the requests of the games it does not block.
     in_flight.push(evaluate(model, mem::take(&mut pending)));
+  }
+}
+
+/// How often [`run_evaluator`] logs its throughput.
+const REPORT_PERIOD: Duration = Duration::from_secs(60);
+
+/// What [`run_evaluator`] has done since its last report, which is what tells
+/// whether self-play is held back by the device or by the games feeding it.
+struct Throughput {
+  since: Instant,
+  passes: u64,
+  requests: u64,
+  positions: u64,
+  /// Board cells of the positions as submitted.
+  cells: u64,
+  /// Board cells actually evaluated, including the padding up to the largest
+  /// board of each pass.
+  padded_cells: u64,
+  /// Time with no pass in flight: the device had nothing of ours to work on
+  /// because every game was still selecting.
+  idle: Duration,
+  /// Since when no pass is in flight.
+  idle_since: Option<Instant>,
+}
+
+impl Throughput {
+  fn new() -> Self {
+    let now = Instant::now();
+    Throughput {
+      since: now,
+      passes: 0,
+      requests: 0,
+      positions: 0,
+      cells: 0,
+      padded_cells: 0,
+      idle: Duration::ZERO,
+      idle_since: Some(now),
+    }
+  }
+
+  /// The last pass in flight has completed.
+  fn drained(&mut self) {
+    self.idle_since = Some(Instant::now());
+  }
+
+  /// A pass of these requests is about to be dispatched.
+  fn dispatched<N: Float>(&mut self, batch: &[BatchRequest<N>], was_idle: bool) {
+    let (mut positions, mut cells, mut height, mut width) = (0, 0, 0, 0);
+    for request in batch {
+      let (n, _, h, w) = request.features.dim();
+      positions += n;
+      cells += n * h * w;
+      height = height.max(h);
+      width = width.max(w);
+    }
+    self.passes += 1;
+    self.requests += batch.len() as u64;
+    self.positions += positions as u64;
+    self.cells += cells as u64;
+    self.padded_cells += (positions * height * width) as u64;
+    if was_idle && let Some(since) = self.idle_since.take() {
+      self.idle += since.elapsed();
+    }
+  }
+
+  fn report_every(&mut self, period: Duration) {
+    if self.since.elapsed() >= period {
+      self.report();
+    }
+  }
+
+  fn report(&mut self) {
+    let now = Instant::now();
+    let elapsed = now - self.since;
+    let mut idle = self.idle;
+    if let Some(since) = self.idle_since {
+      idle += now - since;
+      self.idle_since = Some(now);
+    }
+    if self.passes > 0 {
+      let seconds = elapsed.as_secs_f64();
+      let passes = self.passes as f64;
+      log::info!(
+        "Evaluator: {:.0} positions/s, {:.1} passes/s, {:.1} positions and {:.1} games per pass, {:.0}% padding, \
+         {:.0}% of the time with no pass in flight",
+        self.positions as f64 / seconds,
+        passes / seconds,
+        self.positions as f64 / passes,
+        self.requests as f64 / passes,
+        100.0 * (1.0 - self.cells as f64 / self.padded_cells as f64),
+        100.0 * idle.as_secs_f64() / seconds,
+      );
+    }
+    let idle_since = self.idle_since;
+    *self = Throughput::new();
+    self.idle_since = idle_since;
   }
 }

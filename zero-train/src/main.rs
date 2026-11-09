@@ -4,11 +4,14 @@ use anyhow::{Error, Result};
 use burn::{
   module::Module,
   optim::{SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
-  tensor::Device,
+  tensor::{Device, DeviceConfig, FloatDType},
 };
-use config::{Action, Config, CountParams, InitParams, PitParams, PlayParams, RecalcParams, TrainParams, cli_parse};
+use config::{
+  Action, BenchParams, Config, CountParams, InitParams, PitParams, PlayParams, RecalcParams, TrainParams, cli_parse,
+};
 use flate2::{Compression, read::MultiGzDecoder, write::GzEncoder};
 use futures::StreamExt;
+use ndarray::{Array1, Array2, Array4};
 use num_traits::Float;
 use oppai_field::{
   any_field::AnyField,
@@ -22,6 +25,7 @@ use oppai_zero::{
   batch_model::{batch_model, run_evaluator},
   episode::{Visits, episode},
   examples::{Examples, is_validation_game},
+  field_features::{CHANNELS, GLOBAL_FEATURES},
   mcgs::{Params, Search},
   model::{Model, TrainableModel},
   opening::opening,
@@ -247,7 +251,7 @@ fn play<R: Rng>(params: PlayParams, device: Device, rng: &mut R, should_stop: Ar
 
   match params.model.clone() {
     Some(model_path) => {
-      let model = BurnModel::new(&device, &params.model_config).try_load_file(model_path)?;
+      let model = BurnModel::load(&device, &params.model_config, model_path)?;
       let predictor = Predictor { model, device };
 
       // All games share one evaluator: their positions are merged into large
@@ -554,13 +558,13 @@ fn validate(
 }
 
 async fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
-  let model_old = BurnModel::new(&device, &params.model_config).try_load_file(params.model)?;
+  let model_old = BurnModel::load(&device, &params.model_config, params.model)?;
   let model_old = Predictor {
     model: model_old,
     device: device.clone(),
   };
 
-  let model_new = BurnModel::new(&device, &params.model_config_new).try_load_file(params.model_new)?;
+  let model_new = BurnModel::load(&device, &params.model_config_new, params.model_new)?;
   let model_new = Predictor {
     model: model_new,
     device,
@@ -822,7 +826,7 @@ async fn recalc<R: Rng>(
   rng: &mut R,
   should_stop: Arc<AtomicBool>,
 ) -> Result<ExitCode> {
-  let model = BurnModel::new(&device, &params.model_config).try_load_file(params.model.clone())?;
+  let model = BurnModel::load(&device, &params.model_config, params.model.clone())?;
   let predictor = Predictor { model, device };
 
   // All games share one evaluator: the single position each of them expands at
@@ -851,7 +855,14 @@ async fn recalc<R: Rng>(
 }
 
 fn run(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
-  let device = config.device;
+  let mut device = config.device;
+  let evaluates_only = matches!(
+    action,
+    Action::Play(_) | Action::Pit(_) | Action::Recalc(_) | Action::Bench(_)
+  );
+  if config.half && evaluates_only {
+    device.configure(DeviceConfig::default().float_dtype(FloatDType::F16))?;
+  }
   let mut rng = config.seed.map_or_else(make_rng, SmallRng::seed_from_u64);
 
   match action {
@@ -861,11 +872,71 @@ fn run(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<E
     Action::Pit(params) => futures::executor::block_on(pit(params, device, &mut rng, should_stop)),
     Action::Count(params) => count(params, &mut rng),
     Action::Recalc(params) => futures::executor::block_on(recalc(params, device, &mut rng, should_stop)),
+    Action::Bench(params) => bench(params, device, &mut rng),
     Action::Devices => {
       list_devices();
       Ok(ExitCode::SUCCESS)
     }
   }
+}
+
+/// Measures how many positions per second the device evaluates when it is kept
+/// busy, which is the ceiling for self-play: comparing it with the throughput
+/// the evaluator logs during self-play tells how much of the device the search
+/// actually uses.
+fn bench<R: Rng>(params: BenchParams, device: Device, rng: &mut R) -> Result<ExitCode> {
+  let model = match params.model {
+    Some(path) => BurnModel::load(&device, &params.model_config, path)?,
+    None => {
+      let mut model = BurnModel::new(&device, &params.model_config);
+      model.initialize(&device);
+      model
+    }
+  };
+  let predictor = Predictor { model, device };
+  let (width, height) = (params.width as usize, params.height as usize);
+  let in_flight_passes = params.in_flight_passes.max(1);
+
+  for &batch_size in &params.batch_sizes {
+    let inputs = Array4::from_shape_simple_fn((batch_size, CHANNELS, height, width), || rng.random::<f32>());
+    let global = Array2::from_shape_simple_fn((batch_size, GLOBAL_FEATURES), || rng.random::<f32>());
+    let optimism = Array1::zeros(batch_size);
+    // The first passes of a shape are slow - kernels get compiled and tuned for
+    // it - so they are run and dropped before measuring.
+    let run = |seconds: f64| -> Result<(u64, f64)> {
+      futures::executor::block_on(async {
+        let start = std::time::Instant::now();
+        let mut passes = 0;
+        let mut in_flight = futures::stream::FuturesUnordered::new();
+        loop {
+          while in_flight.len() < in_flight_passes {
+            in_flight.push(predictor.predict(inputs.clone(), global.clone(), optimism.clone()));
+          }
+          if let Some(result) = in_flight.next().await {
+            result?;
+            passes += 1;
+          }
+          if start.elapsed().as_secs_f64() >= seconds {
+            while let Some(result) = in_flight.next().await {
+              result?;
+              passes += 1;
+            }
+            return Ok((passes, start.elapsed().as_secs_f64()));
+          }
+        }
+      })
+    };
+    run(params.seconds)?;
+    let (passes, elapsed) = run(params.seconds)?;
+    log::info!(
+      "Batch {}: {:.0} positions/s, {:.1} ms per pass",
+      batch_size,
+      (passes * batch_size as u64) as f64 / elapsed,
+      1000.0 * elapsed / passes as f64,
+    );
+  }
+
+  Ok(ExitCode::SUCCESS)
 }
 
 fn main() -> Result<ExitCode> {

@@ -62,6 +62,16 @@ pub struct PitParams {
   pub win_rate_threshold: f64,
 }
 
+pub struct BenchParams {
+  pub model: Option<PathBuf>,
+  pub model_config: ModelConfig,
+  pub width: u32,
+  pub height: u32,
+  pub batch_sizes: Vec<usize>,
+  pub seconds: f64,
+  pub in_flight_passes: usize,
+}
+
 pub struct CountParams {
   pub games: Vec<PathBuf>,
 }
@@ -82,12 +92,14 @@ pub enum Action {
   Pit(PitParams),
   Count(CountParams),
   Recalc(RecalcParams),
+  Bench(BenchParams),
   Devices,
 }
 
 pub struct Config {
   pub device: Device,
   pub seed: Option<u64>,
+  pub half: bool,
 }
 
 fn width_arg() -> Arg {
@@ -461,6 +473,30 @@ pub fn cli_parse() -> (Config, Action) {
     ))
     .arg(in_flight_passes_arg());
 
+  let bench = Command::new("bench")
+    .about("Measure forward passes per second on the device, without any search")
+    .arg(model_arg().required(false))
+    .arg(model_config_arg())
+    .arg(width_arg())
+    .arg(height_arg())
+    .arg(
+      Arg::new("batch-sizes")
+        .long("batch-sizes")
+        .help("Positions per forward pass to measure, space separated")
+        .num_args(1..)
+        .value_parser(value_parser!(usize))
+        .default_values(["32", "64", "128", "256", "512"]),
+    )
+    .arg(
+      Arg::new("seconds")
+        .long("seconds")
+        .help("How long to measure each batch size, after a warm-up of the same length")
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("10"),
+    )
+    .arg(in_flight_passes_arg());
+
   let matches = Command::new(crate_name!())
     .version(crate_version!())
     .author(crate_authors!("\n"))
@@ -471,6 +507,7 @@ pub fn cli_parse() -> (Config, Action) {
     .subcommand(pit)
     .subcommand(count)
     .subcommand(recalc)
+    .subcommand(bench)
     .subcommand(devices)
     .subcommand_required(true)
     .arg(
@@ -488,12 +525,24 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(u64)),
     )
+    .arg(
+      Arg::new("half")
+        .long("half")
+        .help(
+          "Evaluate the network in half precision when only evaluating it - in play, pit, recalc-surprise and \
+           bench. Convolutions in single precision cannot use the matrix units of many GPUs, so this is often \
+           many times faster; training always runs in single precision",
+        )
+        .action(clap::ArgAction::SetTrue),
+    )
     .get_matches();
 
   let device = matches.get_one::<Device>("device").cloned().unwrap();
   let seed = matches.get_one("seed").copied();
 
-  let config = Config { device, seed };
+  let half = matches.get_flag("half");
+
+  let config = Config { device, seed, half };
 
   let action = match matches.subcommand() {
     Some(("init", matches)) => {
@@ -623,6 +672,15 @@ pub fn cli_parse() -> (Config, Action) {
         in_flight_passes,
       })
     }
+    Some(("bench", matches)) => Action::Bench(BenchParams {
+      model: matches.get_one("model").cloned(),
+      model_config: parse_model_config(matches, "model-config"),
+      width: matches.get_one("width").copied().unwrap(),
+      height: matches.get_one("height").copied().unwrap(),
+      batch_sizes: matches.get_many("batch-sizes").unwrap().copied().collect(),
+      seconds: matches.get_one("seconds").copied().unwrap(),
+      in_flight_passes: matches.get_one("in-flight-passes").copied().unwrap(),
+    }),
     Some(("devices", _)) => Action::Devices,
     _ => panic!("no subcommand"),
   };
