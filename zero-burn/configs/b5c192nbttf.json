@@ -1,0 +1,14 @@
+{
+  "inner_channels": 192,
+  "mid_channels": 96,
+  "transformer_blocks": 5,
+  "transformer_size": 2,
+  "attention_heads": 3,
+  "ffn_channels": 256,
+  "v1_channels": 32,
+  "p1_channels": 32,
+  "g1_channels": 32,
+  "v2_size": 80,
+  "sbv2_size": 80,
+  "num_scorebeliefs": 6
+}

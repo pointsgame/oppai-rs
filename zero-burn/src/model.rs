@@ -87,10 +87,16 @@ pub struct TransformerConfig {
   /// Attention and feed-forward layer pairs per block.
   pub transformer_size: usize,
   /// Attention heads; `mid_channels` is split evenly between them, and each
-  /// head's share has to be a multiple of 4 for the 2D rotary encoding.
+  /// head's share has to be even for the 2D rotary encoding, and a multiple of
+  /// 4 for the fixed one.
   pub attention_heads: usize,
   /// Hidden channels of the feed-forward layers.
   pub ffn_channels: usize,
+  /// Whether every attention layer learns the frequencies of its rotary
+  /// encoding, per head and along any direction of the board, instead of the
+  /// fixed ones turning along the rows and the columns only.
+  #[serde(default)]
+  pub learnable_rope: bool,
   #[serde(flatten)]
   pub heads: HeadsConfig,
 }
@@ -1818,9 +1824,13 @@ mod tests {
     model::{Model as OppaiModel, TrainableModel},
   };
 
-  /// A transformer small enough for the tests to train: two heads of 8
-  /// channels, the fewest the 2D rotary encoding takes.
+  /// A transformer small enough for the tests to train, with two heads of 8
+  /// channels, learning its rotary frequencies.
   fn transformer_config() -> ModelConfig {
+    transformer_config_with(true)
+  }
+
+  fn transformer_config_with(learnable_rope: bool) -> ModelConfig {
     ModelConfig::Transformer(TransformerConfig {
       inner_channels: 32,
       mid_channels: 16,
@@ -1828,6 +1838,7 @@ mod tests {
       transformer_size: 2,
       attention_heads: 2,
       ffn_channels: 24,
+      learnable_rope,
       heads: HeadsConfig {
         v1_channels: 8,
         p1_channels: 8,
@@ -2213,6 +2224,41 @@ mod tests {
     );
   }
 
+  // Learned rotary frequencies are parameters of every attention layer, which
+  // a transformer with the fixed ones does not have: a record of one does not
+  // load into the other.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn learned_rope_frequencies_are_in_the_record() {
+    use burn::module::Module;
+    let device = Device::flex();
+    let paths = |config: &ModelConfig| {
+      let mut paths = PathCollector::default();
+      Model::new(&device, config).visit(&mut paths);
+      paths.paths
+    };
+    let fixed = paths(&transformer_config_with(false));
+    let learned = paths(&transformer_config_with(true));
+    let frequencies = learned.iter().filter(|path| !fixed.contains(path)).collect::<Vec<_>>();
+    assert_eq!(
+      frequencies,
+      [
+        "residuals.0.layers.0.attention.rope_frequencies",
+        "residuals.0.layers.1.attention.rope_frequencies",
+        "residuals.1.layers.0.attention.rope_frequencies",
+        "residuals.1.layers.1.attention.rope_frequencies",
+      ]
+    );
+    assert!(fixed.iter().all(|path| learned.contains(path)));
+
+    let record = |config| Model::new(&device, &config).into_record();
+    assert!(
+      Model::new(&device, &transformer_config_with(true))
+        .try_load_record(record(transformer_config_with(false)))
+        .is_err()
+    );
+  }
+
   #[cfg(feature = "flex")]
   for_both_trunks!(
     ema_update_endpoints,
@@ -2313,6 +2359,12 @@ mod tests {
   predict_test!(predict_flex, Device::flex(), ModelConfig::default());
   #[cfg(feature = "flex")]
   predict_test!(predict_transformer_flex, Device::flex(), transformer_config());
+  #[cfg(feature = "flex")]
+  predict_test!(
+    predict_transformer_fixed_rope_flex,
+    Device::flex(),
+    transformer_config_with(false)
+  );
 
   /// Casts every float parameter, which is what loading a model on a device
   /// configured for half precision does to it.
@@ -2685,6 +2737,12 @@ mod tests {
   train_test!(train_flex, Device::flex(), ModelConfig::default());
   #[cfg(feature = "flex")]
   train_test!(train_transformer_flex, Device::flex(), transformer_config());
+  #[cfg(feature = "flex")]
+  train_test!(
+    train_transformer_fixed_rope_flex,
+    Device::flex(),
+    transformer_config_with(false)
+  );
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   train_test!(
     train_wgpu,
