@@ -379,6 +379,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     predictor,
     optimizer,
     gradient_clipping: params.gradient_clipping,
+    convolution_dtype: params.mixed_precision.then_some(FloatDType::BF16),
   };
 
   let mut examples = Examples::default();
@@ -523,13 +524,17 @@ fn validate(
   if validation.is_empty() {
     return;
   }
+  // Nothing is trained on these losses, so they are computed without
+  // recording a backward pass, which would keep every activation around.
+  let predictor = learner.predictor.valid();
   let mut sums: Vec<(&'static str, f64)> = Vec::new();
   let mut rows = 0;
   for batch in validation.batches(width, height, zobrist, batch_size) {
     // The terms are means over the batch, so they are weighed by its rows.
     let batch_rows = batch.inputs.dim().0;
-    let losses = learner
+    let losses = predictor
       .losses(
+        learner.convolution_dtype,
         batch.inputs,
         batch.global,
         batch.policies,

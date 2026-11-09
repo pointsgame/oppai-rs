@@ -49,12 +49,13 @@ set -euo pipefail
 	PARALLEL_GAMES=32                                            # How many games to play or recalculate concurrently, merging their positions into shared forward passes
 	BATCH_GAMES=16                                               # How many games' positions are enough to dispatch a forward pass during self-play
 	THREADS=                                                     # How many OS threads play games; empty for the default of one per physical core
-	HALF=1                                                       # 1 to evaluate the network in half precision in self-play, surprise recalculation and pitting, many times faster on GPUs; training always runs in single precision
+	HALF=1                                                       # 1 to evaluate the network in half precision in self-play, surprise recalculation and pitting, many times faster on GPUs
+	MIXED_PRECISION=1                                            # 1 to compute the convolutions of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
 	WINDOW=8                                                     # Train on the games of this many most recent cycles; each training writes a position once under a random symmetry, so a position is trained about this many times in total
-	BATCHSIZE=256
-	LEARNING_RATE=0.01            # Constant learning rate for every training after the first one
-	LEARNING_RATE_START=0.0000001 # Learning rate at the first batch of the first training, kept low to warm up momentum
-	LEARNING_RATE_END=0.01        # Learning rate at the last batch of the first training
+	BATCHSIZE=64                  # Training memory is mostly the activations kept for the backward pass, about 9 GB for a batch of 64 at 24x24 with mixed precision
+	LEARNING_RATE=0.01            # Constant learning rate for every training after the first one, stated for a batch of 256 and scaled to BATCHSIZE below
+	LEARNING_RATE_START=0.0000001 # Learning rate at the first batch of the first training, kept low to warm up momentum, stated for a batch of 256
+	LEARNING_RATE_END=0.01        # Learning rate at the last batch of the first training, stated for a batch of 256
 	PIT_GAMES=50                  # Gating games per side, the total number of games is twice this
 	WIN_RATE_THRESHOLD=0.55       # Win rate the new model has to reach against the previous one to be accepted
 
@@ -72,6 +73,17 @@ set -euo pipefail
 	# rather than a sum.
 	GRADIENT_CLIPPING=$(awk -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", 2500 * sqrt(b / 256) / b }')
 
+	# The loss is a mean over the batch, so a step moves the weights as far
+	# whatever the batch size; scaling the learning rates with it keeps how far
+	# each trained position moves them, and so the learning rates above mean the
+	# same for any BATCHSIZE.
+	scale_learning_rate() {
+		awk -v r="$1" -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", r * b / 256 }'
+	}
+	LEARNING_RATE=$(scale_learning_rate "$LEARNING_RATE")
+	LEARNING_RATE_START=$(scale_learning_rate "$LEARNING_RATE_START")
+	LEARNING_RATE_END=$(scale_learning_rate "$LEARNING_RATE_END")
+
 	CONFIG_ARGS=()
 	PIT_CONFIG_ARGS=()
 	if [[ -n "$MODEL_CONFIG" ]]; then
@@ -82,6 +94,11 @@ set -euo pipefail
 	HALF_ARGS=()
 	if [[ "$HALF" == 1 ]]; then
 		HALF_ARGS=(--half)
+	fi
+
+	MIXED_PRECISION_ARGS=()
+	if [[ "$MIXED_PRECISION" == 1 ]]; then
+		MIXED_PRECISION_ARGS=(--mixed-precision)
 	fi
 
 	THREADS_ARGS=()
@@ -199,6 +216,7 @@ set -euo pipefail
 			--games "${GAMES[@]}" \
 			"${LR_ARGS[@]}" \
 			--gradient-clipping "$GRADIENT_CLIPPING" \
+			"${MIXED_PRECISION_ARGS[@]}" \
 			--batch-size "$BATCHSIZE" 2>&1 | tee -a "$LOGSDIR"/train.log
 
 		if [[ "$USEGATING" == 1 ]]; then

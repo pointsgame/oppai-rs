@@ -109,6 +109,56 @@ fn init_conv(conv: &mut Conv2d, scale: f64, gain: f64, device: &Device) {
   conv.weight = init_weight([out_c, in_c, kh, kw], in_c * kh * kw, scale, gain, device);
 }
 
+/// A stride 1 convolution padded to keep the spatial size, which is every
+/// convolution of the network. It computes in the float type of its weight and
+/// returns the float type of its input: a model normally has both in one type,
+/// but [`Model::with_convolution_dtype`] casts the convolution weights alone.
+fn conv2d_same(inputs: Tensor<4>, weight: Tensor<4>) -> Tensor<4> {
+  let [_, _, kernel_height, kernel_width] = weight.dims();
+  let options = ConvOptions::new([1, 1], [kernel_height / 2, kernel_width / 2], [1, 1], 1);
+  let dtype = inputs.dtype();
+  conv2d(inputs.cast(weight.dtype()), weight, None, options).cast(dtype)
+}
+
+/// Casts the weights of the [`Conv2d`] modules it maps, leaving every other
+/// parameter as it is.
+struct ConvolutionCaster {
+  dtype: FloatDType,
+  /// Whether each module entered and not yet exited is a [`Conv2d`].
+  in_conv: Vec<bool>,
+}
+
+impl ModuleMapper for ConvolutionCaster {
+  fn enter_module(&mut self, _name: &str, container_type: &str) {
+    self.in_conv.push(container_type == "Struct:Conv2d");
+  }
+
+  fn exit_module(&mut self, _name: &str, _container_type: &str) {
+    self.in_conv.pop();
+  }
+
+  fn map_float<const D: usize>(&mut self, param: Param<Tensor<D>>) -> Param<Tensor<D>> {
+    if self.in_conv.last() == Some(&true) {
+      param.map(|tensor| tensor.cast(self.dtype))
+    } else {
+      param
+    }
+  }
+}
+
+/// [`Conv2d::forward`] through [`conv2d_same`].
+fn conv_forward(conv: &Conv2d, inputs: Tensor<4>) -> Tensor<4> {
+  debug_assert!(
+    conv.stride == [1, 1]
+      && conv.dilation == [1, 1]
+      && conv.groups == 1
+      && conv.bias.is_none()
+      && conv.kernel_size.iter().all(|size| size % 2 == 1),
+    "every convolution of the network is unbiased, odd sized, and of stride 1"
+  );
+  conv2d_same(inputs, conv.weight.val())
+}
+
 /// Reinitialize a linear layer's weights (and bias, if present). The burn weight layout is
 /// `[d_input, d_output]`, so `fan_in = d_input`.
 fn init_linear(
@@ -223,8 +273,8 @@ impl ConvAndGPool {
   }
 
   pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
-    let outr = self.conv1r.forward(inputs.clone());
-    let outg = self.conv1g.forward(inputs);
+    let outr = conv_forward(&self.conv1r, inputs.clone());
+    let outg = conv_forward(&self.conv1g, inputs);
     let outg = self.normg.forward(outg, mask.clone());
     let outg = mish(outg);
     let outg = Self::gpool(outg, mask, mask_sum_hw);
@@ -266,7 +316,7 @@ impl ConvOrGpool {
 
   pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     match self {
-      Self::Conv(conv) => conv.forward(inputs),
+      Self::Conv(conv) => conv_forward(conv, inputs),
       Self::Gpool(gpool) => gpool.forward(inputs, mask, mask_sum_hw),
     }
   }
@@ -555,7 +605,7 @@ impl ValueHead {
   }
 
   pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> ValuePredictions {
-    let outv1 = self.conv1.forward(inputs);
+    let outv1 = conv_forward(&self.conv1, inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
@@ -620,7 +670,7 @@ impl ValueHead {
     mask: Tensor<4>,
     mask_sum_hw: Tensor<4>,
   ) -> (Tensor<2>, Tensor<2>, Tensor<2>) {
-    let outv1 = self.conv1.forward(inputs);
+    let outv1 = conv_forward(&self.conv1, inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
     let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
@@ -758,8 +808,8 @@ impl PolicyHead {
 
   /// The head up to (not including) the final policy conv.
   fn features(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
-    let outp = self.conv1p.forward(inputs.clone());
-    let outg = self.conv1g.forward(inputs);
+    let outp = conv_forward(&self.conv1p, inputs.clone());
+    let outg = conv_forward(&self.conv1g, inputs);
     let outg = self.biasg.forward(outg, mask.clone());
     let outg = mish(outg);
     let outg = ConvAndGPool::gpool(outg, mask.clone(), mask_sum_hw).reshape([0, -1]);
@@ -772,7 +822,7 @@ impl PolicyHead {
 
   fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let outp = self.features(inputs, mask.clone(), mask_sum_hw);
-    let outp = self.conv2p.forward(outp);
+    let outp = conv_forward(&self.conv2p, outp);
     outp - (1.0 - mask) * 5000.0
   }
 
@@ -782,7 +832,7 @@ impl PolicyHead {
   fn forward_inference(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let outp = self.features(inputs, mask.clone(), mask_sum_hw);
     let weight = self.conv2p.weight.val().slice(s![0..INFERENCE_POLICY_OUTPUTS]);
-    let outp = conv2d(outp, weight, None, ConvOptions::new([1, 1], [0, 0], [1, 1], 1));
+    let outp = conv2d_same(outp, weight);
     outp - (1.0 - mask) * 5000.0
   }
 }
@@ -808,7 +858,7 @@ impl CapturedHead {
   }
 
   fn forward(&self, inputs: Tensor<4>) -> Tensor<4> {
-    self.conv.forward(inputs)
+    conv_forward(&self.conv, inputs)
   }
 }
 
@@ -824,6 +874,21 @@ pub struct Model {
 }
 
 impl Model {
+  /// The model with the weights of its convolutions cast to `dtype`, and with
+  /// them the convolutions themselves (see [`conv2d_same`]), while everything
+  /// else stays in the type it is in. Convolutions are nearly all the work of
+  /// the network, and in single precision many GPUs cannot run them on their
+  /// matrix units, so a half precision type makes them many times faster. The
+  /// casts are part of the autodiff graph, so the gradients still reach the
+  /// original weights, and the backward pass of the convolutions runs in
+  /// `dtype` as well.
+  pub fn with_convolution_dtype(self, dtype: FloatDType) -> Self {
+    self.map(&mut ConvolutionCaster {
+      dtype,
+      in_conv: Vec::new(),
+    })
+  }
+
   /// Creates the model and loads its weights from `path`. The weights are cast
   /// to the device's default float type, so a model saved in full precision
   /// can be evaluated in half precision on a device configured for it.
@@ -877,7 +942,7 @@ impl Model {
   pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let x_spatial = self.conv_spatial.forward(spatial);
+    let x_spatial = conv_forward(&self.conv_spatial, spatial);
     let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
     let mut x = x_spatial + x_global;
     for residual in &self.residuals {
@@ -898,7 +963,7 @@ impl Model {
   ) -> (Tensor<4>, Tensor<2>, Tensor<2>, Tensor<2>) {
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let x_spatial = self.conv_spatial.forward(spatial);
+    let x_spatial = conv_forward(&self.conv_spatial, spatial);
     let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
     let mut x = x_spatial + x_global;
     for residual in &self.residuals {
@@ -992,6 +1057,12 @@ pub struct Learner {
   /// the norm of the whole gradient, see [`gradient_norm`] - exceeds it. `None`
   /// leaves the gradients as they come out of the backward pass.
   pub gradient_clipping: Option<f32>,
+  /// The float type the convolutions compute in during training, `None` for
+  /// the type of the weights. See [`Model::with_convolution_dtype`]; brain floating
+  /// point keeps the range of single precision, so the small gradients of a
+  /// loss averaged over a batch do not underflow the way they do in the 16 bit
+  /// IEEE type.
+  pub convolution_dtype: Option<FloatDType>,
 }
 
 #[derive(Error, Debug, From)]
@@ -1221,11 +1292,24 @@ impl Losses {
   }
 }
 
-impl Learner {
-  /// The loss terms of a batch for the model as it is.
+impl Predictor {
+  /// A copy that evaluates without recording anything for a backward pass, for
+  /// computing losses that are only read, like on a validation set: on an
+  /// autodiff device every forward pass keeps its activations for the backward
+  /// pass that never comes.
+  pub fn valid(&self) -> Self {
+    Predictor {
+      model: self.model.valid(),
+      device: self.device.clone().without_autodiff(),
+    }
+  }
+
+  /// The loss terms of a batch for the model as it is, with the convolutions
+  /// computing in `convolution_dtype` (see [`Model::with_convolution_dtype`]).
   #[allow(clippy::too_many_arguments)]
   pub fn losses(
     &self,
+    convolution_dtype: Option<FloatDType>,
     inputs: Array4<f32>,
     global: Array2<f32>,
     policies: Array3<f32>,
@@ -1240,44 +1324,41 @@ impl Learner {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
       TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
-      &self.predictor.device,
+      &self.device,
     );
     let global = Tensor::from_data(
       TensorData::new(into_data_vec(global), [batch, GLOBAL_FEATURES]),
-      &self.predictor.device,
+      &self.device,
     );
     let policies = Tensor::from_data(
       TensorData::new(into_data_vec(policies), [batch, height * width]),
-      &self.predictor.device,
+      &self.device,
     );
     let opponent_policies = Tensor::from_data(
       TensorData::new(into_data_vec(opponent_policies), [batch, height * width]),
-      &self.predictor.device,
+      &self.device,
     );
-    let values = Tensor::from_data(
-      TensorData::new(into_data_vec(values), [batch, 2]),
-      &self.predictor.device,
-    );
+    let values = Tensor::from_data(TensorData::new(into_data_vec(values), [batch, 2]), &self.device);
     let td_values: Tensor<3> = Tensor::from_data(
       TensorData::new(into_data_vec(td_values), [batch, TD_VALUES, 2]),
-      &self.predictor.device,
+      &self.device,
     );
     let td_scores: Tensor<2> = Tensor::from_data(
       TensorData::new(into_data_vec(td_scores), [batch, TD_VALUES]),
-      &self.predictor.device,
+      &self.device,
     );
     let scores = Tensor::from_data(
       TensorData::new(into_data_vec(scores), [batch, SCORE_ONE_HOT_SIZE]),
-      &self.predictor.device,
+      &self.device,
     );
     let scores_cdf = scores.clone().cumsum(1);
     let captured = Tensor::from_data(
       TensorData::new(into_data_vec(captured), [batch, 2, height, width]),
-      &self.predictor.device,
+      &self.device,
     );
     let q_values: Tensor<4> = Tensor::from_data(
       TensorData::new(into_data_vec(q_values), [batch, 3, height, width]),
-      &self.predictor.device,
+      &self.device,
     );
     let q_targets = q_values.clone().slice(s![.., 0..1]).reshape([0, -1]);
     let q_score_targets = q_values.clone().slice(s![.., 1..2]).reshape([0, -1]);
@@ -1286,7 +1367,11 @@ impl Learner {
     // cell, so the loss is masked only by the board mask.
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
-    let (out_policy_logits, out_value, out_captured_logits) = self.predictor.model.forward(inputs, global);
+    let model = match convolution_dtype {
+      Some(dtype) => self.model.clone().with_convolution_dtype(dtype),
+      None => self.model.clone(),
+    };
+    let (out_policy_logits, out_value, out_captured_logits) = model.forward(inputs, global);
     let ValuePredictions {
       value: out_value_logits,
       value_error: out_value_error,
@@ -1447,7 +1532,7 @@ impl Learner {
     // wins - or by how far the final score beat the score the net believed in,
     // measured against the spread of that belief. Nothing reads this policy at
     // inference; it is here because telling those games apart is worth learning.
-    let bins = score_bins(&self.predictor.device);
+    let bins = score_bins(&self.device);
     let (pred_score_mean, pred_score_variance) =
       score_mean_and_variance(out_scores.clone().exp().detach(), bins.clone());
     let (real_score_mean, _) = score_mean_and_variance(scores.clone(), bins);
@@ -1523,6 +1608,39 @@ impl Learner {
       ("q", q_values_loss),
       ("q score", q_scores_loss),
     ])
+  }
+}
+
+impl Learner {
+  /// The loss terms of a batch for the model as it is, which is what
+  /// [`OppaiTrainableModel::train`] minimizes.
+  #[allow(clippy::too_many_arguments)]
+  pub fn losses(
+    &self,
+    inputs: Array4<f32>,
+    global: Array2<f32>,
+    policies: Array3<f32>,
+    opponent_policies: Array3<f32>,
+    values: Array2<f32>,
+    td_values: Array3<f32>,
+    td_scores: Array2<f32>,
+    scores: Array2<f32>,
+    captured: Array4<f32>,
+    q_values: Array4<f32>,
+  ) -> Losses {
+    self.predictor.losses(
+      self.convolution_dtype,
+      inputs,
+      global,
+      policies,
+      opponent_policies,
+      values,
+      td_values,
+      td_scores,
+      scores,
+      captured,
+      q_values,
+    )
   }
 }
 
@@ -2023,6 +2141,7 @@ mod tests {
           predictor,
           optimizer,
           gradient_clipping: Some(1.0),
+          convolution_dtype: None,
         };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
@@ -2082,6 +2201,7 @@ mod tests {
       predictor,
       optimizer: SgdConfig::new().init(),
       gradient_clipping: None,
+      convolution_dtype: None,
     };
 
     let mut q_values = Array4::from_elem((1, 3, 4, 8), 0.0);
@@ -2110,6 +2230,19 @@ mod tests {
 
     let before = losses(&learner);
     assert_eq!(before, losses(&learner));
+    // The copy for validation computes the same losses, only without autodiff.
+    let valid = learner.predictor.valid();
+    assert!(!valid.device.is_autodiff());
+    let b = batch.clone();
+    let valid_losses = valid
+      .losses(None, b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9)
+      .values();
+    for (&(name, training), &(_, validation)) in before.iter().zip(&valid_losses) {
+      assert!(
+        (training - validation).abs() <= 1e-5 * training.abs().max(1.0),
+        "{name}"
+      );
+    }
     let names = before.iter().map(|&(name, _)| name).collect::<Vec<_>>();
     assert_eq!(names.len(), 16);
     assert_eq!(names.iter().collect::<std::collections::HashSet<_>>().len(), 16);
@@ -2124,6 +2257,116 @@ mod tests {
     }
     let total = |losses: &[(&str, f32)]| losses.iter().map(|&(_, loss)| loss).sum::<f32>();
     assert!(total(&losses(&learner)) < total(&before));
+  }
+
+  // Convolutions in brain floating point give the losses and the gradient that
+  // single precision ones do, up to rounding - and do round, so they really run
+  // in the other type - while the weights stay in single precision.
+  #[cfg(feature = "flex")]
+  #[test]
+  fn mixed_precision_trains_like_single_precision() {
+    use burn::{
+      module::Module,
+      tensor::{DType, FloatDType},
+    };
+    let device = Device::flex().autodiff();
+    let model = Model::new(&device, &ModelConfig::default());
+    let learner = |convolution_dtype| Learner {
+      predictor: Predictor {
+        model: model.clone(),
+        device: device.clone(),
+      },
+      optimizer: SgdConfig::new().init(),
+      gradient_clipping: None,
+      convolution_dtype,
+    };
+    let single = learner(None);
+    let mixed = learner(Some(FloatDType::BF16));
+
+    let inputs = Array4::from_shape_fn((2, CHANNELS, 4, 8), |(b, c, y, x)| {
+      if c == 0 || (b + c + y * 3 + x) % 4 == 0 {
+        1.0
+      } else {
+        0.0
+      }
+    });
+    let mut scores = Array2::from_elem((2, SCORE_ONE_HOT_SIZE), 0.0);
+    scores[(0, SCORE_ONE_HOT_SIZE / 2)] = 1.0;
+    scores[(1, SCORE_ONE_HOT_SIZE / 2 + 3)] = 1.0;
+    let losses = |learner: &Learner| {
+      learner.losses(
+        inputs.clone(),
+        array![[0.2], [-0.2]],
+        Array3::from_elem((2, 4, 8), 1.0 / 32.0),
+        Array3::from_elem((2, 4, 8), 1.0 / 32.0),
+        array![[1.0, 0.0], [0.0, 1.0]],
+        Array3::from_elem((2, TD_VALUES, 2), 0.5),
+        Array2::from_elem((2, TD_VALUES), 3.0),
+        scores.clone(),
+        Array4::from_elem((2, 2, 4, 8), 0.0),
+        Array4::from_elem((2, 3, 4, 8), 0.0),
+      )
+    };
+    let gradient = |learner: &Learner| {
+      let super::Losses(losses) = losses(learner);
+      let loss = losses.into_iter().map(|(_, loss)| loss).reduce(|a, b| a + b).unwrap();
+      let model = &learner.predictor.model;
+      let grads = GradientsParams::from_grads(loss.backward(), model);
+      let mut collector = GradientCollector {
+        grads: &grads,
+        values: Vec::new(),
+      };
+      model.visit(&mut collector);
+      collector.values
+    };
+
+    let single_losses = losses(&single).values();
+    let mixed_losses = losses(&mixed).values();
+    assert_ne!(single_losses, mixed_losses);
+    for (&(name, single), &(_, mixed)) in single_losses.iter().zip(&mixed_losses) {
+      assert!(
+        (single - mixed).abs() <= 2e-2 * single.abs().max(1e-2),
+        "{name}: {single} vs {mixed}"
+      );
+    }
+
+    let single_gradient = gradient(&single);
+    let mixed_gradient = gradient(&mixed);
+    // Every weight gets its gradient through the casts, the convolutions' too.
+    assert_eq!(single_gradient.len(), mixed_gradient.len());
+    let dot = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(a, b)| (a * b) as f64).sum::<f64>();
+    let cosine = dot(&single_gradient, &mixed_gradient)
+      / (dot(&single_gradient, &single_gradient) * dot(&mixed_gradient, &mixed_gradient)).sqrt();
+    assert!(cosine > 0.999, "{cosine}");
+    let norms = dot(&mixed_gradient, &mixed_gradient).sqrt() / dot(&single_gradient, &single_gradient).sqrt();
+    assert!((norms - 1.0).abs() < 1e-2, "{norms}");
+
+    // The learner keeps its weights in single precision; only the copy the
+    // forward pass runs on has its convolution weights - and nothing else - cast.
+    assert_eq!(mixed.predictor.model.conv_spatial.weight.val().dtype(), DType::F32);
+    let cast = model.with_convolution_dtype(FloatDType::BF16);
+    assert_eq!(cast.conv_spatial.weight.val().dtype(), DType::BF16);
+    assert_eq!(cast.captured_head.conv.weight.val().dtype(), DType::BF16);
+    assert_eq!(cast.linear_global.weight.val().dtype(), DType::F32);
+  }
+
+  /// Every float parameter's gradient, flattened into one vector in traversal
+  /// order.
+  #[cfg(feature = "flex")]
+  struct GradientCollector<'a> {
+    grads: &'a GradientsParams,
+    values: Vec<f32>,
+  }
+
+  #[cfg(feature = "flex")]
+  impl burn::module::ModuleVisitor for GradientCollector<'_> {
+    fn visit_float<const D: usize>(&mut self, param: &burn::module::Param<Tensor<D>>) {
+      if let Some(grad) = self.grads.get::<D>(param.id) {
+        self
+          .values
+          .extend(grad.into_data().convert::<f32>().try_into_vec::<f32>().unwrap());
+      }
+    }
   }
 
   #[cfg(feature = "flex")]

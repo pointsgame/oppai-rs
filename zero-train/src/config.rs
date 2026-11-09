@@ -44,6 +44,7 @@ pub struct TrainParams {
   pub learning_rate_end: f64,
   pub weight_decay: f32,
   pub gradient_clipping: Option<f32>,
+  pub mixed_precision: bool,
   pub batch_size: usize,
   pub skip: usize,
   pub ignore_surprise: bool,
@@ -366,6 +367,16 @@ pub fn cli_parse() -> (Config, Action) {
         .value_parser(value_parser!(f32)),
     )
     .arg(
+      Arg::new("mixed-precision")
+        .long("mixed-precision")
+        .help(
+          "Compute the convolutions in brain floating point while keeping the weights, the optimizer and everything \
+           else in single precision. Convolutions in single precision cannot use the matrix units of many GPUs, so \
+           this makes training many times faster",
+        )
+        .action(clap::ArgAction::SetTrue),
+    )
+    .arg(
       Arg::new("batch-size")
         .long("batch-size")
         .short('b')
@@ -603,6 +614,7 @@ pub fn cli_parse() -> (Config, Action) {
       let learning_rate_end = matches.get_one("learning-rate-end").cloned().unwrap();
       let weight_decay = matches.get_one("weight-decay").copied().unwrap();
       let gradient_clipping = matches.get_one::<f32>("gradient-clipping").copied();
+      let mixed_precision = matches.get_flag("mixed-precision");
       let batch_size = matches.get_one("batch-size").cloned().unwrap();
       let skip = matches.get_one("skip").copied().unwrap();
       let ignore_surprise = matches.get_flag("ignore-surprise");
@@ -624,6 +636,7 @@ pub fn cli_parse() -> (Config, Action) {
         learning_rate_end,
         weight_decay,
         gradient_clipping,
+        mixed_precision,
         batch_size,
         skip,
         ignore_surprise,
