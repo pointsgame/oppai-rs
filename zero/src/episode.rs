@@ -227,11 +227,14 @@ where
   None
 }
 
+/// Plays a self-play game out from `field`. `readouts` overrides
+/// [`Params::SELF_PLAY`]'s readouts per search call, see [`Params::readouts`].
 pub async fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
   model: &M,
   mut komi_x_2: i32,
+  readouts: usize,
   rng: &mut R,
 ) -> Result<Vec<Visits>, M::E>
 where
@@ -287,7 +290,10 @@ where
     }
   }
 
-  let mut search = Search::new(Params::SELF_PLAY);
+  let mut search = Search::new(Params {
+    readouts,
+    ..Params::SELF_PLAY
+  });
   let mut visits = Vec::new();
 
   // Raw network policy priors of the root, captured before temperature and

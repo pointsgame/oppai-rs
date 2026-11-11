@@ -2176,7 +2176,12 @@ fn forced_playouts_do_not_absorb_a_whole_batch() {
     ........
     ",
   );
-  let mut search = Search::<f64>::new(Params::SELF_PLAY);
+  // Self-play defaults to a single readout, which has no batch to absorb;
+  // several are what self-play runs with when `--readouts` asks for them.
+  let mut search = Search::<f64>::new(Params {
+    readouts: 8,
+    ..Params::SELF_PLAY
+  });
   let model = |inputs: Array4<f64>, _, _| {
     let result: Result<_, ()> = Ok((
       uniform_policies(&inputs),

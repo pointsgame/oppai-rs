@@ -199,7 +199,7 @@ where
         player = player.next();
       }
 
-      let visits = episode(&mut field, player, &model, komi_x_2, &mut rng)
+      let visits = episode(&mut field, player, &model, komi_x_2, params.readouts, &mut rng)
         .await
         .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
 

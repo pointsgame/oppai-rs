@@ -30,7 +30,10 @@ set -euo pipefail
 
 	if [[ $# -lt 2 ]]; then
 		echo "Usage: $0 BASEDIR DEVICE [USEGATING]"
-		echo "Assumes the oppai-zero-train executable is already built with 'cargo build --release'."
+		echo "Assumes the oppai-zero-train executable is already built with 'cargo build --release', or set BIN to another build,"
+		echo "e.g. BIN=target-rocm/release/oppai-zero-train for one built with '--features rocm --target-dir target-rocm'."
+		echo "To keep the other GPUs free, hide them from the process, e.g. 'ROCR_VISIBLE_DEVICES=1 $0 BASEDIR rocm:0'"
+		echo "runs everything on the second ROCm GPU, which is then the only one and so rocm:0."
 		echo "BASEDIR containing self-play games and models"
 		echo "DEVICE device to use, like 'auto', 'rocm:0' or 'flex' (see 'oppai-zero-train devices')"
 		echo "USEGATING = 1 to pit each new model against the previous one and reject it if it does not reach the win rate threshold, 0 to not use gating (default)"
@@ -41,7 +44,7 @@ set -euo pipefail
 	USEGATING="${3:-0}"
 
 	GITROOTDIR="$(git rev-parse --show-toplevel)"
-	BIN="$GITROOTDIR"/target/release/oppai-zero-train
+	BIN="$(realpath "${BIN:-"$GITROOTDIR"/target/release/oppai-zero-train}")"
 
 	GAMESDIR="$BASEDIR"/games
 	MODELSDIR="$BASEDIR"/models
@@ -53,13 +56,15 @@ set -euo pipefail
 
 	# Parameters for the training run.
 
-	MODEL_CONFIG="$GITROOTDIR"/zero-burn/configs/b10c256nbt.json # Path to a JSON file with the model architecture configuration; empty for the default one
+	MODEL_CONFIG="$GITROOTDIR"/zero-burn/configs/b5c192nbt.json # Path to a JSON file with the model architecture configuration; empty for the default one
 	WIDTHS="16 17 18 19 20 21 22 23 24"                          # Field widths to sample from during self-play, space separated
 	HEIGHTS="16 17 18 19 20 21 22 23 24"                         # Field heights to sample from during self-play, space separated
 	KOMIS_X2="0 1 -1"                                            # Komi values multiplied by 2 to sample from during self-play, space separated
 	NUM_GAMES_PER_CYCLE=1024                                     # Every cycle, play this many games; random games are played in batches of this many until there are MIN_POSITIONS positions
-	PARALLEL_GAMES=32                                            # How many games to play or recalculate concurrently, merging their positions into shared forward passes
-	BATCH_GAMES=16                                               # How many games' positions are enough to dispatch a forward pass during self-play
+	PARALLEL_GAMES=192                                           # How many games to play concurrently, merging their positions into shared forward passes; about 20 MB of memory each
+	BATCH_GAMES=64                                               # How many games' positions are enough to dispatch a forward pass during self-play
+	READOUTS=1                                                   # Paths a self-play search selects at once; more than 1 adds virtual losses that weaken the search, but fills the passes with fewer games
+	RECALC_PARALLEL_GAMES=32                                     # How many games to recalculate the surprise of concurrently
 	THREADS=                                                     # How many OS threads play games; empty for the default of one per physical core
 	HALF=1                                                       # 1 to evaluate the network in half precision in self-play, surprise recalculation and pitting, many times faster on GPUs
 	MIXED_PRECISION=1                                            # 1 to compute the convolutions and projections of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
@@ -203,6 +208,7 @@ set -euo pipefail
 			--games "$GAMESDIR"/games_"$N".sgf.gz \
 			--parallel-games "$PARALLEL_GAMES" \
 			--batch-games "$BATCH_GAMES" \
+			--readouts "$READOUTS" \
 			"${THREADS_ARGS[@]}" \
 			--komi-x2 $KOMIS_X2 2>&1 | tee -a "$LOGSDIR"/play.log
 	}
@@ -284,7 +290,7 @@ set -euo pipefail
 				--model "$(played_model "$N")" \
 				--games "${OLD_GAMES[@]}" \
 				--games-new "$RECALC_GAMES" \
-				--parallel-games "$PARALLEL_GAMES" 2>&1 | tee -a "$LOGSDIR"/recalc.log
+				--parallel-games "$RECALC_PARALLEL_GAMES" 2>&1 | tee -a "$LOGSDIR"/recalc.log
 			GAMES+=("$RECALC_GAMES")
 		fi
 

@@ -26,6 +26,7 @@ pub struct PlayParams {
   pub threads: usize,
   pub batch_games: usize,
   pub in_flight_passes: usize,
+  pub readouts: usize,
 }
 
 pub struct TrainParams {
@@ -188,13 +189,13 @@ fn optimizer_new_arg() -> Arg {
     .required(true)
 }
 
-fn parallel_games_arg(help: &'static str) -> Arg {
+fn parallel_games_arg(help: &'static str, default: &'static str) -> Arg {
   Arg::new("parallel-games")
     .long("parallel-games")
     .help(help)
     .num_args(1)
     .value_parser(value_parser!(usize))
-    .default_value("32")
+    .default_value(default)
 }
 
 fn threads_arg() -> Arg {
@@ -219,7 +220,7 @@ fn batch_games_arg() -> Arg {
     )
     .num_args(1)
     .value_parser(value_parser!(usize))
-    .default_value("16")
+    .default_value("64")
 }
 
 fn in_flight_passes_arg() -> Arg {
@@ -286,11 +287,25 @@ pub fn cli_parse() -> (Config, Action) {
         .default_value("1"),
     )
     .arg(parallel_games_arg(
-      "How many games to play concurrently, merging their positions into shared forward passes",
+      "How many games to play concurrently, merging their positions into shared forward passes. Each game \
+       submits only --readouts positions at a time, so this, not the readouts, is what fills them",
+      "192",
     ))
     .arg(threads_arg())
     .arg(batch_games_arg())
-    .arg(in_flight_passes_arg());
+    .arg(in_flight_passes_arg())
+    .arg(
+      Arg::new("readouts")
+        .long("readouts")
+        .help(
+          "How many paths a game's search selects at once, all but the first steered away from the others by \
+           virtual losses - guesses that make the search weaker than its playout count promises. Larger values \
+           fill the forward passes with fewer concurrent games",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(usize))
+        .default_value("1"),
+    );
   let train = Command::new("train")
     .about("Train the neural network")
     .arg(width_arg())
@@ -551,6 +566,7 @@ pub fn cli_parse() -> (Config, Action) {
     )
     .arg(parallel_games_arg(
       "How many games to recalculate concurrently, merging their positions into shared forward passes",
+      "32",
     ))
     .arg(in_flight_passes_arg());
 
@@ -653,6 +669,7 @@ pub fn cli_parse() -> (Config, Action) {
         .unwrap_or_else(num_cpus::get_physical);
       let batch_games = matches.get_one("batch-games").copied().unwrap();
       let in_flight_passes = matches.get_one("in-flight-passes").copied().unwrap();
+      let readouts = matches.get_one("readouts").copied().unwrap();
       Action::Play(PlayParams {
         width,
         height,
@@ -665,6 +682,7 @@ pub fn cli_parse() -> (Config, Action) {
         threads,
         batch_games,
         in_flight_passes,
+        readouts,
       })
     }
     Some(("train", matches)) => {

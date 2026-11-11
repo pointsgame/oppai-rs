@@ -472,6 +472,14 @@ pub struct Params {
   /// to gain and the loser something to save - where the pure win/loss value
   /// has none. See [`Search::aux_utility`].
   pub score_utility_factor: f64,
+  /// How many paths one [`Search::mcgs`] call selects and sends to the net
+  /// together, each later one steered away from the earlier ones by a virtual
+  /// loss. A virtual loss is a guess about a playout that hasn't come back, so
+  /// every readout but the first is chosen on worse information than a
+  /// sequential search would have had; the more of them per call, the further
+  /// the search drifts from the one its playout count promises. They are only
+  /// worth it when this game's own positions are what fills the forward pass.
+  pub readouts: usize,
 }
 
 impl Params {
@@ -502,6 +510,11 @@ impl Params {
     noise_prune_utility_scale: 0.0,
     early_utility_factor: 0.3,
     score_utility_factor: 0.1,
+    // One path at a time, so the search behind every recorded target is
+    // exactly the sequential one its playout count stands for. Self-play runs
+    // hundreds of games against one evaluator, and it is their number rather
+    // than the readouts of each that fills the forward passes.
+    readouts: 1,
   };
 
   /// Playing to win: no search spent on moves that lose points outright, certain
@@ -530,6 +543,9 @@ impl Params {
     noise_prune_utility_scale: 0.15,
     early_utility_factor: 0.3,
     score_utility_factor: 0.1,
+    // A single game has nothing to share its forward passes with, so it fills
+    // them with its own readouts.
+    readouts: 8,
   };
 
   /// Radius of the utility range. The win/loss value spans `[-1, 1]` and each
@@ -1396,8 +1412,6 @@ impl<N: Float + Sum + Copy> Search<N> {
     Some(BiasKey { last, prev, pattern })
   }
 
-  const PARALLEL_READOUTS: usize = 8;
-
   /// The symmetries a position goes to the net under: [`Params::root_symmetries`]
   /// distinct ones for the root, a single one for any other node. A single one
   /// is random when [`Params::random_symmetry`] asks for it and the identity
@@ -1648,8 +1662,9 @@ impl<N: Float + Sum + Copy> Search<N> {
       self.refresh_root_priors(field, player, model, komi_x_2, rng).await?;
     }
     let weigh = self.weigh_by_uncertainty(model);
+    let readouts = self.params.readouts.max(1);
     let mut leafs = iter::repeat_with(|| self.select_path())
-      .take(Self::PARALLEL_READOUTS)
+      .take(readouts)
       .collect::<Vec<_>>();
     for (path, _) in &leafs {
       self.revert_virtual_loss(path);
