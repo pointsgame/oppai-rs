@@ -1812,8 +1812,8 @@ impl OppaiTrainableModel<f32> for Learner {
 mod tests {
   #[cfg(feature = "flex")]
   use super::{
-    ConvOrGpool, GLOBAL_FEATURES, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, VALUE_VARIANCE_FLOOR,
-    gradient_norm, interpolate_policy, scale_gradients, score_bins, score_mean_and_variance,
+    ConvOrGpool, GLOBAL_FEATURES, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, TD_SCORE_SCALE,
+    VALUE_VARIANCE_FLOOR, gradient_norm, interpolate_policy, scale_gradients, score_bins, score_mean_and_variance,
     squared_softplus_with_gradient_floor, stdevs_excess_weight,
   };
   use super::{HeadsConfig, Learner, Model, ModelConfig, Predictor, TransformerConfig};
@@ -2428,13 +2428,25 @@ mod tests {
       (&half_policies - &single_policies).iter().all(|d| d.abs() < 1e-2),
       "{half_policies} vs {single_policies}"
     );
-    // Half precision keeps about three significant digits, so the score, which
-    // is in points rather than a probability, is compared relative to its size.
+    // Half precision keeps about three significant digits of the activations,
+    // so an output is off by a fraction of the unit its layer's raw output is
+    // stated in, however small the output itself: the score, that raw output
+    // times TD_SCORE_SCALE points, is off by a few hundredths of a point even
+    // when it is near zero. Outputs are compared relative to their size, but
+    // never more tightly than that unit allows.
+    let units = [1.0, 1.0, 1.0, TD_SCORE_SCALE as f32];
     assert!(
       half_values
-        .iter()
-        .zip(single_values.iter())
-        .all(|(half, single)| (half - single).abs() < 1e-2 * single.abs().max(1.0)),
+        .rows()
+        .into_iter()
+        .zip(single_values.rows())
+        .all(|(half, single)| {
+          half
+            .iter()
+            .zip(single)
+            .zip(units)
+            .all(|((half, single), unit)| (half - single).abs() < 1e-2 * single.abs().max(unit))
+        }),
       "{half_values} vs {single_values}"
     );
   }
