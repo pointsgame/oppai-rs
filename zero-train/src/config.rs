@@ -49,6 +49,7 @@ pub struct TrainParams {
   pub gradient_checkpointing: bool,
   pub batch_size: usize,
   pub skip: usize,
+  pub train_examples: Option<usize>,
   pub ignore_surprise: bool,
   pub validation_fraction: f64,
 }
@@ -445,6 +446,16 @@ pub fn cli_parse() -> (Config, Action) {
         .default_value("512"),
     )
     .arg(
+      Arg::new("train-examples")
+        .long("train-examples")
+        .help(
+          "Train on only this many of the examples, drawn at random, instead of one pass over all of them. Lets \
+           the window of games trained on grow without the training growing with it [default: all of them]",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(usize)),
+    )
+    .arg(
       Arg::new("skip")
         .long("skip")
         .short('s')
@@ -470,7 +481,7 @@ pub fn cli_parse() -> (Config, Action) {
         )
         .num_args(1)
         .value_parser(value_parser!(f64))
-        .default_value("0.05"),
+        .default_value("0"),
     );
   let pit = Command::new("pit")
     .about("Pit one neural network against another")
@@ -707,6 +718,7 @@ pub fn cli_parse() -> (Config, Action) {
         batch_size,
       };
       let skip = matches.get_one("skip").copied().unwrap();
+      let train_examples = matches.get_one("train-examples").copied();
       let ignore_surprise = matches.get_flag("ignore-surprise");
       let validation_fraction = matches.get_one("validation-fraction").copied().unwrap();
       Action::Train(TrainParams {
@@ -730,6 +742,7 @@ pub fn cli_parse() -> (Config, Action) {
         gradient_checkpointing,
         batch_size,
         skip,
+        train_examples,
         ignore_surprise,
         validation_fraction,
       })

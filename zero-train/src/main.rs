@@ -450,13 +450,24 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     "before",
   );
 
+  // Shuffled, so that the batches trained on are a random sample of the
+  // examples when only some of them are.
   examples.shuffle(rng);
-  let batches_count = examples.batches_count(params.batch_size);
+  let batches_count = params.train_examples.map_or_else(
+    || examples.batches_count(params.batch_size),
+    |train_examples| {
+      examples
+        .batches_count(params.batch_size)
+        .min((train_examples / params.batch_size).max(1))
+    },
+  );
+  log::info!("Training on {} batches of {}", batches_count, params.batch_size);
   // By default average a snapshot every half-epoch, so a single training run
   // contributes two snapshots to the moving average.
   let swa_period = params.swa_period.unwrap_or((batches_count / 2).max(1));
   for (i, batch) in examples
     .batches(params.width, params.height, zobrist.clone(), params.batch_size)
+    .take(batches_count)
     .enumerate()
     .skip(params.skip)
   {
