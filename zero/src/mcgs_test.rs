@@ -2390,7 +2390,7 @@ fn utility_carries_the_auxiliary_terms_the_value_does_not() {
   };
   let mut search = Search::<f64>::new(params);
 
-  let winloss = 0.5;
+  let winloss: f64 = 0.5;
   let score = 6.0;
   // The first batch only expands the root, so its node holds exactly one
   // evaluation of the constructed position and the numbers can be checked
@@ -2411,14 +2411,132 @@ fn utility_carries_the_auxiliary_terms_the_value_does_not() {
   .unwrap();
 
   let area = (field.width() * field.height()) as f64;
-  let length_value = ((0.32 - field.moves_count() as f64 / area) / 0.1).atan() * std::f64::consts::FRAC_2_PI;
-  let score_value = (score / (area.sqrt() / 2.0)).atan() * std::f64::consts::FRAC_2_PI;
-  let utility = winloss + 0.3 * winloss * length_value + 0.1 * score_value;
+  let scale = area.sqrt() / 2.0;
+  // Red, to move and favoured, has its one dot ungrounded and no lead: a
+  // shortfall of one point.
+  assert_eq!(field.non_grounded_red, 1);
+  let finish_value = 1.0 - 2.0 * std::f64::consts::FRAC_2_PI * (1.0 / scale).atan();
+  let score_value = (score / scale).atan() * std::f64::consts::FRAC_2_PI;
+  let utility = winloss + 0.3 * winloss * winloss.abs() * finish_value + 0.1 * score_value;
 
   assert!((search.nodes[0].value - utility).abs() < 1e-12);
   assert!((search.nodes[0].raw_value - utility).abs() < 1e-12);
   assert_eq!(search.winloss(), winloss);
   assert_eq!(search.raw_winloss(), winloss);
+}
+
+/// Only the early-finish term, so the tests below read it in isolation.
+const EARLY_FINISH_PARAMS: Params = Params {
+  early_utility_factor: 0.15,
+  score_utility_factor: 0.0,
+  ..PARAMS
+};
+
+/// The side the win/loss value favours earns the most early-finish utility once
+/// its lead covers all of its ungrounded dots - where the game could end - and
+/// less the more of them are left to ground.
+#[test]
+fn early_finish_rewards_the_winner_for_grounding() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let grounded = construct_field(
+    &mut rng,
+    "
+    ..a..
+    .....
+    ...A.
+    .....
+    .....
+    ",
+  );
+  let ungrounded = construct_field(
+    &mut rng,
+    "
+    .....
+    ..a..
+    ...A.
+    .....
+    .....
+    ",
+  );
+  assert_eq!(grounded.non_grounded_red, 0);
+  assert_eq!(ungrounded.non_grounded_red, 1);
+  let search = Search::<f64>::new(EARLY_FINISH_PARAMS);
+
+  let winloss = 0.8;
+  let at_end = search.aux_utility(&grounded, Player::Red, 0, winloss, 0.0);
+  assert!((at_end - 0.15 * winloss * winloss).abs() < 1e-12);
+  let short = search.aux_utility(&ungrounded, Player::Red, 0, winloss, 0.0);
+  assert!(short < at_end);
+
+  // A lead that covers the ungrounded dots is as good as grounding them.
+  let covered = search.aux_utility(&ungrounded, Player::Red, 3, winloss, 0.0);
+  assert!((covered - at_end).abs() < 1e-12);
+}
+
+/// The losing side reads the winner's shortfall, so it gains by keeping the
+/// winner's dots ungrounded - and the term is zero-sum: the winner's utility is
+/// exactly the negated loser's.
+#[test]
+fn early_finish_rewards_the_loser_for_keeping_the_winner_ungrounded() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let winner_grounded = construct_field(
+    &mut rng,
+    "
+    .....
+    .a...
+    ....A
+    .....
+    .....
+    ",
+  );
+  let winner_ungrounded = construct_field(
+    &mut rng,
+    "
+    .....
+    .a...
+    ..A..
+    .....
+    .....
+    ",
+  );
+  assert_eq!(winner_grounded.non_grounded_black, 0);
+  assert_eq!(winner_ungrounded.non_grounded_black, 1);
+  let search = Search::<f64>::new(EARLY_FINISH_PARAMS);
+
+  let winloss = -0.8;
+  let lost_at_end = search.aux_utility(&winner_grounded, Player::Red, 0, winloss, 0.0);
+  let lost_short = search.aux_utility(&winner_ungrounded, Player::Red, 0, winloss, 0.0);
+  assert!(lost_at_end < lost_short);
+
+  for field in [&winner_grounded, &winner_ungrounded] {
+    let loser = search.aux_utility(field, Player::Red, 0, winloss, 0.0);
+    let winner = search.aux_utility(field, Player::Black, 0, -winloss, 0.0);
+    assert!((loser + winner).abs() < 1e-12);
+  }
+}
+
+/// The early-finish term fades out of contested positions, where grounding is a
+/// real trade-off it should not bias, and vanishes at an even one, where the
+/// side it reads the shortfall of changes.
+#[test]
+fn early_finish_fades_out_of_contested_positions() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(
+    &mut rng,
+    "
+    .....
+    .a...
+    ..A..
+    .....
+    .....
+    ",
+  );
+  let search = Search::<f64>::new(EARLY_FINISH_PARAMS);
+
+  assert_eq!(search.aux_utility(&field, Player::Red, 0, 0.0, 0.0), 0.0);
+  let decided = search.aux_utility(&field, Player::Red, 0, 0.8, 0.0);
+  let contested = search.aux_utility(&field, Player::Red, 0, 0.1, 0.0);
+  assert!((contested / decided - (0.1f64 / 0.8).powi(2)).abs() < 1e-12);
 }
 
 /// What expanding a node took from the net: its win/loss value, its score, its

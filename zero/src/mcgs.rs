@@ -400,9 +400,9 @@ pub fn game_score<N: Float>(field: &Field, player: Player, komi_x_2: i32) -> N {
 ///
 /// The exploration coefficients multiply a utility, so in principle they scale
 /// with the range of one. The values here are taken from a search whose utility
-/// carries auxiliary score terms of the same total weight as
-/// [`Self::early_utility_factor`] plus [`Self::score_utility_factor`], about 1.4,
-/// so the ranges match. Where the range enters a formula explicitly - the
+/// carries auxiliary score terms of total weight about 1.4, close to the 1.25 of
+/// [`Self::early_utility_factor`] plus [`Self::score_utility_factor`], so the
+/// ranges roughly match. Where the range enters a formula explicitly - the
 /// utility a virtual loss pulls towards, the largest-possible-variance prior of
 /// the LCB - it is derived from the factors; see [`Self::utility_radius`].
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -459,12 +459,15 @@ pub struct Params {
   /// FPU reduction applied at the root, where the alternative to a reduction is
   /// exploring widely.
   pub root_fpu_reduction_max: f64,
-  /// Weight of the early-finish term of the utility: the win/loss value scaled
-  /// by how far short of a typical game's length the position sits. Among won
-  /// lines the ones whose terminals come sooner carry more of it, so a decided
-  /// game gets finished rather than played out - and it outweighs
-  /// [`Self::score_utility_factor`], so ending the game sooner is worth more
-  /// than winning by more points. See [`Search::aux_utility`].
+  /// Weight of the early-finish term of the utility: the win/loss value, times
+  /// its magnitude, scaled by how close the side it favours is to being able
+  /// to end the game. Among won lines the ones that ground the winner's dots
+  /// carry more of it, so a decided game gets finished rather than played out -
+  /// and it outweighs [`Self::score_utility_factor`], so ending the game sooner
+  /// is worth more than winning by more points. Kept well below the win/loss
+  /// value's own weight: a single move grounding a long chain shifts the term
+  /// by a good part of its range, and that should not be worth giving away
+  /// real winning chances. See [`Search::aux_utility`].
   pub early_utility_factor: f64,
   /// Weight of the score term of the utility: the expected final score in
   /// points, squashed so the first few points of a lead matter most and a rout
@@ -508,7 +511,7 @@ impl Params {
     // teach the policy that a move is worth less than the search spent on it
     // exactly where the search was told to spend more than it wanted to.
     noise_prune_utility_scale: 0.0,
-    early_utility_factor: 0.3,
+    early_utility_factor: 0.15,
     score_utility_factor: 0.1,
     // One path at a time, so the search behind every recorded target is
     // exactly the sequential one its playout count stands for. Self-play runs
@@ -541,7 +544,7 @@ impl Params {
     root_fpu_reduction_max: 0.1,
     value_weight_exponent: 0.25,
     noise_prune_utility_scale: 0.15,
-    early_utility_factor: 0.3,
+    early_utility_factor: 0.15,
     score_utility_factor: 0.1,
     // A single game has nothing to share its forward passes with, so it fills
     // them with its own readouts.
@@ -1034,34 +1037,44 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
-  /// Where the early-finish squash is centered and how wide it is, both as
-  /// fractions of the field filled. Dots games fill ~0.32 of the field, so
-  /// that is where the squash spends its slope: a term linear in the fill
-  /// would spread the same budget over fills no game ever ends at - a game
-  /// cannot end within the first moves and practically never fills the board -
-  /// leaving only a sliver of gradient for the window where terminals really
-  /// land. The width covers the spread of realistic game lengths around the
-  /// center.
-  const TYPICAL_FINAL_FILL: f64 = 0.32;
-  const FINAL_FILL_SCALE: f64 = 0.1;
+  /// Twice the points a side still has to secure before it may end the game:
+  /// its ungrounded dots minus its lead, komi included, never below zero. The
+  /// game ends as soon as either side's lead exceeds its ungrounded dots - see
+  /// [`Field::is_game_over`] - so this is the distance to the end that a side
+  /// can close by its own moves: every dot it grounds and every point it
+  /// captures takes it closer.
+  fn shortfall_x_2(field: &Field, player: Player, komi_x_2: i32) -> i32 {
+    let lead_x_2 = field.score(player) * 2 + komi_x_2;
+    let non_grounded = match player {
+      Player::Red => field.non_grounded_red,
+      Player::Black => field.non_grounded_black,
+    } as i32;
+    (non_grounded * 2 - lead_x_2).max(0)
+  }
 
   /// The auxiliary utility of a leaf evaluation: what the search plays for
   /// beyond winning. Added on top of the win/loss value to form the utility the
   /// tree selects moves by, while the win/loss value itself is carried
   /// separately for the training targets. `field` holds the position being
-  /// evaluated; `score` is its expected final score - the net's estimate for an
-  /// ordinary leaf, the exact score for a terminal one.
+  /// evaluated with `player` to move and `komi_x_2` from `player`'s
+  /// perspective; `score` is its expected final score - the net's estimate for
+  /// an ordinary leaf, the exact score for a terminal one.
   ///
-  /// The early-finish term scales the win/loss value by how far short of a
-  /// typical game's length the position sits, squashed through an atan centered
-  /// at [`Self::TYPICAL_FINAL_FILL`]. Within a decided game every move played
-  /// shrinks it, so the lines that reach their terminals earlier back up a
-  /// higher utility to the winner and the game gets finished instead of played
-  /// out. The squash makes the pressure strongest across the fills games
-  /// actually end at, nearly flat through the opening where none can, and -
-  /// through the atan's heavy tails - still felt by a game dragging on past its
-  /// typical length, where the term goes negative for the winner while staying
-  /// bounded.
+  /// The early-finish term rewards the side the win/loss value favours for
+  /// being close to able to end the game: it squashes that side's
+  /// shortfall (see [`Self::shortfall_x_2`]) through an atan, from 1 at no shortfall - where every
+  /// terminal sits - towards -1 as it grows. A term on the number of moves
+  /// played would only tell lines apart once they reach a terminal, which in a
+  /// decided game with dozens of ungrounded dots on the board lies beyond the
+  /// search's horizon. The shortfall moves with every dot grounded or captured,
+  /// so a leaf a move or two deep already shows the winner which moves bring
+  /// the end closer, and the loser which keep it away - cutting the winner's
+  /// dots off the border, threatening them. The term is the win/loss value
+  /// times its magnitude times the squash: it fades quadratically out of
+  /// contested positions, where grounding is a real trade-off it should not
+  /// bias, and it is continuous through an even position, where the side it
+  /// reads the shortfall of changes. The squash scale is the score term's,
+  /// since the shortfall is measured in the same points as the score.
   ///
   /// The score term squashes the expected score through an atan, so that the
   /// first few points of a lead matter most and a rout saturates. The squash
@@ -1069,15 +1082,19 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// whole board would want: dots games fill only ~0.32 of the field, and only
   /// a part of the filled area is captured, so realistic scores run about a
   /// quarter as large.
-  fn aux_utility(&self, field: &Field, winloss: N, score: N) -> N {
+  pub(crate) fn aux_utility(&self, field: &Field, player: Player, komi_x_2: i32, winloss: N, score: N) -> N {
     let two_over_pi = N::from(std::f64::consts::FRAC_2_PI).unwrap();
     let area = N::from(field.width() * field.height()).unwrap();
-    let fill = N::from(field.moves_count()).unwrap() / area;
-    let fill_left = N::from(Self::TYPICAL_FINAL_FILL).unwrap() - fill;
-    let length_value = (fill_left / N::from(Self::FINAL_FILL_SCALE).unwrap()).atan() * two_over_pi;
-    let score_scale = area.sqrt() / N::from(2).unwrap();
-    let score_value = (score / score_scale).atan() * two_over_pi;
-    N::from(self.params.early_utility_factor).unwrap() * winloss * length_value
+    let scale = area.sqrt() / N::from(2).unwrap();
+    let shortfall_x_2 = if winloss >= N::zero() {
+      Self::shortfall_x_2(field, player, komi_x_2)
+    } else {
+      Self::shortfall_x_2(field, player.next(), -komi_x_2)
+    };
+    let shortfall = N::from(shortfall_x_2).unwrap() / N::from(2).unwrap();
+    let finish_value = N::one() - N::from(2).unwrap() * two_over_pi * (shortfall / scale).atan();
+    let score_value = (score / scale).atan() * two_over_pi;
+    N::from(self.params.early_utility_factor).unwrap() * winloss * winloss.abs() * finish_value
       + N::from(self.params.score_utility_factor).unwrap() * score_value
   }
 
@@ -1728,7 +1745,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         let weight = Self::terminal_weight(weigh);
         let winloss = game_result(field, player, leaf_komi_x_2);
         let score = game_score(field, player, leaf_komi_x_2);
-        let utility = winloss + self.aux_utility(field, winloss, score);
+        let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score);
         self.add_result(path, winloss, utility, score, weight, Vec::new(), None);
         false
       } else if let Some(evaluation) = path
@@ -1744,7 +1761,7 @@ impl<N: Float + Sum + Copy> Search<N> {
           weight,
           children,
         } = evaluation;
-        let utility = winloss + self.aux_utility(field, winloss, score);
+        let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score);
         let bias_key = Self::bias_key(field);
         self.add_result(path, winloss, utility, score, weight, children, bias_key);
         false
@@ -1798,10 +1815,10 @@ impl<N: Float + Sum + Copy> Search<N> {
     for ((path, _), rotations) in leafs.iter().zip(&leaf_rotations) {
       Self::make_moves(&self.nodes, field, path, player, false);
 
-      let player = if path.len().is_multiple_of(2) {
-        player
+      let (player, leaf_komi_x_2) = if path.len().is_multiple_of(2) {
+        (player, komi_x_2)
       } else {
-        player.next()
+        (player.next(), -komi_x_2)
       };
 
       let (policy, [win, loss, error, score]) = Self::read_prediction(&policies, &values, offset, rotations, field);
@@ -1812,7 +1829,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       // tree's scores - at 0: its utilities carry no score term and the
       // per-move q score targets stay zero, which only the trainable model,
       // one that does estimate scores, ever reads back.
-      let utility = winloss + self.aux_utility(field, winloss, score);
+      let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score);
 
       let children = self.create_children(field, player, &policy.view(), rng);
       // Bucket the leaf by the local context of the move that created it. The
