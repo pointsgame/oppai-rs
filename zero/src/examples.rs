@@ -12,7 +12,7 @@ use oppai_field::{
   player::Player,
   zobrist::Zobrist,
 };
-use oppai_rotate::rotate::{MIRRORS, ROTATIONS};
+use oppai_rotate::rotate::{MIRRORS, ROTATIONS, rotate_sizes};
 use rand::{Rng, RngExt, seq::SliceRandom};
 use std::{cmp::Ordering, iter, ops::Range, sync::Arc};
 
@@ -284,6 +284,36 @@ impl Examples {
     self.examples.shuffle(rng);
   }
 
+  /// Orders the examples so that the batches of `size` that [`Self::batches`]
+  /// cuts them into each hold boards of one size, wherever there are enough of
+  /// them, and come in random order.
+  ///
+  /// A batch is one tensor, padded to the largest board in it, so a batch
+  /// mixing board sizes trains its small boards at the cost of the large ones.
+  /// The examples are sorted by the board size they are trained at - rotations
+  /// that swap the sides count as the other size - and the batches cut from them
+  /// shuffled. The sort is stable, so call it on shuffled examples: each batch is
+  /// then a random sample of the examples of its size. The examples left over
+  /// from whole batches, which [`Self::batches`] never trains on, are drawn at
+  /// random before sorting rather than being the largest boards.
+  pub fn group_by_size<R: Rng>(&mut self, size: usize, rng: &mut R) {
+    let size = size.max(1);
+    if self.len() <= size {
+      return;
+    }
+    let leftover = self.examples.split_off(self.len() - self.len() % size);
+    let games = &self.games;
+    self.examples.sort_by_key(|example| {
+      let game = &games[example.game];
+      let (width, height) = rotate_sizes(game.width, game.height, example.rotation);
+      (width * height, height, width)
+    });
+    let mut batches = self.examples.chunks(size).map(<[Example]>::to_vec).collect::<Vec<_>>();
+    batches.shuffle(rng);
+    self.examples = batches.concat();
+    self.examples.extend(leftover);
+  }
+
   #[inline]
   pub fn len(&self) -> usize {
     self.examples.len()
@@ -382,13 +412,16 @@ impl Examples {
     values.extend_from_slice(&scores);
   }
 
-  fn batch<N: Float + Zero + One + Copy>(
-    &self,
-    range: Range<usize>,
-    width: u32,
-    height: u32,
-    zobrist: Arc<Zobrist<u64>>,
-  ) -> Batch<N> {
+  /// The examples in `range` as one batch, every board padded to the largest
+  /// of them as rotated.
+  fn batch<N: Float + Zero + One + Copy>(&self, range: Range<usize>, zobrist: Arc<Zobrist<u64>>) -> Batch<N> {
+    let (width, height) = self.examples[range.clone()]
+      .iter()
+      .map(|example| {
+        let game = &self.games[example.game];
+        rotate_sizes(game.width, game.height, example.rotation)
+      })
+      .fold((0, 0), |(width, height), (w, h)| (width.max(w), height.max(h)));
     let mut inputs = Vec::<N>::with_capacity(range.len() * CHANNELS * height as usize * width as usize);
     let mut global = Vec::<N>::with_capacity(range.len() * GLOBAL_FEATURES);
     let mut policies = Vec::<N>::with_capacity(range.len() * height as usize * width as usize);
@@ -515,20 +548,15 @@ impl Examples {
     }
   }
 
+  /// The examples in batches of `size`, in order, each padded only to the
+  /// largest board in it - see [`Self::group_by_size`] for an order that keeps
+  /// that padding small.
   pub fn batches<N: Float + Zero + One + Copy>(
     &self,
-    width: u32,
-    height: u32,
     zobrist: Arc<Zobrist<u64>>,
     size: usize,
   ) -> impl Iterator<Item = Batch<N>> + '_ {
-    (0..self.batches_count(size)).map(move |i| {
-      self.batch::<N>(
-        i * size..((i + 1) * size).min(self.len()),
-        width,
-        height,
-        zobrist.clone(),
-      )
-    })
+    (0..self.batches_count(size))
+      .map(move |i| self.batch::<N>(i * size..((i + 1) * size).min(self.len()), zobrist.clone()))
   }
 }

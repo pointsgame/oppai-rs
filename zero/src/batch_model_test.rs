@@ -1,4 +1,4 @@
-use crate::batch_model::{BatchModel, Closed, batch_model, run_evaluator};
+use crate::batch_model::{BatchModel, Closed, batch_model, partition_sizes, run_evaluator};
 use crate::model::Model;
 use futures::channel::oneshot;
 use futures::join;
@@ -46,7 +46,11 @@ fn batches_across_games_and_pads_sizes() {
   let game2 = game(1, 5, 2, 1.0);
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, requests, usize::MAX, 2).await.unwrap() };
+  let evaluator = async {
+    run_evaluator(&model, requests, usize::MAX, f64::INFINITY, 2)
+      .await
+      .unwrap()
+  };
   let ((policy1, value1), (policy2, value2), ()) =
     futures::executor::block_on(async { join!(game1, game2, evaluator) });
 
@@ -101,7 +105,11 @@ fn finished_games_are_not_waited_for() {
   let game3 = game(2);
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, messages, usize::MAX, 2).await.unwrap() };
+  let evaluator = async {
+    run_evaluator(&model, messages, usize::MAX, f64::INFINITY, 2)
+      .await
+      .unwrap()
+  };
   futures::executor::block_on(async { join!(game1, game2, game3, evaluator) });
 
   assert_eq!(*batches.borrow(), vec![3, 2]);
@@ -148,7 +156,7 @@ fn a_batch_dispatches_before_every_game_has_submitted() {
   let (game1, game2, game3, game4) = (game(), game(), game(), game());
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, messages, 2, 2).await.unwrap() };
+  let evaluator = async { run_evaluator(&model, messages, 2, f64::INFINITY, 2).await.unwrap() };
   futures::executor::block_on(async { join!(game1, game2, game3, game4, evaluator) });
 
   assert_eq!(*batches.borrow(), vec![2, 2]);
@@ -182,7 +190,7 @@ fn a_target_above_the_game_count_still_dispatches() {
   let (game1, game2) = (game(), game());
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, messages, 10, 2).await.unwrap() };
+  let evaluator = async { run_evaluator(&model, messages, 10, f64::INFINITY, 2).await.unwrap() };
   futures::executor::block_on(async { join!(game1, game2, evaluator) });
 
   assert_eq!(*batches.borrow(), vec![2]);
@@ -258,7 +266,11 @@ fn passes_overlap_up_to_the_limit() {
   let (game1, game2, game3, game4, game5, game6) = (game(), game(), game(), game(), game(), game());
   drop(handle);
 
-  let evaluator = async { run_evaluator(&model, messages, 2, IN_FLIGHT_PASSES).await.unwrap() };
+  let evaluator = async {
+    run_evaluator(&model, messages, 2, f64::INFINITY, IN_FLIGHT_PASSES)
+      .await
+      .unwrap()
+  };
 
   // How many passes were in flight before each release, and how big each of the
   // released ones was.
@@ -319,10 +331,74 @@ fn a_clone_source_is_not_counted_as_a_game() {
   let game2 = game(&sources[1]);
   drop(sources);
 
-  let evaluator = async { run_evaluator(&model, messages, usize::MAX, 2).await.unwrap() };
+  let evaluator = async {
+    run_evaluator(&model, messages, usize::MAX, f64::INFINITY, 2)
+      .await
+      .unwrap()
+  };
   futures::executor::block_on(async { join!(game1, game2, evaluator) });
 
   // Both games were served together, so the evaluator counted two of them - not
   // the two sources on top.
   assert_eq!(*batches.borrow(), vec![2]);
+}
+
+#[test]
+fn partition_keeps_one_pass_when_the_overhead_outweighs_the_padding() {
+  // Padding the small board to the large one wastes 2 * (25 - 9) = 32 cells,
+  // less than one more pass would cost.
+  assert_eq!(partition_sizes(&[(2, 3, 3), (1, 5, 5)], 100.0), vec![2]);
+  assert_eq!(partition_sizes(&[(2, 3, 3), (1, 5, 5)], f64::INFINITY), vec![2]);
+}
+
+#[test]
+fn partition_cuts_where_the_padding_outweighs_the_overhead() {
+  // Two small boards, two medium ones and a large one. Without any overhead
+  // every shape gets a pass of its own.
+  let sizes = [(4, 4, 4), (4, 4, 4), (4, 8, 8), (4, 8, 8), (1, 40, 40)];
+  assert_eq!(partition_sizes(&sizes, 0.0), vec![2, 4, 5]);
+  // With some, the small and the medium boards are cheaper together than in
+  // two passes - padding them costs 8 * (64 - 16) = 384 cells - while the large
+  // board would pad the 16 others by far more than any pass costs.
+  assert_eq!(partition_sizes(&sizes, 500.0), vec![4, 5]);
+}
+
+/// With a dispatch cut into passes, every game still gets its own rows back,
+/// cropped to its own board.
+#[test]
+fn a_dispatch_of_different_sizes_is_cut_into_passes() {
+  let shapes = RefCell::new(Vec::new());
+  let model = |inputs: Array4<f64>, _: Array2<f64>, _: Array1<f64>| {
+    let (batch, _, height, width) = inputs.dim();
+    shapes.borrow_mut().push((batch, height, width));
+    // Each position's policy is its own board's height everywhere - the
+    // padding adds nothing to the sum of a column - so a game handed another
+    // game's rows would notice.
+    let heights = inputs.sum_axis(ndarray::Axis(1)).sum_axis(ndarray::Axis(1));
+    let policies = Array3::from_shape_fn((batch, height, width), |(i, _, _)| heights[(i, 0)]);
+    Ok::<_, ()>((policies, Array2::from_elem((batch, 2), 0.5)))
+  };
+
+  let (handle, messages) = batch_model::<f64>(true);
+  let game = |h: usize, w: usize| {
+    let model = handle.clone();
+    async move {
+      let features = Array4::from_elem((1, 1, h, w), 1.0);
+      let global = Array2::from_elem((1, 1), 0.5);
+      let (policy, _) = model.predict(features, global, Array1::zeros(1)).await.unwrap();
+      assert_eq!(policy.dim(), (1, h, w));
+      policy[(0, 0, 0)]
+    }
+  };
+
+  let (small1, large, small2) = (game(2, 2), game(9, 9), game(2, 2));
+  drop(handle);
+
+  let evaluator = async { run_evaluator(&model, messages, usize::MAX, 0.0, 2).await.unwrap() };
+  let (small1, large, small2, ()) = futures::executor::block_on(async { join!(small1, large, small2, evaluator) });
+
+  assert_eq!((small1, large, small2), (2.0, 9.0, 2.0));
+  let mut shapes = shapes.into_inner();
+  shapes.sort();
+  assert_eq!(shapes, vec![(1, 9, 9), (2, 2, 2)]);
 }

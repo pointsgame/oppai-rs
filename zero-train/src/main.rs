@@ -293,6 +293,7 @@ fn play<R: Rng>(params: PlayParams, device: Device, rng: &mut R, should_stop: Ar
           &predictor,
           requests,
           params.batch_games,
+          params.pass_overhead,
           params.in_flight_passes,
         ));
         // Join before reporting either failure, so a panicking worker is never
@@ -440,19 +441,14 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     validation.games.len()
   );
   let zobrist = Arc::new(Zobrist::new(length(params.width, params.height) * 3, rng));
-  validate(
-    &learner,
-    &validation,
-    params.width,
-    params.height,
-    params.batch_size,
-    zobrist.clone(),
-    "before",
-  );
+  validation.group_by_size(params.batch_size, rng);
+  validate(&learner, &validation, params.batch_size, zobrist.clone(), "before");
 
   // Shuffled, so that the batches trained on are a random sample of the
-  // examples when only some of them are.
+  // examples when only some of them are, then grouped by board size so that
+  // a batch is padded to its own boards rather than the largest of all.
   examples.shuffle(rng);
+  examples.group_by_size(params.batch_size, rng);
   let batches_count = params.train_examples.map_or_else(
     || examples.batches_count(params.batch_size),
     |train_examples| {
@@ -466,7 +462,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
   // contributes two snapshots to the moving average.
   let swa_period = params.swa_period.unwrap_or((batches_count / 2).max(1));
   for (i, batch) in examples
-    .batches(params.width, params.height, zobrist.clone(), params.batch_size)
+    .batches(zobrist.clone(), params.batch_size)
     .take(batches_count)
     .enumerate()
     .skip(params.skip)
@@ -507,15 +503,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     }
   }
 
-  validate(
-    &learner,
-    &validation,
-    params.width,
-    params.height,
-    params.batch_size,
-    zobrist,
-    "after",
-  );
+  validate(&learner, &validation, params.batch_size, zobrist, "after");
 
   learner.predictor.model.save_file(params.model_new)?;
 
@@ -530,15 +518,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
 
 /// Logs every loss term of the model averaged over the validation examples,
 /// `when` saying at which point of the training run.
-fn validate(
-  learner: &Learner,
-  validation: &Examples,
-  width: u32,
-  height: u32,
-  batch_size: usize,
-  zobrist: Arc<Zobrist<u64>>,
-  when: &str,
-) {
+fn validate(learner: &Learner, validation: &Examples, batch_size: usize, zobrist: Arc<Zobrist<u64>>, when: &str) {
   if validation.is_empty() {
     return;
   }
@@ -547,7 +527,7 @@ fn validate(
   let predictor = learner.predictor.valid();
   let mut sums: Vec<(&'static str, f64)> = Vec::new();
   let mut rows = 0;
-  for batch in validation.batches(width, height, zobrist, batch_size) {
+  for batch in validation.batches(zobrist, batch_size) {
     // The terms are means over the batch, so they are weighed by its rows.
     let batch_rows = batch.inputs.dim().0;
     let losses = predictor
@@ -868,6 +848,7 @@ async fn recalc<R: Rng>(
       &predictor,
       requests,
       params.parallel_games.div_ceil(2),
+      params.pass_overhead,
       params.in_flight_passes
     )
   );
@@ -970,7 +951,9 @@ fn bench<R: Rng>(params: BenchParams, device: Device, rng: &mut R) -> Result<Exi
 }
 
 fn main() -> Result<ExitCode> {
-  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+  // The kernel compiler of some backends logs the IR of every kernel it compiles
+  // at the info level - millions of lines, and time spent writing them.
+  let env = env_logger::Env::default().filter_or("RUST_LOG", "info,pliron=warn");
   env_logger::Builder::from_env(env).init();
 
   let should_stop = Arc::new(AtomicBool::new(false));

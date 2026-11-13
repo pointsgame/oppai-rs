@@ -35,6 +35,13 @@
 //! keeps `in_flight_passes` of them going at once, so the batch that follows is
 //! assembled and enqueued while the previous one is still being computed and
 //! read back.
+//!
+//! A dispatched batch need not be a single pass. A pass is one tensor, so every
+//! position in it is padded to the largest board in it, and a small board
+//! evaluated next to a large one costs as much as the large one. Each dispatch
+//! is therefore cut into the passes that cost the least in total, see
+//! [`partition`], weighing the padding a pass saves against the fixed overhead
+//! of one more pass.
 
 use crate::model::Model;
 use futures::{
@@ -191,15 +198,12 @@ where
   // the padded area gets no policy mass.
   let channels = batch[0].features.dim().1;
   let global_features = batch[0].global.dim().1;
-  let mut positions = 0;
-  let mut height = 0;
-  let mut width = 0;
-  for request in &batch {
-    let (n, _, h, w) = request.features.dim();
-    positions += n;
-    height = height.max(h);
-    width = width.max(w);
-  }
+  let Shape {
+    positions,
+    height,
+    width,
+    ..
+  } = Shape::of(&batch);
 
   let mut features = Array4::zeros((positions, channels, height, width));
   let mut global = Array2::zeros((positions, global_features));
@@ -231,6 +235,113 @@ where
   Ok(())
 }
 
+/// The size of a pass made of some requests.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+struct Shape {
+  positions: usize,
+  /// The tallest board, which every position is padded to.
+  height: usize,
+  /// The widest board, which every position is padded to.
+  width: usize,
+  /// Board cells of the positions as submitted, without the padding.
+  cells: usize,
+}
+
+impl Shape {
+  fn of<N: Float>(batch: &[BatchRequest<N>]) -> Self {
+    batch.iter().fold(Shape::default(), |shape, request| {
+      let (n, _, h, w) = request.features.dim();
+      Shape {
+        positions: shape.positions + n,
+        height: shape.height.max(h),
+        width: shape.width.max(w),
+        cells: shape.cells + n * h * w,
+      }
+    })
+  }
+
+  /// Board cells the pass evaluates, padding included.
+  fn padded_cells(&self) -> usize {
+    self.positions * self.height * self.width
+  }
+}
+
+/// Where to cut requests of these `(positions, height, width)` sizes, already
+/// sorted by board area, into forward passes: the returned indices are the ends
+/// of the passes, the last one being `sizes.len()`.
+///
+/// A pass costs `overhead + positions * height * width`, its height and width
+/// being the largest among its requests, and the cuts minimize the total cost.
+/// Only contiguous runs of the sorted requests are considered, which is what
+/// keeps this a dynamic program over the cut points rather than a search over
+/// all the ways to group the requests. Sorting by area keeps the boards that pad
+/// each other cheaply next to each other; with boards of other proportions than
+/// square it is not exact, but a request of a different shape and similar area
+/// pads the others by little either way.
+///
+/// An infinite overhead never cuts, a zero one cuts between any two shapes.
+pub(crate) fn partition_sizes(sizes: &[(usize, usize, usize)], overhead: f64) -> Vec<usize> {
+  if !overhead.is_finite() {
+    return vec![sizes.len()];
+  }
+  // `best[j]` is the least cost of the first `j` requests, with the fewest
+  // passes among the splits that cost as much, and `cut[j]` where the last pass
+  // of that split starts.
+  let mut best = vec![(0.0, 0); sizes.len() + 1];
+  let mut cut = vec![0; sizes.len() + 1];
+  for end in 1..=sizes.len() {
+    best[end] = (f64::INFINITY, 0);
+    let (mut positions, mut height, mut width) = (0, 0, 0);
+    for start in (0..end).rev() {
+      let (n, h, w) = sizes[start];
+      positions += n;
+      height = height.max(h);
+      width = width.max(w);
+      let (cost, passes) = best[start];
+      let candidate = (cost + overhead + (positions * height * width) as f64, passes + 1);
+      if candidate.0 < best[end].0 || candidate.0 == best[end].0 && candidate.1 < best[end].1 {
+        best[end] = candidate;
+        cut[end] = start;
+      }
+    }
+  }
+  let mut ends = Vec::new();
+  let mut end = sizes.len();
+  while end > 0 {
+    ends.push(end);
+    end = cut[end];
+  }
+  ends.reverse();
+  ends
+}
+
+/// Cuts a dispatch into forward passes as [`partition_sizes`] says, given the
+/// fixed overhead of a pass in board cells.
+fn partition<N: Float>(mut requests: Vec<BatchRequest<N>>, overhead: f64) -> Vec<Vec<BatchRequest<N>>> {
+  if !overhead.is_finite() || requests.len() < 2 {
+    return vec![requests];
+  }
+  requests.sort_by_key(|request| {
+    let (_, _, h, w) = request.features.dim();
+    (h * w, h, w)
+  });
+  let sizes = requests
+    .iter()
+    .map(|request| {
+      let (n, _, h, w) = request.features.dim();
+      (n, h, w)
+    })
+    .collect::<Vec<_>>();
+  let mut passes = Vec::new();
+  let mut start = 0;
+  for end in partition_sizes(&sizes, overhead) {
+    let rest = requests.split_off(end - start);
+    passes.push(mem::replace(&mut requests, rest));
+    start = end;
+  }
+  passes
+}
+
 /// Serves prediction requests from [`BatchModel`] handles with the underlying
 /// model until all handles are dropped, merging the requests of concurrently
 /// running games into large forward passes.
@@ -242,6 +353,17 @@ where
 /// point where it stops mattering, since the evaluator never waits for more games
 /// than are actually running.
 ///
+/// `pass_overhead` is the fixed cost of a forward pass, in the board cells
+/// evaluating which would take as long. It decides when a dispatch of boards of
+/// different sizes is cut into several passes rather than padded to the largest
+/// of them; infinity never cuts. Measured on the device alone it is a few
+/// thousand cells, but an extra pass costs more than its device time: the
+/// evaluator spends more on merging and reading back, and when the games rather
+/// than the device are what holds self-play back, that is all it costs. So it
+/// had better be overestimated, which only gives up the cuts that would save
+/// little, while those that matter - small boards padded to far larger ones -
+/// save many times any overhead.
+///
 /// `in_flight_passes` is how many forward passes may be under way at once. A
 /// pass is not done with the CPU when it reaches the device: its result still
 /// has to be read back, and the batch after it has to be merged and enqueued,
@@ -250,11 +372,14 @@ where
 /// while the previous one is being read back and the next is being assembled.
 /// Beyond that there is little left to hide, one device being all there is to
 /// keep busy, and the batches only get smaller: a pass dispatched earlier is a
-/// pass fewer of the still-selecting games make it into.
+/// pass fewer of the still-selecting games make it into. A dispatch cut into
+/// several passes may go over the limit, in which case the next one waits until
+/// enough of them are done.
 pub async fn run_evaluator<N, M>(
   model: &M,
   mut messages: mpsc::UnboundedReceiver<Message<N>>,
   batch_games: usize,
+  pass_overhead: f64,
   in_flight_passes: usize,
 ) -> Result<(), M::E>
 where
@@ -308,12 +433,15 @@ where
         }
       }
     }
-    throughput.dispatched(&pending, in_flight.is_empty());
     // Everything queued goes in, not just the target's worth: a game that was
     // ready in time should never be held back to the next forward pass.
-    // The pass is not awaited here - it is driven by the loop above, which
+    let passes = partition(mem::take(&mut pending), pass_overhead);
+    throughput.dispatched(&passes, in_flight.is_empty());
+    // The passes are not awaited here - they are driven by the loop above, which
     // meanwhile keeps collecting the requests of the games it does not block.
-    in_flight.push(evaluate(model, mem::take(&mut pending)));
+    for pass in passes {
+      in_flight.push(evaluate(model, pass));
+    }
   }
 }
 
@@ -324,6 +452,7 @@ const REPORT_PERIOD: Duration = Duration::from_secs(60);
 /// whether self-play is held back by the device or by the games feeding it.
 struct Throughput {
   since: Instant,
+  dispatches: u64,
   passes: u64,
   requests: u64,
   positions: u64,
@@ -344,6 +473,7 @@ impl Throughput {
     let now = Instant::now();
     Throughput {
       since: now,
+      dispatches: 0,
       passes: 0,
       requests: 0,
       positions: 0,
@@ -359,21 +489,17 @@ impl Throughput {
     self.idle_since = Some(Instant::now());
   }
 
-  /// A pass of these requests is about to be dispatched.
-  fn dispatched<N: Float>(&mut self, batch: &[BatchRequest<N>], was_idle: bool) {
-    let (mut positions, mut cells, mut height, mut width) = (0, 0, 0, 0);
-    for request in batch {
-      let (n, _, h, w) = request.features.dim();
-      positions += n;
-      cells += n * h * w;
-      height = height.max(h);
-      width = width.max(w);
+  /// These passes are about to be dispatched together.
+  fn dispatched<N: Float>(&mut self, passes: &[Vec<BatchRequest<N>>], was_idle: bool) {
+    self.dispatches += 1;
+    for pass in passes {
+      let shape = Shape::of(pass);
+      self.passes += 1;
+      self.requests += pass.len() as u64;
+      self.positions += shape.positions as u64;
+      self.cells += shape.cells as u64;
+      self.padded_cells += shape.padded_cells() as u64;
     }
-    self.passes += 1;
-    self.requests += batch.len() as u64;
-    self.positions += positions as u64;
-    self.cells += cells as u64;
-    self.padded_cells += (positions * height * width) as u64;
     if was_idle && let Some(since) = self.idle_since.take() {
       self.idle += since.elapsed();
     }
@@ -397,12 +523,13 @@ impl Throughput {
       let seconds = elapsed.as_secs_f64();
       let passes = self.passes as f64;
       log::info!(
-        "Evaluator: {:.0} positions/s, {:.1} passes/s, {:.1} positions and {:.1} games per pass, {:.0}% padding, \
-         {:.0}% of the time with no pass in flight",
+        "Evaluator: {:.0} positions/s, {:.1} passes/s, {:.1} positions and {:.1} games per pass, {:.2} passes per \
+         dispatch, {:.0}% padding, {:.0}% of the time with no pass in flight",
         self.positions as f64 / seconds,
         passes / seconds,
         self.positions as f64 / passes,
         self.requests as f64 / passes,
+        passes / self.dispatches as f64,
         100.0 * (1.0 - self.cells as f64 / self.padded_cells as f64),
         100.0 * idle.as_secs_f64() / seconds,
       );

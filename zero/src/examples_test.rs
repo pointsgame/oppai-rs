@@ -108,10 +108,7 @@ fn batch_td_scores_follow_the_game_score() {
 
   let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, &mut rng));
   let rows = examples.len();
-  let batch = examples
-    .batches::<f64>(width, height, zobrist.clone(), rows)
-    .next()
-    .unwrap();
+  let batch = examples.batches::<f64>(zobrist.clone(), rows).next().unwrap();
   assert_eq!(batch.td_scores.dim(), (rows, TD_VALUES));
 
   for (row, example) in examples.examples.iter().enumerate() {
@@ -190,7 +187,7 @@ fn opponent_policy_of_the_last_position_is_zero() {
 
   let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, &mut rng));
   let rows = examples.len();
-  let batch = examples.batches::<f64>(width, height, zobrist, rows).next().unwrap();
+  let batch = examples.batches::<f64>(zobrist, rows).next().unwrap();
 
   for (row, example) in examples.examples.iter().enumerate() {
     let sum = batch.opponent_policies.index_axis(Axis(0), row).sum();
@@ -236,7 +233,7 @@ fn batch_q_values_follow_the_search() {
 
   let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, &mut rng));
   let rows = examples.len();
-  let batch = examples.batches::<f64>(width, height, zobrist, rows).next().unwrap();
+  let batch = examples.batches::<f64>(zobrist, rows).next().unwrap();
   assert_eq!(batch.q_values.dim(), (rows, 3, height as usize, width as usize));
 
   for (row, example) in examples.examples.iter().enumerate() {
@@ -327,4 +324,69 @@ fn validation_games_are_a_stable_fraction() {
     held_out += usize::from(validation);
   }
   assert!((50..=150).contains(&held_out), "held out {held_out} of {games}");
+}
+
+// Grouped by size, every batch holds boards of one size and is padded to
+// nothing larger, while no example is lost or repeated.
+#[test]
+fn grouped_batches_hold_one_board_size() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+  let small = construct_field(
+    &mut rng,
+    "
+    .a..
+    bAcB
+    .d.C
+    ",
+  );
+  let large = construct_field(
+    &mut rng,
+    "
+    .a....
+    bAcB..
+    .d.C..
+    ......
+    ",
+  );
+  let mut examples = Examples::default();
+  for field in [&small, &large, &small, &large, &small, &large] {
+    let visits = (0..field.moves_count())
+      .map(|_| Visits(Vec::new(), 1.0, 0.0, 0.0, 0.0, Vec::new()))
+      .collect();
+    // Mirrors only, so that each board keeps its sides.
+    examples.add(0, visits, field, false, false, &mut rng);
+  }
+  // Every game makes one example per move, so each board size fills whole
+  // batches of a game's length.
+  let size = small.moves_count();
+  let key = |examples: &Examples| {
+    let mut key = examples
+      .examples
+      .iter()
+      .map(|example| (example.game, example.position, example.rotation))
+      .collect::<Vec<_>>();
+    key.sort();
+    key
+  };
+  let before = key(&examples);
+
+  examples.shuffle(&mut rng);
+  examples.group_by_size(size, &mut rng);
+
+  assert_eq!(key(&examples), before);
+  let zobrist = Arc::new(Zobrist::new(length(6, 4) * 3, &mut rng));
+  let mut canvases = Vec::new();
+  for (batch, chunk) in examples
+    .batches::<f64>(zobrist, size)
+    .zip(examples.examples.chunks(size))
+  {
+    let (_, _, height, width) = batch.inputs.dim();
+    for example in chunk {
+      let game = &examples.games[example.game];
+      assert_eq!((game.width, game.height), (width as u32, height as u32));
+    }
+    canvases.push((width, height));
+  }
+  canvases.sort();
+  assert_eq!(canvases, vec![(4, 3), (4, 3), (4, 3), (6, 4), (6, 4), (6, 4)]);
 }

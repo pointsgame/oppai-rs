@@ -25,6 +25,7 @@ pub struct PlayParams {
   pub parallel_games: usize,
   pub threads: usize,
   pub batch_games: usize,
+  pub pass_overhead: f64,
   pub in_flight_passes: usize,
   pub readouts: usize,
 }
@@ -87,6 +88,7 @@ pub struct RecalcParams {
   pub games: Vec<PathBuf>,
   pub games_new: PathBuf,
   pub parallel_games: usize,
+  pub pass_overhead: f64,
   pub in_flight_passes: usize,
 }
 
@@ -223,6 +225,20 @@ fn batch_games_arg() -> Arg {
     .default_value("64")
 }
 
+fn pass_overhead_arg() -> Arg {
+  Arg::new("pass-overhead")
+    .long("pass-overhead")
+    .help(
+      "The fixed cost of a forward pass, in the board cells evaluating which takes as long. Positions of \
+       different board sizes queued together are split into several passes when the padding that saves outweighs \
+       this, and inf never splits. A pass measures a few thousand cells on the device alone, but costs more than \
+       that in self-play, so the default errs high: it only splits boards of very different sizes",
+    )
+    .num_args(1)
+    .value_parser(value_parser!(f64))
+    .default_value("10000")
+}
+
 fn in_flight_passes_arg() -> Arg {
   Arg::new("in-flight-passes")
     .long("in-flight-passes")
@@ -293,6 +309,7 @@ pub fn cli_parse() -> (Config, Action) {
     ))
     .arg(threads_arg())
     .arg(batch_games_arg())
+    .arg(pass_overhead_arg())
     .arg(in_flight_passes_arg())
     .arg(
       Arg::new("readouts")
@@ -568,6 +585,7 @@ pub fn cli_parse() -> (Config, Action) {
       "How many games to recalculate concurrently, merging their positions into shared forward passes",
       "32",
     ))
+    .arg(pass_overhead_arg())
     .arg(in_flight_passes_arg());
 
   let bench = Command::new("bench")
@@ -668,6 +686,7 @@ pub fn cli_parse() -> (Config, Action) {
         .copied()
         .unwrap_or_else(num_cpus::get_physical);
       let batch_games = matches.get_one("batch-games").copied().unwrap();
+      let pass_overhead = matches.get_one("pass-overhead").copied().unwrap();
       let in_flight_passes = matches.get_one("in-flight-passes").copied().unwrap();
       let readouts = matches.get_one("readouts").copied().unwrap();
       Action::Play(PlayParams {
@@ -681,6 +700,7 @@ pub fn cli_parse() -> (Config, Action) {
         parallel_games,
         threads,
         batch_games,
+        pass_overhead,
         in_flight_passes,
         readouts,
       })
@@ -798,12 +818,14 @@ pub fn cli_parse() -> (Config, Action) {
       let games_new = matches.get_one("games-new").cloned().unwrap();
       let parallel_games = matches.get_one("parallel-games").copied().unwrap();
       let in_flight_passes = matches.get_one("in-flight-passes").copied().unwrap();
+      let pass_overhead = matches.get_one("pass-overhead").copied().unwrap();
       Action::Recalc(RecalcParams {
         model,
         model_config,
         games,
         games_new,
         parallel_games,
+        pass_overhead,
         in_flight_passes,
       })
     }
