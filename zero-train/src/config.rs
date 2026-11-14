@@ -363,7 +363,11 @@ pub fn cli_parse() -> (Config, Action) {
     .arg(
       Arg::new("swa-period")
         .long("swa-period")
-        .help("How many batches between SWA snapshots (default: half of the total batch count)")
+        .help(
+          "How many optimizer steps between SWA snapshots (default: half of this training's batch count). The \
+           steps are counted over the whole run, so the steps after a training's last snapshot count towards the \
+           next one, and each snapshot waits for the lookahead cycle to end",
+        )
         .num_args(1)
         .value_parser(value_parser!(usize)),
     )

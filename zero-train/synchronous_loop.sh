@@ -76,7 +76,6 @@ set -euo pipefail
 	WINDOW_EXPONENT=0.65                                         # ... and as this power of the positions played in the long run, so that it covers an ever shorter stretch of the run
 	WINDOW_SCALE=50000                                           # Positions played beyond MIN_POSITIONS at which the window starts growing sublinearly
 	SWA_POSITIONS=80000                                          # Train on this many positions between two snapshots averaged into the weights self-play uses
-	SWA_SCALE=4                                                  # Each snapshot moves that average 1/SWA_SCALE of the way to the trained weights, so it lags SWA_SCALE-1 snapshots behind them; a long lag costs strength while the network still improves quickly
 	BATCHSIZE=64                  # Training memory is mostly the activations kept for the backward pass, about 9 GB for a batch of 64 at 24x24 with mixed precision
 	OPTIMIZER=sgd                 # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
 	LEARNING_RATE=                # Learning rate after the warmup, stated for a batch of 256 and scaled to BATCHSIZE below; empty for 0.01 with sgd and 0.00004 with adamw and muon
@@ -131,6 +130,16 @@ set -euo pipefail
 			i = int(t / 250000) + 1
 			printf "%.9g", i <= 8 ? 1 / d[i] : 1
 		}'
+	}
+
+	# How many snapshots the average of the weights self-play uses spans after
+	# this many trained positions. Each snapshot moves the average 1/scale of the
+	# way to the trained weights, so it lags scale-1 snapshots behind them. The
+	# lag costs strength while the network still improves a lot over the
+	# positions it spans, and smoothing out the noise of the steps only pays
+	# once it improves little: a short average early in the run, a long one later.
+	swa_scale() {
+		awk -v t="$1" 'BEGIN { printf "%d", t < 4000000 ? 2 : t < 10000000 ? 4 : 8 }'
 	}
 
 	# How many positions the window trained on spans once this many positions
@@ -295,20 +304,21 @@ set -euo pipefail
 			GAMES+=("$RECALC_GAMES")
 		fi
 
-		# The moving average continues from the previous one when it exists,
-		# otherwise it starts from the loaded model.
-		SWA_ARGS=(--model-swa-new "$MODELSDIR"/model_swa_"$((N + 1))".bpk --swa-period "$SWA_PERIOD" --swa-scale "$SWA_SCALE")
-		if [[ -e "$MODELSDIR"/model_swa_"$N".bpk ]]; then
-			SWA_ARGS+=(--model-swa "$MODELSDIR"/model_swa_"$N".bpk)
-		fi
-
 		TRAINED=$(<"$TRAINED_FILE")
 		TRAIN_POSITIONS=$((NEW * TRAININGS_PER_POSITION))
 		((TRAIN_POSITIONS <= MAX_TRAINING_POSITIONS)) || TRAIN_POSITIONS=$MAX_TRAINING_POSITIONS
 		((TRAIN_POSITIONS <= IN_WINDOW)) || TRAIN_POSITIONS=$IN_WINDOW
 		CYCLE_LEARNING_RATE=$(awk -v r="$LEARNING_RATE" -v w="$(warmup "$TRAINED")" 'BEGIN { printf "%.9g", r * w }')
+		CYCLE_SWA_SCALE=$(swa_scale "$TRAINED")
 
-		echo "Train on $TRAIN_POSITIONS of $IN_WINDOW positions, $TRAINED trained so far, learning rate $CYCLE_LEARNING_RATE"
+		# The moving average continues from the previous one when it exists,
+		# otherwise it starts from the loaded model.
+		SWA_ARGS=(--model-swa-new "$MODELSDIR"/model_swa_"$((N + 1))".bpk --swa-period "$SWA_PERIOD" --swa-scale "$CYCLE_SWA_SCALE")
+		if [[ -e "$MODELSDIR"/model_swa_"$N".bpk ]]; then
+			SWA_ARGS+=(--model-swa "$MODELSDIR"/model_swa_"$N".bpk)
+		fi
+
+		echo "Train on $TRAIN_POSITIONS of $IN_WINDOW positions, $TRAINED trained so far, learning rate $CYCLE_LEARNING_RATE, average of $CYCLE_SWA_SCALE snapshots"
 		time "$BIN" --device "$DEVICE" train "${CONFIG_ARGS[@]}" \
 			--width "$TRAIN_WIDTH" --height "$TRAIN_HEIGHT" \
 			--model "$MODELSDIR"/model_"$N".bpk \

@@ -34,6 +34,7 @@ use oppai_zero::{
 };
 use oppai_zero_burn::device::list_devices;
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor, ema_update};
+use oppai_zero_burn::optimizer::OptimizerConfig;
 use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
 use rand::{Rng, RngExt, SeedableRng, distr::uniform::SampleUniform, make_rng, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
@@ -350,6 +351,25 @@ fn play<R: Rng>(params: PlayParams, device: Device, rng: &mut R, should_stop: Ar
   Ok(ExitCode::SUCCESS)
 }
 
+/// Whether the moving average of the weights takes a snapshot after the
+/// optimizer's `steps`-th step: at the first step at or after every multiple
+/// of `period` that ends a lookahead cycle.
+///
+/// The steps are counted over the whole run rather than over one training, so
+/// that the steps a training takes after its last snapshot still count towards
+/// the next one, taken during the next training - counting from each
+/// training's start would drop them, which with a period that doesn't divide
+/// the training is a good part of every training, and the most recent one.
+/// And the snapshots only ever take the weights a lookahead cycle settles on,
+/// never the fast weights part way through one.
+fn swa_snapshot_due(steps: usize, period: usize, optimizer: &OptimizerConfig) -> bool {
+  let cycle = optimizer.lookahead.map_or(1, |lookahead| lookahead.steps);
+  // A cycle's end is the first one at or after a multiple of the period when it
+  // comes less than a cycle after it; with a period shorter than a cycle, every
+  // cycle's end has a multiple of the period before it.
+  optimizer.is_synced(steps) && steps % period.max(1) < cycle
+}
+
 fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
   let model = BurnModel::new(&device, &params.model_config).try_load_file(params.model)?;
   // The gradients are clipped by their combined norm before the step instead of
@@ -365,10 +385,12 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     params.learning_rate_start,
     params.learning_rate_end
   );
-  let optimizer = params.optimizer_config.init().load(&params.optimizer)?;
+  let (optimizer, clock) = params.optimizer_config.init_with_clock();
+  let optimizer = optimizer.load(&params.optimizer)?;
   // The SWA model is an exponential moving average of the trained weights,
-  // updated every `swa_period` batches and saved separately; it's the model to
-  // export for self-play while training continues from the raw weights.
+  // updated every `swa_period` steps (see `swa_snapshot_due`) and saved
+  // separately; it's the model to export for self-play while training
+  // continues from the raw weights.
   let mut swa_model = params
     .model_swa_new
     .is_some()
@@ -458,9 +480,12 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     },
   );
   log::info!("Training on {} batches of {}", batches_count, params.batch_size);
-  // By default average a snapshot every half-epoch, so a single training run
-  // contributes two snapshots to the moving average.
+  // By default average a snapshot every half-epoch, so a training run
+  // contributes about two snapshots to the moving average.
   let swa_period = params.swa_period.unwrap_or((batches_count / 2).max(1));
+  // The step of the last snapshot, so that a batch the optimizer skips doesn't
+  // average the same weights twice.
+  let mut snapshot_steps = None;
   for (i, batch) in examples
     .batches(zobrist.clone(), params.batch_size)
     .take(batches_count)
@@ -495,11 +520,16 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
     )?;
 
     if let Some(swa) = swa_model.take() {
-      swa_model = Some(if (i + 1).is_multiple_of(swa_period) {
-        ema_update(swa, &learner.predictor.model, 1.0 / params.swa_scale, &device)
-      } else {
-        swa
-      });
+      let steps = clock.steps();
+      swa_model = Some(
+        if snapshot_steps != Some(steps) && swa_snapshot_due(steps, swa_period, &params.optimizer_config) {
+          snapshot_steps = Some(steps);
+          log::info!("SWA snapshot after step {}", steps);
+          ema_update(swa, &learner.predictor.model, 1.0 / params.swa_scale, &device)
+        } else {
+          swa
+        },
+      );
     }
   }
 
@@ -1179,4 +1209,43 @@ fn main() -> Result<ExitCode> {
   let (config, action) = cli_parse();
 
   run(config, action, should_stop)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::swa_snapshot_due;
+  use oppai_zero_burn::optimizer::{Lookahead, OptimizerConfig, OptimizerKind};
+
+  // Exactly one snapshot for every multiple of the period, each at the end of
+  // a lookahead cycle and less than a cycle after its multiple, wherever a
+  // training happens to start or stop.
+  #[test]
+  fn swa_snapshots_follow_the_period_at_lookahead_ends() {
+    let mut optimizer = OptimizerConfig::new(OptimizerKind::Sgd, 64);
+    optimizer.lookahead = Some(Lookahead { steps: 6, alpha: 0.5 });
+    let period = 1250;
+    let snapshots = (1..10 * period + 6)
+      .filter(|&steps| swa_snapshot_due(steps, period, &optimizer))
+      .collect::<Vec<_>>();
+    assert_eq!(snapshots.len(), 10);
+    for (k, &steps) in snapshots.iter().enumerate() {
+      assert!(steps.is_multiple_of(6));
+      assert!(steps >= (k + 1) * period && steps < (k + 1) * period + 6, "{steps}");
+    }
+
+    // A period shorter than a cycle snapshots at every cycle's end.
+    assert_eq!(
+      (1..=60).filter(|&steps| swa_snapshot_due(steps, 4, &optimizer)).count(),
+      10
+    );
+
+    // Without lookahead every multiple of the period is a snapshot.
+    optimizer.lookahead = None;
+    assert_eq!(
+      (1..=100)
+        .filter(|&steps| swa_snapshot_due(steps, 7, &optimizer))
+        .collect::<Vec<_>>(),
+      (1..=14).map(|k| k * 7).collect::<Vec<_>>()
+    );
+  }
 }

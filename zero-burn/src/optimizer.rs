@@ -6,7 +6,14 @@
 //! Every optimizer is wrapped in [`Lookahead`] by default: the weights take
 //! `k` fast steps, then move back toward where they were by `1 - alpha`.
 
-use std::{fmt, str::FromStr};
+use std::{
+  fmt,
+  str::FromStr,
+  sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+  },
+};
 
 use burn::{
   module::ParamGroup,
@@ -102,6 +109,19 @@ pub struct Lookahead {
 impl Default for Lookahead {
   fn default() -> Self {
     Self { steps: 6, alpha: 0.5 }
+  }
+}
+
+/// How many steps the optimizer has taken, as of its latest one. The count is
+/// part of the optimizer's saved state, so it goes on from where the loaded
+/// state left off: it counts the steps of the whole run, not just those of one
+/// training. See [`OptimizerConfig::init_with_clock`].
+#[derive(Clone, Default, Debug)]
+pub struct StepClock(Arc<AtomicUsize>);
+
+impl StepClock {
+  pub fn steps(&self) -> usize {
+    self.0.load(Ordering::Relaxed)
   }
 }
 
@@ -211,6 +231,15 @@ impl Group {
 }
 
 impl OptimizerConfig {
+  /// Whether the weights after the optimizer's `steps`-th step are where a
+  /// lookahead cycle ends rather than fast weights part way through one, which
+  /// have wandered off along that cycle's noise.
+  pub fn is_synced(&self, steps: usize) -> bool {
+    self
+      .lookahead
+      .is_none_or(|lookahead| steps.is_multiple_of(lookahead.steps))
+  }
+
   pub fn new(kind: OptimizerKind, batch_size: usize) -> Self {
     Self {
       kind,
@@ -221,23 +250,31 @@ impl OptimizerConfig {
   }
 
   pub fn init(&self) -> ModuleOptimizer {
+    self.init_with_clock().0
+  }
+
+  /// The optimizer, and a clock telling how many steps it has taken.
+  pub fn init_with_clock(&self) -> (ModuleOptimizer, StepClock) {
+    let clock = StepClock::default();
     let mut groups = Group::ALL.into_iter();
     let first = groups.next().expect("there are groups");
     debug_assert_eq!(first, Group::NoDecay, "the first group has to match every parameter");
-    groups.fold(self.optimizer(first, None), |optimizer, group| {
-      self.optimizer(group, Some(optimizer))
-    })
+    let optimizer = groups.fold(self.optimizer(first, None, &clock), |optimizer, group| {
+      self.optimizer(group, Some(optimizer), &clock)
+    });
+    (optimizer, clock)
   }
 
   /// Adds the optimizer of `group` to `optimizer`, or creates the optimizer
   /// with it as the fallback when there is none yet.
-  fn optimizer(&self, group: Group, optimizer: Option<ModuleOptimizer>) -> ModuleOptimizer {
+  fn optimizer(&self, group: Group, optimizer: Option<ModuleOptimizer>, clock: &StepClock) -> ModuleOptimizer {
     let weight_decay = self.weight_decay * group.weight_decay_factor(self.kind);
     let decay = (weight_decay > 0.0).then(|| WeightDecayConfig::new(weight_decay as f32));
     match self.kind {
       OptimizerKind::Sgd => self.add(
         optimizer,
         group,
+        clock,
         SgdConfig::new()
           .with_weight_decay(decay)
           // Without dampening, which would only scale the learning rate down.
@@ -247,6 +284,7 @@ impl OptimizerConfig {
       OptimizerKind::AdamW => self.add(
         optimizer,
         group,
+        clock,
         AdamWConfig::new()
           .with_beta_1(0.9)
           .with_beta_2(0.999)
@@ -257,6 +295,7 @@ impl OptimizerConfig {
       OptimizerKind::Muon if group.is_matrix() => self.add(
         optimizer,
         group,
+        clock,
         MatrixMuon(
           MuonConfig::new()
             .with_adjust_lr_fn(AdjustLrFn::MatchRmsAdamW)
@@ -268,6 +307,7 @@ impl OptimizerConfig {
       OptimizerKind::Muon => self.add(
         optimizer,
         group,
+        clock,
         AdamWConfig::new()
           .with_beta_1(0.95)
           .with_beta_2(0.995)
@@ -283,11 +323,18 @@ impl OptimizerConfig {
     epsilon / self.batch_size as f32
   }
 
-  fn add<O: Optimizer>(&self, optimizer: Option<ModuleOptimizer>, group: Group, inner: O) -> ModuleOptimizer {
+  fn add<O: Optimizer>(
+    &self,
+    optimizer: Option<ModuleOptimizer>,
+    group: Group,
+    clock: &StepClock,
+    inner: O,
+  ) -> ModuleOptimizer {
     let tuned = Tuned {
       inner,
       learning_rate_factor: group.learning_rate_factor(self.kind),
       lookahead: self.lookahead,
+      clock: clock.clone(),
     };
     match optimizer {
       Some(optimizer) => optimizer.with_group(group.param_group(), tuned, None),
@@ -337,6 +384,9 @@ struct Tuned<O> {
   inner: O,
   learning_rate_factor: f64,
   lookahead: Option<Lookahead>,
+  /// Where the count of steps is published. Every parameter keeps a count of
+  /// its own, and they all agree as each step steps every parameter.
+  clock: StepClock,
 }
 
 #[derive(Clone)]
@@ -394,6 +444,7 @@ impl<O: Optimizer> Optimizer for Tuned<O> {
       .inner
       .step(lr * self.learning_rate_factor / alpha, tensor, grad, inner);
     let steps = steps + 1;
+    self.clock.0.fetch_max(steps, Ordering::Relaxed);
     let (tensor, slow) = match (self.lookahead, slow) {
       (Some(lookahead), Some(slow)) if steps.is_multiple_of(lookahead.steps) => {
         let slow = slow.clone() + (tensor - slow) * lookahead.alpha;
@@ -415,7 +466,7 @@ impl<O: Optimizer> Optimizer for Tuned<O> {
 
 #[cfg(all(test, feature = "flex"))]
 mod tests {
-  use super::{Group, Lookahead, MatrixMuon, OptimizerConfig, OptimizerKind, Tuned};
+  use super::{Group, Lookahead, MatrixMuon, OptimizerConfig, OptimizerKind, StepClock, Tuned};
   use crate::model::{HeadsConfig, Model, ModelConfig, TransformerConfig};
   use burn::{
     module::{Module, ModuleVisitor, Param, ParamId},
@@ -561,6 +612,7 @@ mod tests {
       inner: SgdConfig::new().build(),
       learning_rate_factor: 1.0,
       lookahead: Some(Lookahead { steps: 2, alpha: 0.5 }),
+      clock: StepClock::default(),
     };
     let mut tensor = Tensor::<1>::zeros([1], &device);
     let mut state = None;
@@ -626,6 +678,36 @@ mod tests {
       a.into_data()
         .assert_approx_eq::<f32>(&b.into_data(), Default::default());
     }
+  }
+
+  // The clock counts the steps of the whole run: an optimizer loaded from a
+  // saved state goes on from the count it was saved with.
+  #[test]
+  fn the_clock_goes_on_after_loading() {
+    let device = Device::flex().autodiff();
+    let weight = |shape: [usize; 4]| Weight {
+      weight: Param::from_tensor(Tensor::random(shape, Distribution::Default, &device)),
+    };
+    let mut module = Tiny {
+      conv_spatial: weight([4, 2, 3, 3]),
+      residuals: vec![weight([5, 4, 3, 3])],
+    };
+    let config = OptimizerConfig::new(OptimizerKind::Sgd, 256);
+    let (mut optimizer, clock) = config.init_with_clock();
+    for _ in 0..4 {
+      let grads = grads(&module);
+      module = optimizer.step(0.01, module, grads);
+    }
+    assert_eq!(clock.steps(), 4);
+    let (loaded, clock) = config.init_with_clock();
+    let mut loaded = loaded.load_record(optimizer.to_record());
+    for _ in 0..3 {
+      let grads = grads(&module);
+      module = loaded.step(0.01, module, grads);
+    }
+    assert_eq!(clock.steps(), 7);
+    assert!(!config.is_synced(7));
+    assert!(config.is_synced(12));
   }
 
   #[test]
