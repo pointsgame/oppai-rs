@@ -66,6 +66,12 @@ pub struct PitParams {
   pub games: Option<PathBuf>,
   pub count: u64,
   pub win_rate_threshold: f64,
+  pub parallel_games: usize,
+  pub threads: usize,
+  pub pass_overhead: f64,
+  pub in_flight_passes: usize,
+  pub early_stop_margin: f64,
+  pub early_stop_error: f64,
 }
 
 pub struct BenchParams {
@@ -548,6 +554,38 @@ pub fn cli_parse() -> (Config, Action) {
         .num_args(1)
         .value_parser(value_parser!(f64))
         .default_value("0.55"),
+    )
+    .arg(parallel_games_arg(
+      "How many games to play concurrently, merging their positions into shared forward passes. A game pair, \
+       played from the same opening with the colours swapped, counts as two. A few already fill the passes a device runs efficiently, and more only make the games finish in \
+       waves, which holds back --early-stop-margin",
+      "8",
+    ))
+    .arg(threads_arg())
+    .arg(pass_overhead_arg())
+    .arg(in_flight_passes_arg())
+    .arg(
+      Arg::new("early-stop-margin")
+        .long("early-stop-margin")
+        .help(
+          "Stop as soon as a sequential test tells a new model winning this much more than the win rate threshold \
+           from one winning this much less, deciding for the closer of the two; 0 plays every game unless the \
+           outcome is already settled. Results within the margin of the threshold usually run to the last game",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("0.05"),
+    )
+    .arg(
+      Arg::new("early-stop-error")
+        .long("early-stop-error")
+        .help(
+          "How often the sequential test may accept a new model winning --early-stop-margin less than the \
+           threshold, and reject one winning that much more",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(f64))
+        .default_value("0.05"),
     );
   let devices = Command::new("devices").about("List the compute devices that can be passed to --device");
   let count = Command::new("count").about("Count games and trainable examples").arg(
@@ -795,6 +833,15 @@ pub fn cli_parse() -> (Config, Action) {
       let games = matches.get_one("games").cloned();
       let count = matches.get_one("count").copied().unwrap();
       let win_rate_threshold = matches.get_one("win-rate-threshold").copied().unwrap();
+      let parallel_games = matches.get_one("parallel-games").copied().unwrap();
+      let threads = matches
+        .get_one("threads")
+        .copied()
+        .unwrap_or_else(num_cpus::get_physical);
+      let pass_overhead = matches.get_one("pass-overhead").copied().unwrap();
+      let in_flight_passes = matches.get_one("in-flight-passes").copied().unwrap();
+      let early_stop_margin = matches.get_one("early-stop-margin").copied().unwrap();
+      let early_stop_error = matches.get_one("early-stop-error").copied().unwrap();
       Action::Pit(PitParams {
         width,
         height,
@@ -805,6 +852,12 @@ pub fn cli_parse() -> (Config, Action) {
         games,
         count,
         win_rate_threshold,
+        parallel_games,
+        threads,
+        pass_overhead,
+        in_flight_passes,
+        early_stop_margin,
+        early_stop_error,
       })
     }
     Some(("count", matches)) => {

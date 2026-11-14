@@ -16,7 +16,7 @@ use num_traits::Float;
 use oppai_field::{
   any_field::AnyField,
   extended_field::ExtendedField,
-  field::{Field, length},
+  field::{Field, Hash, length},
   player::Player,
   zobrist::Zobrist,
 };
@@ -560,31 +560,219 @@ fn validate(learner: &Learner, validation: &Examples, batch_size: usize, zobrist
   log::info!("{}", message);
 }
 
-async fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
-  let model_old = BurnModel::load(&device, &params.model_config, params.model)?;
+/// The board and the opening a pair of pit games is played on.
+struct PitPair {
+  width: u32,
+  height: u32,
+  opening: Vec<(u32, u32)>,
+}
+
+/// A finished pit game: its place in the order games are counted in, its score
+/// from the new model's side, and the game itself to save.
+struct PitGame {
+  index: usize,
+  score: i32,
+  sgf: Option<String>,
+}
+
+/// Plays pit games claimed from the shared `next_game` ticket, up to `parallel`
+/// of them concurrently, and sends each one that finishes to `results`. Games
+/// `2k` and `2k + 1` are the `k`-th pair, played from the same opening, the new
+/// model moving first in the even one. A game still being played when `stop`
+/// turns true is abandoned, and no more are claimed.
+#[allow(clippy::too_many_arguments)]
+async fn pit_games<M, R, S>(
+  pairs: &[PitPair],
+  zobrist: &Arc<Zobrist<Hash>>,
+  next_game: &AtomicUsize,
+  parallel: usize,
+  model_old: &M,
+  model_new: &M,
+  rng: &mut R,
+  stop: S,
+  results: &futures::channel::mpsc::UnboundedSender<PitGame>,
+) -> Result<()>
+where
+  M: Model<f32> + Clone,
+  M::E: Debug,
+  R: Rng,
+  S: Fn() -> bool + Copy,
+{
+  let total = pairs.len() * 2;
+  let games = iter::from_fn(|| {
+    if stop() {
+      return None;
+    }
+    let index = next_game.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    (index < total).then_some(index)
+  })
+  .map(|index| {
+    let mut rng = SmallRng::from_seed(rng.random());
+    let pair = &pairs[index / 2];
+    async move {
+      let mut field = Field::new(pair.width, pair.height, zobrist.clone());
+      let mut player = Player::Red;
+      for &(x, y) in &pair.opening {
+        let pos = field.to_pos(x, y);
+        assert!(field.put_point(pos, player));
+        field.update_grounded();
+        player = player.next();
+      }
+      let score = if index.is_multiple_of(2) {
+        pit::play(&mut field, player, model_new, model_old, 0, &mut rng, stop).await
+      } else {
+        pit::play(&mut field, player, model_old, model_new, 0, &mut rng, stop)
+          .await
+          .map(|score| score.map(|score| -score))
+      }
+      .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
+      Ok::<_, Error>(score.map(|score| PitGame {
+        index,
+        score,
+        sgf: to_sgf(&field.into()).map(|node| serialize(iter::once(&GameTree::Unknown(node)))),
+      }))
+    }
+  });
+
+  let mut games = futures::stream::iter(games).buffer_unordered(parallel);
+  while let Some(game) = games.next().await {
+    if let Some(game) = game? {
+      // Once the outcome is decided nobody listens any more, and the games that
+      // finish after that are of no use.
+      let _ = results.unbounded_send(game);
+    }
+  }
+
+  Ok(())
+}
+
+/// Whether the games played so far settle if the new model is accepted:
+/// `Some` with the answer once they do, `None` while more games are needed.
+///
+/// Called after every pair, so the colours stay balanced in whatever is counted.
+/// The answer is settled once no result of the games left can change it, or
+/// earlier by a sequential probability ratio test between the new model winning
+/// `win_rate_threshold` plus and minus `early_stop_margin` of its games, at the
+/// `early_stop_error` rate of picking the wrong one of the two. A model far
+/// stronger or weaker than the threshold is then decided after a handful of
+/// pairs, while one near it still plays them all.
+fn pit_decision(params: &PitParams, wins: u64, losses: u64, played: u64) -> Option<bool> {
+  let total = params.count * 2;
+  let draws = played - wins - losses;
+  let win_rate = |more_wins: u64| ((wins + more_wins) as f64 + draws as f64 / 2.0) / total as f64;
+  if win_rate(total - played) <= params.win_rate_threshold {
+    return Some(false);
+  }
+  if win_rate(0) > params.win_rate_threshold {
+    return Some(true);
+  }
+
+  if params.early_stop_margin > 0.0 {
+    let better = params.win_rate_threshold + params.early_stop_margin;
+    let worse = params.win_rate_threshold - params.early_stop_margin;
+    let wins = wins as f64 + draws as f64 / 2.0;
+    let losses = losses as f64 + draws as f64 / 2.0;
+    let llr = wins * (better / worse).ln() + losses * ((1.0 - better) / (1.0 - worse)).ln();
+    let error = params.early_stop_error;
+    let bound = ((1.0 - error) / error).ln();
+    if llr.abs() >= bound {
+      log::info!(
+        "Decided by the sequential test after {} games: log likelihood ratio {:.2}, bound {:.2}",
+        played,
+        llr,
+        bound
+      );
+      return Some(llr > 0.0);
+    }
+  }
+
+  None
+}
+
+/// Counts the pit games sent to `results` and saves them, both in the order of
+/// their indices rather than as they finish: short games finish first, and
+/// deciding on whichever games happen to be done would favour the model that
+/// wins quickly. Returns the outcome once it's decided, or `false` if the games
+/// stop coming before that.
+async fn pit_results(
+  params: &PitParams,
+  mut results: futures::channel::mpsc::UnboundedReceiver<PitGame>,
+) -> Result<bool> {
+  let total = params.count as usize * 2;
+  let mut file = params
+    .games
+    .as_ref()
+    .map(|games| File::options().append(true).create(true).open(games))
+    .transpose()?;
+  let mut finished = iter::repeat_with(|| None).take(total).collect::<Vec<Option<PitGame>>>();
+  let mut wins = 0u64;
+  let mut losses = 0u64;
+  let mut played = 0usize;
+
+  while let Some(game) = results.next().await {
+    let index = game.index;
+    finished[index] = Some(game);
+    while let Some(game) = finished.get_mut(played).and_then(Option::take) {
+      match game.score.cmp(&0) {
+        Ordering::Less => losses += 1,
+        Ordering::Greater => wins += 1,
+        Ordering::Equal => {}
+      };
+      if let (Some(file), Some(sgf)) = (file.as_mut(), game.sgf) {
+        write_sgf(file, &sgf)?;
+      }
+      played += 1;
+      log::info!(
+        "Game {}, result {}/{}/{}",
+        played,
+        wins,
+        played as u64 - wins - losses,
+        losses
+      );
+      if played.is_multiple_of(2)
+        && let Some(outcome) = pit_decision(params, wins, losses, played as u64)
+      {
+        return Ok(outcome);
+      }
+    }
+  }
+
+  log::info!("Stopping after {} games", played);
+  Ok(false)
+}
+
+/// Pits the new model against the old one, playing up to `params.count` pairs
+/// of games across `params.threads` threads.
+///
+/// As in self-play, the games run concurrently and each model's positions are
+/// merged into large forward passes by an evaluator of its own, both on this
+/// thread. A game counts for an evaluator only while that evaluator's model is
+/// on the move (see [`pit::play`]), so each evaluator waits for the games
+/// searching with its model and never for ones blocked on the other.
+fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
+  anyhow::ensure!(
+    params.early_stop_margin >= 0.0
+      && (params.early_stop_margin == 0.0
+        || (params.win_rate_threshold - params.early_stop_margin > 0.0
+          && params.win_rate_threshold + params.early_stop_margin < 1.0)),
+    "the win rate threshold plus and minus the early stop margin must be win rates"
+  );
+  anyhow::ensure!(
+    params.early_stop_error > 0.0 && params.early_stop_error < 0.5,
+    "the early stop error must be between 0 and 0.5"
+  );
+
+  let model_old = BurnModel::load(&device, &params.model_config, params.model.clone())?;
   let model_old = Predictor {
     model: model_old,
     device: device.clone(),
   };
 
-  let model_new = BurnModel::load(&device, &params.model_config_new, params.model_new)?;
+  let model_new = BurnModel::load(&device, &params.model_config_new, params.model_new.clone())?;
   let model_new = Predictor {
     model: model_new,
     device,
   };
-
-  let mut player = Player::Red;
-  let total_games = params.count * 2;
-
-  // Returns the win rate assuming all remaining games go best/worst case.
-  // best=true: remaining games are all wins; best=false: remaining games are all losses.
-  #[inline]
-  fn win_rate_bound(wins: u64, losses: u64, played: u64, total: u64, best: bool) -> f64 {
-    let draws = played - wins - losses;
-    let remaining = total - played;
-    let best_wins = if best { wins + remaining } else { wins };
-    (best_wins as f64 + draws as f64 / 2.0) / total as f64
-  }
 
   let zobrist = Arc::new(Zobrist::new(
     length(
@@ -594,84 +782,106 @@ async fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop
     rng,
   ));
 
-  let mut width = params.width[rng.random_range(0..params.width.len())];
-  let mut height = params.height[rng.random_range(0..params.height.len())];
-  let mut field = Field::new(width, height, zobrist.clone());
+  let pairs = (0..params.count)
+    .map(|_| {
+      let width = params.width[rng.random_range(0..params.width.len())];
+      let height = params.height[rng.random_range(0..params.height.len())];
+      let opening = opening(width, height, rng);
+      PitPair { width, height, opening }
+    })
+    .collect::<Vec<_>>();
+  let total = pairs.len() * 2;
+  let threads = params.threads.clamp(1, params.parallel_games.min(total).max(1));
+  let next_game = AtomicUsize::new(0);
+  // Set once the outcome is decided, or a thread failed.
+  let decided = AtomicBool::new(false);
+  let stop =
+    || decided.load(std::sync::atomic::Ordering::Relaxed) || should_stop.load(std::sync::atomic::Ordering::Relaxed);
+  log::info!(
+    "Playing up to {} games on {} threads, {} concurrent",
+    total,
+    threads,
+    params.parallel_games
+  );
 
-  let mut op = opening(width, height, rng);
-  for &(x, y) in op.iter() {
-    let pos = field.to_pos(x, y);
-    assert!(field.put_point(pos, player));
-    field.update_grounded();
-    player = player.next();
-  }
+  let (handle_old, requests_old) = batch_model::<f32>(model_old.predicts_uncertainty());
+  let (handle_new, requests_new) = batch_model::<f32>(model_new.predicts_uncertainty());
+  let (results, results_receiver) = futures::channel::mpsc::unbounded();
 
-  let mut wins = 0u64;
-  let mut losses = 0u64;
+  std::thread::scope(|scope| -> Result<ExitCode> {
+    let workers = (0..threads)
+      .map(|i| {
+        let mut shard_rng = SmallRng::from_seed(rng.random());
+        let parallel = split(params.parallel_games, threads, i);
+        let source_old = handle_old.source();
+        let source_new = handle_new.source();
+        let results = results.clone();
+        let pairs = &pairs;
+        let zobrist = &zobrist;
+        let next_game = &next_game;
+        let decided = &decided;
+        scope.spawn(move || {
+          let result = futures::executor::block_on(pit_games(
+            pairs,
+            zobrist,
+            next_game,
+            parallel,
+            &source_old,
+            &source_new,
+            &mut shard_rng,
+            stop,
+            &results,
+          ));
+          if result.is_err() {
+            decided.store(true, std::sync::atomic::Ordering::Relaxed);
+          }
+          result
+        })
+      })
+      .collect::<Vec<_>>();
+    // Every game's handles and sender descend from a worker's, so once the
+    // workers are gone the channels close and the evaluators return. Each
+    // evaluator's target is every game it can be waiting for, as the two models
+    // taking turns already keeps the device busy while one side selects.
+    drop(handle_old);
+    drop(handle_new);
+    drop(results);
 
-  let mut i = 0u64;
-  let outcome = loop {
-    if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
-      log::info!("Stopping after {} games", i);
-      break false;
+    let (outcome, evaluator_old, evaluator_new) = futures::executor::block_on(async {
+      futures::join!(
+        async {
+          let outcome = pit_results(&params, results_receiver).await;
+          decided.store(true, std::sync::atomic::Ordering::Relaxed);
+          outcome
+        },
+        run_evaluator(
+          &model_old,
+          requests_old,
+          params.parallel_games,
+          params.pass_overhead,
+          params.in_flight_passes
+        ),
+        run_evaluator(
+          &model_new,
+          requests_new,
+          params.parallel_games,
+          params.pass_overhead,
+          params.in_flight_passes
+        ),
+      )
+    });
+    let games_results = workers
+      .into_iter()
+      .map(|worker| worker.join().map_err(|_| anyhow::anyhow!("a pit thread panicked")))
+      .collect::<Vec<_>>();
+    evaluator_old?;
+    evaluator_new?;
+    for result in games_results {
+      result??;
     }
 
-    let result = if i.is_multiple_of(2) {
-      pit::play(&mut field, player, &model_new, &model_old, 0, rng).await?
-    } else {
-      -pit::play(&mut field, player, &model_old, &model_new, 0, rng).await?
-    };
-
-    match result.cmp(&0) {
-      Ordering::Less => losses += 1,
-      Ordering::Greater => wins += 1,
-      Ordering::Equal => {}
-    };
-
-    if let Some(ref games) = params.games
-      && let Some(node) = to_sgf(&field.into())
-    {
-      let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-      let mut file = File::options().append(true).create(true).open(games).unwrap();
-      write_sgf(&mut file, &sgf).unwrap();
-    }
-
-    i += 1;
-
-    log::info!("Game {}, result {}/{}/{}", i, wins, i - wins - losses, losses);
-
-    // Check early exit: outcome is already determined regardless of remaining games.
-    if win_rate_bound(wins, losses, i, total_games, true) <= params.win_rate_threshold {
-      break false;
-    }
-    if win_rate_bound(wins, losses, i, total_games, false) > params.win_rate_threshold {
-      break true;
-    }
-
-    if i == total_games {
-      // All games played, no early exit triggered; do final evaluation.
-      let draws = i - wins - losses;
-      let win_rate = (wins as f64 + draws as f64 / 2.0) / total_games as f64;
-      break win_rate > params.win_rate_threshold;
-    }
-
-    if i.is_multiple_of(2) {
-      width = params.width[rng.random_range(0..params.width.len())];
-      height = params.height[rng.random_range(0..params.height.len())];
-      op = opening(width, height, rng);
-    }
-
-    player = Player::Red;
-    field = Field::new(width, height, zobrist.clone());
-    for &(x, y) in op.iter() {
-      let pos = field.to_pos(x, y);
-      assert!(field.put_point(pos, player));
-      field.update_grounded();
-      player = player.next();
-    }
-  };
-
-  Ok(if outcome { ExitCode::SUCCESS } else { 2.into() })
+    Ok(if outcome? { ExitCode::SUCCESS } else { 2.into() })
+  })
 }
 
 fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
@@ -880,7 +1090,7 @@ fn run(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<E
       };
       train(params, device, &mut rng, should_stop)
     }
-    Action::Pit(params) => futures::executor::block_on(pit(params, device, &mut rng, should_stop)),
+    Action::Pit(params) => pit(params, device, &mut rng, should_stop),
     Action::Count(params) => count(params, &mut rng),
     Action::Recalc(params) => futures::executor::block_on(recalc(params, device, &mut rng, should_stop)),
     Action::Bench(params) => bench(params, device, &mut rng),
