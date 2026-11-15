@@ -9,7 +9,7 @@ use burn::{
   optim::{GradientsParams, ModuleOptimizer},
   store::{ModuleRecord, RecordError},
   tensor::{
-    DType, DataError, Device, ExecutionError, FloatDType, Tensor, TensorData, Transaction,
+    DType, DataError, Device, ExecutionError, FloatDType, Int, Tensor, TensorData, Transaction,
     activation::{log_softmax, mish, sigmoid, softmax, softplus},
     module::{conv2d, linear},
     ops::ConvOptions,
@@ -482,17 +482,31 @@ pub struct ValueHead {
   linear_s2off: Linear,
   linear_s3: Linear,
   linear_smix: Linear,
-  score_belief_offset_bias: Param<Tensor<1>>,
+}
+
+/// How much the score belief's per-bin input grows per point of score. The
+/// head tells bins apart only through this input, so neighbouring scores have
+/// to differ by enough of it for the head to resolve single points: at 0.05,
+/// the scores a game realistically ends at, within some 30 points, span about
+/// the unit range its layers are scaled for. At 0.002 neighbouring scores
+/// differed so little that the belief stayed nearly flat - some 26 points
+/// wide even at a game's final position - for a whole run.
+const SCORE_BELIEF_OFFSET_SCALE: f64 = 0.05;
+
+/// The score belief's per-bin input: the bin's score, in points, times
+/// [`SCORE_BELIEF_OFFSET_SCALE`]. The bins are whole points, so a bin's
+/// offset is its score itself. A constant of the architecture rather than a
+/// parameter, so that it isn't stored in model files and its scale can change
+/// without them.
+fn score_belief_offsets(device: &Device) -> Tensor<1> {
+  Tensor::<1, Int>::arange(0..SCORE_ONE_HOT_SIZE as i64, device)
+    .float()
+    .sub_scalar((SCORE_ONE_HOT_SIZE / 2) as f64)
+    .mul_scalar(SCORE_BELIEF_OFFSET_SCALE)
 }
 
 impl ValueHead {
   pub fn new(device: &Device, inner_channels: usize, config: &HeadsConfig) -> Self {
-    let offset_bias_data: Vec<f32> = (0..SCORE_ONE_HOT_SIZE as i32)
-      .map(|i| 0.002 * ((i - (SCORE_ONE_HOT_SIZE - 1) as i32 / 2) as f32))
-      .collect();
-    let offset_bias_tensor: Tensor<1> =
-      Tensor::from_data(TensorData::new(offset_bias_data, [SCORE_ONE_HOT_SIZE]), device);
-
     Self {
       conv1: Conv2dConfig::new([inner_channels, config.v1_channels], [1, 1])
         .with_padding(PaddingConfig2d::Same)
@@ -509,7 +523,6 @@ impl ValueHead {
       linear_s2off: LinearConfig::new(1, config.sbv2_size).with_bias(false).init(device),
       linear_s3: LinearConfig::new(config.sbv2_size, config.num_scorebeliefs).init(device),
       linear_smix: LinearConfig::new(3 * config.v1_channels, config.num_scorebeliefs).init(device),
-      score_belief_offset_bias: Param::from_tensor(offset_bias_tensor).no_grad(),
     }
   }
 
@@ -584,7 +597,9 @@ impl ValueHead {
     let s2_term = self.linear_s2.forward(outpooled.clone()).reshape([0, 1, -1]);
 
     // Term 2: Offset bias
-    let offset_bias = self.score_belief_offset_bias.val().reshape([1, SCORE_ONE_HOT_SIZE, 1]);
+    let offset_bias = score_belief_offsets(&outpooled.device())
+      .cast(self.linear_s2off.weight.val().dtype())
+      .reshape([1, SCORE_ONE_HOT_SIZE, 1]);
     let s2off_term = self.linear_s2off.forward(offset_bias);
 
     let outsv2 = s2_term + s2off_term;
