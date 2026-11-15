@@ -882,11 +882,9 @@ impl Field {
         let cell = self.cell(pos);
         self.cell_changes.push((pos, cell));
         if !cell.is_put() {
-          self.points[pos].0 = self.points[pos].0 & !(Cell::EMPTY_BASE_BIT | Cell::PLAYER_BIT)
-            | Cell::CAPTURED_BIT
-            | player.to_bool() as u8;
+          self.points[pos].capture_empty(player);
         } else if cell.get_player() != player {
-          self.points[pos].0 = self.points[pos].0 & !(Cell::BOUND_BIT | Cell::EMPTY_BASE_BIT) | Cell::CAPTURED_BIT;
+          self.points[pos].capture_point();
           self.hash ^= self.zobrist.hashes[self.length() * 2 + pos];
         } else if cell.is_captured() {
           self.points[pos].clear_captured();

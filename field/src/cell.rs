@@ -211,6 +211,18 @@ impl Cell {
     self.0 = self.0 & !Self::PLAYER_BIT | player.to_bool() as CellValue | Self::EMPTY_BASE_BIT
   }
 
+  /// Turns an empty cell into captured territory of `player`.
+  #[inline]
+  pub fn capture_empty(&mut self, player: Player) {
+    self.0 = self.0 & !(Self::EMPTY_BASE_BIT | Self::PLAYER_BIT) | Self::CAPTURED_BIT | player.to_bool() as CellValue
+  }
+
+  /// Captures a point, so it's no longer a part of a chain or an empty base.
+  #[inline]
+  pub fn capture_point(&mut self) {
+    self.0 = self.0 & !(Self::BOUND_BIT | Self::EMPTY_BASE_BIT) | Self::CAPTURED_BIT
+  }
+
   #[inline]
   pub fn is_bound_player(self, player: Player) -> bool {
     self.0 & (Self::PUT_BIT | Self::PLAYER_BIT | Self::BOUND_BIT)
