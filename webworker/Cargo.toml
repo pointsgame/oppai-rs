@@ -11,7 +11,7 @@ futures.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-burn = { workspace = true, features = [ "webgpu", "flex" ] }
+burn = { workspace = true, features = [ "webgpu", "flex", "autotune", "fusion", "persistence" ] }
 log.workspace = true
 web-sys = { version = "0.3", features = [
   "Gpu",
