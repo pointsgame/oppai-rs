@@ -137,6 +137,21 @@ fn apply_control_surrounding_in_same_turn() {
 }
 
 #[test]
+fn captured_point_is_not_empty_base() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .a.
+    aBa
+    .a.
+    ",
+  );
+  let cell = field.cell(field.to_pos(1, 1));
+  assert!(cell.is_captured());
+  assert!(!cell.is_empty_base());
+}
+
+#[test]
 fn double_surround() {
   let mut field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
