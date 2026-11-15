@@ -25,7 +25,7 @@ set -euo pipefail
 	# TRAININGS_PER_POSITION times the positions played since the last accepted
 	# model, drawn from a window of the most recent games that grows with the
 	# positions played so far, and the learning rate warms up over the first
-	# trained positions of the run.
+	# trained positions of the run and decays over the long run.
 	#
 	# An interrupted run resumes when started again: it continues from the latest
 	# model and only tops the current cycle's games up to the target count before
@@ -54,7 +54,7 @@ set -euo pipefail
 	LOGSDIR="$BASEDIR"/logs
 	mkdir -p "$GAMESDIR" "$MODELSDIR" "$LOGSDIR"
 	# Positions trained so far by the accepted models, which the learning rate
-	# warms up over.
+	# follows.
 	TRAINED_FILE="$BASEDIR"/trained_positions
 
 	# Parameters for the training run.
@@ -83,6 +83,8 @@ set -euo pipefail
 	BATCHSIZE=64                  # Training memory is mostly the activations kept for the backward pass, about 9 GB for a batch of 64 at 24x24 with mixed precision
 	OPTIMIZER=sgd                 # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
 	LEARNING_RATE=                # Learning rate after the warmup, stated for a batch of 256 and scaled to BATCHSIZE below; empty for 0.01 with sgd and 0.00004 with adamw and muon
+	LR_DECAY_START=10000000       # Trained positions after which the learning rate starts to decay, halving every time they double ...
+	LR_DECAY_MIN=0.125            # ... but to no less than this fraction of LEARNING_RATE
 	PIT_GAMES=50                  # Gating games per side, the total number of games is twice this
 	WIN_RATE_THRESHOLD=0.55       # Win rate the new model has to reach against the previous one to be accepted
 
@@ -127,12 +129,19 @@ set -euo pipefail
 	# The fraction of the learning rate a training gets after this many trained
 	# positions. A fresh network's gradients are large and erratic, and full
 	# steps on them can throw it somewhere it never recovers from; the steps
-	# grow as it settles.
-	warmup() {
-		awk -v t="$1" 'BEGIN {
+	# grow as it settles. Later on, once the network improves little from one
+	# cycle to the next, full steps keep it bouncing around a noisy plateau
+	# instead of settling into it, and they shrink again: halving every time
+	# the trained positions double past LR_DECAY_START - one over the trained
+	# positions, the long-run shape of KataGo's automatic schedule - down to a
+	# floor that still lets the network follow its own improving games.
+	learning_rate_factor() {
+		awk -v t="$1" -v s="$LR_DECAY_START" -v m="$LR_DECAY_MIN" 'BEGIN {
 			split("20 14 10 7 5 3 2 1.4", d, " ")
 			i = int(t / 250000) + 1
-			printf "%.9g", i <= 8 ? 1 / d[i] : 1
+			if (i <= 8) { printf "%.9g", 1 / d[i]; exit }
+			f = t > s ? s / t : 1
+			printf "%.9g", f < m ? m : f
 		}'
 	}
 
@@ -332,7 +341,7 @@ set -euo pipefail
 		TRAIN_POSITIONS=$((NEW * TRAININGS_PER_POSITION))
 		((TRAIN_POSITIONS <= MAX_TRAINING_POSITIONS)) || TRAIN_POSITIONS=$MAX_TRAINING_POSITIONS
 		((TRAIN_POSITIONS <= IN_WINDOW)) || TRAIN_POSITIONS=$IN_WINDOW
-		CYCLE_LEARNING_RATE=$(awk -v r="$LEARNING_RATE" -v w="$(warmup "$TRAINED")" 'BEGIN { printf "%.9g", r * w }')
+		CYCLE_LEARNING_RATE=$(awk -v r="$LEARNING_RATE" -v w="$(learning_rate_factor "$TRAINED")" 'BEGIN { printf "%.9g", r * w }')
 		CYCLE_SWA_SCALE=$(swa_scale "$TRAINED")
 
 		# The moving average continues from the previous one when it exists,
