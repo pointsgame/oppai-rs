@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 use burn::{
   module::Module,
   store::ModuleRecord,
-  tensor::{Bytes, Device},
+  tensor::{Bytes, Device, DeviceConfig, FloatDType},
 };
 use futures::{StreamExt, channel::mpsc};
 use oppai_ai::{ai::AI, analysis::Analysis};
@@ -180,14 +180,26 @@ pub fn run() {
   wasm_bindgen_futures::spawn_local(async move {
     // WebGPU where the browser offers it, the CPU otherwise - or when the GPU
     // fails to come up.
-    let device = if scope.navigator().gpu().is_object() {
-      Device::wgpu_options().init_async().await.unwrap_or_else(|error| {
-        web_sys::console::error_1(&format!("Failed to initialize WebGPU: {}", error).into());
-        Device::flex()
-      })
+    let (mut device, gpu) = if scope.navigator().gpu().is_object() {
+      match Device::wgpu_options().init_async().await {
+        Ok(device) => (device, true),
+        Err(error) => {
+          web_sys::console::error_1(&format!("Failed to initialize WebGPU: {}", error).into());
+          (Device::flex(), false)
+        }
+      }
     } else {
-      Device::flex()
+      (Device::flex(), false)
     };
+    // Half precision where the GPU supports it, as it's often many times
+    // faster there; the CPU gains nothing from it. It has to be set before
+    // the model is loaded, so that its weights are converted too.
+    if gpu && device.supports_dtype(FloatDType::F16) {
+      match device.configure(DeviceConfig::default().float_dtype(FloatDType::F16)) {
+        Ok(()) => log::info!("Evaluating the network in half precision"),
+        Err(error) => web_sys::console::error_1(&format!("Failed to switch to half precision: {}", error).into()),
+      }
+    }
 
     let (config, model_bytes) = futures::future::join(
       download_config("https://kropki.org/model.json"),

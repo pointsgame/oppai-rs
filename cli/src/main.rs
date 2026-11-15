@@ -6,7 +6,10 @@ mod config;
 
 use crate::config::{Config, cli_parse};
 use anyhow::Result;
-use burn::module::Module;
+use burn::{
+  module::Module,
+  tensor::{DeviceConfig, FloatDType},
+};
 use either::Either;
 use oppai_ai::{ai::AI, analysis::Analysis};
 use oppai_ais::{
@@ -35,7 +38,11 @@ struct State {
 }
 
 fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
-  let device = config.device.clone();
+  let mut device = config.device.clone();
+  if config.half {
+    // Before the model is loaded, so that its weights are converted too.
+    device.configure(DeviceConfig::default().float_dtype(FloatDType::F16))?;
+  }
   let model = config.model.as_ref().map(|model_path| {
     BurnModel::new(&device, &config.model_config)
       .try_load_file(model_path)

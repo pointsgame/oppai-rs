@@ -16,6 +16,7 @@ pub struct Config {
   pub model: Option<String>,
   pub model_config: ModelConfig,
   pub device: Device,
+  pub half: bool,
   pub uct_iterations: usize,
   pub minimax_depth: u32,
   pub time_gap: Duration,
@@ -64,6 +65,15 @@ pub fn cli_parse() -> Config {
         .default_value("auto"),
     )
     .arg(
+      Arg::new("half")
+        .long("half")
+        .help(
+          "Evaluate the network in half precision. Convolutions in single precision cannot use the matrix units \
+           of many GPUs, so this is often many times faster",
+        )
+        .action(clap::ArgAction::SetTrue),
+    )
+    .arg(
       Arg::new("minimax-depth")
         .long("minimax-depth")
         .help(
@@ -108,6 +118,7 @@ pub fn cli_parse() -> Config {
         ModelConfig::from_file(path).expect("Failed to load the model config file.")
       }),
     device: matches.get_one::<Device>("device").cloned().unwrap(),
+    half: matches.get_flag("half"),
     uct_iterations: matches.get_one("uct-iterations").copied().unwrap(),
     minimax_depth: matches.get_one("minimax-depth").copied().unwrap(),
     time_gap: matches
