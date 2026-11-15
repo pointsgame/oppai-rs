@@ -1420,6 +1420,7 @@ impl Predictor {
     scores: Array2<f32>,
     captured: Array4<f32>,
     q_values: Array4<f32>,
+    outcome_weights: Array1<f32>,
   ) -> Losses {
     let (batch, channels, height, width) = inputs.dim();
     let inputs = Tensor::from_data(
@@ -1458,6 +1459,12 @@ impl Predictor {
     );
     let q_values: Tensor<4> = Tensor::from_data(
       TensorData::new(into_data_vec(q_values), [batch, 3, height, width]),
+      &self.device,
+    );
+    // 0 for the side positions, which have none of the targets only the end of
+    // the game gives, see `Batch::outcome_weights`.
+    let outcome_weights: Tensor<2> = Tensor::from_data(
+      TensorData::new(into_data_vec(outcome_weights), [batch, 1]),
       &self.device,
     );
     let q_targets = q_values.clone().slice(s![.., 0..1]).reshape([0, -1]);
@@ -1583,10 +1590,11 @@ impl Predictor {
     // The TD score head is the score's counterpart of the TD value head: how the
     // score stands at each horizon, in points. Huber rather than squared error so
     // that a game whose score runs away does not dominate the gradient.
-    let td_scores_loss = HuberLossConfig::new(12.0)
+    let td_scores_loss = (HuberLossConfig::new(12.0)
       .init()
       .forward_no_reduction(out_td_scores.clone(), td_scores.clone())
-      .sum()
+      * outcome_weights.clone())
+    .sum()
       * 0.0004
       / batch;
     // And the short-term score error head is trained exactly like the value one:
@@ -1597,10 +1605,11 @@ impl Predictor {
     let real_score = td_scores.slice(s![.., TD_VALUES - 1..]);
     let score_surprise = real_score - pred_score;
     let score_sq_error = score_surprise.clone().square() + 1e-4;
-    let score_error_loss = HuberLossConfig::new(100.0)
+    let score_error_loss = (HuberLossConfig::new(100.0)
       .init()
       .forward_no_reduction(out_score_error.clone(), score_sq_error)
-      .sum()
+      * outcome_weights.clone())
+    .sum()
       * 0.00002
       / batch;
 
@@ -1619,8 +1628,9 @@ impl Predictor {
     // itself. Either one is enough, so the two thresholds add up - a move can pay
     // off in points while the game stays as won or lost as it was, and a decided
     // position has no win probability left to be surprised in.
+    // A side position has no score to have been surprised by.
     let optimistic_weight = (stdevs_excess_weight(value_surprise, out_value_error.detach(), VALUE_VARIANCE_FLOOR)
-      + stdevs_excess_weight(score_surprise, out_score_error.detach(), SCORE_VARIANCE_FLOOR))
+      + stdevs_excess_weight(score_surprise, out_score_error.detach(), SCORE_VARIANCE_FLOOR) * outcome_weights.clone())
     .clamp_max(1.0);
     // The scale is about a fifth of the main policy term above: the same target
     // seen through a filter only some of the samples pass.
@@ -1637,27 +1647,31 @@ impl Predictor {
       score_mean_and_variance(out_scores.clone().exp().detach(), bins.clone());
     let (real_score_mean, _) = score_mean_and_variance(scores.clone(), bins);
     let win = values.slice(s![.., 0..1]);
+    // And a side position has no game to have won.
     let long_optimistic_weight = (win.powi_scalar(2)
       + stdevs_excess_weight(
         real_score_mean - pred_score_mean,
         pred_score_variance,
         SCORE_VARIANCE_FLOOR,
       ))
-    .clamp_max(1.0);
+    .clamp_max(1.0)
+      * outcome_weights.clone();
     let long_optimistic_policies_loss =
       -(out_long_optimistic_policies * policies * long_optimistic_weight).sum() * 0.108 / batch;
     let opponent_policies_loss = -(out_opponent_policies * opponent_policies).sum() * 0.15 / batch;
     let soft_policies_loss = -(out_soft_policies * soft_policies).sum() * 8.0 / batch;
     let soft_opponent_policies_loss =
       -(out_soft_opponent_policies * soft_opponent_policies * opponent_weight).sum() * 1.2 / batch;
-    let pdf_loss = -(out_scores * scores).sum() * 0.02 / batch;
-    let cdf_loss = (out_scores_cdf - scores_cdf).square().sum() * 0.02 / batch;
+    let pdf_loss = -(out_scores * scores * outcome_weights.clone()).sum() * 0.02 / batch;
+    let cdf_loss = ((out_scores_cdf - scores_cdf).square() * outcome_weights.clone()).sum() * 0.02 / batch;
     // Binary cross-entropy with logits in the numerically stable form
     // `max(z, 0) - z * t + ln(1 + exp(-|z|))`, normalized by the board area
     // like KataGo's ownership loss.
     let captured_bce = out_captured_logits.clone().clamp_min(0.0) - out_captured_logits.clone() * captured
       + (-out_captured_logits.abs()).exp().log1p();
-    let captured_loss = ((captured_bce * mask).sum_dim(2).sum_dim(3) / mask_sum_hw).sum() * 1.5 / batch;
+    let captured_loss =
+      ((captured_bce * mask).sum_dim(2).sum_dim(3) / mask_sum_hw * outcome_weights.reshape([0, 1, 1, 1])).sum() * 1.5
+        / batch;
 
     // Per-move q loss: each explored move's predicted value against the value
     // the search settled on for it, as a binary cross-entropy over the implied
@@ -1727,6 +1741,7 @@ impl Learner {
     scores: Array2<f32>,
     captured: Array4<f32>,
     q_values: Array4<f32>,
+    outcome_weights: Array1<f32>,
   ) -> Losses {
     self.predictor.losses(
       self.compute_dtype,
@@ -1740,6 +1755,7 @@ impl Learner {
       scores,
       captured,
       q_values,
+      outcome_weights,
     )
   }
 }
@@ -1759,6 +1775,7 @@ impl OppaiTrainableModel<f32> for Learner {
     scores: Array2<f32>,
     captured: Array4<f32>,
     q_values: Array4<f32>,
+    outcome_weights: Array1<f32>,
     learning_rate: f64,
   ) -> Result<Self, Self::TE> {
     let Losses(losses) = self.losses(
@@ -1772,6 +1789,7 @@ impl OppaiTrainableModel<f32> for Learner {
       scores,
       captured,
       q_values,
+      outcome_weights,
     );
 
     let mut norm_visitor = ParamNormVisitor::new(&self.predictor.device);
@@ -2515,6 +2533,7 @@ mod tests {
             scores,
             captured,
             q_values,
+            array![1.0],
             0.01,
           )
           .unwrap();
@@ -2565,11 +2584,12 @@ mod tests {
       scores,
       Array4::from_elem((1, 2, 4, 8), 0.0),
       q_values,
+      array![1.0],
     );
     let losses = |learner: &Learner| {
       let b = batch.clone();
       learner
-        .losses(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9)
+        .losses(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10)
         .values()
     };
 
@@ -2580,7 +2600,7 @@ mod tests {
     assert!(!valid.device.is_autodiff());
     let b = batch.clone();
     let valid_losses = valid
-      .losses(None, b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9)
+      .losses(None, b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10)
       .values();
     for (&(name, training), &(_, validation)) in before.iter().zip(&valid_losses) {
       assert!(
@@ -2597,11 +2617,61 @@ mod tests {
     for _ in 0..4 {
       let b = batch.clone();
       learner = learner
-        .train(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, 0.01)
+        .train(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10, 0.01)
         .unwrap();
     }
     let total = |losses: &[(&str, f32)]| losses.iter().map(|&(_, loss)| loss).sum::<f32>();
     assert!(total(&losses(&learner)) < total(&before));
+  }
+
+  // A side position has no game played out from it, so the targets of the
+  // game's end - the final score, the TD scores, the captured cells and the
+  // policy of the won games - are left out of its losses, whatever they hold,
+  // while the targets of its own search still count.
+  #[cfg(feature = "flex")]
+  #[test]
+  fn side_positions_have_no_outcome_losses() {
+    let device = Device::flex().autodiff();
+    let model = Model::new(&device, &ModelConfig::default());
+    let predictor = Predictor { model, device };
+    let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
+    scores[(0, SCORE_ONE_HOT_SIZE / 2 + 5)] = 1.0;
+    let losses = |outcome_weight: f32| {
+      predictor
+        .losses(
+          None,
+          Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
+          array![[0.2]],
+          Array3::from_elem((1, 4, 8), 1.0 / 32.0),
+          Array3::from_elem((1, 4, 8), 0.0),
+          array![[1.0, 0.0]],
+          Array3::from_elem((1, TD_VALUES, 2), 0.5),
+          Array2::from_elem((1, TD_VALUES), 3.0),
+          scores.clone(),
+          Array4::from_elem((1, 2, 4, 8), 1.0),
+          Array4::from_elem((1, 3, 4, 8), 0.0),
+          array![outcome_weight],
+        )
+        .values()
+    };
+    let outcome = [
+      "td score",
+      "score error",
+      "long optimistic policy",
+      "pdf",
+      "cdf",
+      "captured",
+    ];
+    let played_out = losses(1.0);
+    let side = losses(0.0);
+    for (&(name, played_out), &(_, side)) in played_out.iter().zip(&side) {
+      if outcome.contains(&name) {
+        assert!(played_out > 0.0, "{name}");
+        assert_eq!(side, 0.0, "{name}");
+      } else if name != "optimistic policy" {
+        assert_eq!(played_out, side, "{name}");
+      }
+    }
   }
 
   #[cfg(feature = "flex")]
@@ -2656,6 +2726,7 @@ mod tests {
         scores.clone(),
         Array4::from_elem((2, 2, 4, 8), 0.0),
         Array4::from_elem((2, 3, 4, 8), 0.0),
+        array![1.0, 1.0],
       )
     };
     let gradient = |learner: &Learner| {

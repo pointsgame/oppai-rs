@@ -1,11 +1,11 @@
 use crate::{
-  episode::Visits,
+  episode::{SidePosition, Visits},
   field_features::{
     CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, SCORE_ONE_HOT_SIZE, captured_features_to_vec, field_features_to_vec,
     global_to_vec, score_one_hot_to_vec,
   },
 };
-use ndarray::{Array, Array2, Array3, Array4};
+use ndarray::{Array, Array1, Array2, Array3, Array4};
 use num_traits::{Float, One, Zero};
 use oppai_field::{
   field::{Field, Pos},
@@ -57,6 +57,11 @@ pub struct Batch<N> {
   /// every cell of a position recorded before q values were stored - carry
   /// zero weight, which masks them out of the loss.
   pub q_values: Array4<N>,
+  /// The weight of the targets only the end of the game gives - the final
+  /// score, the TD scores and the captured cells: 1 for a position of a game
+  /// played out, 0 for a side position, which has none, see
+  /// [`ExampleGame::played_out`].
+  pub outcome_weights: Array1<N>,
 }
 
 #[derive(Clone, Debug)]
@@ -72,6 +77,12 @@ pub struct ExampleGame {
   /// Score at the terminal game state
   pub score: i32,
   pub visits: Vec<Visits>,
+  /// Whether the moves are those of a game played to its end. A side position
+  /// is not: its moves end where its search chose a move, so the game has no
+  /// result, final score or captures there, and its only row learns the value
+  /// from its own search - as every TD horizon too - while the targets of the
+  /// end of the game are masked out, see [`Batch::outcome_weights`].
+  pub played_out: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -234,6 +245,7 @@ impl Examples {
       komi_x_2,
       score: field.score(Player::Red),
       visits,
+      played_out: true,
     };
     let game_index = self.games.len();
     self.games.push(game);
@@ -253,29 +265,81 @@ impl Examples {
       if sum_value_surprise > 0.0 {
         weight += value_surprise_weight * full_weight * value_surprises[i] / sum_value_surprise;
       }
-      // Write the position `floor(weight)` times, plus once more with probability
-      // equal to the fractional part of the weight.
-      //
-      // Each copy goes under one random symmetry rather than under all of them.
-      // Writing all of them would train every position eight times per pass, and
-      // the training window passes over a game once per cycle it stays in, so a
-      // position would be trained dozens of times - enough for the value head to
-      // memorize the outcomes of the games. The examples are rebuilt for every
-      // training run, so the passes still see a position under fresh symmetries.
-      let copies = weight.floor() as usize + usize::from(weight > 0.0 && rng.random::<f64>() < weight.fract());
-      for _ in 0..copies {
-        let rotation = rng.random_range(0..rotations);
-        let mut history = 0;
-        while history < HISTORY_CHANNELS && rng.random::<f64>() < HISTORY_KEEP_PROBABILITY {
-          history += 1;
-        }
-        self.examples.push(Example {
-          game: game_index,
-          position: initial_moves + i,
-          rotation,
-          history: history as u8,
-        });
+      Self::push_copies(
+        &mut self.examples,
+        game_index,
+        initial_moves + i,
+        weight,
+        rotations,
+        rng,
+      );
+    }
+  }
+
+  /// Adds a side position of a game whose main line ended in the position
+  /// `field`, see [`SidePosition`]. Its row weighs what its search does: it is
+  /// no part of the game the surprise weighting redistributes the weight of,
+  /// and its search is a full one, so it counts as one.
+  pub fn add_side_position<R: Rng>(
+    &mut self,
+    komi_x_2: i32,
+    side: SidePosition,
+    field: &Field,
+    rotations: bool,
+    rng: &mut R,
+  ) {
+    let rotations = if rotations { ROTATIONS } else { MIRRORS };
+    let mut moves = field.colored_moves().take(side.branch).collect::<Vec<_>>();
+    let mut player = side.player;
+    for pos in side.moves {
+      moves.push((pos, player));
+      player = player.next();
+    }
+    let position = moves.len() - 1;
+    let weight = side.visits.1;
+    let game_index = self.games.len();
+    self.games.push(ExampleGame {
+      width: field.width(),
+      height: field.height(),
+      moves,
+      komi_x_2,
+      score: 0,
+      visits: vec![side.visits],
+      played_out: false,
+    });
+    Self::push_copies(&mut self.examples, game_index, position, weight, rotations, rng);
+  }
+
+  /// Writes the position `floor(weight)` times, plus once more with probability
+  /// equal to the fractional part of the weight.
+  ///
+  /// Each copy goes under one random symmetry rather than under all of them.
+  /// Writing all of them would train every position eight times per pass, and
+  /// the training window passes over a game once per cycle it stays in, so a
+  /// position would be trained dozens of times - enough for the value head to
+  /// memorize the outcomes of the games. The examples are rebuilt for every
+  /// training run, so the passes still see a position under fresh symmetries.
+  fn push_copies<R: Rng>(
+    examples: &mut Vec<Example>,
+    game: usize,
+    position: usize,
+    weight: f64,
+    rotations: u8,
+    rng: &mut R,
+  ) {
+    let copies = weight.floor() as usize + usize::from(weight > 0.0 && rng.random::<f64>() < weight.fract());
+    for _ in 0..copies {
+      let rotation = rng.random_range(0..rotations);
+      let mut history = 0;
+      while history < HISTORY_CHANNELS && rng.random::<f64>() < HISTORY_KEEP_PROBABILITY {
+        history += 1;
       }
+      examples.push(Example {
+        game,
+        position,
+        rotation,
+        history: history as u8,
+      });
     }
   }
 
@@ -432,6 +496,7 @@ impl Examples {
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
     let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
     let mut q_values = Vec::<N>::with_capacity(range.len() * 3 * height as usize * width as usize);
+    let mut outcome_weights = Vec::<N>::with_capacity(range.len());
     for example in self.examples.get(range.clone()).unwrap() {
       let game = &self.games[example.game];
       let mut field = Field::new(game.width, game.height, zobrist.clone());
@@ -489,6 +554,22 @@ impl Examples {
         ),
         None => opponent_policies.extend(iter::repeat_n(N::zero(), (width * height) as usize)),
       }
+      if !game.played_out {
+        // A side position: no game was played out from it, so its value is the
+        // value of its own search - at every TD horizon too, which the blend
+        // of the single search value with that same value as the result gives
+        // - and the targets of the game's end are left to the zero weight.
+        let value = game.visits[example.position - initial_moves].3;
+        let win = (1.0 + value) / 2.0;
+        values.push(N::from(win).unwrap());
+        values.push(N::from(1.0 - win).unwrap());
+        Self::td_values_to_vec::<N>(game, example.position - initial_moves, player, value, &mut td_values);
+        td_scores.extend(iter::repeat_n(N::zero(), TD_VALUES));
+        scores.extend(iter::repeat_n(N::zero(), SCORE_ONE_HOT_SIZE));
+        captured.extend(iter::repeat_n(N::zero(), 2 * (width * height) as usize));
+        outcome_weights.push(N::zero());
+        continue;
+      }
       Self::values_to_vec::<N>(score, komi_x_2, &mut values);
       Self::td_values_to_vec::<N>(
         game,
@@ -515,6 +596,7 @@ impl Examples {
         &mut td_scores,
       );
       captured_features_to_vec(&field, player, width, height, example.rotation, &mut captured);
+      outcome_weights.push(N::one());
     }
     Batch {
       inputs: Array::from(inputs)
@@ -545,6 +627,7 @@ impl Examples {
       q_values: Array::from(q_values)
         .into_shape_with_order((range.len(), 3, height as usize, width as usize))
         .unwrap(),
+      outcome_weights: Array::from(outcome_weights),
     }
   }
 

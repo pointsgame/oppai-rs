@@ -1,5 +1,6 @@
-use crate::episode::Visits;
+use crate::episode::{SidePosition, Visits};
 use crate::examples::{ExampleGame, Examples, TD_VALUE_COEFFS, TD_VALUES};
+use crate::field_features::SCORE_ONE_HOT_SIZE;
 use ndarray::Axis;
 use oppai_field::{
   construct_field::construct_field,
@@ -22,6 +23,7 @@ fn game(values: [f64; 2]) -> ExampleGame {
       Visits(Vec::new(), 1.0, 0.0, values[0], 0.0, Vec::new()),
       Visits(Vec::new(), 1.0, 0.0, values[1], 0.0, Vec::new()),
     ],
+    played_out: true,
   }
 }
 
@@ -389,4 +391,91 @@ fn grouped_batches_hold_one_board_size() {
   }
   canvases.sort();
   assert_eq!(canvases, vec![(4, 3), (4, 3), (4, 3), (6, 4), (6, 4), (6, 4)]);
+}
+
+// A side position's row is the position before the last move of its side line,
+// reached through the game's moves up to the branch. Nothing was played out
+// from it, so its value and every TD horizon are the value of its search, and
+// the targets of the game's end are zero and weigh nothing - while the rows of
+// the game itself keep their full weight.
+#[test]
+fn side_positions_learn_from_their_own_search() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+  let field = construct_field(
+    &mut rng,
+    "
+    aA..
+    ....
+    ",
+  );
+  let (width, height) = (field.width(), field.height());
+  let main_moves = field.colored_moves().collect::<Vec<_>>();
+  let (first, side_player) = (main_moves[0], main_moves[1].1);
+
+  let mut examples = Examples::default();
+  let visits = field
+    .moves
+    .iter()
+    .map(|&pos| Visits(vec![(pos, 1.0)], 1.0, 0.0, 0.0, 0.0, Vec::new()))
+    .collect();
+  examples.add(0, visits, &field, false, false, &mut rng);
+  let game_rows = examples.len();
+
+  // After the first move, the side line answers with a move of its own, and
+  // the search of the position after it chose the reply.
+  let side_move = field.to_pos(1, 1);
+  let reply = field.to_pos(2, 1);
+  let side = SidePosition {
+    branch: 1,
+    player: side_player,
+    moves: vec![side_move, reply],
+    visits: Visits(
+      vec![(reply, 3.0), (field.to_pos(3, 1), 1.0)],
+      1.0,
+      0.0,
+      0.5,
+      0.0,
+      Vec::new(),
+    ),
+  };
+  examples.add_side_position(0, side, &field, false, &mut rng);
+  assert_eq!(examples.len(), game_rows + 1);
+  let side_game = examples.games.last().unwrap();
+  assert!(!side_game.played_out);
+  assert_eq!(
+    side_game.moves,
+    vec![first, (side_move, side_player), (reply, side_player.next())]
+  );
+  let side_example = examples.examples.last().unwrap();
+  assert_eq!(side_example.position, 2);
+
+  let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, &mut rng));
+  let rows = examples.len();
+  let batch = examples.batches::<f64>(zobrist, rows).next().unwrap();
+  for row in 0..game_rows {
+    assert_eq!(batch.outcome_weights[row], 1.0);
+  }
+  let row = rows - 1;
+  assert_eq!(batch.outcome_weights[row], 0.0);
+  assert_eq!(batch.values.index_axis(Axis(0), row).to_vec(), vec![0.75, 0.25]);
+  for horizon in 0..TD_VALUES {
+    assert!((batch.td_values[(row, horizon, 0)] - 0.75).abs() < 1e-12);
+    assert!((batch.td_values[(row, horizon, 1)] - 0.25).abs() < 1e-12);
+    assert_eq!(batch.td_scores[(row, horizon)], 0.0);
+  }
+  assert_eq!(batch.scores.index_axis(Axis(0), row).len(), SCORE_ONE_HOT_SIZE);
+  assert!(batch.scores.index_axis(Axis(0), row).iter().all(|&v| v == 0.0));
+  assert!(batch.captured.index_axis(Axis(0), row).iter().all(|&v| v == 0.0));
+  assert_eq!(batch.opponent_policies.index_axis(Axis(0), row).sum(), 0.0);
+  assert!((batch.policies.index_axis(Axis(0), row).sum() - 1.0).abs() < 1e-12);
+  assert!(
+    (batch
+      .policies
+      .index_axis(Axis(0), row)
+      .iter()
+      .fold(0.0f64, |a, &b| a.max(b))
+      - 0.75)
+      .abs()
+      < 1e-12
+  );
 }

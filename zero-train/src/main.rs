@@ -23,7 +23,7 @@ use oppai_field::{
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   batch_model::{batch_model, run_evaluator},
-  episode::{Visits, episode},
+  episode::{SidePosition, Visits, episode},
   examples::{Examples, is_validation_game},
   field_features::{CHANNELS, GLOBAL_FEATURES},
   mcgs::{Params, Search},
@@ -35,7 +35,7 @@ use oppai_zero::{
 use oppai_zero_burn::device::list_devices;
 use oppai_zero_burn::model::{Learner, Model as BurnModel, Predictor, ema_update};
 use oppai_zero_burn::optimizer::OptimizerConfig;
-use oppai_zero_sgf::{sgf_to_visits, visits_to_sgf};
+use oppai_zero_sgf::{sgf_to_side_positions, sgf_to_visits, side_positions_to_sgf, visits_to_sgf};
 use rand::{Rng, RngExt, SeedableRng, distr::uniform::SampleUniform, make_rng, rngs::SmallRng};
 use rand_distr::{Distribution, Exp1, Open01, StandardNormal};
 use sgf_parse::{GameTree, SgfNode, SimpleText, serialize, unknown_game::Prop};
@@ -101,9 +101,16 @@ fn write_sgf(file: &mut File, sgf: &str) -> Result<()> {
   Ok(())
 }
 
-fn write_game(file: &mut File, field: &ExtendedField, visits: &[Visits], komi_x_2: i32) -> Result<()> {
+fn write_game(
+  file: &mut File,
+  field: &ExtendedField,
+  visits: &[Visits],
+  side_positions: &[SidePosition],
+  komi_x_2: i32,
+) -> Result<()> {
   if let Some(mut node) = to_sgf(field) {
     visits_to_sgf(&mut node, visits, field.field().stride, field.field().moves_count());
+    side_positions_to_sgf(&mut node, side_positions, field.field().stride);
     let score_x_2 = field.field().score(Player::Red) * 2 + komi_x_2;
     node.properties.push(Prop::RE(match score_x_2.cmp(&0) {
       Ordering::Equal => "0".into(),
@@ -200,22 +207,22 @@ where
         player = player.next();
       }
 
-      let visits = episode(&mut field, player, &model, komi_x_2, params.readouts, &mut rng)
+      let (visits, side_positions) = episode(&mut field, player, &model, komi_x_2, params.readouts, &mut rng)
         .await
         .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
 
-      Ok::<_, Error>((field, visits, komi_x_2))
+      Ok::<_, Error>((field, visits, side_positions, komi_x_2))
     }
   });
 
   let mut games = futures::stream::iter(games).buffer_unordered(parallel);
 
   while let Some(game) = games.next().await {
-    let (field, visits, komi_x_2) = game?;
+    let (field, visits, side_positions, komi_x_2) = game?;
     let mut file = file
       .lock()
       .map_err(|_| anyhow::anyhow!("the games file lock is poisoned"))?;
-    write_game(&mut file, &field.into(), &visits, komi_x_2)?;
+    write_game(&mut file, &field.into(), &visits, &side_positions, komi_x_2)?;
   }
 
   Ok(())
@@ -419,6 +426,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
       let node = node?;
       let field = from_sgf::<Field, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let visits = sgf_to_visits(&node, field.stride);
+      let side_positions = sgf_to_side_positions(&node, field.stride);
       let komi_x_2 = node
         .properties
         .iter()
@@ -444,14 +452,13 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
       } else {
         &mut examples
       };
-      examples.add(
-        komi_x_2,
-        visits,
-        &field,
-        field.width() <= params.height && field.height() <= params.width,
-        !params.ignore_surprise,
-        rng,
-      );
+      let rotations = field.width() <= params.height && field.height() <= params.width;
+      examples.add(komi_x_2, visits, &field, rotations, !params.ignore_surprise, rng);
+      // The side positions of a game go wherever the game goes, so that none of
+      // a validation game's positions is trained on.
+      for side in side_positions {
+        examples.add_side_position(komi_x_2, side, &field, rotations, rng);
+      }
     }
   }
 
@@ -516,6 +523,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
       batch.scores,
       batch.captured,
       batch.q_values,
+      batch.outcome_weights,
       learning_rate,
     )?;
 
@@ -573,6 +581,7 @@ fn validate(learner: &Learner, validation: &Examples, batch_size: usize, zobrist
         batch.scores,
         batch.captured,
         batch.q_values,
+        batch.outcome_weights,
       )
       .values();
     if sums.is_empty() {
@@ -923,8 +932,10 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
       let node = node?;
       let field = from_sgf::<Field, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
       let visits = sgf_to_visits(&node, field.stride);
+      let side_positions = sgf_to_side_positions(&node, field.stride);
       games += 1;
       examples += visits.iter().filter(|v| v.1 > 0.0).count() as u32;
+      examples += side_positions.iter().filter(|side| side.visits.1 > 0.0).count() as u32;
     }
   }
 
@@ -936,7 +947,11 @@ fn count<R: Rng>(params: CountParams, rng: &mut R) -> Result<ExitCode> {
 /// Recomputes the policy surprise (KL divergence from the model's raw policy
 /// prior to the visit-count target) and the raw network value of every searched
 /// position of a single game.
-async fn recalc_game<N, M, R>(node: SgfNode<Prop>, model: &M, rng: &mut R) -> Result<(ExtendedField, Vec<Visits>, i32)>
+async fn recalc_game<N, M, R>(
+  node: SgfNode<Prop>,
+  model: &M,
+  rng: &mut R,
+) -> Result<(ExtendedField, Vec<Visits>, Vec<SidePosition>, i32)>
 where
   N: Float + Sum,
   M: Model<N>,
@@ -946,6 +961,9 @@ where
   let field = from_sgf::<ExtendedField, _>(&node, rng).ok_or(anyhow::anyhow!("invalid sgf"))?;
   let stride = field.field().stride;
   let mut visits = sgf_to_visits(&node, stride);
+  // Side positions weigh what their search does whatever their surprise, so
+  // they are carried over as they are.
+  let side_positions = sgf_to_side_positions(&node, stride);
   let komi_x_2 = node
     .properties
     .iter()
@@ -1008,7 +1026,7 @@ where
     }
   }
 
-  Ok((field, visits, komi_x_2))
+  Ok((field, visits, side_positions, komi_x_2))
 }
 
 /// Recalculates every game of `params.games`, up to `params.parallel_games` of
@@ -1056,8 +1074,8 @@ where
 
   let mut file = File::options().append(true).create(true).open(&params.games_new)?;
   while let Some(game) = games.next().await {
-    let (field, visits, komi_x_2) = game?;
-    write_game(&mut file, &field, &visits, komi_x_2)?;
+    let (field, visits, side_positions, komi_x_2) = game?;
+    write_game(&mut file, &field, &visits, &side_positions, komi_x_2)?;
   }
 
   Ok(())

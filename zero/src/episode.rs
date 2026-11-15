@@ -36,6 +36,18 @@ const REDUCE_VISITS_THRESHOLD: f64 = 0.9;
 const REDUCE_VISITS_LOOKBACK: usize = 3;
 pub(crate) const REDUCED_VISITS_WEIGHT: f64 = 0.1;
 
+/// Probability that a turn of a self-play game also searches a side position:
+/// the position after a move the game did not play, so that the net learns how
+/// to answer moves self-play never makes - it otherwise sees almost no
+/// positions right after a mistake, and so learns little about punishing one.
+const SIDE_POSITION_PROB: f64 = 0.02;
+
+/// Probability that a searched side position goes on: the move its search
+/// chose is played, then another move off the beaten track, and the result is
+/// searched in turn - so that some side positions follow several odd moves
+/// rather than just one.
+const SIDE_POSITION_CONTINUE_PROB: f64 = 0.25;
+
 /// Visit budget and training weight of a full search, ramped down once the
 /// recent search values say the game is decided. `values` holds every turn's
 /// search value from Red's perspective.
@@ -188,6 +200,295 @@ impl Visits {
   }
 }
 
+/// A searched position off the main line of a self-play game.
+///
+/// The game is never played out from it, so it has no result, no final score
+/// and no final captures: its only targets are those of its own search, see
+/// [`crate::examples::ExampleGame::played_out`].
+#[derive(Clone, PartialEq, Debug)]
+pub struct SidePosition {
+  /// The number of the game's moves before the side line branches off.
+  pub branch: usize,
+  /// The player making the first move of the side line. The players alternate
+  /// from there.
+  pub player: Player,
+  /// The moves of the side line. The last one is the move the search of the
+  /// position before it chose, the way a move of the game follows the search
+  /// recorded for it.
+  pub moves: Vec<Pos>,
+  /// The search of the position before the last move.
+  pub visits: Visits,
+}
+
+/// A side position still to be searched.
+pub(crate) struct SideStart {
+  /// The field after the moves of the side line so far.
+  pub(crate) field: Field,
+  /// The player to move there.
+  pub(crate) player: Player,
+  /// Komi of the player to move, multiplied by 2.
+  pub(crate) komi_x_2: i32,
+  pub(crate) branch: usize,
+  pub(crate) first_player: Player,
+  pub(crate) moves: Vec<Pos>,
+}
+
+/// Komi multiplied by 2 from Red's perspective, which is what
+/// [`Field::is_game_over`] takes, given that of the player to move.
+fn red_komi_x_2(player: Player, komi_x_2: i32) -> i32 {
+  if player == Player::Red { komi_x_2 } else { -komi_x_2 }
+}
+
+/// Picks the move a side line goes on with: a sample of the policy `priors`
+/// (indexed by position) at temperature 1 most of the time, so that the side
+/// positions are mostly ones a plausible opponent could reach, at temperature 2
+/// a quarter of the time and a uniformly random move once in twenty, so that
+/// some follow the blunders the policy all but rules out. `banned` is the move the game itself played, which would make the
+/// side position one of the game's own.
+pub(crate) fn side_move<N: Float, R: Rng>(
+  field: &Field,
+  priors: &[N],
+  banned: Option<Pos>,
+  rng: &mut R,
+) -> Option<Pos> {
+  let r = rng.random::<f64>();
+  let temperature = if r < 0.7 {
+    Some(1.0)
+  } else if r < 0.95 {
+    Some(2.0)
+  } else {
+    None
+  };
+  let moves = (field.min_pos()..=field.max_pos())
+    .filter(|&pos| field.is_putting_allowed(pos) && Some(pos) != banned)
+    .collect::<Vec<_>>();
+  let weights = moves
+    .iter()
+    .map(|&pos| temperature.map_or(1.0, |t| priors[pos].to_f64().unwrap().max(0.0).powf(1.0 / t)))
+    .collect::<Vec<_>>();
+  let total = weights.iter().sum::<f64>();
+  // A policy with no mass on any of the moves left leaves only the uniform choice.
+  if total <= 0.0 {
+    return (!moves.is_empty()).then(|| moves[rng.random_range(0..moves.len())]);
+  }
+  let mut sample = rng.random_range(0.0..total);
+  for (&pos, &weight) in moves.iter().zip(&weights) {
+    if weight > sample {
+      return Some(pos);
+    }
+    sample -= weight;
+  }
+  // Rounding can leave the sample a hair past the last weight.
+  moves
+    .iter()
+    .zip(&weights)
+    .rev()
+    .find(|&(_, &weight)| weight > 0.0)
+    .map(|(&pos, _)| pos)
+}
+
+/// Starts a full search of the position: from a fresh tree, with the root
+/// expanded, its raw priors saved into `raw_priors` and Dirichlet noise added
+/// to them.
+async fn start_full_search<N, M, R>(
+  search: &mut Search<N>,
+  field: &mut Field,
+  player: Player,
+  model: &M,
+  komi_x_2: i32,
+  raw_priors: &mut [N],
+  rng: &mut R,
+) -> Result<(), M::E>
+where
+  M: Model<N>,
+  N: Float + Sum + SampleUniform + Display + Debug,
+  R: Rng,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
+  // Recorded searches start from a fresh tree: the Dirichlet noise and
+  // forced playouts have to shape the entire visit distribution, and visits
+  // inherited from previous searches would leak into the policy target and
+  // inflate the policy surprise.
+  search.clear();
+  // The root has to be expanded before the noise can be applied to its children priors.
+  search.mcgs(field, player, model, komi_x_2, rng).await?;
+  search.root_priors(raw_priors);
+  // Total Dirichlet alpha, matching AlphaZero's 0.03 per move on an empty 19x19 board
+  // (0.03 * 361 = 10.83). Kept constant across board sizes and through the game, with
+  // the shaping in `add_dirichlet_noise` deciding how it is spread across the moves.
+  let total_concentration = N::from(0.03 * 19.0.powi(2)).unwrap();
+  let temperature = interpolate_early(field, N::from(1.25).unwrap(), N::from(1.1).unwrap());
+  search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), total_concentration, temperature);
+  Ok(())
+}
+
+/// Runs the search until its root holds `target_visits` visits, and at least
+/// one batch even when the reused subtree already meets the budget, so every
+/// move rests on a search of the actual root.
+async fn run_search<N, M, R>(
+  search: &mut Search<N>,
+  field: &mut Field,
+  player: Player,
+  model: &M,
+  komi_x_2: i32,
+  target_visits: u32,
+  rng: &mut R,
+) -> Result<(), M::E>
+where
+  M: Model<N>,
+  N: Float + Sum + SampleUniform + Display + Debug,
+  R: Rng,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
+  loop {
+    search.mcgs(field, player, model, komi_x_2, rng).await?;
+    if search.root_visits() >= u64::from(target_visits) {
+      return Ok(());
+    }
+  }
+}
+
+/// The search's value of the root, clamped like the per-move q targets: the
+/// winloss averaging can drift a hair past the `[-1, 1]` a value is defined on,
+/// and the training loss reads the value target as a probability that has to
+/// stay in `[0, 1]`.
+fn search_value<N: Float + Sum>(search: &Search<N>) -> f64 {
+  search.winloss().to_f64().unwrap().clamp(-1.0, 1.0)
+}
+
+/// The per-move q targets of the search's root.
+fn q_values<N: Float + Sum>(search: &Search<N>) -> Vec<(Pos, f64, f64, f64)> {
+  search
+    .q_values()
+    .map(|(pos, weight, q, score)| {
+      (
+        pos,
+        weight.to_f64().unwrap(),
+        q.to_f64().unwrap(),
+        score.to_f64().unwrap(),
+      )
+    })
+    .collect()
+}
+
+/// Searches the side positions queued in `queue`, and those that they lead to
+/// in turn, with full searches.
+pub(crate) async fn search_side_positions<N, M, R>(
+  mut queue: Vec<SideStart>,
+  model: &M,
+  readouts: usize,
+  rng: &mut R,
+) -> Result<Vec<SidePosition>, M::E>
+where
+  M: Model<N>,
+  N: Float + Sum + SampleUniform + Display + Debug,
+  R: Rng,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
+  let mut side_positions = Vec::new();
+  while let Some(mut side) = queue.pop() {
+    if side.field.is_game_over(red_komi_x_2(side.player, side.komi_x_2)) {
+      continue;
+    }
+    // Searched like a full search of the game, at the full budget: the row is
+    // a training sample of weight 1.
+    let mut search = Search::new(Params {
+      readouts,
+      ..Params::SELF_PLAY
+    });
+    let mut raw_priors = vec![N::zero(); side.field.length()];
+    start_full_search(
+      &mut search,
+      &mut side.field,
+      side.player,
+      model,
+      side.komi_x_2,
+      &mut raw_priors,
+      rng,
+    )
+    .await?;
+    run_search(
+      &mut search,
+      &mut side.field,
+      side.player,
+      model,
+      side.komi_x_2,
+      MCTS_FULL_VISITS,
+      rng,
+    )
+    .await?;
+    let value = search_value(&search);
+    let target: Vec<(Pos, N)> = search.pruned_weights().collect();
+    let surprise = Search::policy_surprise(&target, &raw_priors).to_f64().unwrap();
+    let visits = Visits(
+      target
+        .into_iter()
+        .map(|(pos, weight)| (pos, weight.to_f64().unwrap()))
+        .collect(),
+      1.0,
+      surprise,
+      value,
+      search.raw_winloss().to_f64().unwrap(),
+      q_values(&search),
+    );
+    let Some(response) = search.next_root_with_temperature(
+      interpolate_early(&side.field, N::from(0.75).unwrap(), N::from(0.15).unwrap()),
+      rng,
+    ) else {
+      continue;
+    };
+    let mut moves = side.moves;
+    moves.push(response.get());
+    side_positions.push(SidePosition {
+      branch: side.branch,
+      player: side.first_player,
+      moves: moves.clone(),
+      visits,
+    });
+
+    if rng.random::<f64>() >= SIDE_POSITION_CONTINUE_PROB {
+      continue;
+    }
+    let mut field = side.field;
+    assert!(field.put_point(response.get(), side.player));
+    field.update_grounded();
+    let player = side.player.next();
+    let komi_x_2 = -side.komi_x_2;
+    if field.is_game_over(red_komi_x_2(player, komi_x_2)) {
+      continue;
+    }
+    // The next odd move is drawn from the raw policy of the position, which a
+    // single step of a fresh search expands the root with.
+    let mut search = Search::new(Params {
+      readouts,
+      ..Params::SELF_PLAY
+    });
+    search.mcgs(&mut field, player, model, komi_x_2, rng).await?;
+    let mut priors = vec![N::zero(); field.length()];
+    search.root_priors(&mut priors);
+    if let Some(pos) = side_move(&field, &priors, None, rng) {
+      assert!(field.put_point(pos, player));
+      field.update_grounded();
+      moves.push(pos);
+      queue.push(SideStart {
+        field,
+        player: player.next(),
+        komi_x_2: -komi_x_2,
+        branch: side.branch,
+        first_player: side.first_player,
+        moves,
+      });
+    }
+  }
+  Ok(side_positions)
+}
+
 /// Interpolates between an early-game and a rest-of-game value, decaying
 /// exponentially with the number of moves played. KataGo's interpolateEarly
 /// uses a halflife of `sqrt(area)` moves, spending ~7.6% of a typical go game
@@ -227,8 +528,10 @@ where
   None
 }
 
-/// Plays a self-play game out from `field`. `readouts` overrides
-/// [`Params::SELF_PLAY`]'s readouts per search call, see [`Params::readouts`].
+/// Plays a self-play game out from `field`, returning the searches of its
+/// turns and the side positions searched off its main line. `readouts`
+/// overrides [`Params::SELF_PLAY`]'s readouts per search call, see
+/// [`Params::readouts`].
 pub async fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
@@ -236,7 +539,7 @@ pub async fn episode<N, M, R>(
   mut komi_x_2: i32,
   readouts: usize,
   rng: &mut R,
-) -> Result<Vec<Visits>, M::E>
+) -> Result<(Vec<Visits>, Vec<SidePosition>), M::E>
 where
   M: Model<N>,
   N: Float + Sum + SampleUniform + Display + Debug,
@@ -305,43 +608,23 @@ where
   // reduction of full searches once the game looks decided.
   let mut search_values: Vec<f64> = Vec::new();
 
-  while !field.is_game_over(if player == Player::Red { komi_x_2 } else { -komi_x_2 }) {
+  // Side positions to search once the game is over.
+  let mut side_starts = Vec::new();
+
+  while !field.is_game_over(red_komi_x_2(player, komi_x_2)) {
     let full_search = rng.random::<f64>() <= 0.25;
 
     let (target_visits, target_weight) = if full_search {
-      // Recorded searches start from a fresh tree: the Dirichlet noise and
-      // forced playouts have to shape the entire visit distribution, and visits
-      // inherited from previous searches would leak into the policy target and
-      // inflate the policy surprise. Cheap searches keep reusing the tree -
-      // they only pick a move.
-      search.clear();
-      // The root has to be expanded before the noise can be applied to its children priors.
-      search.mcgs(field, player, model, komi_x_2, rng).await?;
-      search.root_priors(&mut raw_priors);
-      // Total Dirichlet alpha, matching AlphaZero's 0.03 per move on an empty 19x19 board
-      // (0.03 * 361 = 10.83). Kept constant across board sizes and through the game, with
-      // the shaping in `add_dirichlet_noise` deciding how it is spread across the moves.
-      let total_concentration = N::from(0.03 * 19.0.powi(2)).unwrap();
-      let temperature = interpolate_early(field, N::from(1.25).unwrap(), N::from(1.1).unwrap());
-      search.add_dirichlet_noise(rng, N::from(0.25).unwrap(), total_concentration, temperature);
+      start_full_search(&mut search, field, player, model, komi_x_2, &mut raw_priors, rng).await?;
       reduced_search(&search_values)
     } else {
+      // Cheap searches keep reusing the tree - they only pick a move.
       (MCTS_VISITS, 0.0)
     };
 
-    // At least one batch even when the reused subtree already meets the
-    // budget, so every move rests on a search of the actual root.
-    loop {
-      search.mcgs(field, player, model, komi_x_2, rng).await?;
-      if search.root_visits() >= u64::from(target_visits) {
-        break;
-      }
-    }
+    run_search(&mut search, field, player, model, komi_x_2, target_visits, rng).await?;
 
-    // Clamped like the per-move q targets: the winloss averaging can drift a
-    // hair past the `[-1, 1]` a value is defined on, and the training loss
-    // reads the value target as a probability that has to stay in `[0, 1]`.
-    let value = search.winloss().to_f64().unwrap().clamp(-1.0, 1.0);
+    let value = search_value(&search);
     search_values.push(if player == Player::Red { value } else { -value });
 
     let target: Vec<(Pos, N)> = if full_search {
@@ -370,17 +653,7 @@ where
       surprise,
       value,
       search.raw_winloss().to_f64().unwrap(),
-      search
-        .q_values()
-        .map(|(pos, weight, q, score)| {
-          (
-            pos,
-            weight.to_f64().unwrap(),
-            q.to_f64().unwrap(),
-            score.to_f64().unwrap(),
-          )
-        })
-        .collect(),
+      q_values(&search),
     );
 
     let pos = if let Some(pos) = search.next_root_with_temperature(
@@ -392,6 +665,24 @@ where
       break;
     };
 
+    // A move other than the one played, drawn from the raw policy of the
+    // position, leads to a side position.
+    if rng.random::<f64>() < SIDE_POSITION_PROB
+      && let Some(side) = side_move(field, &raw_priors, Some(pos.get()), rng)
+    {
+      let mut side_field = field.clone();
+      assert!(side_field.put_point(side, player));
+      side_field.update_grounded();
+      side_starts.push(SideStart {
+        field: side_field,
+        player: player.next(),
+        komi_x_2: -komi_x_2,
+        branch: field.moves_count(),
+        first_player: player,
+        moves: vec![side],
+      });
+    }
+
     visits.push(current_visits);
     search.compact();
     assert!(field.put_point(pos.get(), player));
@@ -400,5 +691,7 @@ where
     komi_x_2 = -komi_x_2;
   }
 
-  Ok(visits)
+  let side_positions = search_side_positions(side_starts, model, readouts, rng).await?;
+
+  Ok((visits, side_positions))
 }

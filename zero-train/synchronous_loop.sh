@@ -133,8 +133,9 @@ set -euo pipefail
 	# cycle to the next, full steps keep it bouncing around a noisy plateau
 	# instead of settling into it, and they shrink again: halving every time
 	# the trained positions double past LR_DECAY_START - one over the trained
-	# positions, the long-run shape of KataGo's automatic schedule - down to a
-	# floor that still lets the network follow its own improving games.
+	# positions, so that the steps shrink as fast as the gains they chase -
+	# down to a floor that still lets the network follow its own improving
+	# games.
 	learning_rate_factor() {
 		awk -v t="$1" -v s="$LR_DECAY_START" -v m="$LR_DECAY_MIN" 'BEGIN {
 			split("20 14 10 7 5 3 2 1.4", d, " ")
