@@ -776,7 +776,6 @@ impl Field {
       -1,     // W
       -s - 1, // NW
     ];
-    #[cfg(feature = "dsu")]
     let mut field = Field {
       stride,
       score_red: 0,
@@ -786,32 +785,13 @@ impl Field {
       moves: Vec::with_capacity(length),
       points: vec![Cell::new(false); length].into(),
       neighbor_offsets,
+      #[cfg(feature = "dsu")]
       dsu: PointsVec((0..length).collect()),
+      #[cfg(feature = "dsu")]
       dsu_size: vec![1; length].into(),
       cell_changes: Vec::with_capacity(length * 8),
+      #[cfg(feature = "dsu")]
       dsu_changes: Vec::with_capacity(length * 4),
-      changes: Vec::with_capacity(length),
-      zobrist,
-      hash: 0,
-      chains: [
-        (Vec::with_capacity(length), 0),
-        (Vec::with_capacity(length), 0),
-        (Vec::with_capacity(length), 0),
-      ],
-      buffer: Vec::with_capacity(length),
-      q: VecDeque::with_capacity(length),
-    };
-    #[cfg(not(feature = "dsu"))]
-    let mut field = Field {
-      stride,
-      score_red: 0,
-      score_black: 0,
-      non_grounded_red: 0,
-      non_grounded_black: 0,
-      moves: Vec::with_capacity(length),
-      points: vec![Cell::new(false); length].into(),
-      neighbor_offsets,
-      cell_changes: Vec::with_capacity(length * 8),
       changes: Vec::with_capacity(length),
       zobrist,
       hash: 0,
@@ -1095,7 +1075,6 @@ impl Field {
 
   pub fn put_point(&mut self, pos: Pos, player: Player) -> bool {
     if self.is_putting_allowed(pos) {
-      #[cfg(feature = "dsu")]
       let change = FieldChange {
         score_red: self.score_red,
         score_black: self.score_black,
@@ -1103,17 +1082,10 @@ impl Field {
         non_grounded_black: self.non_grounded_black,
         hash: self.hash,
         cell_changes: self.cell_changes.len(),
+        #[cfg(feature = "dsu")]
         dsu_changes: self.dsu_changes.len(),
+        #[cfg(feature = "dsu")]
         dsu_size_change: None,
-      };
-      #[cfg(not(feature = "dsu"))]
-      let change = FieldChange {
-        score_red: self.score_red,
-        score_black: self.score_black,
-        non_grounded_red: self.non_grounded_red,
-        non_grounded_black: self.non_grounded_black,
-        hash: self.hash,
-        cell_changes: self.cell_changes.len(),
       };
       self.changes.push(change);
       self.save_pos_value(pos);
