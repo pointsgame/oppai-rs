@@ -2,9 +2,9 @@
   "inner_channels": 192,
   "blocks": [
     {"type": "nbt", "mid_channels": 96, "size": 2},
-    {"type": "nbt", "mid_channels": 96, "size": 2, "gpool_channels": 32},
+    {"type": "nbt", "mid_channels": 96, "size": 2, "gpool": {"channels": 32, "gate": true}},
     {"type": "transformer", "mid_channels": 96, "layers": 2, "attention_heads": 3, "ffn_channels": 256, "rotary_channels": 24, "min_train_side": 16, "ffn_conv": true},
-    {"type": "nbt", "mid_channels": 96, "size": 2, "gpool_channels": 32},
+    {"type": "nbt", "mid_channels": 96, "size": 2, "gpool": {"channels": 32, "gate": true}},
     {"type": "transformer", "mid_channels": 96, "layers": 2, "attention_heads": 3, "ffn_channels": 256, "rotary_channels": 24, "min_train_side": 16, "ffn_conv": true}
   ],
   "v1_channels": 32,

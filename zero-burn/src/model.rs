@@ -50,10 +50,22 @@ pub struct NbtConfig {
   pub mid_channels: usize,
   /// Inner residual blocks.
   pub size: usize,
-  /// Channels of the first convolution of the first inner block that are
-  /// pooled over the whole board rather than convolved, if any.
+  /// Global pooling in the first convolution of the first inner block, if
+  /// any.
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub gpool_channels: Option<usize>,
+  pub gpool: Option<GpoolConfig>,
+}
+
+/// A convolution part of whose channels is pooled over the whole board rather
+/// than convolved, and conditions the rest of them: see [`ConvAndGPool`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GpoolConfig {
+  /// The channels pooled.
+  pub channels: usize,
+  /// Whether the pooled channels gate the rest multiplicatively as well as
+  /// add a bias to them.
+  pub gate: bool,
 }
 
 /// A nested bottleneck block of transformer layers: a `1x1` convolution down
@@ -126,7 +138,10 @@ impl Default for ModelConfig {
           BlockConfig::Nbt(NbtConfig {
             mid_channels: 96,
             size: 2,
-            gpool_channels: (i % 2 == 1).then_some(32),
+            gpool: (i % 2 == 1).then_some(GpoolConfig {
+              channels: 32,
+              gate: true,
+            }),
           })
         })
         .collect(),
@@ -298,12 +313,20 @@ pub struct ConvAndGPool {
   conv1g: Conv2d,
   normg: NormMask,
   linearg: Linear,
+  /// The gate's logits; zero-initialized, so that every gate starts at one,
+  /// and decayed towards zero, so towards one.
+  lineargate: Option<Linear>,
 }
 
 impl ConvAndGPool {
-  /// A `3x3` convolution from `channels` to `channels - gpool_channels`,
-  /// whose output gets the globally pooled `gpool_channels` added to it.
-  pub fn new(device: &Device, channels: usize, gpool_channels: usize) -> Self {
+  /// A `3x3` convolution from `channels` to `channels - gpool.channels`,
+  /// whose output gets a bias computed from the globally pooled
+  /// `gpool.channels` added to it - and with `gpool.gate`, is first scaled
+  /// channel by channel by twice the sigmoid of another function of them,
+  /// which lets a block turn its channels up or down by what the whole board
+  /// holds.
+  pub fn new(device: &Device, channels: usize, gpool: GpoolConfig) -> Self {
+    let gpool_channels = gpool.channels;
     Self {
       conv1r: Conv2dConfig::new([channels, channels - gpool_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
@@ -317,6 +340,13 @@ impl ConvAndGPool {
       linearg: LinearConfig::new(3 * gpool_channels, channels - gpool_channels)
         .with_bias(false)
         .init(device),
+      lineargate: gpool.gate.then(|| {
+        let mut linear = LinearConfig::new(3 * gpool_channels, channels - gpool_channels)
+          .with_bias(false)
+          .init(device);
+        linear.weight = Param::from_tensor(linear.weight.val().zeros_like());
+        linear
+      }),
     }
   }
 
@@ -337,6 +367,9 @@ impl ConvAndGPool {
       device,
     );
     // `normg` stays a learnable affine (fixup uses no fixed scale here).
+    if let Some(lineargate) = &mut self.lineargate {
+      lineargate.weight = Param::from_tensor(lineargate.weight.val().zeros_like());
+    }
   }
 
   fn gpool(inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
@@ -359,11 +392,16 @@ impl ConvAndGPool {
     let outg = conv_forward(&self.conv1g, inputs);
     let outg = self.normg.forward(outg, mask.clone());
     let outg = mish(outg);
-    let outg = Self::gpool(outg, mask, mask_sum_hw);
-    let outg = self
-      .linearg
-      .forward(outg.squeeze_dims::<2>(&[2, 3]))
-      .unsqueeze_dims(&[-1, -1]);
+    let pooled = Self::gpool(outg, mask, mask_sum_hw).squeeze_dims::<2>(&[2, 3]);
+    let outr = match &self.lineargate {
+      Some(lineargate) => {
+        let gate = sigmoid(lineargate.forward(pooled.clone())) * 2.0;
+        let dtype = outr.dtype();
+        outr * gate.unsqueeze_dims::<4>(&[-1, -1]).cast(dtype)
+      }
+      None => outr,
+    };
+    let outg = self.linearg.forward(pooled).unsqueeze_dims(&[-1, -1]);
     outr + outg
   }
 }
@@ -376,18 +414,17 @@ pub enum ConvOrGpool {
 }
 
 impl ConvOrGpool {
-  /// A global pooling convolution when `gpool_channels` is given, whose
-  /// output channels are `in_channels - gpool_channels` rather than
-  /// `out_channels`.
+  /// A global pooling convolution when `gpool` is given, whose output
+  /// channels are `in_channels - gpool.channels` rather than `out_channels`.
   pub fn new(
     device: &Device,
-    gpool_channels: Option<usize>,
+    gpool: Option<GpoolConfig>,
     in_channels: usize,
     out_channels: usize,
     kernel_size: [usize; 2],
   ) -> Self {
-    if let Some(gpool_channels) = gpool_channels {
-      Self::Gpool(ConvAndGPool::new(device, in_channels, gpool_channels))
+    if let Some(gpool) = gpool {
+      Self::Gpool(ConvAndGPool::new(device, in_channels, gpool))
     } else {
       Self::Conv(
         Conv2dConfig::new([in_channels, out_channels], kernel_size)
@@ -416,14 +453,14 @@ impl NormActConv {
   pub fn new(
     device: &Device,
     gamma: bool,
-    gpool_channels: Option<usize>,
+    gpool: Option<GpoolConfig>,
     in_channels: usize,
     out_channels: usize,
     kernel_size: [usize; 2],
   ) -> Self {
     Self {
       norm: NormMask::new(device, in_channels, gamma),
-      convgpool: ConvOrGpool::new(device, gpool_channels, in_channels, out_channels, kernel_size),
+      convgpool: ConvOrGpool::new(device, gpool, in_channels, out_channels, kernel_size),
     }
   }
 
@@ -1789,7 +1826,9 @@ impl OppaiTrainableModel<f32> for Learner {
 
 #[cfg(all(test, any(feature = "flex", feature = "vulkan", feature = "webgpu")))]
 mod tests {
-  use super::{Block, BlockConfig, HeadsConfig, Learner, Model, ModelConfig, NbtConfig, Predictor, TransformerConfig};
+  use super::{
+    Block, BlockConfig, GpoolConfig, HeadsConfig, Learner, Model, ModelConfig, NbtConfig, Predictor, TransformerConfig,
+  };
   #[cfg(feature = "flex")]
   use super::{
     ConvOrGpool, GLOBAL_FEATURES, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, TD_SCORE_SCALE,
@@ -1845,7 +1884,10 @@ mod tests {
         BlockConfig::Nbt(NbtConfig {
           mid_channels: 16,
           size: 1,
-          gpool_channels: Some(8),
+          gpool: Some(GpoolConfig {
+            channels: 8,
+            gate: true,
+          }),
         }),
         transformer,
       ],
@@ -2224,6 +2266,37 @@ mod tests {
         .try_load_record(model.into_record())
         .is_err()
     );
+  }
+
+  // The global pooling gates start at one: a network with them computes what
+  // the same weights do without them, which is what lets a trained network
+  // gain them by adding their zero weights to its record.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn zero_gates_leave_the_network_as_it_is() {
+    use burn::module::Module;
+    let device = Device::flex();
+    let without_gates = |mut config: ModelConfig| {
+      for block in &mut config.blocks {
+        if let BlockConfig::Nbt(NbtConfig { gpool: Some(gpool), .. }) = block {
+          gpool.gate = false;
+        }
+      }
+      config
+    };
+    for config in [ModelConfig::default(), hybrid_config()] {
+      let mut gated = Model::new(&device, &config);
+      gated.initialize(&device);
+      let plain = Model::new(&device, &without_gates(config))
+        .try_load_record(gated.clone().into_record().allow_unused(true))
+        .unwrap();
+      let inputs = Tensor::<4>::random([2, CHANNELS, 5, 6], burn::tensor::Distribution::Default, &device);
+      let global = Tensor::ones([2, 1], &device);
+      let (policy, value, ..) = gated.forward_no_score(inputs.clone(), global.clone());
+      let (plain_policy, plain_value, ..) = plain.forward_no_score(inputs, global);
+      policy.into_data().assert_eq(&plain_policy.into_data(), true);
+      value.into_data().assert_eq(&plain_value.into_data(), true);
+    }
   }
 
   // The rotary frequencies and the depthwise convolutions are parameters of

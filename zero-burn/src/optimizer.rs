@@ -474,7 +474,7 @@ impl<O: Optimizer> Optimizer for Tuned<O> {
 #[cfg(all(test, feature = "flex"))]
 mod tests {
   use super::{Group, Lookahead, MatrixMuon, OptimizerConfig, OptimizerKind, StepClock, Tuned};
-  use crate::model::{BlockConfig, Model, ModelConfig, NbtConfig, TransformerConfig};
+  use crate::model::{BlockConfig, GpoolConfig, Model, ModelConfig, NbtConfig, TransformerConfig};
   use burn::{
     module::{Module, ModuleVisitor, Param, ParamId},
     optim::{GradientsParams, MuonConfig, Optimizer, SgdConfig},
@@ -504,6 +504,10 @@ mod tests {
       ),
       (
         "residuals.1.Nbt.inner.0.normactconv1.convgpool.Gpool.linearg.weight",
+        Group::Hidden,
+      ),
+      (
+        "residuals.1.Nbt.inner.0.normactconv1.convgpool.Gpool.lineargate.weight",
         Group::Hidden,
       ),
       (
@@ -605,7 +609,10 @@ mod tests {
         BlockConfig::Nbt(NbtConfig {
           mid_channels: 16,
           size: 1,
-          gpool_channels: Some(8),
+          gpool: Some(GpoolConfig {
+            channels: 8,
+            gate: true,
+          }),
         }),
       ],
       ..ModelConfig::default()

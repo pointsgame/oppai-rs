@@ -1,7 +1,7 @@
 //! The convolutional trunk: nested bottleneck residual blocks of `3x3`
 //! convolutions, some of which also pool the board globally.
 
-use crate::model::{NbtConfig, NormActConv};
+use crate::model::{GpoolConfig, NbtConfig, NormActConv};
 use burn::{
   module::Module,
   tensor::{Device, Tensor},
@@ -14,15 +14,16 @@ pub struct InnerResidualBlock {
 }
 
 impl InnerResidualBlock {
-  /// `gpool_channels` of the first convolution's are pooled over the board.
-  pub fn new(device: &Device, channels: usize, gpool_channels: Option<usize>) -> Self {
+  /// With `gpool`, the first convolution pools part of its channels over the
+  /// board.
+  pub fn new(device: &Device, channels: usize, gpool: Option<GpoolConfig>) -> Self {
     Self {
-      normactconv1: NormActConv::new(device, false, gpool_channels, channels, channels, [3, 3]),
+      normactconv1: NormActConv::new(device, false, gpool, channels, channels, [3, 3]),
       normactconv2: NormActConv::new(
         device,
         true,
         None,
-        channels - gpool_channels.unwrap_or(0),
+        channels - gpool.map_or(0, |gpool| gpool.channels),
         channels,
         [3, 3],
       ),
@@ -58,7 +59,7 @@ impl ResidualBlock {
     Self {
       normactconvp: NormActConv::new(device, false, None, inner_channels, config.mid_channels, [1, 1]),
       inner: (0..config.size)
-        .map(|i| InnerResidualBlock::new(device, config.mid_channels, config.gpool_channels.filter(|_| i == 0)))
+        .map(|i| InnerResidualBlock::new(device, config.mid_channels, config.gpool.filter(|_| i == 0)))
         .collect(),
       normactconvq: NormActConv::new(device, true, None, config.mid_channels, inner_channels, [1, 1]),
     }
