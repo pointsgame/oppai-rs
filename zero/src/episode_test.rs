@@ -156,7 +156,7 @@ fn forks_replay_the_game_and_play_one_move() {
   let tries = 4000;
   let mut turns = Vec::new();
   for _ in 0..tries {
-    let Some(mut fork) =
+    let Some(fork) =
       futures::executor::block_on(fork::<f64, _, _>(&field, opening, komi_x_2, &model, &mut rng)).unwrap()
     else {
       continue;

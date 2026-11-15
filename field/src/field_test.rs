@@ -353,7 +353,7 @@ fn ambiguous_surrounding_2() {
 
 #[test]
 fn game_over_1() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
@@ -372,7 +372,7 @@ fn game_over_1() {
 
 #[test]
 fn game_over_2() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .....
@@ -391,7 +391,7 @@ fn game_over_2() {
 
 #[test]
 fn game_over_3() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ..........
@@ -411,7 +411,7 @@ fn game_over_3() {
 
 #[test]
 fn game_over_4() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ..........
@@ -431,7 +431,7 @@ fn game_over_4() {
 
 #[test]
 fn game_over_5() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     .a.
@@ -447,7 +447,7 @@ fn game_over_5() {
 
 #[test]
 fn game_not_over_1() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ....
@@ -466,7 +466,7 @@ fn game_not_over_1() {
 
 #[test]
 fn game_not_over_2() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ....
@@ -485,7 +485,7 @@ fn game_not_over_2() {
 
 #[test]
 fn game_not_over_3() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ..........
@@ -505,7 +505,7 @@ fn game_not_over_3() {
 
 #[test]
 fn game_not_over_4() {
-  let mut field = construct_field(
+  let field = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
     "
     ..........
