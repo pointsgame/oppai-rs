@@ -12,10 +12,11 @@ set -euo pipefail
 # from the new run's start. Once the copied cycles are used up, the network
 # plays its own games. The first cycle has to hold MIN_POSITIONS positions, or
 # the loop would top it up with random games, so the oldest of the copied files
-# are merged into it as needed. Every other file must hold at least the loop's
-# NUM_GAMES_PER_CYCLE games, or the loop would top it up with games of the new
-# network: the old run's latest file is left out while it is still being
-# played, the earlier ones are complete.
+# are merged into it as needed. Every other cycle must hold at least the loop's
+# NUM_GAMES_PER_CYCLE games and MIN_NEW_POSITIONS positions, or the loop would
+# top it up with games of the new network: files are merged into the next
+# cycle while it has too few positions, and the old run's latest file is left
+# out while it is still being played, the earlier ones are complete.
 #
 # Only the most recent games are worth carrying over: the oldest ones were
 # played by much weaker networks, and their targets lead away from good play.
@@ -29,7 +30,7 @@ usage() {
 	echo "Usage: $0 [-n] OLD_BASEDIR NEW_BASEDIR POSITIONS"
 	echo "Copies the games of OLD_BASEDIR's most recent cycles, back until they hold POSITIONS positions, as the first cycles of NEW_BASEDIR"
 	echo "-n only prints the plan"
-	echo "The loop's NUM_GAMES_PER_CYCLE, MIN_POSITIONS, TRAININGS_PER_POSITION, MAX_TRAINING_POSITIONS, WINDOW_EXPAND, WINDOW_EXPONENT and WINDOW_SCALE can be overridden from the environment, and should be when the loop's differ"
+	echo "The loop's NUM_GAMES_PER_CYCLE, MIN_POSITIONS, MIN_NEW_POSITIONS, TRAININGS_PER_POSITION, MAX_TRAINING_POSITIONS, WINDOW_EXPAND, WINDOW_EXPONENT and WINDOW_SCALE can be overridden from the environment, and should be when the loop's differ"
 	exit 1
 }
 
@@ -47,6 +48,7 @@ WANTED="$3"
 # As in synchronous_loop.sh, which the plan follows.
 NUM_GAMES_PER_CYCLE="${NUM_GAMES_PER_CYCLE:-1024}"
 MIN_POSITIONS="${MIN_POSITIONS:-100000}"
+MIN_NEW_POSITIONS="${MIN_NEW_POSITIONS:-20000}"
 TRAININGS_PER_POSITION="${TRAININGS_PER_POSITION:-8}"
 MAX_TRAINING_POSITIONS="${MAX_TRAINING_POSITIONS:-500000}"
 WINDOW_EXPAND="${WINDOW_EXPAND:-0.4}"
@@ -94,8 +96,8 @@ done
 	exit 1
 }
 GAMES=$("$BIN" count --games "$OLD_GAMESDIR"/games_"$LAST".sgf.gz | sed -n 's/^Games: \([0-9]*\);.*/\1/p')
-if ((GAMES < NUM_GAMES_PER_CYCLE)); then
-	echo "Leaving out games_$LAST, which has only $GAMES games so far"
+if ((GAMES < NUM_GAMES_PER_CYCLE)) || (($(positions "$OLD_GAMESDIR"/games_"$LAST".sgf.gz) < MIN_NEW_POSITIONS)); then
+	echo "Leaving out games_$LAST, which is still being played"
 	LAST=$((LAST - 1))
 fi
 FILES=()
@@ -110,14 +112,18 @@ for ((i = LAST; i >= 0 && TOTAL < WANTED; i--)); do
 	TOTAL=$((TOTAL + count))
 done
 
-# The new run's cycles: the oldest files merged into the first one until it has
-# MIN_POSITIONS positions, then one file each.
+# The new run's cycles: files merged, oldest first, into each cycle until it has
+# MIN_POSITIONS positions for the first one and MIN_NEW_POSITIONS for the
+# others. A last cycle that falls short joins the one before.
 CYCLE_FILES=("${FILES[0]}")
 CYCLE_COUNTS=("${COUNTS[0]}")
 for ((i = 1; i < ${#FILES[@]}; i++)); do
-	if ((${#CYCLE_FILES[@]} == 1 && CYCLE_COUNTS[0] < MIN_POSITIONS)); then
-		CYCLE_FILES[0]+=" ${FILES[i]}"
-		CYCLE_COUNTS[0]=$((CYCLE_COUNTS[0] + COUNTS[i]))
+	last=$((${#CYCLE_FILES[@]} - 1))
+	min=$MIN_NEW_POSITIONS
+	((last > 0)) || min=$MIN_POSITIONS
+	if ((CYCLE_COUNTS[last] < min)); then
+		CYCLE_FILES[last]+=" ${FILES[i]}"
+		CYCLE_COUNTS[last]=$((CYCLE_COUNTS[last] + COUNTS[i]))
 	else
 		CYCLE_FILES+=("${FILES[i]}")
 		CYCLE_COUNTS+=("${COUNTS[i]}")
@@ -126,6 +132,12 @@ done
 if ((CYCLE_COUNTS[0] < MIN_POSITIONS)); then
 	echo "Only $TOTAL positions in $OLD_GAMESDIR, fewer than MIN_POSITIONS" >&2
 	exit 1
+fi
+last=$((${#CYCLE_FILES[@]} - 1))
+if ((last > 0 && CYCLE_COUNTS[last] < MIN_NEW_POSITIONS)); then
+	CYCLE_FILES[last - 1]+=" ${CYCLE_FILES[last]}"
+	CYCLE_COUNTS[last - 1]=$((CYCLE_COUNTS[last - 1] + CYCLE_COUNTS[last]))
+	unset 'CYCLE_FILES[last]' 'CYCLE_COUNTS[last]'
 fi
 
 # What the loop will train on each of them, the way it decides it.

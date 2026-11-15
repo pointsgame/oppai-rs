@@ -18,7 +18,10 @@ set -euo pipefail
 	# search in them counts in full, while a trained network decides games early
 	# and searches their tail cheaply. The very first cycle plays random games
 	# until there are MIN_POSITIONS positions; the network is initialized only
-	# before the first training. Every training then trains on
+	# before the first training. Every later cycle plays NUM_GAMES_PER_CYCLE
+	# games, and more while they hold fewer than MIN_NEW_POSITIONS positions,
+	# as short games would otherwise leave little to train on for what
+	# recalculating the window costs. Every training then trains on
 	# TRAININGS_PER_POSITION times the positions played since the last accepted
 	# model, drawn from a window of the most recent games that grows with the
 	# positions played so far, and the learning rate warms up over the first
@@ -70,6 +73,7 @@ set -euo pipefail
 	MIXED_PRECISION=1                                            # 1 to compute the convolutions and projections of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
 	GRADIENT_CHECKPOINTING=0                                     # 1 to recompute cheap activations in the backward pass instead of keeping them, cutting training memory by about a quarter, more for a transformer
 	MIN_POSITIONS=100000                                         # Positions of random games to play before the first training, and the smallest window trained on
+	MIN_NEW_POSITIONS=20000                                      # Every cycle plays more games until it has at least this many positions, so that the fixed costs of a cycle buy enough training when games are short
 	TRAININGS_PER_POSITION=8                                     # Every training trains on this many times the positions played since the last accepted model; larger numbers may overfit
 	MAX_TRAINING_POSITIONS=500000                                # But on no more positions than this per training
 	WINDOW_EXPAND=0.4                                            # The window trained on grows by this many positions for each position played beyond MIN_POSITIONS at first ...
@@ -173,6 +177,15 @@ set -euo pipefail
 		echo "$count"
 	}
 
+	# Games of a games file.
+	games() {
+		[[ -e "$1" ]] || {
+			echo 0
+			return
+		}
+		"$BIN" --device "$DEVICE" count --games "$1" | sed -n 's/^Games: \([0-9]*\);.*/\1/p'
+	}
+
 	CONFIG_ARGS=()
 	PIT_CONFIG_ARGS=()
 	if [[ -n "$MODEL_CONFIG" ]]; then
@@ -256,14 +269,25 @@ set -euo pipefail
 			# new cycle. After a gating rejection the count is already at the
 			# target, so a full extra cycle is played instead.
 			TO_PLAY="$NUM_GAMES_PER_CYCLE"
-			if ((REJECTED == 0)) && [[ -e "$GAMESDIR"/games_"$N".sgf.gz ]]; then
-				PLAYED=$("$BIN" --device "$DEVICE" count --games "$GAMESDIR"/games_"$N".sgf.gz |
-					sed -n 's/^Games: \([0-9]*\);.*/\1/p')
-				TO_PLAY=$((NUM_GAMES_PER_CYCLE - PLAYED))
+			if ((REJECTED == 0)); then
+				TO_PLAY=$((NUM_GAMES_PER_CYCLE - $(games "$GAMESDIR"/games_"$N".sgf.gz)))
 			fi
 			if ((TO_PLAY > 0)); then
 				play --model "$(played_model "$N")" --count "$TO_PLAY"
 			fi
+			# The fewer positions the games yield, the more of them it takes:
+			# play as many more as the positions per game so far say are
+			# missing, but at least enough to keep all the parallel games busy.
+			while (($(positions "$GAMESDIR"/games_"$N".sgf.gz) < MIN_NEW_POSITIONS)); do
+				NEW=$(positions "$GAMESDIR"/games_"$N".sgf.gz)
+				PLAYED=$(games "$GAMESDIR"/games_"$N".sgf.gz)
+				TO_PLAY=$PARALLEL_GAMES
+				if ((NEW > 0)); then
+					MISSING=$(((MIN_NEW_POSITIONS - NEW) * PLAYED / NEW + 1))
+					((MISSING <= TO_PLAY)) || TO_PLAY=$MISSING
+				fi
+				play --model "$(played_model "$N")" --count "$TO_PLAY"
+			done
 		fi
 		REJECTED=0
 
