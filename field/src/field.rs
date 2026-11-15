@@ -1149,51 +1149,51 @@ impl Field {
     }
   }
 
+  #[inline]
+  fn non_grounded_mut(&mut self, player: Player) -> &mut u32 {
+    match player {
+      Player::Red => &mut self.non_grounded_red,
+      Player::Black => &mut self.non_grounded_black,
+    }
+  }
+
   pub fn update_grounded(&mut self) {
-    let pos = if let Some(&pos) = self.moves.last() {
-      pos
-    } else {
+    let Some(&pos) = self.moves.last() else {
       return;
     };
 
     let player = self.cell(pos).get_player();
-
     let delta_score = self.get_delta_score(player);
-    match player {
-      Player::Red => {
-        self.non_grounded_red = (self.non_grounded_red as i32 + delta_score + 1) as u32;
-        self.non_grounded_black = (self.non_grounded_black as i32 - delta_score) as u32;
-      }
-      Player::Black => {
-        self.non_grounded_black = (self.non_grounded_black as i32 + delta_score + 1) as u32;
-        self.non_grounded_red = (self.non_grounded_red as i32 - delta_score) as u32;
-      }
-    }
+    let non_grounded = self.non_grounded_mut(player);
+    *non_grounded = non_grounded.wrapping_add_signed(delta_score + 1);
+    let non_grounded = self.non_grounded_mut(player.next());
+    *non_grounded = non_grounded.wrapping_add_signed(-delta_score);
 
     let player = self.cell(pos).get_owner().unwrap();
 
+    // buffer holds all tagged points: first the ones changed by the last move,
+    // then the ones reached by the wave
     self.buffer.clear();
-    let mut grounded = false;
-
-    for pos in self
-      .changes
-      .last()
-      .into_iter()
-      .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
-    {
-      if self.points[pos].is_owner(player) && !self.points[pos].is_grounded() {
+    let changes_start = self.changes.last().map_or(0, |change| change.cell_changes);
+    for &(pos, _) in &self.cell_changes[changes_start..] {
+      let cell = self.points[pos];
+      if !cell.is_tagged() && cell.is_owner(player) && !cell.is_grounded() {
         self.points[pos].set_tag();
-        self.q.push_back(pos);
+        self.buffer.push(pos);
       }
     }
+    let changed_count = self.buffer.len();
+    self.q.extend(&self.buffer);
 
+    let mut grounded = false;
     wave_loop(&mut self.q, self.stride, |pos| {
-      if self.points[pos].is_tagged() {
+      let cell = self.points[pos];
+      if cell.is_tagged() {
         return false;
       }
 
-      if self.points[pos].is_owner(player) {
-        if self.points[pos].is_grounded() {
+      if cell.is_owner(player) {
+        if cell.is_grounded() {
           grounded = true;
           false
         } else {
@@ -1202,7 +1202,7 @@ impl Field {
           true
         }
       } else {
-        if self.points[pos].is_bad() {
+        if cell.is_bad() {
           grounded = true;
         }
         false
@@ -1210,43 +1210,20 @@ impl Field {
     });
 
     if grounded {
-      for pos in self
-        .changes
-        .last()
-        .into_iter()
-        .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
-      {
-        if self.points[pos].is_owner(player) && !self.points[pos].is_grounded() {
-          self.points[pos].clear_tag();
-          self.points[pos].set_grounded();
-          if self.points[pos].is_put() {
-            match player {
-              Player::Red => self.non_grounded_red -= 1,
-              Player::Black => self.non_grounded_black -= 1,
-            }
-          }
+      let mut grounded_points = 0;
+      for (i, &pos) in self.buffer.iter().enumerate() {
+        let cell = &mut self.points[pos];
+        cell.clear_tag();
+        // changed points are already saved for undo
+        if i >= changed_count {
+          self.cell_changes.push((pos, *cell));
         }
+        cell.set_grounded();
+        grounded_points += cell.is_put() as u32;
       }
-
-      for &pos in &self.buffer {
-        self.points[pos].clear_tag();
-        self.cell_changes.push((pos, self.cell(pos)));
-        self.points[pos].set_grounded();
-        if self.points[pos].is_put() {
-          match player {
-            Player::Red => self.non_grounded_red -= 1,
-            Player::Black => self.non_grounded_black -= 1,
-          }
-        }
-      }
+      *self.non_grounded_mut(player) -= grounded_points;
     } else {
-      for pos in self
-        .changes
-        .last()
-        .into_iter()
-        .flat_map(|change| self.cell_changes[change.cell_changes..].iter().map(|&(pos, _)| pos))
-        .chain(self.buffer.iter().copied())
-      {
+      for &pos in &self.buffer {
         self.points[pos].clear_tag();
       }
     }
