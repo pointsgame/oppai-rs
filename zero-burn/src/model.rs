@@ -1254,27 +1254,29 @@ impl OppaiModel<f32> for Learner {
   }
 }
 
+/// Collects the parameters as flattened tensors, which stay on the device: a
+/// visitor sees parameters of every rank, and flattening gives them one type.
 struct ParamCollector {
-  params: Vec<TensorData>,
+  params: Vec<Tensor<1>>,
 }
 
 impl ModuleVisitor for ParamCollector {
   fn visit_float<const D: usize>(&mut self, param: &Param<Tensor<D>>) {
-    self.params.push(param.val().into_data());
+    self.params.push(param.val().reshape([-1]));
   }
 }
 
 struct EmaMapper<'a> {
-  params: std::collections::VecDeque<TensorData>,
+  params: std::collections::VecDeque<Tensor<1>>,
   factor: f64,
   device: &'a Device,
 }
 
 impl ModuleMapper for EmaMapper<'_> {
   fn map_float<const D: usize>(&mut self, param: Param<Tensor<D>>) -> Param<Tensor<D>> {
-    let data = self.params.pop_front().expect("model architectures must match");
-    let current = Tensor::from_data(data, self.device);
+    let current = self.params.pop_front().expect("model architectures must match");
     let (id, average, mapper) = param.consume();
+    let current = current.to_device(self.device).reshape(average.shape());
     let average = average.clone() + (current - average) * self.factor;
     Param::from_mapped_value(id, average, mapper)
   }
