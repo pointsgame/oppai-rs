@@ -654,6 +654,34 @@ fn zobrist_surrounding() {
 }
 
 #[test]
+fn zobrist_own_point_inside_surrounding() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .bbbbb.
+    b.....b
+    b.A.a.b
+    b.....b
+    .bbbbb.
+    ",
+  );
+  assert_eq!(field.captured_count(Player::Red), 1);
+  let length = field.length();
+  let hashes = &field.zobrist().hashes;
+  let mut expected = 0;
+  for pos in 0..length {
+    let cell = field.cell(pos);
+    if cell.is_put() {
+      expected ^= hashes[length * cell.get_player() as usize + pos];
+      if cell.is_captured() {
+        expected ^= hashes[length * 2 + pos];
+      }
+    }
+  }
+  assert_eq!(field.hash(), expected);
+}
+
+#[test]
 fn undo_check() {
   let width = 20;
   let height = 20;

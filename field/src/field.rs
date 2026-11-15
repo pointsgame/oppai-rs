@@ -905,12 +905,11 @@ impl Field {
           self.points[pos].0 = self.points[pos].0 & !(Cell::EMPTY_BASE_BIT | Cell::PLAYER_BIT)
             | Cell::CAPTURED_BIT
             | player.to_bool() as u8;
-        } else {
-          if cell.get_player() != player {
-            self.points[pos].0 = self.points[pos].0 & !Cell::BOUND_BIT | Cell::CAPTURED_BIT;
-          } else if cell.is_captured() {
-            self.points[pos].clear_captured();
-          }
+        } else if cell.get_player() != player {
+          self.points[pos].0 = self.points[pos].0 & !Cell::BOUND_BIT | Cell::CAPTURED_BIT;
+          self.hash ^= self.zobrist.hashes[self.length() * 2 + pos];
+        } else if cell.is_captured() {
+          self.points[pos].clear_captured();
           self.hash ^= self.zobrist.hashes[self.length() * 2 + pos];
         }
       }
