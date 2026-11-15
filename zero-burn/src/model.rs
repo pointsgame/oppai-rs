@@ -307,6 +307,28 @@ impl NormMask {
   }
 }
 
+/// The smallest and the biggest boards the [`board_size_feature`] spans from
+/// -1 to 1: the range of sizes the network is meant to play on, whatever
+/// sizes it is trained on. They only keep the feature near one over that
+/// range: the weights reading it would absorb any other choice.
+const BOARD_SIZE_FEATURE_AREAS: (f64, f64) = (16.0 * 16.0, 40.0 * 40.0);
+
+/// The board's size, as global pooling scales the means with it, from the
+/// `[batch, 1, 1, 1]` number of cells on the board: the logarithm of the
+/// area, going from -1 to 1 over [`BOARD_SIZE_FEATURE_AREAS`] - 0 for an area
+/// of 640, and 0.73 for the default 39x32 board. A logarithm grows slowly, so
+/// that a board bigger than any trained on takes the network less far from
+/// what it learned than the side or the area would.
+pub(crate) fn board_size_feature(mask_sum_hw: Tensor<4>) -> Tensor<4> {
+  let (min, max) = BOARD_SIZE_FEATURE_AREAS;
+  let center = (min.ln() + max.ln()) / 2.0;
+  let half_range = (max.ln() - min.ln()) / 2.0;
+  (mask_sum_hw.log() - center) / half_range
+}
+
+/// The features the value head pools from each of its channels.
+const VALUE_POOLED: usize = 2;
+
 #[derive(Module, Debug)]
 pub struct ConvAndGPool {
   conv1r: Conv2d,
@@ -372,19 +394,15 @@ impl ConvAndGPool {
     }
   }
 
+  /// The mean of every channel over the board, the mean scaled by the
+  /// [`board_size_feature`], and the maximum.
   fn gpool(inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
-    // min size: 16, max size: 40, avg: (40 + 16) / 2 = 28
-    let mask_sum_hw_sqrt_offset = mask_sum_hw.clone().sqrt() - 28.0;
-
+    let size = board_size_feature(mask_sum_hw.clone());
     let layer_mean = inputs.clone().sum_dim(2).sum_dim(3) / mask_sum_hw;
     // Activation functions is always greater than -1.0, and map 0 -> 0
     let layer_max = (inputs + (mask - 1.0)).max_dim(2).max_dim(3);
 
-    let out_pool1 = layer_mean.clone();
-    let out_pool2 = layer_mean * (mask_sum_hw_sqrt_offset / 10.0);
-    let out_pool3 = layer_max;
-
-    Tensor::cat(vec![out_pool1, out_pool2, out_pool3], 1)
+    Tensor::cat(vec![layer_mean.clone(), layer_mean * size, layer_max], 1)
   }
 
   pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
@@ -568,16 +586,16 @@ impl ValueHead {
         .with_bias(false)
         .init(device),
       bias1: NormMask::new(device, config.v1_channels, false),
-      linear2: LinearConfig::new(3 * config.v1_channels, config.v2_size).init(device),
+      linear2: LinearConfig::new(VALUE_POOLED * config.v1_channels, config.v2_size).init(device),
       linear_valuehead: LinearConfig::new(config.v2_size, 2 + 2 * TD_VALUES).init(device),
       linear_error: LinearConfig::new(config.v2_size, 1).init(device),
       linear_td_score: LinearConfig::new(config.v2_size, TD_VALUES).init(device),
       linear_score_error: LinearConfig::new(config.v2_size, 1).init(device),
 
-      linear_s2: LinearConfig::new(3 * config.v1_channels, config.sbv2_size).init(device),
+      linear_s2: LinearConfig::new(VALUE_POOLED * config.v1_channels, config.sbv2_size).init(device),
       linear_s2off: LinearConfig::new(1, config.sbv2_size).with_bias(false).init(device),
       linear_s3: LinearConfig::new(config.sbv2_size, config.num_scorebeliefs).init(device),
-      linear_smix: LinearConfig::new(3 * config.v1_channels, config.num_scorebeliefs).init(device),
+      linear_smix: LinearConfig::new(VALUE_POOLED * config.v1_channels, config.num_scorebeliefs).init(device),
     }
   }
 
@@ -614,18 +632,14 @@ impl ValueHead {
     // `bias1` stays a learnable affine.
   }
 
+  /// The mean of every channel over the board, and the mean scaled by the
+  /// [`board_size_feature`]. Nothing grows faster with the size than that: a
+  /// square of it would take a board bigger than any trained on several times
+  /// as far from what training showed.
   fn gpool(inputs: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
-    // min size: 16, max size: 40, avg: (40 + 16) / 2 = 28
-    let mask_sum_hw_sqrt_offset = mask_sum_hw.clone().sqrt() - 28.0;
-
-    let layer_mean = inputs.clone().sum_dim(2).sum_dim(3) / mask_sum_hw;
-
-    let out_pool1 = layer_mean.clone();
-    let out_pool2 = layer_mean.clone() * (mask_sum_hw_sqrt_offset.clone() / 10.0);
-    // (sum $ map (\x -> (x - 28) ** 2) [16..40]) / (40 - 16 + 1) / 100
-    let out_pool3 = layer_mean * (mask_sum_hw_sqrt_offset.clone() * mask_sum_hw_sqrt_offset / 100.0 - 0.52);
-
-    Tensor::cat(vec![out_pool1, out_pool2, out_pool3], 1)
+    let size = board_size_feature(mask_sum_hw.clone());
+    let layer_mean = inputs.sum_dim(2).sum_dim(3) / mask_sum_hw;
+    Tensor::cat(vec![layer_mean.clone(), layer_mean * size], 1)
   }
 
   pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> ValuePredictions {
@@ -2266,6 +2280,22 @@ mod tests {
         .try_load_record(model.into_record())
         .is_err()
     );
+  }
+
+  // The board size feature goes from -1 on a 16x16 board to 1 on a 40x40
+  // one, and grows like the logarithm of the area.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn board_size_feature_values() {
+    let device = Device::flex();
+    let areas = Tensor::<1>::from_floats([256.0, 1600.0, 640.0, 1248.0], &device).reshape([4, 1, 1, 1]);
+    let values = super::board_size_feature(areas)
+      .into_data()
+      .try_to_vec::<f32>()
+      .unwrap();
+    for (value, expected) in values.into_iter().zip([-1.0, 1.0, 0.0, 0.7288]) {
+      assert!((value - expected).abs() < 1e-3, "{value} vs {expected}");
+    }
   }
 
   // The global pooling gates start at one: a network with them computes what
