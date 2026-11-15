@@ -614,6 +614,28 @@ fn grounded_hole() {
 }
 
 #[test]
+fn grounded_after_capture_from_empty_base() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .......
+    .HEf...
+    A.lBgjd
+    .KIc...
+    .......
+    ",
+  );
+  assert_eq!(field.captured_count(Player::Red), 1);
+  let pos = field.to_pos(1, 2);
+  assert!(!field.cell(pos).is_grounded());
+  assert!(field.put_point(pos, Player::Red));
+  field.update_grounded();
+  assert!(field.cell(pos).is_grounded());
+  assert_eq!(field.non_grounded_red, 0);
+  assert_eq!(field.non_grounded_black, 4);
+}
+
+#[test]
 fn zobrist() {
   let field_1 = construct_field(
     &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
