@@ -272,7 +272,9 @@ set -euo pipefail
 			echo "Init"
 			time "$BIN" --device "$DEVICE" init "${CONFIG_ARGS[@]}" \
 				--model "$MODELSDIR"/model_"$N".bpk \
-				--optimizer "$MODELSDIR"/optimizer_"$N".bpk 2>&1 | tee -a "$LOGSDIR"/init.log
+				--optimizer "$MODELSDIR"/optimizer_"$N".bpk \
+				--optimizer-kind "$OPTIMIZER" \
+				--batch-size "$BATCHSIZE" 2>&1 | tee -a "$LOGSDIR"/init.log
 		else
 			# Play only the games the current cycle is still missing, so an
 			# interrupted run picks up where it stopped instead of playing a whole

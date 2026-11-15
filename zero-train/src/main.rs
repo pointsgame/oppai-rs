@@ -3,7 +3,6 @@ mod config;
 use anyhow::{Error, Result};
 use burn::{
   module::Module,
-  optim::{SgdConfig, decay::WeightDecayConfig, momentum::MomentumConfig},
   tensor::{Device, DeviceConfig, FloatDType},
 };
 use config::{
@@ -58,11 +57,7 @@ fn init(params: InitParams, device: Device) -> Result<ExitCode> {
   model.initialize(&device);
   model.save_file(params.model)?;
 
-  let optimizer = SgdConfig::new()
-    .with_weight_decay((params.weight_decay > 0.0).then(|| WeightDecayConfig::new(params.weight_decay)))
-    .with_momentum(Some(MomentumConfig::new().with_dampening(0.0)))
-    .init();
-  optimizer.save(params.optimizer)?;
+  params.optimizer_config.init().save(params.optimizer)?;
 
   Ok(ExitCode::SUCCESS)
 }
