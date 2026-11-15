@@ -23,7 +23,7 @@ use oppai_field::{
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   batch_model::{batch_model, run_evaluator},
-  episode::{SidePosition, Visits, episode},
+  episode::{SidePosition, Visits, episode, fork, play_out},
   examples::{Examples, is_validation_game},
   field_features::{CHANNELS, GLOBAL_FEATURES},
   mcgs::{Params, Search},
@@ -200,6 +200,7 @@ where
     async move {
       let mut player = Player::Red;
       let mut field = Field::new_from_rng(width, height, &mut rng);
+      let opening_moves = op.len();
       for (x, y) in op {
         let pos = field.to_pos(x, y);
         assert!(field.put_point(pos, player));
@@ -207,22 +208,51 @@ where
         player = player.next();
       }
 
+      let model_failure = |e| anyhow::anyhow!("model failure: {:?}", e);
       let (visits, side_positions) = episode(&mut field, player, &model, komi_x_2, params.readouts, &mut rng)
         .await
-        .map_err(|e| anyhow::anyhow!("model failure: {:?}", e))?;
+        .map_err(model_failure)?;
+      let mut games = vec![(field, visits, side_positions)];
 
-      Ok::<_, Error>((field, visits, side_positions, komi_x_2))
+      // A finished game may fork a new one, which may fork another in turn.
+      // Each takes a game of the count, the way a game the stream starts does.
+      while let Some(fork) = fork(&games.last().unwrap().0, opening_moves, komi_x_2, &model, &mut rng)
+        .await
+        .map_err(model_failure)?
+      {
+        if should_stop.load(std::sync::atomic::Ordering::Relaxed)
+          || next_game.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= params.count
+        {
+          break;
+        }
+        let mut field = fork.field;
+        let (visits, side_positions) = play_out(
+          &mut field,
+          fork.player,
+          &model,
+          fork.komi_x_2,
+          params.readouts,
+          &mut rng,
+        )
+        .await
+        .map_err(model_failure)?;
+        games.push((field, visits, side_positions));
+      }
+
+      Ok::<_, Error>((games, komi_x_2))
     }
   });
 
   let mut games = futures::stream::iter(games).buffer_unordered(parallel);
 
   while let Some(game) = games.next().await {
-    let (field, visits, side_positions, komi_x_2) = game?;
+    let (games, komi_x_2) = game?;
     let mut file = file
       .lock()
       .map_err(|_| anyhow::anyhow!("the games file lock is poisoned"))?;
-    write_game(&mut file, &field.into(), &visits, &side_positions, komi_x_2)?;
+    for (field, visits, side_positions) in games {
+      write_game(&mut file, &field.into(), &visits, &side_positions, komi_x_2)?;
+    }
   }
 
   Ok(())

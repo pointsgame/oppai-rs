@@ -1,9 +1,10 @@
 use crate::episode::{
-  MCTS_FULL_VISITS, MCTS_VISITS, REDUCED_VISITS_WEIGHT, SideStart, reduced_search, search_side_positions, side_move,
+  MCTS_FULL_VISITS, MCTS_VISITS, REDUCED_VISITS_WEIGHT, SideStart, fork, reduced_search, search_side_positions,
+  side_move,
 };
 use crate::random_model::RandomModel;
-use oppai_field::construct_field::construct_field;
-use rand::SeedableRng;
+use oppai_field::{construct_field::construct_field, field::Field, player::Player};
+use rand::{RngExt, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 
 /// A game whose recent search values sit inside the threshold keeps the full
@@ -129,4 +130,57 @@ fn side_positions_record_their_search() {
   }
   // A quarter of the side positions go on, so some of 32 do.
   assert!(lines > 0);
+}
+
+/// A fork goes back to a turn after the set opening and plays one move from
+/// there, leaving a position the game can go on from; about one game in
+/// twenty forks, mostly near its start.
+#[test]
+fn forks_replay_the_game_and_play_one_move() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+  let mut field = Field::new_from_rng(12, 12, &mut rng);
+  let mut player = Player::Red;
+  for _ in 0..60 {
+    let legal = (field.min_pos()..=field.max_pos())
+      .filter(|&pos| field.is_putting_allowed(pos))
+      .collect::<Vec<_>>();
+    assert!(field.put_point(legal[rng.random_range(0..legal.len())], player));
+    field.update_grounded();
+    player = player.next();
+  }
+  let moves = field.colored_moves().collect::<Vec<_>>();
+  let opening = 4;
+  let komi_x_2 = 1;
+  let model = RandomModel::new(Xoshiro256PlusPlus::seed_from_u64(9));
+
+  let tries = 4000;
+  let mut turns = Vec::new();
+  for _ in 0..tries {
+    let Some(mut fork) =
+      futures::executor::block_on(fork::<f64, _, _>(&field, opening, komi_x_2, &model, &mut rng)).unwrap()
+    else {
+      continue;
+    };
+    let forked = fork.field.colored_moves().collect::<Vec<_>>();
+    let turn = forked.len() - 1;
+    assert!((opening..moves.len()).contains(&turn));
+    assert_eq!(forked[..turn], moves[..turn]);
+    // The fork's move is made by the player whose turn it was.
+    assert_eq!(forked[turn].1, moves[turn].1);
+    assert_eq!(fork.player, moves[turn].1.next());
+    let red_komi = if fork.player == Player::Red {
+      fork.komi_x_2
+    } else {
+      -fork.komi_x_2
+    };
+    assert_eq!(red_komi, komi_x_2);
+    assert!(!fork.field.is_game_over(red_komi));
+    turns.push(turn);
+  }
+  let rate = turns.len() as f64 / tries as f64;
+  assert!((0.03..0.07).contains(&rate), "{rate}");
+  // An early fork goes about 1.8 moves past the opening on this field, a late
+  // one anywhere in the 56 after it: four in five forks are early.
+  let early = turns.iter().filter(|&&turn| turn < opening + 10).count();
+  assert!(early * 10 > turns.len() * 7, "{early} of {}", turns.len());
 }

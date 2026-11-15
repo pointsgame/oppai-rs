@@ -2,7 +2,7 @@ use crate::field_features::{add_unrotated_policy, field_features, global, rotati
 use crate::mcgs::{Params, Search};
 use crate::model::Model;
 use log::info;
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{Array1, Array2, Array3, Axis, stack};
 use num_traits::Float;
 use oppai_field::field::{to_x, to_y};
 use oppai_field::{
@@ -11,7 +11,7 @@ use oppai_field::{
 };
 use oppai_rotate::rotate::{ROTATIONS, rotate};
 use rand::distr::uniform::SampleUniform;
-use rand::{Rng, RngExt};
+use rand::{Rng, RngExt, seq::SliceRandom};
 use rand_distr::{Distribution, Exp, Exp1, Open01, StandardNormal};
 use std::fmt::{Debug, Display};
 use std::iter::{self, Sum};
@@ -47,6 +47,36 @@ const SIDE_POSITION_PROB: f64 = 0.02;
 /// searched in turn - so that some side positions follow several odd moves
 /// rather than just one.
 const SIDE_POSITION_CONTINUE_PROB: f64 = 0.25;
+
+/// Probability that a finished self-play game forks a new game near its start:
+/// the opening gets a move the net would not have played, and the game is
+/// played out anew from there. Self-play otherwise follows the net's own
+/// preferences, and its games crowd into the openings the net already knows.
+const EARLY_FORK_PROB: f64 = 0.04;
+
+/// Probability that a finished self-play game that does not fork near its
+/// start forks a new game at a random turn instead, for variety in the middle
+/// of the game, where nothing else gets any.
+const LATE_FORK_PROB: f64 = 0.01;
+
+/// How far into the game, after the set opening, an early fork goes on
+/// average, as a fraction of the area: 1.25% of it, the counterpart of the
+/// raw policy opening's 2% - a fork happens about as early as the openings
+/// the raw policy plays end.
+const EARLY_FORK_AREA_PROP: f64 = 0.0125;
+
+/// The fewest random moves a fork picks the best of, so that the move it plays
+/// is a reasonable one rather than any.
+const FORK_MIN_CHOICES: usize = 3;
+
+/// The most random moves an early fork picks the best of. Few, so that the
+/// opening it plays tends to be an unusual one.
+const EARLY_FORK_MAX_CHOICES: usize = 12;
+
+/// The most random moves a late fork picks the best of. More than an early
+/// fork, because a random move later in the game is far more likely to be a
+/// plain blunder that decides it.
+const LATE_FORK_MAX_CHOICES: usize = 36;
 
 /// Visit budget and training weight of a full search, ramped down once the
 /// recent search values say the game is decided. `values` holds every turn's
@@ -234,7 +264,8 @@ pub(crate) struct SideStart {
 }
 
 /// Komi multiplied by 2 from Red's perspective, which is what
-/// [`Field::is_game_over`] takes, given that of the player to move.
+/// [`Field::is_game_over`] takes, given that of the player to move - or the
+/// other way round, since turning the perspective is its own inverse.
 fn red_komi_x_2(player: Player, komi_x_2: i32) -> i32 {
   if player == Player::Red { komi_x_2 } else { -komi_x_2 }
 }
@@ -505,7 +536,6 @@ where
   N: Float + Sum + SampleUniform,
   R: Rng,
 {
-  // TODO: KataGo also makes random moves with small probability, see PlayUtils::getGameInitializationMove
   let mut sum = N::zero();
   for pos in field.min_pos()..=field.max_pos() {
     if field.is_putting_allowed(pos) {
@@ -528,10 +558,10 @@ where
   None
 }
 
-/// Plays a self-play game out from `field`, returning the searches of its
-/// turns and the side positions searched off its main line. `readouts`
-/// overrides [`Params::SELF_PLAY`]'s readouts per search call, see
-/// [`Params::readouts`].
+/// Plays a self-play game out from `field`, opening with a few moves of the raw
+/// policy, and returns the searches of its turns and the side positions
+/// searched off its main line. `readouts` overrides [`Params::SELF_PLAY`]'s
+/// readouts per search call, see [`Params::readouts`].
 pub async fn episode<N, M, R>(
   field: &mut Field,
   mut player: Player,
@@ -593,6 +623,26 @@ where
     }
   }
 
+  play_out(field, player, model, komi_x_2, readouts, rng).await
+}
+
+/// Plays a self-play game out from `field` with searches, see [`episode`].
+pub async fn play_out<N, M, R>(
+  field: &mut Field,
+  mut player: Player,
+  model: &M,
+  mut komi_x_2: i32,
+  readouts: usize,
+  rng: &mut R,
+) -> Result<(Vec<Visits>, Vec<SidePosition>), M::E>
+where
+  M: Model<N>,
+  N: Float + Sum + SampleUniform + Display + Debug,
+  R: Rng,
+  StandardNormal: Distribution<N>,
+  Exp1: Distribution<N>,
+  Open01: Distribution<N>,
+{
   let mut search = Search::new(Params {
     readouts,
     ..Params::SELF_PLAY
@@ -694,4 +744,118 @@ where
   let side_positions = search_side_positions(side_starts, model, readouts, rng).await?;
 
   Ok((visits, side_positions))
+}
+
+/// The position a new self-play game starts from when it forks a finished one.
+pub struct Fork {
+  /// The field after the moves the game is forked from and the fork's move.
+  pub field: Field,
+  /// The player to move.
+  pub player: Player,
+  /// Komi of the player to move, multiplied by 2.
+  pub komi_x_2: i32,
+}
+
+/// Decides whether the finished self-play game `field`, whose first `opening`
+/// moves were a set opening and whose komi multiplied by 2 is `komi_x_2` from
+/// Red's perspective, forks a new game, and where.
+///
+/// A fork goes back to a turn of the game - one near its start mostly, see
+/// [`EARLY_FORK_PROB`], or any - and plays a move the game did not: the best,
+/// by the net's value of the position after it, of a few random legal moves.
+/// The fork's game is played out from there with searches, see [`play_out`];
+/// the moves before the fork are the original game's, which its own positions
+/// already train on.
+pub async fn fork<N, M, R>(
+  field: &Field,
+  opening: usize,
+  komi_x_2: i32,
+  model: &M,
+  rng: &mut R,
+) -> Result<Option<Fork>, M::E>
+where
+  M: Model<N>,
+  N: Float + Sum + Display + Debug,
+  R: Rng,
+{
+  let moves = field.colored_moves().collect::<Vec<_>>();
+  if moves.len() <= opening {
+    return Ok(None);
+  }
+  let r = rng.random::<f64>();
+  let (turn, max_choices) = if r < EARLY_FORK_PROB {
+    // An exponential with the mean of `EARLY_FORK_AREA_PROP` of the area: the
+    // argument is the rate, the inverse of the mean.
+    let area = f64::from(field.width() * field.height());
+    let exp = Exp::<f64>::new(1.0 / (EARLY_FORK_AREA_PROP * area)).unwrap();
+    (opening + exp.sample(rng).floor() as usize, EARLY_FORK_MAX_CHOICES)
+  } else if r < EARLY_FORK_PROB + LATE_FORK_PROB {
+    (rng.random_range(opening..moves.len()), LATE_FORK_MAX_CHOICES)
+  } else {
+    return Ok(None);
+  };
+  // The game ended before the turn: its final position has no turn to fork.
+  if turn >= moves.len() {
+    return Ok(None);
+  }
+
+  let mut start = Field::new(field.width(), field.height(), field.zobrist_arc());
+  for &(pos, player) in &moves[..turn] {
+    assert!(start.put_point(pos, player));
+    start.update_grounded();
+  }
+  let player = moves[turn].1;
+  let red_komi = komi_x_2;
+  let komi_x_2 = red_komi_x_2(player, red_komi);
+
+  // The candidates, as the fields after them: a move that ends the game would
+  // leave nothing to play out.
+  let mut legal = (start.min_pos()..=start.max_pos())
+    .filter(|&pos| start.is_putting_allowed(pos))
+    .collect::<Vec<_>>();
+  let choices = rng.random_range(FORK_MIN_CHOICES..=max_choices).min(legal.len());
+  let (chosen, _) = legal.partial_shuffle(rng, choices);
+  let candidates = chosen
+    .iter()
+    .filter_map(|&pos| {
+      let mut candidate = start.clone();
+      assert!(candidate.put_point(pos, player));
+      candidate.update_grounded();
+      (!candidate.is_game_over(red_komi)).then_some(candidate)
+    })
+    .collect::<Vec<_>>();
+  if candidates.is_empty() {
+    return Ok(None);
+  }
+
+  // All of them in one forward pass, each under a random symmetry, valued for
+  // the opponent, who moves next.
+  let (width, height) = rotation_sizes(field.width(), field.height());
+  let features = candidates
+    .iter()
+    .map(|candidate| field_features(candidate, player.next(), width, height, rng.random_range(0..ROTATIONS)))
+    .collect::<Vec<Array3<N>>>();
+  let globals = candidates
+    .iter()
+    .map(|candidate| global(candidate, player.next(), -komi_x_2))
+    .collect::<Vec<Array1<N>>>();
+  let features = stack(Axis(0), &features.iter().map(|f| f.view()).collect::<Vec<_>>()).unwrap();
+  let globals = stack(Axis(0), &globals.iter().map(|g| g.view()).collect::<Vec<_>>()).unwrap();
+  let (_, values) = model
+    .predict(features, globals, Array1::zeros(candidates.len()))
+    .await?;
+  let best = (0..candidates.len())
+    .min_by(|&a, &b| {
+      let value = |i: usize| values[(i, 0)] - values[(i, 1)];
+      value(a).partial_cmp(&value(b)).unwrap_or(std::cmp::Ordering::Equal)
+    })
+    .unwrap();
+
+  info!("Forking the game at move {} of {}", turn, moves.len());
+
+  Ok(Some(Fork {
+    field: candidates.into_iter().nth(best).unwrap(),
+    player: player.next(),
+    komi_x_2: -komi_x_2,
+  }))
 }
