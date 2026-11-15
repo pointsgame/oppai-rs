@@ -94,6 +94,7 @@ pub struct RecalcParams {
   pub games: Vec<PathBuf>,
   pub games_new: PathBuf,
   pub parallel_games: usize,
+  pub threads: usize,
   pub pass_overhead: f64,
   pub in_flight_passes: usize,
 }
@@ -627,6 +628,11 @@ pub fn cli_parse() -> (Config, Action) {
       "How many games to recalculate concurrently, merging their positions into shared forward passes",
       "32",
     ))
+    .arg(threads_arg().help(
+      "How many OS threads recalculate games; the concurrent games are split between them. Defaults to one per \
+       physical core, since rebuilding and expanding the positions is CPU work that a single thread would \
+       leave the device waiting on",
+    ))
     .arg(pass_overhead_arg())
     .arg(in_flight_passes_arg());
 
@@ -874,6 +880,10 @@ pub fn cli_parse() -> (Config, Action) {
       let games = matches.get_many("games").unwrap().cloned().collect();
       let games_new = matches.get_one("games-new").cloned().unwrap();
       let parallel_games = matches.get_one("parallel-games").copied().unwrap();
+      let threads = matches
+        .get_one("threads")
+        .copied()
+        .unwrap_or_else(num_cpus::get_physical);
       let in_flight_passes = matches.get_one("in-flight-passes").copied().unwrap();
       let pass_overhead = matches.get_one("pass-overhead").copied().unwrap();
       Action::Recalc(RecalcParams {
@@ -882,6 +892,7 @@ pub fn cli_parse() -> (Config, Action) {
         games,
         games_new,
         parallel_games,
+        threads,
         pass_overhead,
         in_flight_passes,
       })

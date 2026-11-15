@@ -67,36 +67,49 @@ fn init(params: InitParams, device: Device) -> Result<ExitCode> {
   Ok(ExitCode::SUCCESS)
 }
 
+/// Streams the lines of a file of concatenated gzip members, one game per line,
+/// decompressed but not yet parsed.
+fn read_game_lines<P: AsRef<Path>>(path: P) -> Result<impl Iterator<Item = Result<String>>> {
+  let file = File::open(path)?;
+  let lines = BufReader::new(MultiGzDecoder::new(BufReader::new(file))).lines();
+  Ok(lines.map(|line| line.map_err(Error::from)))
+}
+
+/// Parses the games of one line of a games file.
+fn parse_games(line: &str) -> Result<Vec<SgfNode<Prop>>> {
+  Ok(
+    sgf_parse::parse(line)?
+      .into_iter()
+      .filter_map(|tree| match tree {
+        GameTree::Unknown(node) => Some(node),
+        GameTree::GoGame(_) => None,
+      })
+      .collect(),
+  )
+}
+
 /// Streams games from a file of concatenated gzip members, decompressing and
 /// parsing one game (line) at a time.
 fn read_games<P: AsRef<Path>>(path: P) -> Result<impl Iterator<Item = Result<SgfNode<Prop>>>> {
-  let file = File::open(path)?;
-  let lines = BufReader::new(MultiGzDecoder::new(BufReader::new(file))).lines();
-  Ok(lines.flat_map(|line| {
-    let nodes = line.map_err(Error::from).and_then(|line| {
-      Ok(
-        sgf_parse::parse(&line)?
-          .into_iter()
-          .filter_map(|tree| match tree {
-            GameTree::Unknown(node) => Some(node),
-            GameTree::GoGame(_) => None,
-          })
-          .collect::<Vec<_>>(),
-      )
-    });
-    match nodes {
+  Ok(
+    read_game_lines(path)?.flat_map(|line| match line.and_then(|line| parse_games(&line)) {
       Ok(nodes) => nodes.into_iter().map(Ok).collect::<Vec<_>>(),
       Err(e) => vec![Err(e)],
-    }
-  }))
+    }),
+  )
 }
 
-/// Appends a game as a separate gzip member, so an interrupted process never
-/// corrupts previously written games and appending remains valid gzip.
-fn write_sgf(file: &mut File, sgf: &str) -> Result<()> {
-  let mut encoder = GzEncoder::new(&mut *file, Compression::default());
+/// Compresses a game into a gzip member of its own, so an interrupted process
+/// never corrupts previously written games and appending remains valid gzip.
+fn compress_sgf(sgf: &str) -> Result<Vec<u8>> {
+  let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
   writeln!(encoder, "{sgf}")?;
-  encoder.finish()?;
+  Ok(encoder.finish()?)
+}
+
+/// Appends a game to `file` as a gzip member of its own.
+fn write_sgf(file: &mut File, sgf: &str) -> Result<()> {
+  file.write_all(&compress_sgf(sgf)?)?;
   file.flush()?;
   Ok(())
 }
@@ -108,6 +121,21 @@ fn write_game(
   side_positions: &[SidePosition],
   komi_x_2: i32,
 ) -> Result<()> {
+  if let Some(member) = encode_game(field, visits, side_positions, komi_x_2)? {
+    file.write_all(&member)?;
+    file.flush()?;
+  }
+  Ok(())
+}
+
+/// A game serialized and compressed into the gzip member [`write_game`] appends,
+/// or `None` for a game with no moves to record.
+fn encode_game(
+  field: &ExtendedField,
+  visits: &[Visits],
+  side_positions: &[SidePosition],
+  komi_x_2: i32,
+) -> Result<Option<Vec<u8>>> {
   if let Some(mut node) = to_sgf(field) {
     visits_to_sgf(&mut node, visits, field.field().stride, field.field().moves_count());
     side_positions_to_sgf(&mut node, side_positions, field.field().stride);
@@ -125,9 +153,10 @@ fn write_game(
       .properties
       .push(Prop::Unknown("KM".into(), vec![(komi_x_2 as f32 / 2.0).to_string()]));
     let sgf = serialize(iter::once(&GameTree::Unknown(node)));
-    write_sgf(file, &sgf)?;
+    Ok(Some(compress_sgf(&sgf)?))
+  } else {
+    Ok(None)
   }
-  Ok(())
 }
 
 /// Plays games claimed from the shared `next_game` ticket, up to `parallel` of
@@ -1059,13 +1088,26 @@ where
   Ok((field, visits, side_positions, komi_x_2))
 }
 
-/// Recalculates every game of `params.games`, up to `params.parallel_games` of
-/// them concurrently, creating a fresh model per game with `new_model`.
-async fn recalc_games<N, M, MF, R>(
-  params: &RecalcParams,
+/// Recalculates games claimed from the shared `lines` of the game files, up to
+/// `parallel` of them concurrently, creating a fresh model per game with
+/// `new_model`.
+///
+/// One of these runs per thread, the way [`play_games`] does: rebuilding the
+/// positions, expanding them and reading and writing the games is CPU work
+/// that would leave the device waiting if a single thread did it for all the
+/// games. A game is claimed as a line, so the lock on the reader only covers
+/// decompressing it, and parsing it is left to the thread that claimed it. A
+/// game is serialized and compressed before the lock on the output is taken,
+/// so that one only keeps two writes from interleaving.
+#[allow(clippy::too_many_arguments)]
+async fn recalc_games<N, M, MF, R, I>(
+  lines: &Mutex<I>,
+  claimed: &AtomicUsize,
+  parallel: usize,
   mut new_model: MF,
   rng: &mut R,
   should_stop: &AtomicBool,
+  file: &Mutex<File>,
 ) -> Result<()>
 where
   N: Float + Sum,
@@ -1073,75 +1115,137 @@ where
   M::E: Debug,
   MF: FnMut() -> M,
   R: Rng,
+  I: Iterator<Item = Result<String>>,
 {
-  // All the game files are opened up front, so an unreadable one fails before
-  // any recalculation is done rather than hours into it.
-  let nodes = params
-    .games
-    .iter()
-    .map(read_games)
-    .collect::<Result<Vec<_>>>()?
-    .into_iter()
-    .flatten();
-
-  let games = nodes
-    .enumerate()
-    .take_while(|&(i, _)| {
-      if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
-        log::info!("Stopping surprise recalculation after {} games", i);
-        false
-      } else {
-        true
+  let games = iter::from_fn(|| {
+    if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+      return None;
+    }
+    let line = match lines.lock() {
+      Ok(mut lines) => lines.next()?,
+      Err(_) => Err(anyhow::anyhow!("the games reader lock is poisoned")),
+    };
+    claimed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Some(line)
+  })
+  .map(|line| {
+    let mut rng = SmallRng::from_seed(rng.random());
+    let model = new_model();
+    async move {
+      let mut members = Vec::new();
+      for node in parse_games(&line?)? {
+        let (field, visits, side_positions, komi_x_2) = recalc_game(node, &model, &mut rng).await?;
+        members.extend(encode_game(&field, &visits, &side_positions, komi_x_2)?);
       }
-    })
-    .map(|(_, node)| {
-      let mut rng = SmallRng::from_seed(rng.random());
-      let model = new_model();
-      async move { recalc_game(node?, &model, &mut rng).await }
-    });
+      Ok::<_, Error>(members)
+    }
+  });
 
-  let mut games = futures::stream::iter(games).buffer_unordered(params.parallel_games);
+  let mut games = futures::stream::iter(games).buffer_unordered(parallel);
 
-  let mut file = File::options().append(true).create(true).open(&params.games_new)?;
-  while let Some(game) = games.next().await {
-    let (field, visits, side_positions, komi_x_2) = game?;
-    write_game(&mut file, &field, &visits, &side_positions, komi_x_2)?;
+  while let Some(members) = games.next().await {
+    let members = members?;
+    let mut file = file
+      .lock()
+      .map_err(|_| anyhow::anyhow!("the games file lock is poisoned"))?;
+    for member in members {
+      file.write_all(&member)?;
+    }
+    file.flush()?;
   }
 
   Ok(())
 }
 
-async fn recalc<R: Rng>(
-  params: RecalcParams,
-  device: Device,
-  rng: &mut R,
-  should_stop: Arc<AtomicBool>,
-) -> Result<ExitCode> {
+/// Recalculates every game of `params.games` across `params.threads` threads,
+/// up to `params.parallel_games` of them concurrently.
+fn recalc<R: Rng>(params: RecalcParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
+  // All the game files are opened up front, so an unreadable one fails before
+  // any recalculation is done rather than hours into it.
+  let lines = Mutex::new(
+    params
+      .games
+      .iter()
+      .map(read_game_lines)
+      .collect::<Result<Vec<_>>>()?
+      .into_iter()
+      .flatten(),
+  );
+  let claimed = AtomicUsize::new(0);
+  let file = Mutex::new(File::options().append(true).create(true).open(&params.games_new)?);
+  // The concurrency budget is split between the threads, so more threads than
+  // concurrent games would leave the extra ones with nothing to do.
+  let threads = params.threads.clamp(1, params.parallel_games.max(1));
+  log::info!(
+    "Recalculating surprise on {} threads, {} games concurrent",
+    threads,
+    params.parallel_games
+  );
+
   let model = BurnModel::load(&device, &params.model_config, params.model.clone())?;
   let predictor = Predictor { model, device };
 
   // All games share one evaluator: the single position each of them expands at
   // a time is merged into one large forward pass instead of being evaluated on
-  // its own, which would leave the device almost entirely idle.
+  // its own, which would leave the device almost entirely idle. Only this
+  // thread ever touches the model.
   let (handle, requests) = batch_model::<f32>(predictor.predicts_uncertainty());
-  let games = async {
-    let result = recalc_games(&params, || handle.clone(), rng, &should_stop).await;
-    // Close the channel so the evaluator terminates with the last game.
+
+  std::thread::scope(|scope| -> Result<()> {
+    let workers = (0..threads)
+      .map(|i| {
+        let mut shard_rng = SmallRng::from_seed(rng.random());
+        let parallel = split(params.parallel_games, threads, i);
+        let source = handle.source();
+        let should_stop = should_stop.as_ref();
+        let (lines, claimed, file) = (&lines, &claimed, &file);
+        scope.spawn(move || {
+          futures::executor::block_on(recalc_games(
+            lines,
+            claimed,
+            parallel,
+            || source.clone(),
+            &mut shard_rng,
+            should_stop,
+            file,
+          ))
+        })
+      })
+      .collect::<Vec<_>>();
+    // Every game's handle descends from a worker's source, so once the workers
+    // are gone the channel closes and the evaluator returns.
     drop(handle);
-    result
-  };
-  let (games_result, evaluator_result) = futures::join!(
-    games,
-    run_evaluator(
+
+    let evaluator_result = futures::executor::block_on(run_evaluator(
       &predictor,
       requests,
       params.parallel_games.div_ceil(2),
       params.pass_overhead,
-      params.in_flight_passes
-    )
-  );
-  evaluator_result?;
-  games_result?;
+      params.in_flight_passes,
+    ));
+    // Join before reporting either failure, so a panicking worker is never left
+    // running past the end of the scope.
+    let games_results = workers
+      .into_iter()
+      .map(|worker| {
+        worker
+          .join()
+          .map_err(|_| anyhow::anyhow!("a surprise recalculation thread panicked"))
+      })
+      .collect::<Vec<_>>();
+    evaluator_result?;
+    for result in games_results {
+      result??;
+    }
+    Ok(())
+  })?;
+
+  if should_stop.load(std::sync::atomic::Ordering::Relaxed) {
+    log::info!(
+      "Stopped surprise recalculation after {} games",
+      claimed.load(std::sync::atomic::Ordering::Relaxed)
+    );
+  }
 
   Ok(ExitCode::SUCCESS)
 }
@@ -1170,7 +1274,7 @@ fn run(config: Config, action: Action, should_stop: Arc<AtomicBool>) -> Result<E
     }
     Action::Pit(params) => pit(params, device, &mut rng, should_stop),
     Action::Count(params) => count(params, &mut rng),
-    Action::Recalc(params) => futures::executor::block_on(recalc(params, device, &mut rng, should_stop)),
+    Action::Recalc(params) => recalc(params, device, &mut rng, should_stop),
     Action::Bench(params) => bench(params, device, &mut rng),
     Action::Devices => {
       list_devices();

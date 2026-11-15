@@ -68,7 +68,7 @@ set -euo pipefail
 	BATCH_GAMES=64                                               # How many games' positions are enough to dispatch a forward pass during self-play
 	READOUTS=1                                                   # Paths a self-play search selects at once; more than 1 adds virtual losses that weaken the search, but fills the passes with fewer games
 	RECALC_PARALLEL_GAMES=32                                     # How many games to recalculate the surprise of concurrently
-	THREADS=                                                     # How many OS threads play games; empty for the default of one per physical core
+	THREADS=                                                     # How many OS threads play games and recalculate surprise; empty for the default of one per physical core
 	HALF=1                                                       # 1 to evaluate the network in half precision in self-play, surprise recalculation and pitting, many times faster on GPUs
 	MIXED_PRECISION=1                                            # 1 to compute the convolutions and projections of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
 	GRADIENT_CHECKPOINTING=0                                     # 1 to recompute cheap activations in the backward pass instead of keeping them, cutting training memory by about a quarter, more for a transformer
@@ -334,7 +334,8 @@ set -euo pipefail
 				--model "$(played_model "$N")" \
 				--games "${OLD_GAMES[@]}" \
 				--games-new "$RECALC_GAMES" \
-				--parallel-games "$RECALC_PARALLEL_GAMES" 2>&1 | tee -a "$LOGSDIR"/recalc.log
+				--parallel-games "$RECALC_PARALLEL_GAMES" \
+				"${THREADS_ARGS[@]}" 2>&1 | tee -a "$LOGSDIR"/recalc.log
 			GAMES+=("$RECALC_GAMES")
 		fi
 
