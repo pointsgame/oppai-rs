@@ -9,7 +9,7 @@ use burn::{
   optim::{GradientsParams, ModuleOptimizer},
   store::{ModuleRecord, RecordError},
   tensor::{
-    DType, DataError, Device, ExecutionError, FloatDType, Tensor, TensorData,
+    DType, DataError, Device, ExecutionError, FloatDType, Tensor, TensorData, Transaction,
     activation::{log_softmax, mish, sigmoid, softmax, softplus},
     module::{conv2d, linear},
     ops::ConvOptions,
@@ -1226,11 +1226,17 @@ impl OppaiModel<f32> for Predictor {
     // score; the search averages it over each subtree into the per-move q
     // score targets.
     let values = Tensor::cat(vec![softmax(value_logits, 1), value_error.sqrt(), td_score], 1);
-    let policies = Array3::from_shape_vec(
-      (batch, height, width),
-      policies.into_data_async().await?.try_into_vec()?,
-    )?;
-    let values = Array2::from_shape_vec((batch, 4), values.into_data_async().await?.try_into_vec()?)?;
+    // Both are read back in one transaction: a separate read for each would
+    // wait on the device twice.
+    let [policies, values]: [TensorData; 2] = Transaction::default()
+      .register(policies)
+      .register(values)
+      .execute_async()
+      .await?
+      .try_into()
+      .expect("a transaction returns one data per registered tensor");
+    let policies = Array3::from_shape_vec((batch, height, width), policies.try_into_vec()?)?;
+    let values = Array2::from_shape_vec((batch, 4), values.try_into_vec()?)?;
     Ok((policies, values))
   }
 }
