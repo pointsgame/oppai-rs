@@ -1,7 +1,7 @@
 //! The convolutional trunk: nested bottleneck residual blocks of `3x3`
 //! convolutions, some of which also pool the board globally.
 
-use crate::model::{NormActConv, ResNetConfig, TrunkBlock};
+use crate::model::{NbtConfig, NormActConv};
 use burn::{
   module::Module,
   tensor::{Device, Tensor},
@@ -14,27 +14,16 @@ pub struct InnerResidualBlock {
 }
 
 impl InnerResidualBlock {
-  pub fn new(device: &Device, config: &ResNetConfig, gpool: bool) -> Self {
-    let residual_inner_channels = config.residual_inner_channels();
+  /// `gpool_channels` of the first convolution's are pooled over the board.
+  pub fn new(device: &Device, channels: usize, gpool_channels: Option<usize>) -> Self {
     Self {
-      normactconv1: NormActConv::new(
-        device,
-        false,
-        gpool.then_some(config.gpool_channels),
-        residual_inner_channels,
-        residual_inner_channels,
-        [3, 3],
-      ),
+      normactconv1: NormActConv::new(device, false, gpool_channels, channels, channels, [3, 3]),
       normactconv2: NormActConv::new(
         device,
         true,
         None,
-        if gpool {
-          residual_inner_channels - config.gpool_channels
-        } else {
-          residual_inner_channels
-        },
-        residual_inner_channels,
+        channels - gpool_channels.unwrap_or(0),
+        channels,
         [3, 3],
       ),
     }
@@ -64,40 +53,21 @@ pub struct ResidualBlock {
 }
 
 impl ResidualBlock {
-  pub fn new(device: &Device, config: &ResNetConfig, gpool: bool) -> Self {
+  pub fn new(device: &Device, inner_channels: usize, config: &NbtConfig) -> Self {
+    assert!(config.size > 0, "a nested bottleneck block needs an inner block");
     Self {
-      normactconvp: NormActConv::new(
-        device,
-        false,
-        None,
-        config.inner_channels,
-        config.residual_inner_channels(),
-        [1, 1],
-      ),
-      inner: (0..config.residual_size)
-        .map(|i| InnerResidualBlock::new(device, config, gpool && i == 0))
+      normactconvp: NormActConv::new(device, false, None, inner_channels, config.mid_channels, [1, 1]),
+      inner: (0..config.size)
+        .map(|i| InnerResidualBlock::new(device, config.mid_channels, config.gpool_channels.filter(|_| i == 0)))
         .collect(),
-      normactconvq: NormActConv::new(
-        device,
-        true,
-        None,
-        config.residual_inner_channels(),
-        config.inner_channels,
-        [1, 1],
-      ),
+      normactconvq: NormActConv::new(device, true, None, config.mid_channels, inner_channels, [1, 1]),
     }
   }
-}
 
-impl TrunkBlock for ResidualBlock {
-  type Context = ();
-
-  fn context(&self, _mask: &Tensor<4>) {}
-
-  /// Each of the `1 + residual_size` stages gets the geometric share
-  /// `fixup_scale^(1/(1+residual_size))` of the block's scale, and the final `1x1`
+  /// Each of the `1 + size` stages gets the geometric share
+  /// `fixup_scale^(1/(1+size))` of the block's scale, and the final `1x1`
   /// conv is zero-initialized so the whole nested block starts as the identity.
-  fn initialize(&mut self, fixup_scale: f64, device: &Device) {
+  pub(crate) fn initialize(&mut self, fixup_scale: f64, device: &Device) {
     let inner_scale = fixup_scale.powf(1.0 / (1.0 + self.inner.len() as f64));
     self.normactconvp.initialize(inner_scale, device);
     for inner in &mut self.inner {
@@ -106,7 +76,7 @@ impl TrunkBlock for ResidualBlock {
     self.normactconvq.initialize(0.0, device);
   }
 
-  fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>, _context: &()) -> Tensor<4> {
+  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     let mut out = self
       .normactconvp
       .forward(inputs.clone(), mask.clone(), mask_sum_hw.clone());

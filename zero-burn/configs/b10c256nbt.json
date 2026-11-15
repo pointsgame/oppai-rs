@@ -1,9 +1,17 @@
 {
   "inner_channels": 256,
-  "residual_blocks": 10,
-  "residual_size": 2,
-  "gpool_every": 3,
-  "gpool_channels": 64,
+  "blocks": [
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "nbt", "mid_channels": 128, "size": 2, "gpool_channels": 64},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "nbt", "mid_channels": 128, "size": 2, "gpool_channels": 64},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "nbt", "mid_channels": 128, "size": 2, "gpool_channels": 64},
+    {"type": "nbt", "mid_channels": 128, "size": 2}
+  ],
   "v1_channels": 32,
   "p1_channels": 32,
   "g1_channels": 32,

@@ -148,13 +148,18 @@ pub struct OptimizerConfig {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Group {
   /// Everything no other group takes: the offsets of the trunk's
-  /// normalizations, the scales of the transformer's ones and the rotary
-  /// frequencies, none of which has a reason to be pulled to zero.
+  /// normalizations, the scales of the transformer's ones, and the rotary
+  /// frequencies, distance slopes and logit scales of the attention, none of
+  /// which has a reason to be pulled to zero.
   NoDecay,
   /// The weights of the trunk's convolutions and feed-forward layers.
   Hidden,
   /// The weights of the attention's projections.
   Attention,
+  /// The weights of the depthwise convolutions of the feed-forward layers,
+  /// decayed like the hidden ones but no matrices: every channel's filter is
+  /// on its own.
+  Depthwise,
   /// The scales of the trunk's normalizations.
   Scale,
   /// The weights reading the input features.
@@ -169,10 +174,11 @@ enum Group {
 impl Group {
   /// In the order the optimizer has to take them: a parameter is in the last
   /// group matching it, and the first one has to match all of them.
-  const ALL: [Group; 7] = [
+  const ALL: [Group; 8] = [
     Group::NoDecay,
     Group::Hidden,
     Group::Attention,
+    Group::Depthwise,
     Group::Scale,
     Group::Input,
     Group::OutputNoDecay,
@@ -184,7 +190,8 @@ impl Group {
     match self {
       Self::NoDecay => "",
       Self::Hidden => r"^residuals\..*\.weight$",
-      Self::Attention => r"^residuals\..*\.attention\.(qkv|output)\.weight$",
+      Self::Attention => r"^residuals\..*\.attention\.(qkv|gate|output)\.weight$",
+      Self::Depthwise => r"^residuals\..*\.ffn\.conv\.weight$",
       Self::Scale => r"^residuals\..*\.normactconv[^.]*\.norm\.gamma$",
       Self::Input => r"^(conv_spatial|linear_global)\.weight$",
       Self::OutputNoDecay => r"^(policy_head|value_head|captured_head|norm_trunkfinal)\.",
@@ -207,7 +214,7 @@ impl Group {
   /// The weight decay of the group relative to that of the hidden layers.
   fn weight_decay_factor(self, kind: OptimizerKind) -> f64 {
     match self {
-      Self::Hidden | Self::Scale | Self::Input | Self::Output => 1.0,
+      Self::Hidden | Self::Depthwise | Self::Scale | Self::Input | Self::Output => 1.0,
       Self::Attention => 0.5,
       // Next to nothing: a hundredth with SGD, and with Adam and Muon a
       // decay of 1e-8 at the default weight decay.
@@ -467,7 +474,7 @@ impl<O: Optimizer> Optimizer for Tuned<O> {
 #[cfg(all(test, feature = "flex"))]
 mod tests {
   use super::{Group, Lookahead, MatrixMuon, OptimizerConfig, OptimizerKind, StepClock, Tuned};
-  use crate::model::{HeadsConfig, Model, ModelConfig, TransformerConfig};
+  use crate::model::{BlockConfig, Model, ModelConfig, NbtConfig, TransformerConfig};
   use burn::{
     module::{Module, ModuleVisitor, Param, ParamId},
     optim::{GradientsParams, MuonConfig, Optimizer, SgdConfig},
@@ -487,30 +494,64 @@ mod tests {
     for (path, group) in [
       ("conv_spatial.weight", Group::Input),
       ("linear_global.weight", Group::Input),
-      ("residuals.0.inner.1.normactconv1.convgpool.Conv.weight", Group::Hidden),
       (
-        "residuals.1.inner.0.normactconv1.convgpool.Gpool.conv1g.weight",
+        "residuals.0.Nbt.inner.1.normactconv1.convgpool.Conv.weight",
         Group::Hidden,
       ),
       (
-        "residuals.1.inner.0.normactconv1.convgpool.Gpool.linearg.weight",
+        "residuals.1.Nbt.inner.0.normactconv1.convgpool.Gpool.conv1g.weight",
         Group::Hidden,
       ),
       (
-        "residuals.1.inner.0.normactconv1.convgpool.Gpool.normg.beta",
+        "residuals.1.Nbt.inner.0.normactconv1.convgpool.Gpool.linearg.weight",
+        Group::Hidden,
+      ),
+      (
+        "residuals.1.Nbt.inner.0.normactconv1.convgpool.Gpool.normg.beta",
         Group::NoDecay,
       ),
-      ("residuals.0.normactconvp.convgpool.Conv.weight", Group::Hidden),
-      ("residuals.0.normactconvp.norm.beta", Group::NoDecay),
-      ("residuals.0.normactconvq.norm.gamma", Group::Scale),
-      ("residuals.0.inner.0.normactconv2.norm.gamma", Group::Scale),
-      ("residuals.2.layers.1.attention.qkv.weight", Group::Attention),
-      ("residuals.2.layers.1.attention.output.weight", Group::Attention),
-      ("residuals.2.layers.1.attention.norm.gamma", Group::NoDecay),
-      ("residuals.2.layers.1.attention.rope_frequencies", Group::NoDecay),
-      ("residuals.2.layers.1.ffn.input.weight", Group::Hidden),
-      ("residuals.2.layers.1.ffn.output.weight", Group::Hidden),
-      ("residuals.2.layers.1.ffn.norm.gamma", Group::NoDecay),
+      ("residuals.0.Nbt.normactconvp.convgpool.Conv.weight", Group::Hidden),
+      ("residuals.0.Nbt.normactconvp.norm.beta", Group::NoDecay),
+      ("residuals.0.Nbt.normactconvq.norm.gamma", Group::Scale),
+      ("residuals.0.Nbt.inner.0.normactconv2.norm.gamma", Group::Scale),
+      (
+        "residuals.2.Transformer.layers.1.attention.qkv.weight",
+        Group::Attention,
+      ),
+      (
+        "residuals.2.Transformer.layers.1.attention.gate.weight",
+        Group::Attention,
+      ),
+      (
+        "residuals.2.Transformer.layers.1.attention.query_norm.gamma",
+        Group::NoDecay,
+      ),
+      (
+        "residuals.2.Transformer.layers.1.attention.key_norm.gamma",
+        Group::NoDecay,
+      ),
+      (
+        "residuals.2.Transformer.layers.1.attention.output.weight",
+        Group::Attention,
+      ),
+      ("residuals.2.Transformer.layers.1.attention.norm.gamma", Group::NoDecay),
+      (
+        "residuals.2.Transformer.layers.1.attention.rope.directions",
+        Group::NoDecay,
+      ),
+      ("residuals.2.Transformer.layers.1.attention.rope.excess", Group::NoDecay),
+      (
+        "residuals.2.Transformer.layers.1.attention.distance_slopes",
+        Group::NoDecay,
+      ),
+      (
+        "residuals.2.Transformer.layers.1.attention.logit_scales",
+        Group::NoDecay,
+      ),
+      ("residuals.2.Transformer.layers.1.ffn.input.weight", Group::Hidden),
+      ("residuals.2.Transformer.layers.1.ffn.conv.weight", Group::Depthwise),
+      ("residuals.2.Transformer.layers.1.ffn.output.weight", Group::Hidden),
+      ("residuals.2.Transformer.layers.1.ffn.norm.gamma", Group::NoDecay),
       ("norm_trunkfinal.beta", Group::OutputNoDecay),
       ("policy_head.conv1p.weight", Group::Output),
       ("policy_head.biasg.beta", Group::OutputNoDecay),
@@ -546,28 +587,30 @@ mod tests {
   }
 
   // Every weight of both networks is decayed, and only the weights of the
-  // trunk are matrices for Muon.
+  // trunk are matrices for Muon, but for the depthwise convolutions'.
   #[test]
   fn every_weight_is_decayed() {
     let device = Device::flex();
-    let transformer = TransformerConfig {
-      inner_channels: 32,
-      mid_channels: 16,
-      transformer_blocks: 1,
-      transformer_size: 1,
-      attention_heads: 2,
-      ffn_channels: 24,
-      learnable_rope: true,
-      heads: HeadsConfig {
-        v1_channels: 8,
-        p1_channels: 8,
-        g1_channels: 8,
-        v2_size: 16,
-        sbv2_size: 16,
-        num_scorebeliefs: 2,
-      },
+    let hybrid = ModelConfig {
+      blocks: vec![
+        BlockConfig::Transformer(TransformerConfig {
+          mid_channels: 16,
+          layers: 1,
+          attention_heads: 2,
+          ffn_channels: 24,
+          rotary_channels: 6,
+          min_train_side: 4,
+          ffn_conv: true,
+        }),
+        BlockConfig::Nbt(NbtConfig {
+          mid_channels: 16,
+          size: 1,
+          gpool_channels: Some(8),
+        }),
+      ],
+      ..ModelConfig::default()
     };
-    for config in [ModelConfig::default(), ModelConfig::Transformer(transformer)] {
+    for config in [ModelConfig::default(), hybrid] {
       let mut paths = Paths::default();
       Model::new(&device, &config).visit(&mut paths);
       for path in &paths.paths {
@@ -579,7 +622,7 @@ mod tests {
         );
         assert_eq!(
           group.is_matrix(),
-          path.starts_with("residuals.") && path.ends_with(".weight"),
+          path.starts_with("residuals.") && path.ends_with(".weight") && !path.ends_with(".ffn.conv.weight"),
           "{path}"
         );
       }

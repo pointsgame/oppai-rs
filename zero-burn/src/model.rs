@@ -1,6 +1,9 @@
-use crate::{resnet::ResidualBlock, transformer::TransformerBlock};
+use crate::{
+  resnet::ResidualBlock,
+  transformer::{AttentionContext, TransformerBlock},
+};
 use burn::{
-  module::{Devices, Initializer, Module, ModuleMapper, ModuleVisitor, Param},
+  module::{Initializer, Module, ModuleMapper, ModuleVisitor, Param},
   nn::{
     Linear, LinearConfig, PaddingConfig2d,
     conv::{Conv2d, Conv2dConfig},
@@ -38,26 +41,95 @@ pub struct HeadsConfig {
   pub num_scorebeliefs: usize,
 }
 
-/// Hyperparameters of a [`ResNet`].
+/// A nested bottleneck residual block of convolutions: a `1x1` convolution
+/// down to `mid_channels`, inner residual blocks of two `3x3` convolutions
+/// each, and a `1x1` convolution back up.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct ResNetConfig {
+#[serde(deny_unknown_fields)]
+pub struct NbtConfig {
+  pub mid_channels: usize,
+  /// Inner residual blocks.
+  pub size: usize,
+  /// Channels of the first convolution of the first inner block that are
+  /// pooled over the whole board rather than convolved, if any.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub gpool_channels: Option<usize>,
+}
+
+/// A nested bottleneck block of transformer layers: a `1x1` convolution down
+/// to `mid_channels`, attention and feed-forward layers over the board's
+/// cells, and a `1x1` convolution back up.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransformerConfig {
+  pub mid_channels: usize,
+  /// Attention and feed-forward layer pairs.
+  pub layers: usize,
+  /// Attention heads; `mid_channels` is split evenly between them.
+  pub attention_heads: usize,
+  /// Hidden channels of the feed-forward layers.
+  pub ffn_channels: usize,
+  /// Channels of every attention head that the rotary encoding turns, an even
+  /// number of them; the rest carry no position, so that a head can match
+  /// tokens by what they hold alone, however far apart they are.
+  pub rotary_channels: usize,
+  /// Side of the smallest board the network is trained on, in cells: every
+  /// rotary frequency completes a full turn within it, so that no offset on a
+  /// bigger board turns a pair by an angle training has not shown it, and the
+  /// attention scores start at their usual scale on it.
+  pub min_train_side: usize,
+  /// Whether the feed-forward layers have a depthwise `3x3` convolution over
+  /// the board.
+  pub ffn_conv: bool,
+}
+
+impl TransformerConfig {
+  pub fn head_channels(&self) -> usize {
+    self.mid_channels / self.attention_heads
+  }
+
+  /// The lowest frequency of the rotary encoding, in radians per cell: a full
+  /// turn across the smallest training board.
+  pub fn min_rotary_frequency(&self) -> f64 {
+    2.0 * std::f64::consts::PI / self.min_train_side as f64
+  }
+}
+
+/// A block of the trunk, which adds its residual to the trunk's channels.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BlockConfig {
+  Nbt(NbtConfig),
+  Transformer(TransformerConfig),
+}
+
+/// Model architecture hyperparameters: the trunk's blocks, in order, and the
+/// heads reading it. A model must be created with the same config it was
+/// trained with for the weights to load.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ModelConfig {
+  /// Channels of the trunk the blocks add their residuals to.
   pub inner_channels: usize,
-  pub residual_blocks: usize,
-  pub residual_size: usize,
-  pub gpool_every: usize,
-  pub gpool_channels: usize,
+  pub blocks: Vec<BlockConfig>,
   #[serde(flatten)]
   pub heads: HeadsConfig,
 }
 
-impl Default for ResNetConfig {
+/// Five nested bottleneck blocks of 192 channels, every second one pooling
+/// globally.
+impl Default for ModelConfig {
   fn default() -> Self {
     Self {
       inner_channels: 192,
-      residual_blocks: 5,
-      residual_size: 2,
-      gpool_every: 2,
-      gpool_channels: 32,
+      blocks: (0..5)
+        .map(|i| {
+          BlockConfig::Nbt(NbtConfig {
+            mid_channels: 96,
+            size: 2,
+            gpool_channels: (i % 2 == 1).then_some(32),
+          })
+        })
+        .collect(),
       heads: HeadsConfig {
         v1_channels: 32,
         p1_channels: 32,
@@ -67,62 +139,6 @@ impl Default for ResNetConfig {
         num_scorebeliefs: 6,
       },
     }
-  }
-}
-
-impl ResNetConfig {
-  pub fn residual_inner_channels(&self) -> usize {
-    self.inner_channels / 2
-  }
-}
-
-/// Hyperparameters of a [`Transformer`].
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct TransformerConfig {
-  /// Channels of the trunk the blocks add their residuals to.
-  pub inner_channels: usize,
-  /// Channels the attention and feed-forward layers inside a block work in.
-  pub mid_channels: usize,
-  pub transformer_blocks: usize,
-  /// Attention and feed-forward layer pairs per block.
-  pub transformer_size: usize,
-  /// Attention heads; `mid_channels` is split evenly between them, and each
-  /// head's share has to be even for the 2D rotary encoding, and a multiple of
-  /// 4 for the fixed one.
-  pub attention_heads: usize,
-  /// Hidden channels of the feed-forward layers.
-  pub ffn_channels: usize,
-  /// Whether every attention layer learns the frequencies of its rotary
-  /// encoding, per head and along any direction of the board, instead of the
-  /// fixed ones turning along the rows and the columns only.
-  #[serde(default)]
-  pub learnable_rope: bool,
-  #[serde(flatten)]
-  pub heads: HeadsConfig,
-}
-
-impl TransformerConfig {
-  pub fn head_channels(&self) -> usize {
-    self.mid_channels / self.attention_heads
-  }
-}
-
-/// Model architecture hyperparameters. A model must be created with the same
-/// config it was trained with for the weights to load.
-///
-/// The file format has no tag: the trunk is told apart by the fields only one
-/// of them has, so the config files written before there was a choice still
-/// read as the [`ResNet`] they describe.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ModelConfig {
-  ResNet(ResNetConfig),
-  Transformer(TransformerConfig),
-}
-
-impl Default for ModelConfig {
-  fn default() -> Self {
-    Self::ResNet(ResNetConfig::default())
   }
 }
 
@@ -181,8 +197,9 @@ pub(crate) fn conv2d_same(inputs: Tensor<4>, weight: Tensor<4>) -> Tensor<4> {
   conv2d(inputs.cast(weight.dtype()), weight, None, options).cast(dtype)
 }
 
-/// Casts the weights of the [`Conv2d`] and
-/// [`Projection`](crate::transformer::Projection) modules it maps -
+/// Casts the weights of the [`Conv2d`],
+/// [`Projection`](crate::transformer::Projection) and
+/// [`DepthwiseConv`](crate::transformer::DepthwiseConv) modules it maps -
 /// the ones nearly all the work of the network is done by - leaving every
 /// other parameter as it is.
 ///
@@ -197,9 +214,10 @@ struct ComputeCaster {
 
 impl ModuleMapper for ComputeCaster {
   fn enter_module(&mut self, _name: &str, container_type: &str) {
-    self
-      .in_compute
-      .push(container_type == "Struct:Conv2d" || container_type == "Struct:Projection");
+    self.in_compute.push(matches!(
+      container_type,
+      "Struct:Conv2d" | "Struct:Projection" | "Struct:DepthwiseConv"
+    ));
   }
 
   fn exit_module(&mut self, _name: &str, _container_type: &str) {
@@ -833,43 +851,66 @@ impl CapturedHead {
   }
 }
 
-/// A block of a trunk, which adds a residual to the trunk's channels.
-pub trait TrunkBlock: Module {
-  /// What every block of a trunk needs for a forward pass and is the same for
-  /// all of them, so that it is computed once per pass.
-  type Context;
+/// A block of the trunk, which adds its residual to the trunk's channels.
+#[derive(Module, Debug)]
+pub enum Block {
+  Nbt(ResidualBlock),
+  Transformer(TransformerBlock),
+}
 
-  fn context(&self, mask: &Tensor<4>) -> Self::Context;
+impl Block {
+  pub fn new(device: &Device, inner_channels: usize, config: &BlockConfig) -> Self {
+    match config {
+      BlockConfig::Nbt(config) => Self::Nbt(ResidualBlock::new(device, inner_channels, config)),
+      BlockConfig::Transformer(config) => Self::Transformer(TransformerBlock::new(device, inner_channels, config)),
+    }
+  }
 
   /// Fixup initialization of the block: it has to start as the identity, and
   /// `fixup_scale` is the scale its residual branch gets otherwise.
-  fn initialize(&mut self, fixup_scale: f64, device: &Device);
+  fn initialize(&mut self, fixup_scale: f64, device: &Device) {
+    match self {
+      Self::Nbt(block) => block.initialize(fixup_scale, device),
+      Self::Transformer(block) => block.initialize(fixup_scale, device),
+    }
+  }
 
-  fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>, context: &Self::Context) -> Tensor<4>;
+  /// `context` is there whenever the trunk has a transformer block.
+  fn forward(
+    &self,
+    inputs: Tensor<4>,
+    mask: Tensor<4>,
+    mask_sum_hw: Tensor<4>,
+    context: Option<&AttentionContext>,
+  ) -> Tensor<4> {
+    match self {
+      Self::Nbt(block) => block.forward(inputs, mask, mask_sum_hw),
+      Self::Transformer(block) => block.forward(
+        inputs,
+        mask,
+        mask_sum_hw,
+        context.expect("the trunk has the attention context when it has a transformer block"),
+      ),
+    }
+  }
 }
 
-/// The network around a trunk: the input embedding, the trunk of residual
-/// blocks, and the heads reading the trunk's output.
+/// The network: the input embedding, the trunk of residual blocks, and the
+/// heads reading the trunk's output.
 #[derive(Module, Debug)]
-pub struct Net<T> {
+pub struct Model {
   pub(crate) conv_spatial: Conv2d,
   pub(crate) linear_global: Linear,
-  pub(crate) residuals: Vec<T>,
+  pub(crate) residuals: Vec<Block>,
   pub(crate) norm_trunkfinal: NormMask,
   pub(crate) value_head: ValueHead,
   pub(crate) policy_head: PolicyHead,
   pub(crate) captured_head: CapturedHead,
 }
 
-/// The convolutional network, of nested bottleneck residual blocks.
-pub type ResNet = Net<ResidualBlock>;
-
-/// The network whose trunk is made of attention: nested bottleneck blocks of
-/// transformer layers.
-pub type Transformer = Net<TransformerBlock>;
-
-impl<T: TrunkBlock> Net<T> {
-  fn with_residuals(device: &Device, inner_channels: usize, heads: &HeadsConfig, residuals: Vec<T>) -> Self {
+impl Model {
+  pub fn new(device: &Device, config: &ModelConfig) -> Self {
+    let inner_channels = config.inner_channels;
     Self {
       conv_spatial: Conv2dConfig::new([CHANNELS, inner_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
@@ -878,12 +919,39 @@ impl<T: TrunkBlock> Net<T> {
       linear_global: LinearConfig::new(GLOBAL_FEATURES, inner_channels)
         .with_bias(false)
         .init(device),
-      residuals,
+      residuals: config
+        .blocks
+        .iter()
+        .map(|block| Block::new(device, inner_channels, block))
+        .collect(),
       norm_trunkfinal: NormMask::new(device, inner_channels, false),
-      value_head: ValueHead::new(device, inner_channels, heads),
-      policy_head: PolicyHead::new(device, inner_channels, heads),
+      value_head: ValueHead::new(device, inner_channels, &config.heads),
+      policy_head: PolicyHead::new(device, inner_channels, &config.heads),
       captured_head: CapturedHead::new(device, inner_channels),
     }
+  }
+
+  /// Creates the model and loads its weights from `path`. The weights are cast
+  /// to the device's default float type, so a model saved in full precision
+  /// can be evaluated in half precision on a device configured for it.
+  pub fn load<P: AsRef<Path>>(device: &Device, config: &ModelConfig, path: P) -> Result<Self, RecordError> {
+    Self::new(device, config).try_load_record(ModuleRecord::load(path)?.cast_to_module_dtype())
+  }
+
+  /// The model with the weights of its convolutions and projections cast to
+  /// `dtype`, and with them the convolutions and projections themselves (see
+  /// [`conv2d_same`] and [`Projection`](crate::transformer::Projection)),
+  /// while everything else stays in the type it is in. Those are nearly all
+  /// the work of the network, and in single precision many GPUs cannot run
+  /// them on their matrix units, so a half precision type makes them many
+  /// times faster. The casts are part of the autodiff graph, so the gradients
+  /// still reach the original weights, and the backward pass of what was cast
+  /// runs in `dtype` as well.
+  pub fn with_compute_dtype(self, dtype: FloatDType) -> Self {
+    self.map(&mut ComputeCaster {
+      dtype,
+      in_compute: Vec::new(),
+    })
   }
 
   /// Fixup initialization for the residual trunk and heads. Every residual branch is
@@ -918,11 +986,15 @@ impl<T: TrunkBlock> Net<T> {
     let x_spatial = conv_forward(&self.conv_spatial, spatial);
     let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
     let mut x = x_spatial + x_global;
-    if let Some(first) = self.residuals.first() {
-      let context = first.context(&mask);
-      for residual in &self.residuals {
-        x = residual.forward(x, mask.clone(), mask_sum_hw.clone(), &context);
-      }
+    // Computed once for all the transformer blocks, and not at all without
+    // them.
+    let context = self
+      .residuals
+      .iter()
+      .any(|residual| matches!(residual, Block::Transformer(_)))
+      .then(|| AttentionContext::new(&mask));
+    for residual in &self.residuals {
+      x = residual.forward(x, mask.clone(), mask_sum_hw.clone(), context.as_ref());
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
     (mish(x), mask, mask_sum_hw)
@@ -948,144 +1020,10 @@ impl<T: TrunkBlock> Net<T> {
     let (value, value_error, td_score) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
     (policy, value, value_error, td_score)
   }
-}
-
-impl ResNet {
-  pub fn new(device: &Device, config: &ResNetConfig) -> Self {
-    let residuals = (0..config.residual_blocks)
-      .map(|i| ResidualBlock::new(device, config, (i + 1) % config.gpool_every == 0))
-      .collect();
-    Self::with_residuals(device, config.inner_channels, &config.heads, residuals)
-  }
-}
-
-impl Transformer {
-  pub fn new(device: &Device, config: &TransformerConfig) -> Self {
-    let residuals = (0..config.transformer_blocks)
-      .map(|_| TransformerBlock::new(device, config))
-      .collect();
-    Self::with_residuals(device, config.inner_channels, &config.heads, residuals)
-  }
-}
-
-/// The network of either kind, as its config says.
-///
-/// It is a module whose parameters are those of the network it holds, under
-/// the very same paths: which kind of network a record is for is told by the
-/// config alone, so the records saved when there was only the [`ResNet`] load
-/// as they are, and a record of the other kind fails to load for missing
-/// parameters.
-#[derive(Clone, Debug)]
-pub enum Model {
-  ResNet(ResNet),
-  Transformer(Transformer),
-}
-
-/// Applies the same expression to the network of either kind.
-macro_rules! with_net {
-  ($model:expr, $net:ident => $body:expr) => {
-    match $model {
-      Model::ResNet($net) => $body,
-      Model::Transformer($net) => $body,
-    }
-  };
-}
-
-/// Like [`with_net`], but wraps the result back into the kind it came from.
-macro_rules! map_net {
-  ($model:expr, $net:ident => $body:expr) => {
-    match $model {
-      Model::ResNet($net) => Model::ResNet($body),
-      Model::Transformer($net) => Model::Transformer($body),
-    }
-  };
-}
-
-impl Module for Model {
-  fn collect_devices(&self, devices: Devices) -> Devices {
-    with_net!(self, net => net.collect_devices(devices))
-  }
-
-  fn fork(self, device: &Device) -> Self {
-    map_net!(self, net => net.fork(device))
-  }
-
-  fn to_device(self, device: &Device) -> Self {
-    map_net!(self, net => net.to_device(device))
-  }
-
-  fn train(self) -> Self {
-    map_net!(self, net => net.train())
-  }
-
-  fn valid(&self) -> Self {
-    map_net!(self, net => net.valid())
-  }
-
-  fn materialize(self) -> Self {
-    map_net!(self, net => net.materialize())
-  }
-
-  fn visit<Visitor: ModuleVisitor>(&self, visitor: &mut Visitor) {
-    with_net!(self, net => net.visit(visitor))
-  }
-
-  fn map<Mapper: ModuleMapper>(self, mapper: &mut Mapper) -> Self {
-    map_net!(self, net => net.map(mapper))
-  }
-}
-
-impl Model {
-  pub fn new(device: &Device, config: &ModelConfig) -> Self {
-    match config {
-      ModelConfig::ResNet(config) => Self::ResNet(ResNet::new(device, config)),
-      ModelConfig::Transformer(config) => Self::Transformer(Transformer::new(device, config)),
-    }
-  }
-
-  /// Creates the model and loads its weights from `path`. The weights are cast
-  /// to the device's default float type, so a model saved in full precision
-  /// can be evaluated in half precision on a device configured for it.
-  pub fn load<P: AsRef<Path>>(device: &Device, config: &ModelConfig, path: P) -> Result<Self, RecordError> {
-    Self::new(device, config).try_load_record(ModuleRecord::load(path)?.cast_to_module_dtype())
-  }
-
-  /// The model with the weights of its convolutions and projections cast to
-  /// `dtype`, and with them the convolutions and projections themselves (see
-  /// [`conv2d_same`] and [`Projection`](crate::transformer::Projection)),
-  /// while everything else stays in the type it is in. Those are nearly all
-  /// the work of the network, and in single precision many GPUs cannot run
-  /// them on their matrix units, so a half precision type makes them many
-  /// times faster. The casts are part of the autodiff graph, so the gradients
-  /// still reach the original weights, and the backward pass of what was cast
-  /// runs in `dtype` as well.
-  pub fn with_compute_dtype(self, dtype: FloatDType) -> Self {
-    self.map(&mut ComputeCaster {
-      dtype,
-      in_compute: Vec::new(),
-    })
-  }
-
-  /// See [`Net::initialize`].
-  pub fn initialize(&mut self, device: &Device) {
-    with_net!(self, net => net.initialize(device))
-  }
-
-  pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
-    with_net!(self, net => net.forward(spatial, global))
-  }
-
-  pub fn forward_no_score(
-    &self,
-    spatial: Tensor<4>,
-    global: Tensor<2>,
-  ) -> (Tensor<4>, Tensor<2>, Tensor<2>, Tensor<2>) {
-    with_net!(self, net => net.forward_no_score(spatial, global))
-  }
 
   /// The float type the network takes its inputs in.
   fn input_dtype(&self) -> DType {
-    with_net!(self, net => net.conv_spatial.weight.val().dtype())
+    self.conv_spatial.weight.val().dtype()
   }
 }
 
@@ -1851,13 +1789,13 @@ impl OppaiTrainableModel<f32> for Learner {
 
 #[cfg(all(test, any(feature = "flex", feature = "vulkan", feature = "webgpu")))]
 mod tests {
+  use super::{Block, BlockConfig, HeadsConfig, Learner, Model, ModelConfig, NbtConfig, Predictor, TransformerConfig};
   #[cfg(feature = "flex")]
   use super::{
     ConvOrGpool, GLOBAL_FEATURES, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, TD_SCORE_SCALE,
     VALUE_VARIANCE_FLOOR, gradient_norm, interpolate_policy, scale_gradients, score_bins, score_mean_and_variance,
     squared_softplus_with_gradient_floor, stdevs_excess_weight,
   };
-  use super::{HeadsConfig, Learner, Model, ModelConfig, Predictor, TransformerConfig};
   #[cfg(feature = "flex")]
   use crate::optimizer::{OptimizerConfig, OptimizerKind};
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
@@ -1865,7 +1803,7 @@ mod tests {
   #[cfg(feature = "flex")]
   use burn::{
     optim::GradientsParams,
-    tensor::{Tensor, TensorData, activation::softmax},
+    tensor::{Tensor, TensorData, activation::softmax, s},
   };
   use burn::{optim::SgdConfig, tensor::Device};
   use ndarray::{Array2, Array3, Array4, Axis, array};
@@ -1875,21 +1813,42 @@ mod tests {
     model::{Model as OppaiModel, TrainableModel},
   };
 
-  /// A transformer small enough for the tests to train, with two heads of 8
-  /// channels, learning its rotary frequencies.
-  fn transformer_config() -> ModelConfig {
-    transformer_config_with(true)
+  /// A network small enough for the tests to train, with blocks of both
+  /// kinds: a transformer one, a convolutional one pooling globally, and
+  /// another transformer one. The attention has two heads of 8 channels, 6 of
+  /// which the rotary encoding turns, and there are depthwise convolutions in
+  /// the feed-forward layers.
+  fn hybrid_config() -> ModelConfig {
+    hybrid_config_with(6, true)
   }
 
-  fn transformer_config_with(learnable_rope: bool) -> ModelConfig {
-    ModelConfig::Transformer(TransformerConfig {
-      inner_channels: 32,
+  /// The hybrid network without what is optional: no channel the rotary
+  /// encoding turns, and no depthwise convolution.
+  fn bare_hybrid_config() -> ModelConfig {
+    hybrid_config_with(0, false)
+  }
+
+  fn hybrid_config_with(rotary_channels: usize, ffn_conv: bool) -> ModelConfig {
+    let transformer = BlockConfig::Transformer(TransformerConfig {
       mid_channels: 16,
-      transformer_blocks: 2,
-      transformer_size: 2,
+      layers: 2,
       attention_heads: 2,
       ffn_channels: 24,
-      learnable_rope,
+      rotary_channels,
+      min_train_side: 4,
+      ffn_conv,
+    });
+    ModelConfig {
+      inner_channels: 32,
+      blocks: vec![
+        transformer.clone(),
+        BlockConfig::Nbt(NbtConfig {
+          mid_channels: 16,
+          size: 1,
+          gpool_channels: Some(8),
+        }),
+        transformer,
+      ],
       heads: HeadsConfig {
         v1_channels: 8,
         p1_channels: 8,
@@ -1898,21 +1857,21 @@ mod tests {
         sbv2_size: 16,
         num_scorebeliefs: 2,
       },
-    })
+    }
   }
 
   /// Declares a test running `$body` - a function of a [`ModelConfig`] - for
-  /// the default network and for a transformer.
+  /// the default network, of convolutional blocks only, and for a hybrid one.
   macro_rules! for_both_trunks {
-    ($resnet:ident, $transformer:ident, $body:ident) => {
+    ($resnet:ident, $hybrid:ident, $body:ident) => {
       #[test]
       fn $resnet() {
         $body(ModelConfig::default());
       }
 
       #[test]
-      fn $transformer() {
-        $body(transformer_config());
+      fn $hybrid() {
+        $body(hybrid_config());
       }
     };
   }
@@ -1923,25 +1882,18 @@ mod tests {
     assert_eq!(config, ModelConfig::default());
   }
 
-  /// The config files carry no tag, so which network one is for is told by
-  /// its fields alone.
+  /// Every config file reads, and a config reads back as what was written.
   #[test]
-  fn config_files_tell_the_trunks_apart() {
+  fn config_files_read() {
     for entry in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/configs")).unwrap() {
       let path = entry.unwrap().path();
-      let config = ModelConfig::from_file(&path).unwrap();
-      let name = path.file_stem().unwrap().to_str().unwrap();
-      assert_eq!(
-        matches!(config, ModelConfig::Transformer(_)),
-        name.ends_with("tf"),
-        "{name}"
-      );
+      let config = ModelConfig::from_file(&path).unwrap_or_else(|error| panic!("{path:?}: {error:?}"));
+      assert!(!config.blocks.is_empty(), "{path:?}");
     }
-    let json = serde_json::to_string(&transformer_config()).unwrap();
-    assert_eq!(
-      serde_json::from_str::<ModelConfig>(&json).unwrap(),
-      transformer_config()
-    );
+    let json = serde_json::to_string(&hybrid_config()).unwrap();
+    assert_eq!(serde_json::from_str::<ModelConfig>(&json).unwrap(), hybrid_config());
+    // A misspelled field of a block is an error rather than a default.
+    assert!(serde_json::from_str::<ModelConfig>(&json.replace("\"ffn_conv\"", "\"ffn_convolution\"")).is_err());
   }
 
   // The forward value is squared softplus, while the gradient is that of the
@@ -2160,10 +2112,10 @@ mod tests {
       ConvOrGpool::Gpool(_) => panic!("residual branch output should be a plain conv"),
     };
 
-    let Model::ResNet(net) = &model else {
-      panic!("the default network is a ResNet");
-    };
-    for residual in &net.residuals {
+    for residual in &model.residuals {
+      let Block::Nbt(residual) = residual else {
+        panic!("the default network has convolutional blocks only");
+      };
       assert_zero(&residual.normactconvq.convgpool);
       for inner in &residual.inner {
         assert_zero(&inner.normactconv2.convgpool);
@@ -2191,20 +2143,21 @@ mod tests {
     );
   }
 
-  // The same Fixup invariant for the transformer: the convolution out of every
-  // block is zero, so each block starts as the identity however its transformer
-  // layers are initialized.
+  // The same Fixup invariant for the hybrid network: the convolution out of
+  // every block is zero, so each block starts as the identity however its
+  // transformer layers are initialized.
   #[test]
   #[cfg(feature = "flex")]
-  fn initialize_zeroes_transformer_branches() {
+  fn initialize_zeroes_hybrid_branches() {
     let device = Device::flex();
-    let mut model = Model::new(&device, &transformer_config());
+    let mut model = Model::new(&device, &hybrid_config());
     model.initialize(&device);
-    let Model::Transformer(net) = &model else {
-      panic!("the config is a transformer's");
-    };
-    for residual in &net.residuals {
-      let ConvOrGpool::Conv(conv) = &residual.normactconvq.convgpool else {
+    for residual in &model.residuals {
+      let normactconvq = match residual {
+        Block::Nbt(block) => &block.normactconvq,
+        Block::Transformer(block) => &block.normactconvq,
+      };
+      let ConvOrGpool::Conv(conv) = &normactconvq.convgpool else {
         panic!("the block's output should be a plain conv");
       };
       assert_eq!(conv.weight.val().abs().sum().into_scalar::<f32>(), 0.0);
@@ -2234,53 +2187,51 @@ mod tests {
     }
   }
 
-  // Wrapping a network into the model leaves its parameters' paths as they
-  // are, so the records saved before there was a choice of trunk still load,
-  // while a record of one kind of network does not load into the other.
+  // A block's parameters are under its index and its kind, so a record with
+  // another kind of block somewhere does not load.
   #[test]
   #[cfg(feature = "flex")]
-  fn records_keep_the_paths_of_the_network() {
-    use super::{ResNet, ResNetConfig};
+  fn records_have_the_paths_of_the_blocks() {
     use burn::module::Module;
     let device = Device::flex();
-    let net = ResNet::new(&device, &ResNetConfig::default());
-    let mut net_paths = PathCollector::default();
-    net.visit(&mut net_paths);
-    let model = Model::ResNet(net.clone());
-    let mut model_paths = PathCollector::default();
-    model.visit(&mut model_paths);
-    assert_eq!(model_paths.paths, net_paths.paths);
-    assert!(
-      net_paths
-        .paths
-        .iter()
-        .any(|path| path == "residuals.0.normactconvp.norm.beta")
-    );
+    let model = Model::new(&device, &ModelConfig::default());
+    let mut paths = PathCollector::default();
+    model.visit(&mut paths);
+    for path in [
+      "conv_spatial.weight",
+      "residuals.0.Nbt.normactconvp.norm.beta",
+      "residuals.0.Nbt.inner.1.normactconv2.convgpool.Conv.weight",
+      "residuals.1.Nbt.inner.0.normactconv1.convgpool.Gpool.conv1g.weight",
+      "residuals.4.Nbt.normactconvq.norm.gamma",
+      "value_head.linear2.weight",
+    ] {
+      assert!(paths.paths.iter().any(|known| known == path), "{path}");
+    }
 
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
     let global = Tensor::ones([1, 1], &device);
     let loaded = Model::new(&device, &ModelConfig::default())
-      .try_load_record(net.clone().into_record())
+      .try_load_record(model.clone().into_record())
       .unwrap();
     loaded
       .forward_no_score(inputs.clone(), global.clone())
       .0
       .into_data()
-      .assert_eq(&net.forward_no_score(inputs, global).0.into_data(), true);
+      .assert_eq(&model.forward_no_score(inputs, global).0.into_data(), true);
 
     assert!(
-      Model::new(&device, &transformer_config())
-        .try_load_record(net.into_record())
+      Model::new(&device, &hybrid_config())
+        .try_load_record(model.into_record())
         .is_err()
     );
   }
 
-  // Learned rotary frequencies are parameters of every attention layer, which
-  // a transformer with the fixed ones does not have: a record of one does not
-  // load into the other.
+  // The rotary frequencies and the depthwise convolutions are parameters of
+  // every transformer layer, which a network without them does not have: a record of
+  // one does not load into the other.
   #[test]
   #[cfg(feature = "flex")]
-  fn learned_rope_frequencies_are_in_the_record() {
+  fn optional_parameters_are_in_the_record() {
     use burn::module::Module;
     let device = Device::flex();
     let paths = |config: &ModelConfig| {
@@ -2288,26 +2239,68 @@ mod tests {
       Model::new(&device, config).visit(&mut paths);
       paths.paths
     };
-    let fixed = paths(&transformer_config_with(false));
-    let learned = paths(&transformer_config_with(true));
-    let frequencies = learned.iter().filter(|path| !fixed.contains(path)).collect::<Vec<_>>();
-    assert_eq!(
-      frequencies,
-      [
-        "residuals.0.layers.0.attention.rope_frequencies",
-        "residuals.0.layers.1.attention.rope_frequencies",
-        "residuals.1.layers.0.attention.rope_frequencies",
-        "residuals.1.layers.1.attention.rope_frequencies",
-      ]
-    );
-    assert!(fixed.iter().all(|path| learned.contains(path)));
+    let bare = paths(&bare_hybrid_config());
+    let full = paths(&hybrid_config());
+    let optional = full.iter().filter(|path| !bare.contains(path)).collect::<Vec<_>>();
+    let expected = ["residuals.0", "residuals.2"]
+      .into_iter()
+      .flat_map(|block| ["layers.0", "layers.1"].map(|layer| format!("{block}.Transformer.{layer}")))
+      .flat_map(|layer| {
+        [
+          format!("{layer}.attention.rope.directions"),
+          format!("{layer}.attention.rope.excess"),
+          format!("{layer}.ffn.conv.weight"),
+        ]
+      })
+      .collect::<Vec<_>>();
+    assert_eq!(optional, expected.iter().collect::<Vec<_>>());
+    assert!(bare.iter().all(|path| full.contains(path)));
 
-    let record = |config| Model::new(&device, &config).into_record();
     assert!(
-      Model::new(&device, &transformer_config_with(true))
-        .try_load_record(record(transformer_config_with(false)))
+      Model::new(&device, &hybrid_config())
+        .try_load_record(Model::new(&device, &bare_hybrid_config()).into_record())
         .is_err()
     );
+  }
+
+  // A board predicts the same in a grid of its own size as padded into a
+  // bigger one, which is how boards of several sizes share a batch: nothing
+  // off the board reaches the cells on it, nor the board's value.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn padding_leaves_the_board_as_it_is() {
+    let device = Device::flex();
+    let model = Model::new(&device, &hybrid_config());
+    let (height, width) = (4, 5);
+    let board = |padded_height: usize, padded_width: usize| {
+      let values = (0..CHANNELS * padded_height * padded_width)
+        .map(|i| {
+          let (channel, cell) = (i / (padded_height * padded_width), i % (padded_height * padded_width));
+          let (y, x) = (cell / padded_width, cell % padded_width);
+          if y >= height || x >= width {
+            0.0
+          } else if channel == 0 {
+            1.0
+          } else {
+            ((channel * 7 + y * 3 + x * 5) % 11) as f32 / 11.0
+          }
+        })
+        .collect::<Vec<_>>();
+      Tensor::<4>::from_data(
+        TensorData::new(values, [1, CHANNELS, padded_height, padded_width]),
+        &device,
+      )
+    };
+    let global = Tensor::<2>::ones([1, GLOBAL_FEATURES], &device) * 0.5;
+    let (policy, value, ..) = model.forward_no_score(board(height, width), global.clone());
+    let (padded_policy, padded_value, ..) = model.forward_no_score(board(height + 3, width + 2), global);
+    padded_policy
+      .slice(s![.., .., 0..height, 0..width])
+      .into_data()
+      .assert_approx_eq::<f32>(&policy.into_data(), Default::default());
+    padded_value
+      .into_data()
+      .assert_approx_eq::<f32>(&value.into_data(), Default::default());
   }
 
   #[cfg(feature = "flex")]
@@ -2409,13 +2402,9 @@ mod tests {
   #[cfg(feature = "flex")]
   predict_test!(predict_flex, Device::flex(), ModelConfig::default());
   #[cfg(feature = "flex")]
-  predict_test!(predict_transformer_flex, Device::flex(), transformer_config());
+  predict_test!(predict_transformer_flex, Device::flex(), hybrid_config());
   #[cfg(feature = "flex")]
-  predict_test!(
-    predict_transformer_fixed_rope_flex,
-    Device::flex(),
-    transformer_config_with(false)
-  );
+  predict_test!(predict_bare_transformer_flex, Device::flex(), bare_hybrid_config());
 
   /// Casts every float parameter, which is what loading a model on a device
   /// configured for half precision does to it.
@@ -2501,7 +2490,7 @@ mod tests {
   predict_test!(
     predict_transformer_wgpu,
     Device::wgpu(DeviceKind::DefaultDevice),
-    transformer_config()
+    hybrid_config()
   );
 
   macro_rules! train_test {
@@ -2801,7 +2790,10 @@ mod tests {
     );
     let cast = dtypes(&model.with_compute_dtype(FloatDType::BF16));
     for (container, dtype) in &cast {
-      let computes = container == "Struct:Conv2d" || container == "Struct:Projection";
+      let computes = matches!(
+        container.as_str(),
+        "Struct:Conv2d" | "Struct:Projection" | "Struct:DepthwiseConv"
+      );
       assert_eq!(*dtype, if computes { DType::BF16 } else { DType::F32 }, "{container}");
     }
     assert!(cast.iter().any(|(container, _)| container == "Struct:Conv2d"));
@@ -2855,7 +2847,7 @@ mod tests {
   #[cfg(feature = "flex")]
   train_test!(train_flex, Device::flex(), ModelConfig::default());
   #[cfg(feature = "flex")]
-  train_test!(train_transformer_flex, Device::flex(), transformer_config());
+  train_test!(train_transformer_flex, Device::flex(), hybrid_config());
   // Every optimizer, with its groups, steps both networks.
   #[cfg(feature = "flex")]
   train_test!(
@@ -2868,7 +2860,7 @@ mod tests {
   train_test!(
     train_transformer_adamw_flex,
     Device::flex(),
-    transformer_config(),
+    hybrid_config(),
     OptimizerConfig::new(OptimizerKind::AdamW, 1).init()
   );
   #[cfg(feature = "flex")]
@@ -2882,15 +2874,11 @@ mod tests {
   train_test!(
     train_transformer_muon_flex,
     Device::flex(),
-    transformer_config(),
+    hybrid_config(),
     OptimizerConfig::new(OptimizerKind::Muon, 1).init()
   );
   #[cfg(feature = "flex")]
-  train_test!(
-    train_transformer_fixed_rope_flex,
-    Device::flex(),
-    transformer_config_with(false)
-  );
+  train_test!(train_bare_transformer_flex, Device::flex(), bare_hybrid_config());
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   train_test!(
     train_wgpu,
@@ -2901,6 +2889,6 @@ mod tests {
   train_test!(
     train_transformer_wgpu,
     Device::wgpu(DeviceKind::DefaultDevice),
-    transformer_config()
+    hybrid_config()
   );
 }
