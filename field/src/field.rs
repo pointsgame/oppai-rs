@@ -78,6 +78,15 @@ fn live_players_mask(cells: u64, player: Player) -> u64 {
   )
 }
 
+/// Selects the value belonging to `player`.
+#[inline(always)]
+fn by_player<T>(player: Player, red: T, black: T) -> T {
+  match player {
+    Player::Red => red,
+    Player::Black => black,
+  }
+}
+
 #[derive(Clone, PartialEq)]
 struct FieldChange {
   score_red: i32,
@@ -90,6 +99,13 @@ struct FieldChange {
   dsu_changes: usize,
   #[cfg(feature = "dsu")]
   dsu_size_change: Option<(Pos, u32)>,
+}
+
+impl FieldChange {
+  #[inline]
+  fn red_score(&self) -> i32 {
+    self.score_red - self.score_black
+  }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -862,16 +878,8 @@ impl Field {
       }
     }
     if captured_count > 0 {
-      match player {
-        Player::Red => {
-          self.score_red += captured_count;
-          self.score_black -= freed_count;
-        }
-        Player::Black => {
-          self.score_black += captured_count;
-          self.score_red -= freed_count;
-        }
-      }
+      *self.captured_count_mut(player) += captured_count;
+      *self.captured_count_mut(player.next()) -= freed_count;
       for &pos in self.chains[chain_index].0.iter() {
         self.points[pos].clear_tag();
         self.cell_changes.push((pos, self.cell(pos)));
@@ -1149,10 +1157,7 @@ impl Field {
 
   #[inline]
   fn non_grounded_mut(&mut self, player: Player) -> &mut u32 {
-    match player {
-      Player::Red => &mut self.non_grounded_red,
-      Player::Black => &mut self.non_grounded_black,
-    }
+    by_player(player, &mut self.non_grounded_red, &mut self.non_grounded_black)
   }
 
   pub fn update_grounded(&mut self) {
@@ -1377,27 +1382,23 @@ impl Field {
 
   #[inline]
   pub fn captured_count(&self, player: Player) -> i32 {
-    match player {
-      Player::Red => self.score_red,
-      Player::Black => self.score_black,
-    }
+    by_player(player, self.score_red, self.score_black)
+  }
+
+  #[inline]
+  fn captured_count_mut(&mut self, player: Player) -> &mut i32 {
+    by_player(player, &mut self.score_red, &mut self.score_black)
   }
 
   #[inline]
   pub fn score(&self, player: Player) -> i32 {
-    match player {
-      Player::Red => self.score_red - self.score_black,
-      Player::Black => self.score_black - self.score_red,
-    }
+    self.captured_count(player) - self.captured_count(player.next())
   }
 
   #[inline]
   pub fn get_delta_score(&self, player: Player) -> i32 {
-    self.score(player)
-      - self.changes.last().map_or(0, |change| match player {
-        Player::Red => change.score_red - change.score_black,
-        Player::Black => change.score_black - change.score_red,
-      })
+    let red_delta = self.score(Player::Red) - self.changes.last().map_or(0, FieldChange::red_score);
+    by_player(player, red_delta, -red_delta)
   }
 
   #[inline]
