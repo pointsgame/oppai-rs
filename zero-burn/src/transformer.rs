@@ -396,6 +396,7 @@ impl Attention {
       value,
       Some(mask),
       Some(bias),
+      None,
       AttentionModuleOptions::default(),
     );
     let gate = sigmoid(self.gate.forward(inputs));

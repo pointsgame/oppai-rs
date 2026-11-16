@@ -38,10 +38,10 @@
         # tracel-llvm-bundler in Cargo.lock.
         tracel-llvm = pkgs.stdenv.mkDerivation rec {
           pname = "tracel-llvm";
-          version = "23.1.0-3";
+          version = "23.1.0-4";
           src = pkgs.fetchurl {
             url = "https://github.com/tracel-ai/tracel-llvm/releases/download/v${version}/linux-x64.tar.xz";
-            sha256 = "1a2b381da394078c82646bd118eb7dceb56320b700a7ef879468e6175a315c1a";
+            sha256 = "c394bb1b10ac785f16d3d92d688a9343ba869f720e9cf9ca3f1abf2f401f165f";
           };
           nativeBuildInputs = [ pkgs.autoPatchelfHook ];
           buildInputs = [ pkgs.stdenv.cc.cc.lib ];
