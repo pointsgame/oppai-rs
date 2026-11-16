@@ -24,7 +24,7 @@ use ndarray::{Array, Array1, Array2, Array3, Array4, Dimension, ShapeError};
 use oppai_zero::{
   examples::TD_VALUES,
   field_features::{CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, SCORE_ONE_HOT_SIZE},
-  model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
+  model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel, VALUE_COLUMNS},
 };
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::BufReader, path::Path};
@@ -695,8 +695,18 @@ impl ValueHead {
     let out_score_error =
       squared_softplus_with_gradient_floor(self.linear_score_error.forward(outv2), 0.05) * SCORE_ERROR_SCALE;
 
-    // Score Belief Head
+    ValuePredictions {
+      value: out_value,
+      value_error: out_value_error,
+      td_score: out_td_score,
+      score_error: out_score_error,
+      score: self.score_belief(outpooled, komi),
+    }
+  }
 
+  /// The log-probabilities of the score belief, `[batch, SCORE_ONE_HOT_SIZE]`,
+  /// from the pooled features under the `[batch, 1]` komi in points.
+  fn score_belief(&self, outpooled: Tensor<2>, komi: Tensor<2>) -> Tensor<2> {
     // Term 1: Linear from pooled
     let s2_term = self.linear_s2.forward(outpooled.clone()).reshape([0, 1, -1]);
 
@@ -720,29 +730,23 @@ impl ValueHead {
     // TODO: replace with LogSumExp once it's implemented in burn
     let log_terms = out_scorebelief_logprobs + outsmix_logweights.unsqueeze_dim(1);
     let max = log_terms.clone().max_dim(2).detach();
-    let out_score_log_dist = ((log_terms - max.clone()).exp().sum_dim(2).log() + max).squeeze_dim(2);
-
-    ValuePredictions {
-      value: out_value,
-      value_error: out_value_error,
-      td_score: out_td_score,
-      score_error: out_score_error,
-      score: out_score_log_dist,
-    }
+    ((log_terms - max.clone()).exp().sum_dim(2).log() + max).squeeze_dim(2)
   }
 
   /// The value outputs inference reads: the win/loss logits, the predicted
-  /// short-term squared value error, and the longest-horizon TD score (the
-  /// head whose target converges to the final score). The output projections
-  /// run on slices of their weights, so the TD value distributions and the
-  /// shorter score horizons - auxiliary training targets all - are never
-  /// computed.
-  pub fn forward_no_score(
+  /// short-term squared value error, the longest-horizon TD score (the head
+  /// whose target converges to the final score), and the probability of a
+  /// draw under the `[batch, 1]` komi in points - the score belief's bin of a
+  /// lead of exactly 0. The output projections run on slices of their
+  /// weights, so the TD value distributions and the shorter score horizons -
+  /// auxiliary training targets all - are never computed.
+  pub fn forward_inference(
     &self,
     inputs: Tensor<4>,
     mask: Tensor<4>,
     mask_sum_hw: Tensor<4>,
-  ) -> (Tensor<2>, Tensor<2>, Tensor<2>) {
+    komi: Tensor<2>,
+  ) -> (Tensor<2>, Tensor<2>, Tensor<2>, Tensor<2>) {
     let outv1 = conv_forward(&self.conv1, inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
@@ -763,8 +767,7 @@ impl ValueHead {
     );
     let out_value_error = self.value_error(outv2.clone());
     // The TD score is a single small layer on features this path computes
-    // anyway, unlike the score belief this path is there to skip. The longest
-    // horizon comes first in [`TD_VALUE_COEFFS`].
+    // anyway. The longest horizon comes first in [`TD_VALUE_COEFFS`].
     let out_td_score = linear(
       outv2,
       self.linear_td_score.weight.val().slice(s![.., 0..1]),
@@ -774,7 +777,14 @@ impl ValueHead {
         .as_ref()
         .map(|bias| bias.val().slice(s![0..1])),
     ) * TD_SCORE_SCALE;
-    (out_value, out_value_error, out_td_score)
+    // The whole belief is needed to normalize its one bin, but it is a few
+    // small layers on the pooled features next to the trunk's.
+    let center = SCORE_ONE_HOT_SIZE / 2;
+    let out_draw = self
+      .score_belief(outpooled, komi)
+      .slice(s![.., center..center + 1])
+      .exp();
+    (out_value, out_value_error, out_td_score, out_draw)
   }
 
   /// Predicted squared short-term value error, from the second value layer.
@@ -1093,17 +1103,20 @@ impl Model {
     (policy, value, captured)
   }
 
-  pub fn forward_no_score(
+  /// The outputs inference reads: the policy logits, then the value outputs
+  /// of [`ValueHead::forward_inference`].
+  pub fn forward_inference(
     &self,
     spatial: Tensor<4>,
     global: Tensor<2>,
-  ) -> (Tensor<4>, Tensor<2>, Tensor<2>, Tensor<2>) {
+  ) -> (Tensor<4>, Tensor<2>, Tensor<2>, Tensor<2>, Tensor<2>) {
+    let komi = global.clone().slice(s![.., GLOBAL_KOMI..GLOBAL_KOMI + 1]);
     let (x, mask, mask_sum_hw) = self.trunk(spatial, global);
     let policy = self
       .policy_head
       .forward_inference(x.clone(), mask.clone(), mask_sum_hw.clone());
-    let (value, value_error, td_score) = self.value_head.forward_no_score(x, mask, mask_sum_hw);
-    (policy, value, value_error, td_score)
+    let (value, value_error, td_score, draw) = self.value_head.forward_inference(x, mask, mask_sum_hw, komi);
+    (policy, value, value_error, td_score, draw)
   }
 
   /// The float type the network takes its inputs in.
@@ -1249,12 +1262,13 @@ impl OppaiModel<f32> for Predictor {
     .cast(dtype);
     let optimism = Tensor::<3>::from_data(TensorData::new(into_data_vec(optimism), [batch, 1, 1]), &self.device)
       .cast(FloatDType::F32);
-    let (policy_logits, value_logits, value_error, td_score) = self.model.forward_no_score(inputs, global);
-    let (policy_logits, value_logits, value_error, td_score) = (
+    let (policy_logits, value_logits, value_error, td_score, draw) = self.model.forward_inference(inputs, global);
+    let (policy_logits, value_logits, value_error, td_score, draw) = (
       policy_logits.cast(FloatDType::F32),
       value_logits.cast(FloatDType::F32),
       value_error.cast(FloatDType::F32),
       td_score.cast(FloatDType::F32),
+      draw.cast(FloatDType::F32),
     );
     let policy_logits = interpolate_policy(policy_logits, optimism);
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
@@ -1262,8 +1276,9 @@ impl OppaiModel<f32> for Predictor {
     // search's uncertainty weighting. The score estimate is the
     // longest-horizon TD score, the head whose target converges to the final
     // score; the search averages it over each subtree into the per-move q
-    // score targets.
-    let values = Tensor::cat(vec![softmax(value_logits, 1), value_error.sqrt(), td_score], 1);
+    // score targets. The probability of a draw tells the search which
+    // positions are settled draws.
+    let values = Tensor::cat(vec![softmax(value_logits, 1), value_error.sqrt(), td_score, draw], 1);
     // Both are read back in one transaction: a separate read for each would
     // wait on the device twice.
     let [policies, values]: [TensorData; 2] = Transaction::default()
@@ -1274,7 +1289,7 @@ impl OppaiModel<f32> for Predictor {
       .try_into()
       .expect("a transaction returns one data per registered tensor");
     let policies = Array3::from_shape_vec((batch, height, width), policies.try_into_vec()?)?;
-    let values = Array2::from_shape_vec((batch, 4), values.try_into_vec()?)?;
+    let values = Array2::from_shape_vec((batch, VALUE_COLUMNS), values.try_into_vec()?)?;
     Ok((policies, values))
   }
 }
@@ -1899,7 +1914,7 @@ mod tests {
   use oppai_zero::{
     examples::TD_VALUES,
     field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
-    model::{Model as OppaiModel, TrainableModel},
+    model::{Model as OppaiModel, TrainableModel, VALUE_COLUMNS},
   };
 
   /// A network small enough for the tests to train, with blocks of both
@@ -2029,7 +2044,7 @@ mod tests {
     let model = Model::new(&device.clone().autodiff(), &config);
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
     let global = Tensor::zeros([1, GLOBAL_FEATURES], &device);
-    let (policy_logits, value_logits, _, _) = model.forward_no_score(inputs, global);
+    let (policy_logits, value_logits, ..) = model.forward_inference(inputs, global);
     let grads = GradientsParams::from_grads((policy_logits.sum() + value_logits.sum()).backward(), &model);
 
     let unclipped = gradient_norm(&model, &grads, &device);
@@ -2186,6 +2201,34 @@ mod tests {
     );
   }
 
+  /// The probability of a draw inference reads is the score belief's bin of a
+  /// lead of 0, as training sees it, under each row's own komi.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn inference_draw_is_the_belief_of_a_level_lead() {
+    let device = Device::flex();
+    let mut model = Model::new(&device, &ModelConfig::default());
+    model.initialize(&device);
+    let inputs = Tensor::<4>::random([3, CHANNELS, 5, 6], burn::tensor::Distribution::Default, &device);
+    let global = Tensor::<2>::from_floats([[0.1, 1.0, 0.0], [0.0, 0.0, 0.5], [-0.1, 1.0, -1.0]], &device);
+    let (_, predictions, _) = model.forward(inputs.clone(), global.clone());
+    let center = SCORE_ONE_HOT_SIZE / 2;
+    let expected = predictions
+      .score
+      .slice(s![.., center..center + 1])
+      .exp()
+      .into_data()
+      .try_to_vec::<f32>()
+      .unwrap();
+    let (.., draw) = model.forward_inference(inputs, global);
+    let draw = draw.into_data().try_to_vec::<f32>().unwrap();
+    assert_eq!(draw.len(), 3);
+    for (draw, expected) in draw.iter().zip(&expected) {
+      assert!((0.0..=1.0).contains(draw));
+      assert!((draw - expected).abs() < 1e-6, "{draw} {expected}");
+    }
+  }
+
   // Verifies the core Fixup invariant: after `initialize`, every residual branch ends in a
   // zero-initialized conv so each block starts as the identity, and the model still produces a
   // valid, finite policy distribution.
@@ -2306,10 +2349,10 @@ mod tests {
       .try_load_record(model.clone().into_record())
       .unwrap();
     loaded
-      .forward_no_score(inputs.clone(), global.clone())
+      .forward_inference(inputs.clone(), global.clone())
       .0
       .into_data()
-      .assert_eq(&model.forward_no_score(inputs, global).0.into_data(), true);
+      .assert_eq(&model.forward_inference(inputs, global).0.into_data(), true);
 
     assert!(
       Model::new(&device, &hybrid_config())
@@ -2392,8 +2435,8 @@ mod tests {
         .unwrap();
       let inputs = Tensor::<4>::random([2, CHANNELS, 5, 6], burn::tensor::Distribution::Default, &device);
       let global = Tensor::ones([2, GLOBAL_FEATURES], &device);
-      let (policy, value, ..) = gated.forward_no_score(inputs.clone(), global.clone());
-      let (plain_policy, plain_value, ..) = plain.forward_no_score(inputs, global);
+      let (policy, value, ..) = gated.forward_inference(inputs.clone(), global.clone());
+      let (plain_policy, plain_value, ..) = plain.forward_inference(inputs, global);
       policy.into_data().assert_eq(&plain_policy.into_data(), true);
       value.into_data().assert_eq(&plain_value.into_data(), true);
     }
@@ -2465,8 +2508,8 @@ mod tests {
       )
     };
     let global = Tensor::<2>::ones([1, GLOBAL_FEATURES], &device) * 0.5;
-    let (policy, value, ..) = model.forward_no_score(board(height, width), global.clone());
-    let (padded_policy, padded_value, ..) = model.forward_no_score(board(height + 3, width + 2), global);
+    let (policy, value, ..) = model.forward_inference(board(height, width), global.clone());
+    let (padded_policy, padded_value, ..) = model.forward_inference(board(height + 3, width + 2), global);
     padded_policy
       .slice(s![.., .., 0..height, 0..width])
       .into_data()
@@ -2530,11 +2573,12 @@ mod tests {
         .unwrap();
         // Win and loss probabilities, the predicted short-term error as a
         // standard deviation, which the search turns into a playout weight,
-        // and the predicted score in points.
-        assert_eq!(values.dim(), (1, 4));
+        // the predicted score in points, and the probability of a draw.
+        assert_eq!(values.dim(), (1, VALUE_COLUMNS));
         assert!((values[(0, 0)] + values[(0, 1)] - 1.0).abs() < 1e-4);
         assert!(values[(0, 2)] >= 0.0 && values[(0, 2)].is_finite());
         assert!(values[(0, 3)].is_finite());
+        assert!((0.0..=1.0).contains(&values[(0, 4)]));
 
         // The same position three times, each row asking for its own optimism:
         // a batch is what the search actually submits, and every row of it has

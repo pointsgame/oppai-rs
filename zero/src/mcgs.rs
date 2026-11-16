@@ -2,7 +2,7 @@ use crate::field_features::{
   CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, add_unrotated_policy, field_features_len, field_features_to_vec,
   global_to_vec, rotation_sizes,
 };
-use crate::model::Model;
+use crate::model::{Model, VALUE_COLUMNS};
 use either::Either;
 use ndarray::{Array, Array2, Array3, ArrayView2};
 use num_traits::Float;
@@ -210,6 +210,10 @@ pub struct Node<N: Float> {
   /// The node's own score estimate: the net's for an ordinary state, the exact
   /// final score for a terminal one. The `raw_value` of the score.
   pub raw_score: N,
+  /// The node's own probability of a draw: the net's for an ordinary state, 1
+  /// or 0 for a terminal one. Only enters the utility, see
+  /// [`Search::aux_utility`], and is not propagated.
+  pub raw_draw: N,
   /// Q²(n): Expected squared utility, propagated recursively the same way as
   /// `value`: (U(n)² + sum(edge.visits * child.Q²)) / N(n). Squares are
   /// perspective-independent, so no sign flips are needed. Together with
@@ -258,6 +262,7 @@ impl<N: Float> Node<N> {
       raw_winloss: N::zero(),
       score: N::zero(),
       raw_score: N::zero(),
+      raw_draw: N::zero(),
       value_sq: N::zero(),
       weight: N::zero(),
       weight_sq: N::zero(),
@@ -380,6 +385,8 @@ pub struct Evaluation<N: Float> {
   pub winloss: N,
   /// The net's score, [`Node::raw_score`].
   pub score: N,
+  /// The net's probability of a draw, [`Node::raw_draw`].
+  pub draw: N,
   /// The weight the evaluation counts with, [`Node::weight`].
   pub weight: N,
   /// The node's edges with their priors, everything else zeroed.
@@ -475,6 +482,14 @@ pub struct Params {
   /// to gain and the loser something to save - where the pure win/loss value
   /// has none. See [`Search::aux_utility`].
   pub score_utility_factor: f64,
+  /// Weight of the draw term of the utility: in a position the net expects to
+  /// end in a draw, with the board level, the side to move gains by having
+  /// fewer ungrounded dots than the opponent. A settled draw ends once neither
+  /// side has any, and with every move worth the same draw otherwise nothing
+  /// tells the search the moves that ground a chain from the ones that build
+  /// walls next to the edge. Kept small, as it is only there to break those
+  /// ties. See [`Search::aux_utility`].
+  pub draw_utility_factor: f64,
   /// How many paths one [`Search::mcgs`] call selects and sends to the net
   /// together, each later one steered away from the earlier ones by a virtual
   /// loss. A virtual loss is a guess about a playout that hasn't come back, so
@@ -513,6 +528,7 @@ impl Params {
     noise_prune_utility_scale: 0.0,
     early_utility_factor: 0.15,
     score_utility_factor: 0.1,
+    draw_utility_factor: 0.05,
     // One path at a time, so the search behind every recorded target is
     // exactly the sequential one its playout count stands for. Self-play runs
     // hundreds of games against one evaluator, and it is their number rather
@@ -546,6 +562,7 @@ impl Params {
     noise_prune_utility_scale: 0.15,
     early_utility_factor: 0.15,
     score_utility_factor: 0.1,
+    draw_utility_factor: 0.05,
     // A single game has nothing to share its forward passes with, so it fills
     // them with its own readouts.
     readouts: 8,
@@ -559,7 +576,7 @@ impl Params {
   /// from here, so they stay in step with the factors instead of assuming a
   /// pure win/loss range.
   pub fn utility_radius(&self) -> f64 {
-    1.0 + self.early_utility_factor + self.score_utility_factor
+    1.0 + self.early_utility_factor + self.score_utility_factor + self.draw_utility_factor
   }
 }
 
@@ -1037,6 +1054,15 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
+  /// The probability of a draw from which the draw term of
+  /// [`Self::aux_utility`] starts to apply. Above a half the net expects a
+  /// draw more than anything else.
+  const SETTLED_DRAW_MIN: f64 = 0.5;
+
+  /// The probability of a draw from which the draw term of
+  /// [`Self::aux_utility`] applies in full.
+  const SETTLED_DRAW_MAX: f64 = 0.9;
+
   /// Twice the points a side still has to secure before it may end the game:
   /// its ungrounded dots minus its lead, komi included, never below zero. The
   /// game ends as soon as either side's lead exceeds its ungrounded dots - see
@@ -1082,7 +1108,24 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// whole board would want: dots games fill only ~0.32 of the field, and only
   /// a part of the filled area is captured, so realistic scores run about a
   /// quarter as large.
-  pub(crate) fn aux_utility(&self, field: &Field, player: Player, komi_x_2: i32, winloss: N, score: N) -> N {
+  ///
+  /// The draw term breaks the ties of a settled draw, where every move has the
+  /// same value and both of the terms above are about 0: it is the difference
+  /// of the two sides' ungrounded dots, each squashed through an atan of the
+  /// same scale, in favour of the side with fewer. The game ends level once
+  /// neither side has any, so each side gets closer to that end by grounding
+  /// its own, and the only way to resist the other's is to cut its dots off
+  /// the edge - real play rather than stalling. Rewarding the end of the game
+  /// itself would not do: the search is zero-sum, so whatever makes one side
+  /// want to end a draw makes the other want to drag it out. The term is
+  /// scaled by how settled the draw is, read from `draw`, the probability of
+  /// one, between [`Self::SETTLED_DRAW_MIN`] and [`Self::SETTLED_DRAW_MAX`]:
+  /// in a balanced position that is still open, rewarding grounding would
+  /// reward passive play and make draws only more common. And it applies only
+  /// with the board level, komi included, which a decided draw almost always
+  /// already is: a side behind on points is never steered into grounding,
+  /// however wrong the net is about the draw.
+  pub(crate) fn aux_utility(&self, field: &Field, player: Player, komi_x_2: i32, winloss: N, score: N, draw: N) -> N {
     let two_over_pi = N::from(std::f64::consts::FRAC_2_PI).unwrap();
     let area = N::from(field.width() * field.height()).unwrap();
     let scale = area.sqrt() / N::from(2).unwrap();
@@ -1094,8 +1137,23 @@ impl<N: Float + Sum + Copy> Search<N> {
     let shortfall = N::from(shortfall_x_2).unwrap() / N::from(2).unwrap();
     let finish_value = N::one() - N::from(2).unwrap() * two_over_pi * (shortfall / scale).atan();
     let score_value = (score / scale).atan() * two_over_pi;
+    let draw_value = if field.score(player) * 2 + komi_x_2 == 0 {
+      let settled = ((draw - N::from(Self::SETTLED_DRAW_MIN).unwrap())
+        / N::from(Self::SETTLED_DRAW_MAX - Self::SETTLED_DRAW_MIN).unwrap())
+      .max(N::zero())
+      .min(N::one());
+      let (own, opponent) = match player {
+        Player::Red => (field.non_grounded_red, field.non_grounded_black),
+        Player::Black => (field.non_grounded_black, field.non_grounded_red),
+      };
+      let squash = |dots| (N::from(dots).unwrap() / scale).atan();
+      settled * two_over_pi * (squash(opponent) - squash(own))
+    } else {
+      N::zero()
+    };
     N::from(self.params.early_utility_factor).unwrap() * winloss * winloss.abs() * finish_value
       + N::from(self.params.score_utility_factor).unwrap() * score_value
+      + N::from(self.params.draw_utility_factor).unwrap() * draw_value
   }
 
   /// Typical utility standard deviation of a node; the observed stdev is
@@ -1318,6 +1376,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     winloss: N,
     utility: N,
     score: N,
+    draw: N,
     weight: N,
     children: Vec<Edge<N>>,
     bias_key: Option<BiasKey>,
@@ -1348,6 +1407,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       leaf.raw_winloss = winloss;
       leaf.score = score;
       leaf.raw_score = score;
+      leaf.raw_draw = draw;
       leaf.visits = 1;
       leaf.own_visits = 1;
       leaf.weight = weight;
@@ -1383,6 +1443,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       leaf.winloss = leaf.raw_winloss;
       leaf.raw_score = (leaf.raw_score * old_weight_sum + score * weight) / new_weight_sum;
       leaf.score = leaf.raw_score;
+      leaf.raw_draw = (leaf.raw_draw * old_weight_sum + draw * weight) / new_weight_sum;
       leaf.value = (leaf.value * old_weight_sum + value * weight) / new_weight_sum;
       leaf.value_sq = (leaf.value_sq * old_weight_sum + value * value * weight) / new_weight_sum;
       leaf.visits += 1;
@@ -1483,7 +1544,7 @@ impl<N: Float + Sum + Copy> Search<N> {
 
   /// Reads the prediction of one position back from the `rotations.len()` rows
   /// of a batch starting at `offset`, as [`Self::push_inputs`] laid them out:
-  /// the policy in field coordinates and the four value columns, each averaged
+  /// the policy in field coordinates and the value columns, each averaged
   /// over the rotations. The probabilities are averaged rather than the logits,
   /// so a move only one orientation sees keeps a share of its prior.
   fn read_prediction(
@@ -1492,10 +1553,10 @@ impl<N: Float + Sum + Copy> Search<N> {
     offset: usize,
     rotations: &[u8],
     field: &Field,
-  ) -> (Array2<N>, [N; 4]) {
+  ) -> (Array2<N>, [N; VALUE_COLUMNS]) {
     let scale = N::one() / N::from(rotations.len()).unwrap();
     let mut policy = Array2::zeros((field.height() as usize, field.width() as usize));
-    let mut value = [N::zero(); 4];
+    let mut value = [N::zero(); VALUE_COLUMNS];
     for (i, &rotation) in rotations.iter().enumerate() {
       let row = offset + i;
       add_unrotated_policy(
@@ -1513,13 +1574,14 @@ impl<N: Float + Sum + Copy> Search<N> {
     (policy, value)
   }
 
-  fn make_moves(nodes: &[Node<N>], field: &mut Field, path: &[(usize, usize)], mut player: Player, ground: bool) {
+  /// Plays the moves of `path` on `field`, each one grounded as well: the
+  /// game-over check and the utility read the ungrounded dots of the position
+  /// the path leads to.
+  fn make_moves(nodes: &[Node<N>], field: &mut Field, path: &[(usize, usize)], mut player: Player) {
     for &(node_idx, edge_idx) in path {
       let pos = nodes[node_idx].children[edge_idx].pos;
       assert!(field.put_point(pos, player), "can't put point, likely a collision");
-      if ground {
-        field.update_grounded();
-      }
+      field.update_grounded();
       player = player.next();
     }
   }
@@ -1725,7 +1787,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let red_komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
 
     leafs.retain(|(path, terminal)| {
-      Self::make_moves(&self.nodes, field, path, player, true);
+      Self::make_moves(&self.nodes, field, path, player);
 
       let player = if path.len().is_multiple_of(2) {
         player
@@ -1745,8 +1807,9 @@ impl<N: Float + Sum + Copy> Search<N> {
         let weight = Self::terminal_weight(weigh);
         let winloss = game_result(field, player, leaf_komi_x_2);
         let score = game_score(field, player, leaf_komi_x_2);
-        let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score);
-        self.add_result(path, winloss, utility, score, weight, Vec::new(), None);
+        let draw = if winloss == N::zero() { N::one() } else { N::zero() };
+        let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score, draw);
+        self.add_result(path, winloss, utility, score, draw, weight, Vec::new(), None);
         false
       } else if let Some(evaluation) = path
         .last()
@@ -1758,12 +1821,13 @@ impl<N: Float + Sum + Copy> Search<N> {
         let Evaluation {
           winloss,
           score,
+          draw,
           weight,
           children,
         } = evaluation;
-        let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score);
+        let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score, draw);
         let bias_key = Self::bias_key(field);
-        self.add_result(path, winloss, utility, score, weight, children, bias_key);
+        self.add_result(path, winloss, utility, score, draw, weight, children, bias_key);
         false
       } else {
         // An empty path is the root itself being expanded: it goes under the
@@ -1813,7 +1877,7 @@ impl<N: Float + Sum + Copy> Search<N> {
 
     let mut offset = 0;
     for ((path, _), rotations) in leafs.iter().zip(&leaf_rotations) {
-      Self::make_moves(&self.nodes, field, path, player, false);
+      Self::make_moves(&self.nodes, field, path, player);
 
       let (player, leaf_komi_x_2) = if path.len().is_multiple_of(2) {
         (player, komi_x_2)
@@ -1821,7 +1885,8 @@ impl<N: Float + Sum + Copy> Search<N> {
         (player.next(), -komi_x_2)
       };
 
-      let (policy, [win, loss, error, score]) = Self::read_prediction(&policies, &values, offset, rotations, field);
+      let (policy, [win, loss, error, score, draw]) =
+        Self::read_prediction(&policies, &values, offset, rotations, field);
       offset += rotations.len();
       let winloss = win - loss;
       let weight = Self::eval_weight(weigh, error);
@@ -1829,14 +1894,14 @@ impl<N: Float + Sum + Copy> Search<N> {
       // tree's scores - at 0: its utilities carry no score term and the
       // per-move q score targets stay zero, which only the trainable model,
       // one that does estimate scores, ever reads back.
-      let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score);
+      let utility = winloss + self.aux_utility(field, player, leaf_komi_x_2, winloss, score, draw);
 
       let children = self.create_children(field, player, &policy.view(), rng);
       // Bucket the leaf by the local context of the move that created it. The
       // field currently has all of the path's moves played, so `field.moves`
       // ends with this node's move and the move before it.
       let bias_key = Self::bias_key(field);
-      self.add_result(path, winloss, utility, score, weight, children, bias_key);
+      self.add_result(path, winloss, utility, score, draw, weight, children, bias_key);
 
       for _ in 0..path.len() {
         field.undo();
@@ -2107,6 +2172,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         Evaluation {
           winloss: node.raw_winloss,
           score: node.raw_score,
+          draw: node.raw_draw,
           weight: node.weight,
           children,
         },

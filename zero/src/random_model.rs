@@ -9,7 +9,7 @@ use num_traits::{Float, One};
 use rand::{Rng, RngExt};
 use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
 
-use crate::model::Model;
+use crate::model::{Model, VALUE_COLUMNS};
 
 /// The generator is behind a lock because a model is asked for its predictions
 /// through a shared reference. The lock is only held while the numbers are
@@ -68,7 +68,7 @@ where
     }
     let policies = Array3::from_shape_vec((batch, height, width), policies).map_err(|_| ())?;
     let values = Array2::from_shape_vec((batch, 2), values).map_err(|_| ())?;
-    let mut values_with_error = Array2::zeros((batch, 4));
+    let mut values_with_error = Array2::zeros((batch, VALUE_COLUMNS));
     values_with_error.slice_mut(ndarray::s![.., 0..2]).assign(&values);
 
     Ok((policies, values_with_error))

@@ -7,7 +7,7 @@ use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 
 use crate::mcgs::{BiasEntry, Edge, Node, Params, Search, t_cdf, value_weight_cdf};
-use crate::model::Model;
+use crate::model::{Model, VALUE_COLUMNS};
 
 /// Play's parameters, but without forbidding apriori bad moves: the tests use
 /// tiny boards where pruning corners would change the trees they assert on.
@@ -21,6 +21,7 @@ const PARAMS: Params = Params {
   root_symmetries: 1,
   early_utility_factor: 0.0,
   score_utility_factor: 0.0,
+  draw_utility_factor: 0.0,
   ..Params::PLAY
 };
 
@@ -58,7 +59,7 @@ fn mcts_first_iterations() {
     &|inputs: Array4<f64>, _, _| {
       let result: Result<_, ()> = Ok((
         uniform_policies(&inputs),
-        const_value(&inputs, array![1.0, 0.0, 0.0, 0.0]),
+        const_value(&inputs, array![1.0, 0.0, 0.0, 0.0, 0.0]),
       ));
       result
     },
@@ -86,7 +87,7 @@ fn mcts_first_iterations() {
     &|inputs: Array4<f64>, _, _| {
       let result: Result<_, ()> = Ok((
         uniform_policies(&inputs),
-        const_value(&inputs, array![0.0, 1.0, 0.0, 0.0]),
+        const_value(&inputs, array![0.0, 1.0, 0.0, 0.0, 0.0]),
       ));
       result
     },
@@ -252,7 +253,7 @@ fn mcts_last_iterations() {
     &|inputs: Array4<f64>, _, _| {
       let result: Result<_, ()> = Ok((
         uniform_policies(&inputs),
-        const_value(&inputs, array![0.5, 0.5, 0.0, 0.0]),
+        const_value(&inputs, array![0.5, 0.5, 0.0, 0.0, 0.0]),
       ));
       result
     },
@@ -271,7 +272,7 @@ fn mcts_last_iterations() {
 /// observed bias for the subtree value bias correction to pick up.
 fn depth_value(inputs: &Array4<f64>) -> Array2<f64> {
   let batch_size = inputs.len_of(Axis(0));
-  let mut value = Array::zeros((batch_size, 4));
+  let mut value = Array::zeros((batch_size, VALUE_COLUMNS));
   for i in 0..batch_size {
     let mass: f64 = inputs.index_axis(Axis(0), i).sum();
     let p = (mass * 0.02).tanh();
@@ -694,7 +695,7 @@ fn uncertainty_weights_propagate_through_the_tree() {
         &|inputs: Array4<f64>, _, _| {
           let result: Result<_, ()> = Ok((
             uniform_policies(&inputs),
-            const_value(&inputs, array![0.6, 0.4, error, 0.0]),
+            const_value(&inputs, array![0.6, 0.4, error, 0.0, 0.0]),
           ));
           result
         },
@@ -1912,7 +1913,7 @@ impl Model<f64> for NoErrorHead {
   ) -> Result<(Array3<f64>, Array2<f64>), Self::E> {
     Ok((
       uniform_policies(&inputs),
-      const_value(&inputs, array![0.6, 0.4, 0.0, 0.0]),
+      const_value(&inputs, array![0.6, 0.4, 0.0, 0.0, 0.0]),
     ))
   }
 }
@@ -1981,7 +1982,7 @@ fn the_optimism_of_the_parameters_reaches_the_net() {
     asked.borrow_mut().push(optimism.to_vec());
     let result: Result<_, ()> = Ok((
       uniform_policies(&inputs),
-      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0]),
+      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0, 0.0]),
     ));
     result
   };
@@ -2038,7 +2039,7 @@ fn a_reused_root_gets_its_priors_re_predicted_at_root_optimism() {
         }
       }
     }
-    let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1, 0.0])));
+    let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1, 0.0, 0.0])));
     result
   };
 
@@ -2126,7 +2127,7 @@ fn transposing_paths_of_one_batch_are_evaluated_once() {
             }
           }
         }
-        let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1, 0.0])));
+        let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1, 0.0, 0.0])));
         result
       },
       0,
@@ -2185,7 +2186,7 @@ fn forced_playouts_do_not_absorb_a_whole_batch() {
   let model = |inputs: Array4<f64>, _, _| {
     let result: Result<_, ()> = Ok((
       uniform_policies(&inputs),
-      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0]),
+      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0, 0.0]),
     ));
     result
   };
@@ -2239,7 +2240,7 @@ fn childless_nodes_keep_their_playout_count_through_a_recompute() {
   let model = |inputs: Array4<f64>, _, _| {
     let result: Result<_, ()> = Ok((
       uniform_policies(&inputs),
-      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0]),
+      const_value(&inputs, array![0.6, 0.4, 0.1, 0.0, 0.0]),
     ));
     result
   };
@@ -2349,7 +2350,7 @@ fn q_scores_follow_the_net_estimate() {
       &|inputs: Array4<f64>, _, _| {
         let result: Result<_, ()> = Ok((
           uniform_policies(&inputs),
-          const_value(&inputs, array![1.0, 0.0, 0.0, 2.5]),
+          const_value(&inputs, array![1.0, 0.0, 0.0, 2.5, 0.0]),
         ));
         result
       },
@@ -2401,7 +2402,7 @@ fn utility_carries_the_auxiliary_terms_the_value_does_not() {
     &|inputs: Array4<f64>, _, _| {
       let result: Result<_, ()> = Ok((
         uniform_policies(&inputs),
-        const_value(&inputs, array![0.75, 0.25, 0.0, score]),
+        const_value(&inputs, array![0.75, 0.25, 0.0, score, 0.0]),
       ));
       result
     },
@@ -2463,13 +2464,13 @@ fn early_finish_rewards_the_winner_for_grounding() {
   let search = Search::<f64>::new(EARLY_FINISH_PARAMS);
 
   let winloss = 0.8;
-  let at_end = search.aux_utility(&grounded, Player::Red, 0, winloss, 0.0);
+  let at_end = search.aux_utility(&grounded, Player::Red, 0, winloss, 0.0, 0.0);
   assert!((at_end - 0.15 * winloss * winloss).abs() < 1e-12);
-  let short = search.aux_utility(&ungrounded, Player::Red, 0, winloss, 0.0);
+  let short = search.aux_utility(&ungrounded, Player::Red, 0, winloss, 0.0, 0.0);
   assert!(short < at_end);
 
   // A lead that covers the ungrounded dots is as good as grounding them.
-  let covered = search.aux_utility(&ungrounded, Player::Red, 3, winloss, 0.0);
+  let covered = search.aux_utility(&ungrounded, Player::Red, 3, winloss, 0.0, 0.0);
   assert!((covered - at_end).abs() < 1e-12);
 }
 
@@ -2504,13 +2505,13 @@ fn early_finish_rewards_the_loser_for_keeping_the_winner_ungrounded() {
   let search = Search::<f64>::new(EARLY_FINISH_PARAMS);
 
   let winloss = -0.8;
-  let lost_at_end = search.aux_utility(&winner_grounded, Player::Red, 0, winloss, 0.0);
-  let lost_short = search.aux_utility(&winner_ungrounded, Player::Red, 0, winloss, 0.0);
+  let lost_at_end = search.aux_utility(&winner_grounded, Player::Red, 0, winloss, 0.0, 0.0);
+  let lost_short = search.aux_utility(&winner_ungrounded, Player::Red, 0, winloss, 0.0, 0.0);
   assert!(lost_at_end < lost_short);
 
   for field in [&winner_grounded, &winner_ungrounded] {
-    let loser = search.aux_utility(field, Player::Red, 0, winloss, 0.0);
-    let winner = search.aux_utility(field, Player::Black, 0, -winloss, 0.0);
+    let loser = search.aux_utility(field, Player::Red, 0, winloss, 0.0, 0.0);
+    let winner = search.aux_utility(field, Player::Black, 0, -winloss, 0.0, 0.0);
     assert!((loser + winner).abs() < 1e-12);
   }
 }
@@ -2533,10 +2534,162 @@ fn early_finish_fades_out_of_contested_positions() {
   );
   let search = Search::<f64>::new(EARLY_FINISH_PARAMS);
 
-  assert_eq!(search.aux_utility(&field, Player::Red, 0, 0.0, 0.0), 0.0);
-  let decided = search.aux_utility(&field, Player::Red, 0, 0.8, 0.0);
-  let contested = search.aux_utility(&field, Player::Red, 0, 0.1, 0.0);
+  assert_eq!(search.aux_utility(&field, Player::Red, 0, 0.0, 0.0, 0.0), 0.0);
+  let decided = search.aux_utility(&field, Player::Red, 0, 0.8, 0.0, 0.0);
+  let contested = search.aux_utility(&field, Player::Red, 0, 0.1, 0.0, 0.0);
   assert!((contested / decided - (0.1f64 / 0.8).powi(2)).abs() < 1e-12);
+}
+
+/// Only the draw term, so the tests below read it in isolation.
+const DRAW_PARAMS: Params = Params {
+  draw_utility_factor: 0.05,
+  ..PARAMS
+};
+
+/// Red's dot is on the edge and grounded, Black's is not, and nothing is
+/// captured: a level board where Red is the closer to being done.
+const RED_GROUNDED: &str = "
+    ..a..
+    .....
+    ..A..
+    .....
+    .....
+    ";
+
+/// In a settled draw the side to move gains by having fewer ungrounded dots
+/// than the opponent, and the term is zero-sum: the opponent's utility is
+/// exactly the negated one.
+#[test]
+fn draw_term_rewards_grounding_in_a_settled_draw() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let red_grounded = construct_field(&mut rng, RED_GROUNDED);
+  let both_ungrounded = construct_field(
+    &mut rng,
+    "
+    .....
+    ..a..
+    ..A..
+    .....
+    .....
+    ",
+  );
+  assert_eq!((red_grounded.non_grounded_red, red_grounded.non_grounded_black), (0, 1));
+  assert_eq!(
+    (both_ungrounded.non_grounded_red, both_ungrounded.non_grounded_black),
+    (1, 1)
+  );
+  let search = Search::<f64>::new(DRAW_PARAMS);
+
+  let scale: f64 = 5.0 / 2.0;
+  let ahead = search.aux_utility(&red_grounded, Player::Red, 0, 0.0, 0.0, 0.9);
+  assert!((ahead - 0.05 * std::f64::consts::FRAC_2_PI * (1.0 / scale).atan()).abs() < 1e-12);
+  assert_eq!(search.aux_utility(&both_ungrounded, Player::Red, 0, 0.0, 0.0, 0.9), 0.0);
+
+  for field in [&red_grounded, &both_ungrounded] {
+    let red = search.aux_utility(field, Player::Red, 0, 0.0, 0.0, 0.9);
+    let black = search.aux_utility(field, Player::Black, 0, 0.0, 0.0, 0.9);
+    assert!((red + black).abs() < 1e-12);
+  }
+}
+
+/// The draw term stays out of positions the net does not expect to be drawn,
+/// grows with the probability of a draw up to its full weight, and needs the
+/// board level, komi included: under a half komi there is no draw at all, and a
+/// side a point behind is never steered into grounding.
+#[test]
+fn draw_term_needs_a_likely_draw_on_a_level_board() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let field = construct_field(&mut rng, RED_GROUNDED);
+  let search = Search::<f64>::new(DRAW_PARAMS);
+  let utility = |komi_x_2, draw| search.aux_utility(&field, Player::Red, komi_x_2, 0.0, 0.0, draw);
+
+  let full = utility(0, 0.9);
+  assert!(full > 0.0);
+  assert_eq!(utility(0, 1.0), full);
+  assert!((utility(0, 0.7) - full / 2.0).abs() < 1e-12);
+  assert_eq!(utility(0, 0.5), 0.0);
+  assert_eq!(utility(0, 0.2), 0.0);
+
+  assert_eq!(utility(1, 0.9), 0.0);
+  assert_eq!(utility(-2, 0.9), 0.0);
+}
+
+/// The search reads the probability of a draw from the net's fifth value
+/// column into the utility of the position.
+#[test]
+fn utility_carries_the_draw_term() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(&mut rng, RED_GROUNDED);
+  let mut search = Search::<f64>::new(DRAW_PARAMS);
+
+  futures::executor::block_on(search.mcgs(
+    &mut field,
+    Player::Red,
+    &|inputs: Array4<f64>, _, _| {
+      let result: Result<_, ()> = Ok((
+        uniform_policies(&inputs),
+        const_value(&inputs, array![0.5, 0.5, 0.0, 0.0, 0.9]),
+      ));
+      result
+    },
+    0,
+    &mut rng,
+  ))
+  .unwrap();
+
+  let utility = search.aux_utility(&field, Player::Red, 0, 0.0, 0.0, 0.9);
+  assert!(utility > 0.0);
+  assert!((search.nodes[0].raw_value - utility).abs() < 1e-12);
+  assert_eq!(search.nodes[0].raw_draw, 0.9);
+  assert_eq!(search.raw_winloss(), 0.0);
+}
+
+/// A leaf the net evaluates reads the ungrounded dots of its own position, not
+/// the root's: the moves leading to it ground what they connect to the edge.
+#[test]
+fn leaves_read_their_own_ungrounded_dots() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .....
+    ..a..
+    .....
+    .....
+    .....
+    ",
+  );
+  let mut search = Search::<f64>::new(DRAW_PARAMS);
+  let model = |inputs: Array4<f64>, _, _| {
+    let result: Result<_, ()> = Ok((
+      uniform_policies(&inputs),
+      const_value(&inputs, array![0.5, 0.5, 0.0, 0.0, 0.9]),
+    ));
+    result
+  };
+  for _ in 0..4 {
+    futures::executor::block_on(search.mcgs(&mut field, Player::Red, &model, 0, &mut rng)).unwrap();
+  }
+
+  let mut utilities = Vec::new();
+  for edge in &search.nodes[search.root_idx].children {
+    let Some(&node_idx) = search.map.get(&edge.hash) else {
+      continue;
+    };
+    let mut child = field.clone();
+    assert!(child.put_point(edge.pos, Player::Red));
+    child.update_grounded();
+    let utility = search.aux_utility(&child, Player::Black, 0, 0.0, 0.0, 0.9);
+    assert!(
+      (search.nodes[node_idx].raw_value - utility).abs() < 1e-12,
+      "{} {}",
+      search.nodes[node_idx].raw_value,
+      utility
+    );
+    utilities.push(utility);
+  }
+  // Some of the moves ground the dot and some leave it ungrounded or add to it.
+  assert!(utilities.iter().any(|&u| u != utilities[0]));
 }
 
 /// What expanding a node took from the net: its win/loss value, its score, its

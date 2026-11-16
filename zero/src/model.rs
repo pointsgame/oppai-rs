@@ -2,6 +2,9 @@ use either::Either;
 use ndarray::{Array, Array1, Array2, Array3, Array4, Axis};
 use num_traits::Float;
 
+/// The number of value columns [`Model::predict`] returns.
+pub const VALUE_COLUMNS: usize = 5;
+
 #[allow(async_fn_in_trait)]
 pub trait Model<N: Float> {
   type E;
@@ -17,15 +20,18 @@ pub trait Model<N: Float> {
   }
 
   /// Returns the policies and the values for a batch of positions. The values
-  /// have 4 columns: the win and loss probabilities, the predicted short-term
-  /// error (standard deviation) of the value - how uncertain the value
-  /// estimate is - and the predicted score of the position in points. A model
-  /// with no error estimate to offer leaves the third at 0 and reports
+  /// have [`VALUE_COLUMNS`] columns: the win and loss probabilities, the
+  /// predicted short-term error (standard deviation) of the value - how
+  /// uncertain the value estimate is - the predicted score of the position in
+  /// points, and the probability that the game ends with the lead, komi
+  /// included, exactly 0 - a draw, under a whole komi. A model with no error
+  /// estimate to offer leaves the third at 0 and reports
   /// [`Model::predicts_uncertainty`] as false; one with no score estimate
   /// leaves the fourth at 0, which unlike the error column is neutral there -
   /// the search's score estimates, and with them the per-move q score targets,
   /// which only a model that does estimate scores ever trains on, just stay
-  /// at zero.
+  /// at zero. The fifth at 0 is neutral too: the search then never takes a
+  /// position for a settled draw.
   ///
   /// `optimism` carries one weight per position, in `[0, 1]`: how far that
   /// position's policy is moved from the trained one towards the optimistic
@@ -98,7 +104,7 @@ impl<N: Float> Model<N> for () {
     let width = inputs.len_of(Axis(3));
     let policy = N::one() / N::from(width * height).unwrap();
     let policies = Array::from_elem((batch_size, height, width), policy);
-    let mut values = Array::zeros((batch_size, 4));
+    let mut values = Array::zeros((batch_size, VALUE_COLUMNS));
     values
       .slice_mut(ndarray::s![.., 0..2])
       .fill(N::one() / (N::one() + N::one()));
