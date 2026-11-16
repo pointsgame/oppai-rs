@@ -1,4 +1,4 @@
-use oppai_field::field::{Field, Hash, Pos, ring_groups, wave_diag};
+use oppai_field::field::{Field, Hash, ORTHOGONAL, Pos, ring_groups, wave_diag};
 use oppai_field::player::Player;
 use smallvec::{Array, SmallVec};
 use std::ops::Index;
@@ -89,11 +89,7 @@ fn add_trajectory<const N: usize, C: VecLike<Trajectory<N>>>(
 /// captured dots inside it back to life, so they can join a run later; the
 /// opponent's captured count is how many of them there are.
 fn runs_settled(field: &Field, center: Pos, player: Player) -> bool {
-  field.captured_count(player.next()) == 0
-    || field.directions_diag(center).into_iter().all(|pos| {
-      let cell = field.cell(pos);
-      !cell.is_players_point(player) || cell.is_live_players_point(player)
-    })
+  field.captured_count(player.next()) == 0 || field.captured_ring(center, player) == 0
 }
 
 /// [`Field::number_near_groups`] of `center` with a dot of `player`'s at
@@ -168,7 +164,9 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajector
     if should_stop() {
       break;
     }
-    if field.number_near_points(pos, player) >= 3 {
+    // Every check below reads the dots around `pos` from this one ring.
+    let ring = field.live_ring(pos, player);
+    if (ring & ORTHOGONAL).count_ones() >= 3 {
       continue;
     }
     // A trajectory keeps only dots that join two separate runs of the
@@ -177,7 +175,7 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajector
     // dot, so whether it and the dots before it qualify is known before it is
     // played.
     if depth == 0
-      && (ring_runs_settled(field, pos, field.live_ring(pos, player), player) < 2
+      && (ring_runs_settled(field, pos, ring, player) < 2
         || field.moves[field.moves_count() + 1 - cur_depth as usize..]
           .iter()
           .any(|&prev| number_near_groups_with(field, prev, pos, player) < 2))
@@ -188,20 +186,18 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajector
     // last one next to it, giving it a second run and joining two runs
     // itself. Which neighbours give it a second run is read from its ring, so
     // most dots are ruled out without looking further.
-    if depth == 1 {
-      let ring = field.live_ring(pos, player);
-      if ring_runs_settled(field, pos, ring, player) < 2
-        && !(0..8).any(|direction| {
-          ring >> direction & 1 == 0 && ring_groups(ring | 1 << direction) >= 2 && {
-            let next = field.ring_pos(pos, direction);
-            let back = 1 << ((direction + 4) & 7);
-            field.cell(next).is_putting_allowed()
-              && ring_runs_settled(field, next, field.live_ring(next, player) | back, player) >= 2
-          }
-        })
-      {
-        continue;
-      }
+    if depth == 1
+      && ring_runs_settled(field, pos, ring, player) < 2
+      && !(0..8).any(|direction| {
+        ring >> direction & 1 == 0 && ring_groups(ring | 1 << direction) >= 2 && {
+          let next = field.ring_pos(pos, direction);
+          let back = 1 << ((direction + 4) & 7);
+          field.cell(next).is_putting_allowed()
+            && ring_runs_settled(field, next, field.live_ring(next, player) | back, player) >= 2
+        }
+      })
+    {
+      continue;
     }
     let cell = field.cell(pos);
     field.put_point(pos, player);

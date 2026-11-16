@@ -78,6 +78,19 @@ fn live_players_mask(cells: u64, player: Player) -> u64 {
   )
 }
 
+/// The orthogonal neighbors in a ring of 8 as [`Field::live_ring`] returns
+/// them: north, east, south and west.
+pub const ORTHOGONAL: u8 = 0b0101_0101;
+
+/// A ring of 8 bits from a mask with the highest bit of byte `i` set for the
+/// neighbor in the direction `Neighbor(i)`, see [`masked_eq`].
+#[inline(always)]
+fn ring_bits(mask: u64) -> u8 {
+  // Shifted down to the low bit of its byte, the multiplication adds every
+  // byte into the highest one, each at its own bit.
+  ((mask >> 7).wrapping_mul(0x0102_0408_1020_4080) >> 56) as u8
+}
+
 /// The number of separate runs of dots in a ring of 8 neighbors as
 /// [`Field::live_ring`] returns them: of the 4 orthogonal neighbors that are
 /// not dots, the ones followed clockwise by a dot, diagonal or orthogonal.
@@ -85,7 +98,7 @@ fn live_players_mask(cells: u64, player: Player) -> u64 {
 /// neighbor.
 #[inline]
 pub const fn ring_groups(ring: u8) -> u32 {
-  (!ring & (ring.rotate_right(1) | ring.rotate_right(2)) & 0b0101_0101).count_ones()
+  (!ring & (ring.rotate_right(1) | ring.rotate_right(2)) & ORTHOGONAL).count_ones()
 }
 
 /// Selects the value belonging to `player`.
@@ -715,6 +728,9 @@ impl Field {
     pos < self.length() && self.cell(pos).is_putting_allowed()
   }
 
+  /// Whether one of the 4 orthogonal neighbors of `center_pos` is a live dot
+  /// of `player`. Read cell by cell: for 4 neighbors that is cheaper than
+  /// building the ring of all 8.
   pub fn has_near_points(&self, center_pos: Pos, player: Player) -> bool {
     self
       .directions(center_pos)
@@ -722,13 +738,15 @@ impl Field {
       .any(|pos| self.cell(pos).is_live_players_point(player))
   }
 
+  /// Whether one of the 8 neighbors of `center_pos` is a live dot of `player`.
+  #[inline]
   pub fn has_near_points_diag(&self, center_pos: Pos, player: Player) -> bool {
-    self
-      .directions_diag(center_pos)
-      .into_iter()
-      .any(|pos| self.cell(pos).is_live_players_point(player))
+    self.live_ring(center_pos, player) != 0
   }
 
+  /// The number of live dots of `player` among the 4 orthogonal neighbors of
+  /// `center_pos`. Read cell by cell: for 4 neighbors that is cheaper than
+  /// building the ring of all 8.
   pub fn number_near_points(&self, center_pos: Pos, player: Player) -> u32 {
     self
       .directions(center_pos)
@@ -737,12 +755,11 @@ impl Field {
       .count() as u32
   }
 
+  /// The number of live dots of `player` among the 8 neighbors of
+  /// `center_pos`.
+  #[inline]
   pub fn number_near_points_diag(&self, center_pos: Pos, player: Player) -> u32 {
-    self
-      .directions_diag(center_pos)
-      .into_iter()
-      .filter(|&pos| self.cell(pos).is_live_players_point(player))
-      .count() as u32
+    self.live_ring(center_pos, player).count_ones()
   }
 
   /// The number of separate runs of live dots of `player` around
@@ -757,11 +774,22 @@ impl Field {
   /// [`Self::ring_pos`]. All neighbors of `pos` must be within the field.
   #[inline]
   pub fn live_ring(&self, pos: Pos, player: Player) -> u8 {
-    let live = live_players_mask(neighbor_cells(&self.points, self.stride, pos), player);
-    // The high bit of byte `i` to bit `i`: shifted down to the low bit of its
-    // byte, the multiplication adds every byte into the highest one, each at
-    // its own bit.
-    ((live >> 7).wrapping_mul(0x0102_0408_1020_4080) >> 56) as u8
+    ring_bits(live_players_mask(
+      neighbor_cells(&self.points, self.stride, pos),
+      player,
+    ))
+  }
+
+  /// The captured dots of `player` among the 8 neighbors of `pos`, as bits in
+  /// the order of [`Self::live_ring`]. All neighbors of `pos` must be within
+  /// the field.
+  #[inline]
+  pub fn captured_ring(&self, pos: Pos, player: Player) -> u8 {
+    ring_bits(masked_eq(
+      neighbor_cells(&self.points, self.stride, pos),
+      Cell::PUT_BIT | Cell::CAPTURED_BIT | Cell::PLAYER_BIT,
+      Cell::PUT_BIT | Cell::CAPTURED_BIT | player.to_bool() as u8,
+    ))
   }
 
   /// The neighbor of `pos` in the `direction`-th direction clockwise from

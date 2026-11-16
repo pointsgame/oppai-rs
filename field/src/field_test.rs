@@ -745,10 +745,11 @@ fn undo_check() {
   }
 }
 
-/// The ring of a cell holds exactly its live neighbours in the documented
-/// order, on random games with captures, for both players. With
-/// [`ring_groups_of_every_ring`] it settles [`Field::number_near_groups`],
-/// which counts the runs of the ring.
+/// The rings of a cell hold exactly its live and its captured neighbours in
+/// the documented order, and the neighbour counts read from them are the
+/// ones counted cell by cell, on random games with captures, for both
+/// players. With [`ring_groups_of_every_ring`] it settles
+/// [`Field::number_near_groups`], which counts the runs of the ring.
 #[test]
 fn live_ring_of_random_games() {
   let width = 12;
@@ -783,13 +784,23 @@ fn live_ring_of_random_games() {
           ];
           for p in [Player::Red, Player::Black] {
             let ring = field.live_ring(center, p);
+            let captured = field.captured_ring(center, p);
             for (direction, &neighbor) in around.iter().enumerate() {
+              let cell = field.cell(neighbor);
               assert_eq!(field.ring_pos(center, direction), neighbor);
+              assert_eq!(ring >> direction & 1 == 1, cell.is_live_players_point(p));
               assert_eq!(
-                ring >> direction & 1 == 1,
-                field.cell(neighbor).is_live_players_point(p)
+                captured >> direction & 1 == 1,
+                cell.is_players_point(p) && !cell.is_live_players_point(p)
               );
             }
+            let live = |pos: &Pos| field.cell(*pos).is_live_players_point(p);
+            let orthogonal = field.directions(center).iter().filter(|pos| live(pos)).count() as u32;
+            let all = around.iter().filter(|pos| live(pos)).count() as u32;
+            assert_eq!(field.number_near_points(center, p), orthogonal);
+            assert_eq!(field.number_near_points_diag(center, p), all);
+            assert_eq!(field.has_near_points(center, p), orthogonal > 0);
+            assert_eq!(field.has_near_points_diag(center, p), all > 0);
             checked += 1;
           }
         }
