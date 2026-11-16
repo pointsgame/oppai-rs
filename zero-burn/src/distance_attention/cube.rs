@@ -43,6 +43,11 @@ fn block(channels: usize) -> usize {
   block
 }
 
+/// How many queries a unit of [`forward_kernel`] takes. Two of them read every
+/// key and value from shared memory half as often as one; four take more
+/// registers than a unit has and run several times slower.
+const FORWARD_QUERIES: usize = 2;
+
 /// The distance between two cells, by their rows and columns.
 #[cube]
 fn distance(row: f32, column: f32, other_row: f32, other_column: f32) -> f32 {
@@ -100,8 +105,10 @@ fn load_block<F: Float>(
   block_columns[unit] = column;
 }
 
-/// One cube per `block` queries of a head of a board: the output and the
-/// log-sum-exp of every query.
+/// One cube per `block * queries` queries of a head of a board: the output
+/// and the log-sum-exp of every query. Every unit takes `queries` of them, a
+/// block apart, so that each key and value it reads from shared memory serves
+/// all of them.
 #[cube(launch)]
 #[allow(clippy::too_many_arguments)]
 fn forward_kernel<F: Float>(
@@ -116,6 +123,7 @@ fn forward_kernel<F: Float>(
   scale: f32,
   #[comptime] channels: usize,
   #[comptime] block: usize,
+  #[comptime] queries: usize,
   #[define(F)] _dtype: ElemType,
 ) {
   let heads = query.shape(1);
@@ -124,20 +132,30 @@ fn forward_kernel<F: Float>(
   let batch = CUBE_POS_Z as usize;
   let head = CUBE_POS_Y as usize;
   let rows = (batch * heads + head) * cells;
-  let cell = CUBE_POS_X as usize * block + UNIT_POS_X as usize;
-  let own = cell.min(cells - 1);
+  let first = CUBE_POS_X as usize * block * queries + UNIT_POS_X as usize;
   let slope = slopes[head];
-  let (row, column) = position(own, width);
 
-  let mut own_query = Array::<f32>::new(channels);
-  let mut sums = Array::<f32>::new(channels);
+  let mut own_queries = Array::<f32>::new(queries * channels);
+  let mut sums = Array::<f32>::new(queries * channels);
+  let mut query_rows = Array::<f32>::new(queries);
+  let mut query_columns = Array::<f32>::new(queries);
+  let mut maxes = Array::<f32>::new(queries);
+  let mut denominators = Array::<f32>::new(queries);
+  let mut scores = Array::<f32>::new(queries);
   #[unroll]
-  for channel in 0..channels {
-    own_query[channel] = f32::cast_from(query[(rows + own) * channels + channel]) * scale;
-    sums[channel] = 0.0;
+  for index in 0..queries {
+    let own = (first + index * block).min(cells - 1);
+    let (row, column) = position(own, width);
+    query_rows[index] = row;
+    query_columns[index] = column;
+    maxes[index] = f32::new(NO_SCORE);
+    denominators[index] = 0.0;
+    #[unroll]
+    for channel in 0..channels {
+      own_queries[index * channels + channel] = f32::cast_from(query[(rows + own) * channels + channel]) * scale;
+      sums[index * channels + channel] = 0.0;
+    }
   }
-  let mut max = f32::new(NO_SCORE);
-  let mut denominator = f32::new(0.0);
 
   let mut keys = Shared::<[f32]>::new_slice(block * channels);
   let mut values = Shared::<[f32]>::new_slice(block * channels);
@@ -169,45 +187,68 @@ fn forward_kernel<F: Float>(
     sync_cube();
     for other in 0..block {
       if keys_on_board[other] > 0.5 {
-        let mut score = f32::new(0.0);
+        #[unroll]
+        for index in 0..queries {
+          scores[index] = 0.0;
+        }
         #[unroll]
         for channel in 0..channels {
-          score += own_query[channel] * keys[other * channels + channel];
-        }
-        score -= slope * distance(row, column, key_rows[other], key_columns[other]);
-        if score > max {
-          let rescale = (max - score).exp();
-          denominator *= rescale;
+          let key = keys[other * channels + channel];
           #[unroll]
-          for channel in 0..channels {
-            sums[channel] *= rescale;
+          for index in 0..queries {
+            scores[index] += own_queries[index * channels + channel] * key;
           }
-          max = score;
         }
-        let probability = (score - max).exp();
-        denominator += probability;
+        let key_row = key_rows[other];
+        let key_column = key_columns[other];
+        #[unroll]
+        for index in 0..queries {
+          let score = scores[index] - slope * distance(query_rows[index], query_columns[index], key_row, key_column);
+          if score > maxes[index] {
+            let rescale = (maxes[index] - score).exp();
+            denominators[index] *= rescale;
+            #[unroll]
+            for channel in 0..channels {
+              sums[index * channels + channel] *= rescale;
+            }
+            maxes[index] = score;
+          }
+          let probability = (score - maxes[index]).exp();
+          denominators[index] += probability;
+          // Kept for the values below.
+          scores[index] = probability;
+        }
         #[unroll]
         for channel in 0..channels {
-          sums[channel] += probability * values[other * channels + channel];
+          let value = values[other * channels + channel];
+          #[unroll]
+          for index in 0..queries {
+            sums[index * channels + channel] += scores[index] * value;
+          }
         }
       }
     }
   }
 
-  if cell < cells {
-    // A query with no key on the board, which a board has none of, attends
-    // to nothing.
-    let mut normalizer = f32::new(0.0);
-    let mut total = f32::new(-NO_SCORE);
-    if denominator > 0.0 {
-      normalizer = 1.0 / denominator;
-      total = max + denominator.ln();
+  #[unroll]
+  for index in 0..queries {
+    let cell = first + index * block;
+    if cell < cells {
+      // A query with no key on the board, which a board has none of, attends
+      // to nothing.
+      let denominator = denominators[index];
+      let mut normalizer = f32::new(0.0);
+      let mut total = f32::new(-NO_SCORE);
+      if denominator > 0.0 {
+        normalizer = 1.0 / denominator;
+        total = maxes[index] + denominator.ln();
+      }
+      #[unroll]
+      for channel in 0..channels {
+        output[(rows + cell) * channels + channel] = F::cast_from(sums[index * channels + channel] * normalizer);
+      }
+      log_sum_exp[rows + cell] = total;
     }
-    #[unroll]
-    for channel in 0..channels {
-      output[(rows + cell) * channels + channel] = F::cast_from(sums[channel] * normalizer);
-    }
-    log_sum_exp[rows + cell] = total;
   }
 }
 
@@ -489,12 +530,13 @@ impl Inputs {
     )
   }
 
-  /// A cube per block of cells of every head of every board, a unit per cell.
-  fn launch_dims(&self) -> (CubeCount, CubeDim, usize) {
+  /// A cube per `block * per_unit` cells of every head of every board, a
+  /// unit per `per_unit` cells.
+  fn launch_dims(&self, per_unit: usize) -> (CubeCount, CubeDim, usize) {
     let [batch, heads, cells, channels] = self.dims;
     let block = block(channels);
     (
-      CubeCount::Static(cells.div_ceil(block) as u32, heads as u32, batch as u32),
+      CubeCount::Static(cells.div_ceil(block * per_unit) as u32, heads as u32, batch as u32),
       CubeDim::new_1d(block as u32),
       block,
     )
@@ -515,7 +557,8 @@ impl DistanceAttentionBackend for CubeBackend {
     let dtype = inputs.query.dtype;
     let output = inputs.empty(inputs.query.meta.shape().clone(), dtype);
     let log_sum_exp = inputs.empty(Shape::new([batch, heads, cells]), DType::F32);
-    let (cube_count, cube_dim, block) = inputs.launch_dims();
+    let queries = FORWARD_QUERIES;
+    let (cube_count, cube_dim, block) = inputs.launch_dims(queries);
     let client = inputs.query.client.clone();
     forward_kernel::launch(
       &client,
@@ -532,6 +575,7 @@ impl DistanceAttentionBackend for CubeBackend {
       scale(channels) as f32,
       channels,
       block,
+      queries,
       dtype_to_storage_type(dtype),
     );
     (output, log_sum_exp)
@@ -560,7 +604,7 @@ impl DistanceAttentionBackend for CubeBackend {
     let grad_key = inputs.empty(shape.clone(), dtype);
     let grad_value = inputs.empty(shape, dtype);
     let grad_slopes = inputs.empty(Shape::new([batch, heads, cells]), DType::F32);
-    let (cube_count, cube_dim, block) = inputs.launch_dims();
+    let (cube_count, cube_dim, block) = inputs.launch_dims(1);
     let scale = scale(channels) as f32;
     let client = inputs.query.client.clone();
     grad_query_kernel::launch(

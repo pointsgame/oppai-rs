@@ -127,9 +127,11 @@ impl Cells {
       .map(|cell| (cell % width) as f32)
       .collect::<Vec<_>>();
     let shape = [1, 1, height * width, 1];
+    // In single precision whatever the device's float type, as the rotary
+    // frequencies they are multiplied by.
     Self {
-      rows: Tensor::from_data(TensorData::new(rows, shape), device),
-      columns: Tensor::from_data(TensorData::new(columns, shape), device),
+      rows: Tensor::<4>::from_data(TensorData::new(rows, shape), device).cast(FloatDType::F32),
+      columns: Tensor::<4>::from_data(TensorData::new(columns, shape), device).cast(FloatDType::F32),
     }
   }
 }

@@ -289,6 +289,7 @@ mod tests {
   fn kernels_agree_with_attention_vulkan() {
     let device = crate::device::parse_device("vulkan").unwrap();
     agrees_with_attention(device.clone(), 8, (9, 10), FloatDType::F32, 1e-4);
+    agrees_with_attention(device.clone(), 8, (13, 11), FloatDType::F32, 1e-4);
     agrees_with_attention(device.clone(), 32, (7, 11), FloatDType::F32, 1e-4);
     agrees_with_attention(device, 32, (7, 11), FloatDType::F16, 2e-2);
   }
@@ -298,6 +299,7 @@ mod tests {
   fn kernels_agree_with_attention_rocm() {
     let device = crate::device::parse_device("rocm").unwrap();
     agrees_with_attention(device.clone(), 8, (9, 10), FloatDType::F32, 1e-4);
+    agrees_with_attention(device.clone(), 8, (13, 11), FloatDType::F32, 1e-4);
     agrees_with_attention(device.clone(), 32, (7, 11), FloatDType::F32, 1e-4);
     agrees_with_attention(device.clone(), 32, (7, 11), FloatDType::F16, 2e-2);
     agrees_with_attention(device, 32, (7, 11), FloatDType::BF16, 5e-2);
