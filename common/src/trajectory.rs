@@ -84,6 +84,48 @@ fn add_trajectory<const N: usize, C: VecLike<Trajectory<N>>>(
   trajectories.push(trajectory);
 }
 
+/// Whether the runs of `player`'s dots around `center` can change other than
+/// by `player` putting a dot next to it. A capture brings the player's
+/// captured dots inside it back to life, so they can join a run later; the
+/// opponent's captured count is how many of them there are.
+fn runs_settled(field: &Field, center: Pos, player: Player) -> bool {
+  field.captured_count(player.next()) == 0
+    || field.directions_diag(center).into_iter().all(|pos| {
+      let cell = field.cell(pos);
+      !cell.is_players_point(player) || cell.is_live_players_point(player)
+    })
+}
+
+/// [`Field::number_near_groups`] of `center`, or 2 if that may still change by
+/// a capture (see [`runs_settled`]), so that a dot is never ruled out by a
+/// count that may still change.
+fn number_near_groups_settled(field: &Field, center: Pos, player: Player) -> u32 {
+  let groups = field.number_near_groups(center, player);
+  if groups >= 2 || runs_settled(field, center, player) {
+    groups
+  } else {
+    2
+  }
+}
+
+/// [`Field::number_near_groups`] of `center` with a dot of `player`'s at
+/// `extra` as well, or 2 if that may still change by a capture (see
+/// [`runs_settled`]).
+fn number_near_groups_with(field: &Field, center: Pos, extra: Pos, player: Player) -> u32 {
+  let own = |pos: Pos| pos == extra || field.cell(pos).is_live_players_point(player);
+  let (n, s, w, e) = (field.n(center), field.s(center), field.w(center), field.e(center));
+  let (nw, ne, sw, se) = (field.nw(center), field.ne(center), field.sw(center), field.se(center));
+  let groups = [(w, nw, n), (s, sw, w), (e, se, s), (n, ne, e)]
+    .into_iter()
+    .filter(|&(gap, a, b)| !own(gap) && (own(a) || own(b)))
+    .count() as u32;
+  if groups >= 2 || runs_settled(field, center, player) {
+    groups
+  } else {
+    2
+  }
+}
+
 fn next_moves(
   field: &mut Field,
   start_pos: Pos,
@@ -134,6 +176,19 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajector
       break;
     }
     if field.number_near_points(pos, player) >= 3 {
+      continue;
+    }
+    // A trajectory keeps only dots that join two separate runs of the
+    // player's dots around them, see `add_trajectory`, and that count only
+    // changes with the dots around them. Nothing is played after the last
+    // dot, so whether it and the dots before it qualify is known before it is
+    // played.
+    if depth == 0
+      && (number_near_groups_settled(field, pos, player) < 2
+        || field.moves[field.moves_count() + 1 - cur_depth as usize..]
+          .iter()
+          .any(|&prev| number_near_groups_with(field, prev, pos, player) < 2))
+    {
       continue;
     }
     let cell = field.cell(pos);
@@ -207,9 +262,15 @@ where
     return trajectories;
   }
 
-  let mut marks = SmallVec::new();
-  for pos in field.moves.clone() {
-    if field.cell(pos).get_player() != player {
+  // Every dot the walks pass is marked until the end, so each chain is walked
+  // once, from the first of its dots; the rest are skipped without starting
+  // a walk.
+  let mut marks = SmallVec::with_capacity(field.moves_count());
+  // By index rather than over a copy of the moves: every move played below
+  // is undone before the next one, so the list is the same at every step.
+  for i in 0..field.moves_count() {
+    let pos = field.moves[i];
+    if field.cell(pos).get_player() != player || empty_board[pos] != 0 {
       continue;
     }
 
