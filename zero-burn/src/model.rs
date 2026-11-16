@@ -23,7 +23,7 @@ use derive_more::From;
 use ndarray::{Array, Array1, Array2, Array3, Array4, Dimension, ShapeError};
 use oppai_zero::{
   examples::TD_VALUES,
-  field_features::{CHANNELS, GLOBAL_FEATURES, SCORE_ONE_HOT_SIZE},
+  field_features::{CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel},
 };
 use serde::{Deserialize, Serialize};
@@ -566,16 +566,41 @@ pub struct ValueHead {
 /// wide even at a game's final position - for a whole run.
 const SCORE_BELIEF_OFFSET_SCALE: f64 = 0.05;
 
-/// The score belief's per-bin input: the bin's score, in points, times
-/// [`SCORE_BELIEF_OFFSET_SCALE`]. The bins are whole points, so a bin's
-/// offset is its score itself. A constant of the architecture rather than a
-/// parameter, so that it isn't stored in model files and its scale can change
-/// without them.
-fn score_belief_offsets(device: &Device) -> Tensor<1> {
+/// The score belief's inputs for every bin, see [`score_belief_offsets`].
+const SCORE_BELIEF_OFFSETS: usize = 2;
+
+/// The score of every bin of the score belief, in points: the bins are whole
+/// points.
+fn score_belief_bin_scores(device: &Device) -> Tensor<1> {
   Tensor::<1, Int>::arange(0..SCORE_ONE_HOT_SIZE as i64, device)
     .float()
     .sub_scalar((SCORE_ONE_HOT_SIZE / 2) as f64)
-    .mul_scalar(SCORE_BELIEF_OFFSET_SCALE)
+}
+
+/// The score belief's inputs for every bin, `[batch, SCORE_ONE_HOT_SIZE, 2]`
+/// for the `[batch, 1]` komi in points:
+///
+/// 0. the bin's score times [`SCORE_BELIEF_OFFSET_SCALE`];
+/// 1. how much of a level board's result falls into the bin under this komi -
+///    the target a game ending level trains it towards: all of it in the bin
+///    of 0 under a whole komi, where it is a draw, and half of it in each of
+///    the two bins around a half one.
+///
+/// The first only sets bins apart smoothly, so on its own the head cannot put
+/// most of the belief into a single bin, and the bin of a draw is the one bin
+/// it needs that for: games are drawn often, and the probability of a draw is
+/// read from that bin. The second marks it, and it is added to the term from
+/// the position before the activation, so that the head can raise it by how
+/// likely the position is to end level. Both are constants of the
+/// architecture rather than parameters, so that they aren't stored in model
+/// files and can change without them.
+fn score_belief_offsets(komi: Tensor<2>) -> Tensor<3> {
+  let [batch, _] = komi.dims();
+  let scores = score_belief_bin_scores(&komi.device()).reshape([1, SCORE_ONE_HOT_SIZE]);
+  let komi = komi.cast(scores.dtype());
+  let level = (-(scores.clone() - komi).abs() + 1.0).clamp_min(0.0);
+  let offsets = (scores * SCORE_BELIEF_OFFSET_SCALE).expand([batch, SCORE_ONE_HOT_SIZE]);
+  Tensor::stack(vec![offsets, level], 2)
 }
 
 impl ValueHead {
@@ -593,7 +618,9 @@ impl ValueHead {
       linear_score_error: LinearConfig::new(config.v2_size, 1).init(device),
 
       linear_s2: LinearConfig::new(VALUE_POOLED * config.v1_channels, config.sbv2_size).init(device),
-      linear_s2off: LinearConfig::new(1, config.sbv2_size).with_bias(false).init(device),
+      linear_s2off: LinearConfig::new(SCORE_BELIEF_OFFSETS, config.sbv2_size)
+        .with_bias(false)
+        .init(device),
       linear_s3: LinearConfig::new(config.sbv2_size, config.num_scorebeliefs).init(device),
       linear_smix: LinearConfig::new(VALUE_POOLED * config.v1_channels, config.num_scorebeliefs).init(device),
     }
@@ -615,8 +642,8 @@ impl ValueHead {
     init_linear(&mut self.linear_score_error, 1.0, 1.0, bias_scale, 1.0, device);
 
     init_linear(&mut self.linear_s2, 1.0, gain, 1.0, gain, device);
-    // `linear_s2off` has a single input feature, so KataGo borrows `linear_s2`'s fan-in to avoid a
-    // huge std; it has no bias.
+    // `linear_s2off` has only a couple of input features, so it borrows `linear_s2`'s fan-in to
+    // avoid a huge std; it has no bias.
     let s2off_dims = self.linear_s2off.weight.val().dims();
     let s2_fan_in = self.linear_s2.weight.val().dims()[0];
     self.linear_s2off.weight = init_weight(s2off_dims, s2_fan_in, 1.0, gain, device);
@@ -642,7 +669,15 @@ impl ValueHead {
     Tensor::cat(vec![layer_mean.clone(), layer_mean * size], 1)
   }
 
-  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> ValuePredictions {
+  /// The value outputs, with the score belief under the `[batch, 1]` komi
+  /// of the player to move, in points.
+  pub fn forward(
+    &self,
+    inputs: Tensor<4>,
+    mask: Tensor<4>,
+    mask_sum_hw: Tensor<4>,
+    komi: Tensor<2>,
+  ) -> ValuePredictions {
     let outv1 = conv_forward(&self.conv1, inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
@@ -665,11 +700,9 @@ impl ValueHead {
     // Term 1: Linear from pooled
     let s2_term = self.linear_s2.forward(outpooled.clone()).reshape([0, 1, -1]);
 
-    // Term 2: Offset bias
-    let offset_bias = score_belief_offsets(&outpooled.device())
-      .cast(self.linear_s2off.weight.val().dtype())
-      .reshape([1, SCORE_ONE_HOT_SIZE, 1]);
-    let s2off_term = self.linear_s2off.forward(offset_bias);
+    // Term 2: the bins' own inputs
+    let offsets = score_belief_offsets(komi).cast(self.linear_s2off.weight.val().dtype());
+    let s2off_term = self.linear_s2off.forward(offsets);
 
     let outsv2 = s2_term + s2off_term;
     let outsv2 = mish(outsv2);
@@ -1052,10 +1085,11 @@ impl Model {
   }
 
   pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
+    let komi = global.clone().slice(s![.., GLOBAL_KOMI..GLOBAL_KOMI + 1]);
     let (x, mask, mask_sum_hw) = self.trunk(spatial, global);
     let policy = self.policy_head.forward(x.clone(), mask.clone(), mask_sum_hw.clone());
     let captured = self.captured_head.forward(x.clone());
-    let value = self.value_head.forward(x, mask, mask_sum_hw);
+    let value = self.value_head.forward(x, mask, mask_sum_hw, komi);
     (policy, value, captured)
   }
 
@@ -1860,6 +1894,8 @@ mod tests {
   };
   use burn::{optim::SgdConfig, tensor::Device};
   use ndarray::{Array2, Array3, Array4, Axis, array};
+  #[cfg(feature = "flex")]
+  use oppai_zero::field_features::score_one_hot;
   use oppai_zero::{
     examples::TD_VALUES,
     field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
@@ -2122,7 +2158,7 @@ mod tests {
     let model = Model::new(&Device::flex(), &config);
     let (policy_logits, predictions, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &Device::flex()),
-      Tensor::ones([1, 1], &Device::flex()),
+      Tensor::ones([1, GLOBAL_FEATURES], &Device::flex()),
     );
     let values = predictions.value;
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
@@ -2180,7 +2216,7 @@ mod tests {
 
     let (policy_logits, predictions, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &device),
-      Tensor::ones([1, 1], &device),
+      Tensor::ones([1, GLOBAL_FEATURES], &device),
     );
     let values = predictions.value;
     let policies = softmax(policy_logits.reshape([0, -1]), 1);
@@ -2265,7 +2301,7 @@ mod tests {
     }
 
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
-    let global = Tensor::ones([1, 1], &device);
+    let global = Tensor::ones([1, GLOBAL_FEATURES], &device);
     let loaded = Model::new(&device, &ModelConfig::default())
       .try_load_record(model.clone().into_record())
       .unwrap();
@@ -2298,6 +2334,40 @@ mod tests {
     }
   }
 
+  // The score belief's second input for every bin is the target of a game
+  // that ends with the board level, whatever the komi: the bin of a draw under
+  // a whole komi, and the two bins around a half one.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn score_belief_level_input_is_the_level_target() {
+    let device = Device::flex();
+    let komis_x_2 = [-1, 0, 1, 4];
+    let komi = Tensor::<1>::from_floats(komis_x_2.map(|komi_x_2| komi_x_2 as f32 / 2.0), &device).reshape([4, 1]);
+    let offsets = super::score_belief_offsets(komi);
+    assert_eq!(offsets.dims(), [4, SCORE_ONE_HOT_SIZE, 2]);
+    let level = offsets
+      .clone()
+      .slice(s![.., .., 1..2])
+      .into_data()
+      .try_to_vec::<f32>()
+      .unwrap();
+    for (i, komi_x_2) in komis_x_2.into_iter().enumerate() {
+      let expected = score_one_hot::<f32>(0, komi_x_2);
+      assert_eq!(
+        &level[i * SCORE_ONE_HOT_SIZE..(i + 1) * SCORE_ONE_HOT_SIZE],
+        expected.as_slice().unwrap()
+      );
+    }
+    let scaled = offsets
+      .slice(s![0..1, .., 0..1])
+      .into_data()
+      .try_to_vec::<f32>()
+      .unwrap();
+    let center = SCORE_ONE_HOT_SIZE / 2;
+    assert_eq!(scaled[center], 0.0);
+    assert!((scaled[center + 1] - super::SCORE_BELIEF_OFFSET_SCALE as f32).abs() < 1e-6);
+  }
+
   // The global pooling gates start at one: a network with them computes what
   // the same weights do without them, which is what lets a trained network
   // gain them by adding their zero weights to its record.
@@ -2321,7 +2391,7 @@ mod tests {
         .try_load_record(gated.clone().into_record().allow_unused(true))
         .unwrap();
       let inputs = Tensor::<4>::random([2, CHANNELS, 5, 6], burn::tensor::Distribution::Default, &device);
-      let global = Tensor::ones([2, 1], &device);
+      let global = Tensor::ones([2, GLOBAL_FEATURES], &device);
       let (policy, value, ..) = gated.forward_no_score(inputs.clone(), global.clone());
       let (plain_policy, plain_value, ..) = plain.forward_no_score(inputs, global);
       policy.into_data().assert_eq(&plain_policy.into_data(), true);
@@ -2426,7 +2496,7 @@ mod tests {
     model.initialize(&device);
 
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
-    let global = Tensor::ones([1, 1], &device);
+    let global = Tensor::ones([1, GLOBAL_FEATURES], &device);
 
     let (model_policy, _, _) = model.forward(inputs.clone(), global.clone());
     let (average_policy, _, _) = average.forward(inputs.clone(), global.clone());
@@ -2454,7 +2524,7 @@ mod tests {
         let predictor = Predictor { model, device };
         let (policies, values) = futures::executor::block_on(predictor.predict(
           Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
-          array![[0.2]],
+          array![[0.2, 1.0, 0.0]],
           array![0.0],
         ))
         .unwrap();
@@ -2471,7 +2541,7 @@ mod tests {
         // to be blended by its own weight rather than the batch's first.
         let (batched, _) = futures::executor::block_on(predictor.predict(
           Array4::from_elem((3, CHANNELS, 4, 8), 1.0),
-          Array2::from_elem((3, 1), 0.2),
+          array![[0.2, 1.0, 0.0], [0.2, 1.0, 0.0], [0.2, 1.0, 0.0]],
           array![0.0, 1.0, 0.5],
         ))
         .unwrap();
@@ -2552,7 +2622,7 @@ mod tests {
         0.0
       }
     });
-    let global = Array2::from_elem((2, 1), 0.2);
+    let global = Array2::from_elem((2, GLOBAL_FEATURES), 0.2);
     let optimism = array![0.0, 0.5];
     let (single_policies, single_values) =
       futures::executor::block_on(single.predict(inputs.clone(), global.clone(), optimism.clone())).unwrap();
@@ -2617,7 +2687,7 @@ mod tests {
         };
 
         let inputs = Array4::from_elem((1, CHANNELS, 4, 8), 1.0);
-        let global = array![[0.2]];
+        let global = Array2::from_elem((1, GLOBAL_FEATURES), 0.2);
         let policies = Array3::from_elem((1, 4, 8), 0.5);
         let opponent_policies = Array3::from_elem((1, 4, 8), 0.7);
         let values = array![[1.0, 0.0]];
@@ -2690,7 +2760,7 @@ mod tests {
     scores[(0, SCORE_ONE_HOT_SIZE / 2)] = 1.0;
     let batch = (
       Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
-      array![[0.2]],
+      array![[0.2, 1.0, 0.0]],
       Array3::from_elem((1, 4, 8), 1.0 / 32.0),
       Array3::from_elem((1, 4, 8), 1.0 / 32.0),
       array![[1.0, 0.0]],
@@ -2756,7 +2826,7 @@ mod tests {
         .losses(
           None,
           Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
-          array![[0.2]],
+          array![[0.2, 1.0, 0.0]],
           Array3::from_elem((1, 4, 8), 1.0 / 32.0),
           Array3::from_elem((1, 4, 8), 0.0),
           array![[1.0, 0.0]],
@@ -2832,7 +2902,7 @@ mod tests {
     let losses = |learner: &Learner| {
       learner.losses(
         inputs.clone(),
-        array![[0.2], [-0.2]],
+        array![[0.2, 1.0, 0.0], [-0.2, 0.0, 0.5]],
         Array3::from_elem((2, 4, 8), 1.0 / 32.0),
         Array3::from_elem((2, 4, 8), 1.0 / 32.0),
         array![[1.0, 0.0], [0.0, 1.0]],

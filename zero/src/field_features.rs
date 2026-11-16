@@ -286,11 +286,30 @@ pub fn score_one_hot<N: Float + Zero + One + Copy>(score: i32, komi_x_2: i32) ->
   Array::from(score_one_hot)
 }
 
-pub const GLOBAL_FEATURES: usize = 1;
+/// The features of the position as a whole, see [`global_to_vec`].
+pub const GLOBAL_FEATURES: usize = 3;
 
+/// The index of the komi among the [`GLOBAL_FEATURES`], in points from the
+/// view of the player to move.
+pub const GLOBAL_KOMI: usize = 2;
+
+/// The features of the position as a whole, from the view of `player`, the
+/// player to move, with `komi_x_2` from that view too:
+///
+/// 0. the lead with the komi, in units of 20 points;
+/// 1. 1 if the komi is whole, so that the game can end in a draw, and 0 if it
+///    is a half point;
+/// 2. the komi itself, in points.
+///
+/// The lead alone hides the komi: a lead of one point under a komi of -0.5 is
+/// the same number as no lead under a komi of 0.5, and a whole komi differs
+/// from a half one by 1/40 of it, too little for the network to read whether
+/// a draw is possible. The last two features tell both apart exactly.
 pub fn global_to_vec<N: Float + Zero + One + Copy>(field: &Field, player: Player, komi_x_2: i32, global: &mut Vec<N>) {
   let score = N::from(field.score(player) * 2 + komi_x_2).unwrap() / N::from(40).unwrap();
   global.push(score);
+  global.push(if komi_x_2 % 2 == 0 { N::one() } else { N::zero() });
+  global.push(N::from(komi_x_2).unwrap() / (N::one() + N::one()));
 }
 
 pub fn global<N: Float + Zero + One>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {
