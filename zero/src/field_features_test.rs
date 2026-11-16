@@ -1,6 +1,10 @@
-use crate::field_features::{SCORE_ONE_HOT_SIZE, add_unrotated_policy, field_features, rotation_sizes, score_one_hot};
+use crate::field_features::{
+  CHANNELS, SCORE_ONE_HOT_SIZE, add_unrotated_policy, field_features, rotation_sizes, score_one_hot,
+};
+use crate::tactics::{TACTICAL_CHANNELS, Tactics};
 use ndarray::prelude::{Array2, array, s};
 use oppai_field::construct_field::construct_field;
+use oppai_field::field::Field;
 use oppai_field::player::Player;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
@@ -467,4 +471,147 @@ fn unrotated_policy_points_back_at_the_field() {
     );
     assert_eq!(policy, expected, "rotation {rotation}");
   }
+}
+
+/// The tactical planes, from channel 13 on: the cells where the player to move
+/// and the opponent capture with one dot, then with two.
+fn tactical_planes(field: &Field, player: Player) -> Vec<Array2<f64>> {
+  let features = field_features::<f64>(field, player, field.width(), field.height(), 0);
+  (0..TACTICAL_CHANNELS)
+    .map(|plane| {
+      features
+        .slice(s![CHANNELS - TACTICAL_CHANNELS + plane, .., ..])
+        .to_owned()
+    })
+    .collect()
+}
+
+#[test]
+fn tactical_planes_mark_a_one_dot_capture() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .....
+    ..a..
+    .aA..
+    ..a..
+    .....
+    ",
+  );
+  #[rustfmt::skip]
+  let capture = array![
+    [0., 0., 0., 0., 0.],
+    [0., 0., 0., 0., 0.],
+    [0., 0., 0., 1., 0.],
+    [0., 0., 0., 0., 0.],
+    [0., 0., 0., 0., 0.],
+  ];
+  let empty = Array2::<f64>::zeros((5, 5));
+
+  assert_eq!(
+    tactical_planes(&field, Player::Red),
+    vec![capture.clone(), empty.clone(), empty.clone(), empty.clone()]
+  );
+  // The same capture, read from the side of the opponent.
+  assert_eq!(
+    tactical_planes(&field, Player::Black),
+    vec![empty.clone(), capture, empty.clone(), empty]
+  );
+}
+
+#[test]
+fn tactical_planes_mark_a_two_dot_capture() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .....
+    ..a..
+    .aA..
+    .....
+    .....
+    ",
+  );
+  #[rustfmt::skip]
+  let pair = array![
+    [0., 0., 0., 0., 0.],
+    [0., 0., 0., 0., 0.],
+    [0., 0., 0., 1., 0.],
+    [0., 0., 1., 0., 0.],
+    [0., 0., 0., 0., 0.],
+  ];
+  let empty = Array2::<f64>::zeros((5, 5));
+
+  assert_eq!(
+    tactical_planes(&field, Player::Red),
+    vec![empty.clone(), empty.clone(), pair.clone(), empty.clone()]
+  );
+  assert_eq!(
+    tactical_planes(&field, Player::Black),
+    vec![empty.clone(), empty.clone(), empty, pair]
+  );
+}
+
+/// The tactical planes are read under the rotation like every other plane, so
+/// pointing them back at the field gives the same planes whatever the
+/// rotation, the transposing ones on a rectangle included.
+#[test]
+fn tactical_planes_rotate_with_the_board() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ......
+    ..a...
+    .aA...
+    ..a.A.
+    ...Aa.
+    ",
+  );
+  let (width, height) = rotation_sizes(field.width(), field.height());
+  let expected = tactical_planes(&field, Player::Red);
+  assert!(expected.iter().any(|plane| plane.sum() > 0.0));
+  for rotation in 0..oppai_rotate::rotate::ROTATIONS {
+    let features = field_features::<f64>(&field, Player::Red, width, height, rotation);
+    for (plane, expected) in expected.iter().enumerate() {
+      let mut unrotated = Array2::zeros((field.height() as usize, field.width() as usize));
+      add_unrotated_policy(
+        features.slice(s![CHANNELS - TACTICAL_CHANNELS + plane, .., ..]),
+        field.width(),
+        field.height(),
+        rotation,
+        1.0,
+        &mut unrotated,
+      );
+      assert_eq!(&unrotated, expected, "rotation {rotation}, plane {plane}");
+    }
+  }
+}
+
+/// Building the trajectories plays and undoes moves, and leaves the field as
+/// it was.
+#[test]
+fn tactics_leave_the_field_unchanged() {
+  let mut field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ......
+    ..a...
+    .aA...
+    ..a.A.
+    ...Aa.
+    ",
+  );
+  let state = |field: &Field| {
+    (
+      field.hash(),
+      field.moves.clone(),
+      field.score(Player::Red),
+      field.non_grounded_red,
+      field.non_grounded_black,
+      (0..field.length()).map(|pos| field.cell(pos)).collect::<Vec<_>>(),
+    )
+  };
+  let before = state(&field);
+  let tactics = Tactics::new(&mut field, Player::Black);
+  assert!((0..field.length()).any(|pos| tactics.plane(1, pos)));
+  assert_eq!(state(&field), before);
 }

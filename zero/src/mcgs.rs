@@ -3,6 +3,7 @@ use crate::field_features::{
   global_to_vec, rotation_sizes,
 };
 use crate::model::{Model, VALUE_COLUMNS};
+use crate::tactics::Tactics;
 use either::Either;
 use ndarray::{Array, Array2, Array3, ArrayView2};
 use num_traits::Float;
@@ -1528,7 +1529,7 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// Pushes the inputs of the position `field` holds, once per rotation, padded
   /// to `sizes`.
   fn push_inputs(
-    field: &Field,
+    field: &mut Field,
     player: Player,
     komi_x_2: i32,
     rotations: &[u8],
@@ -1536,8 +1537,19 @@ impl<N: Float + Sum + Copy> Search<N> {
     features: &mut Vec<N>,
     global: &mut Vec<N>,
   ) {
+    // Built once and read under every rotation.
+    let tactics = Tactics::new(field, player);
     for &rotation in rotations {
-      field_features_to_vec::<N>(field, player, width, height, rotation, HISTORY_CHANNELS, features);
+      field_features_to_vec::<N>(
+        field,
+        player,
+        &tactics,
+        width,
+        height,
+        rotation,
+        HISTORY_CHANNELS,
+        features,
+      );
       global_to_vec(field, player, komi_x_2, global);
     }
   }
@@ -1667,7 +1679,7 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// node: the swap touches the root and nothing else.
   async fn refresh_root_priors<M: Model<N>, R: Rng>(
     &mut self,
-    field: &Field,
+    field: &mut Field,
     player: Player,
     model: &M,
     komi_x_2: i32,

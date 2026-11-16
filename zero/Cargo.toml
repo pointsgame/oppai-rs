@@ -15,6 +15,7 @@ num-traits.workspace = true
 either.workspace = true
 itertools.workspace = true
 log.workspace = true
+oppai-common = { path = "../common" }
 oppai-field = { path = "../field" }
 oppai-rotate = { path = "../rotate" }
 

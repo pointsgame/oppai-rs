@@ -3,14 +3,17 @@ use std::iter;
 use ndarray::{Array, Array1, Array2, Array3, ArrayView2};
 use num_traits::{Float, One, Zero};
 use oppai_field::cell::Cell;
-use oppai_field::field::{Field, NonZeroPos};
+use oppai_field::field::{Field, NonZeroPos, Pos};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::{rotate, rotate_back, rotate_sizes};
 
-pub const CHANNELS: usize = 13;
+use crate::tactics::{TACTICAL_CHANNELS, Tactics};
 
 /// Number of history planes, each marking the location of one past move.
 pub const HISTORY_CHANNELS: usize = 5;
+
+/// The number of input planes, see [`field_features_to_vec`].
+pub const CHANNELS: usize = 8 + HISTORY_CHANNELS + TACTICAL_CHANNELS;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
@@ -44,6 +47,19 @@ fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
   height: u32,
   rotation: u8,
 ) {
+  push_plane(field, |pos| f(field.cell(pos)), features, width, height, rotation);
+}
+
+/// Pushes a plane holding `f` of every position of the field under `rotation`,
+/// padded with zeros to `width` and `height`.
+fn push_plane<N: Zero, F: Fn(Pos) -> N + Copy>(
+  field: &Field,
+  f: F,
+  features: &mut Vec<N>,
+  width: u32,
+  height: u32,
+  rotation: u8,
+) {
   let (field_width, field_height) = rotate_sizes(field.width(), field.height(), rotation);
   features.extend((0..height).flat_map(|y| {
     (0..width).map(move |x| {
@@ -51,18 +67,31 @@ fn push_features<N: Zero, F: Fn(Cell) -> N + Copy>(
         return N::zero();
       }
       let (x, y) = rotate_back(field_width, field_height, x, y, rotation);
-      let pos = field.to_pos(x, y);
-      f(field.cell(pos))
+      f(field.to_pos(x, y))
     })
   }));
 }
 
+/// Pushes the input planes of the position `field` holds with `player` to
+/// move, under `rotation` and padded to `width` and `height`:
+///
+/// 0. the board itself;
+/// 1. and 2. the dots of the player to move and of the opponent;
+/// 3. and 4. the cells each of them owns;
+/// 5. and 6. their empty bases;
+/// 7. the grounded cells;
+/// 8. to 12. the last [`HISTORY_CHANNELS`] moves, the latest first;
+/// 13. to 16. the tactical planes of `tactics`, see [`Tactics`], which has to
+///     be built for this field and `player`.
+///
 /// `history` is the number of history planes to fill; the remaining ones are
 /// left empty. Inference uses the full `HISTORY_CHANNELS` while training
 /// truncates it randomly (history dropout).
+#[allow(clippy::too_many_arguments)]
 pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
   field: &Field,
   player: Player,
+  tactics: &Tactics,
   width: u32,
   height: u32,
   rotation: u8,
@@ -171,6 +200,18 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
       rotation,
     );
   }
+  for plane in 0..TACTICAL_CHANNELS {
+    push_plane(
+      field,
+      |pos| {
+        if tactics.plane(plane, pos) { N::one() } else { N::zero() }
+      },
+      features,
+      width,
+      height,
+      rotation,
+    );
+  }
 }
 
 /// Two planes marking captured cells in the given field state, with or without
@@ -214,6 +255,9 @@ pub fn captured_features_to_vec<N: Float + Zero + One + Copy>(
   );
 }
 
+/// The input planes of [`field_features_to_vec`] as an array, with every
+/// history plane filled. Builds the [`Tactics`] on a copy of `field`, so it
+/// is for the places that need the planes of few positions.
 pub fn field_features<N: Float + Zero + One + Copy>(
   field: &Field,
   player: Player,
@@ -221,8 +265,18 @@ pub fn field_features<N: Float + Zero + One + Copy>(
   height: u32,
   rotation: u8,
 ) -> Array3<N> {
+  let tactics = Tactics::new(&mut field.clone(), player);
   let mut features = Vec::with_capacity(field_features_len(width, height));
-  field_features_to_vec::<N>(field, player, width, height, rotation, HISTORY_CHANNELS, &mut features);
+  field_features_to_vec::<N>(
+    field,
+    player,
+    &tactics,
+    width,
+    height,
+    rotation,
+    HISTORY_CHANNELS,
+    &mut features,
+  );
   Array::from(features)
     .into_shape_with_order((CHANNELS, height as usize, width as usize))
     .unwrap()

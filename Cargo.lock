@@ -7347,6 +7347,7 @@ dependencies = [
  "log",
  "ndarray 0.17.2",
  "num-traits",
+ "oppai-common",
  "oppai-field",
  "oppai-rotate",
  "rand 0.10.3",

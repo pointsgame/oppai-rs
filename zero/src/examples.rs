@@ -4,6 +4,7 @@ use crate::{
     CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, SCORE_ONE_HOT_SIZE, captured_features_to_vec, field_features_to_vec,
     global_to_vec, score_one_hot_to_vec,
   },
+  tactics::Tactics,
 };
 use ndarray::{Array, Array1, Array2, Array3, Array4};
 use num_traits::{Float, One, Zero};
@@ -510,9 +511,11 @@ impl Examples {
       } else {
         (-game.score, -game.komi_x_2)
       };
+      let tactics = Tactics::new(&mut field, player);
       field_features_to_vec(
         &field,
         player,
+        &tactics,
         width,
         height,
         example.rotation,

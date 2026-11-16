@@ -1,5 +1,8 @@
 use either::Either;
-use ndarray::{Array, Array1, Array2, Array3, Array4, Axis, array};
+use ndarray::{Array, Array1, Array2, Array3, Array4, Axis, array, s};
+
+use crate::field_features::CHANNELS;
+use crate::tactics::TACTICAL_CHANNELS;
 use oppai_field::construct_field::construct_field;
 use oppai_field::field::{Hash, Pos};
 use oppai_field::player::Player;
@@ -270,11 +273,21 @@ fn mcts_last_iterations() {
 /// total feature mass), so that a node's raw value systematically disagrees with
 /// the deeper (higher stone count) values in its subtree. This drives a nonzero
 /// observed bias for the subtree value bias correction to pick up.
+/// The sum of the planes of the `i`-th position of a batch that describe the
+/// board, leaving out the tactical ones: they differ between positions of the
+/// same depth, and a value read from them would set siblings apart.
+fn board_mass(inputs: &Array4<f64>, i: usize) -> f64 {
+  inputs
+    .index_axis(Axis(0), i)
+    .slice(s![..CHANNELS - TACTICAL_CHANNELS, .., ..])
+    .sum()
+}
+
 fn depth_value(inputs: &Array4<f64>) -> Array2<f64> {
   let batch_size = inputs.len_of(Axis(0));
   let mut value = Array::zeros((batch_size, VALUE_COLUMNS));
   for i in 0..batch_size {
-    let mass: f64 = inputs.index_axis(Axis(0), i).sum();
+    let mass = board_mass(inputs, i);
     let p = (mass * 0.02).tanh();
     value[(i, 0)] = (1.0 + p) / 2.0;
     value[(i, 1)] = (1.0 - p) / 2.0;
@@ -663,7 +676,7 @@ fn uncertainty_weight_scales_with_error() {
 fn depth_uncertainty_value(inputs: &Array4<f64>) -> Array2<f64> {
   let mut value = depth_value(inputs);
   for i in 0..inputs.len_of(Axis(0)) {
-    let mass: f64 = inputs.index_axis(Axis(0), i).sum();
+    let mass = board_mass(inputs, i);
     value[(i, 2)] = 0.5 / (1.0 + mass * 0.05);
   }
   value

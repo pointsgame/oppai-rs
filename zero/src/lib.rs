@@ -19,4 +19,5 @@ pub mod opening;
 pub mod opening_test;
 pub mod pit;
 pub mod random_model;
+pub mod tactics;
 pub mod zero;
