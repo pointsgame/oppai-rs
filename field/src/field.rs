@@ -78,6 +78,16 @@ fn live_players_mask(cells: u64, player: Player) -> u64 {
   )
 }
 
+/// The number of separate runs of dots in a ring of 8 neighbors as
+/// [`Field::live_ring`] returns them: of the 4 orthogonal neighbors that are
+/// not dots, the ones followed clockwise by a dot, diagonal or orthogonal.
+/// Diagonal dots connect, so a run is broken only by a missing orthogonal
+/// neighbor.
+#[inline]
+pub const fn ring_groups(ring: u8) -> u32 {
+  (!ring & (ring.rotate_right(1) | ring.rotate_right(2)) & 0b0101_0101).count_ones()
+}
+
 /// Selects the value belonging to `player`.
 #[inline(always)]
 fn by_player<T>(player: Player, red: T, black: T) -> T {
@@ -735,33 +745,31 @@ impl Field {
       .count() as u32
   }
 
+  /// The number of separate runs of live dots of `player` around
+  /// `center_pos`, see [`ring_groups`].
+  #[inline]
   pub fn number_near_groups(&self, center_pos: Pos, player: Player) -> u32 {
-    let mut result = 0u32;
-    if !self.cell(self.w(center_pos)).is_live_players_point(player)
-      && (self.cell(self.nw(center_pos)).is_live_players_point(player)
-        || self.cell(self.n(center_pos)).is_live_players_point(player))
-    {
-      result += 1;
-    }
-    if !self.cell(self.s(center_pos)).is_live_players_point(player)
-      && (self.cell(self.sw(center_pos)).is_live_players_point(player)
-        || self.cell(self.w(center_pos)).is_live_players_point(player))
-    {
-      result += 1;
-    }
-    if !self.cell(self.e(center_pos)).is_live_players_point(player)
-      && (self.cell(self.se(center_pos)).is_live_players_point(player)
-        || self.cell(self.s(center_pos)).is_live_players_point(player))
-    {
-      result += 1;
-    }
-    if !self.cell(self.n(center_pos)).is_live_players_point(player)
-      && (self.cell(self.ne(center_pos)).is_live_players_point(player)
-        || self.cell(self.e(center_pos)).is_live_players_point(player))
-    {
-      result += 1;
-    }
-    result
+    ring_groups(self.live_ring(center_pos, player))
+  }
+
+  /// The live dots of `player` among the 8 neighbors of `pos`, as bits: bit `i`
+  /// is the neighbor in the `i`-th direction clockwise from north, see
+  /// [`Self::ring_pos`]. All neighbors of `pos` must be within the field.
+  #[inline]
+  pub fn live_ring(&self, pos: Pos, player: Player) -> u8 {
+    let live = live_players_mask(neighbor_cells(&self.points, self.stride, pos), player);
+    // The high bit of byte `i` to bit `i`: shifted down to the low bit of its
+    // byte, the multiplication adds every byte into the highest one, each at
+    // its own bit.
+    ((live >> 7).wrapping_mul(0x0102_0408_1020_4080) >> 56) as u8
+  }
+
+  /// The neighbor of `pos` in the `direction`-th direction clockwise from
+  /// north: north, north-east, east, south-east, south, south-west, west,
+  /// north-west.
+  #[inline]
+  pub fn ring_pos(&self, pos: Pos, direction: usize) -> Pos {
+    Neighbor(direction).apply(&self.neighbor_offsets, pos)
   }
 
   fn set_padding(&mut self) {

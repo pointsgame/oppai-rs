@@ -744,3 +744,72 @@ fn undo_check() {
     }
   }
 }
+
+/// The ring of a cell holds exactly its live neighbours in the documented
+/// order, on random games with captures, for both players. With
+/// [`ring_groups_of_every_ring`] it settles [`Field::number_near_groups`],
+/// which counts the runs of the ring.
+#[test]
+fn live_ring_of_random_games() {
+  let width = 12;
+  let height = 12;
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let zobrist = Arc::new(Zobrist::new(field::length(width, height) * 3, &mut rng));
+  let mut moves = (0..field::length(width, height)).collect::<Vec<Pos>>();
+  let mut checked = 0;
+  for _ in 0..20 {
+    let mut field = Field::new(width, height, zobrist.clone());
+    moves.shuffle(&mut rng);
+    let mut player = Player::Red;
+    for &pos in &moves {
+      if !field.is_putting_allowed(pos) {
+        continue;
+      }
+      field.put_point(pos, player);
+      field.update_grounded();
+      player = player.next();
+      for x in 0..width {
+        for y in 0..height {
+          let center = field.to_pos(x, y);
+          let around = [
+            field.n(center),
+            field.ne(center),
+            field.e(center),
+            field.se(center),
+            field.s(center),
+            field.sw(center),
+            field.w(center),
+            field.nw(center),
+          ];
+          for p in [Player::Red, Player::Black] {
+            let ring = field.live_ring(center, p);
+            for (direction, &neighbor) in around.iter().enumerate() {
+              assert_eq!(field.ring_pos(center, direction), neighbor);
+              assert_eq!(
+                ring >> direction & 1 == 1,
+                field.cell(neighbor).is_live_players_point(p)
+              );
+            }
+            checked += 1;
+          }
+        }
+      }
+    }
+  }
+  assert!(checked > 100_000);
+}
+
+/// Every one of the 256 rings against the rule spelled out: a run starts at
+/// every orthogonal neighbour that is not a dot and is followed clockwise by a
+/// dot.
+#[test]
+fn ring_groups_of_every_ring() {
+  for ring in 0..=u8::MAX {
+    let dot = |direction: usize| ring >> (direction % 8) & 1 == 1;
+    let expected = [0, 2, 4, 6]
+      .into_iter()
+      .filter(|&direction| !dot(direction) && (dot(direction + 1) || dot(direction + 2)))
+      .count() as u32;
+    assert_eq!(field::ring_groups(ring), expected, "{ring:08b}");
+  }
+}

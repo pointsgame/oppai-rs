@@ -1,4 +1,4 @@
-use oppai_field::field::{Field, Hash, Pos, wave_diag};
+use oppai_field::field::{Field, Hash, Pos, ring_groups, wave_diag};
 use oppai_field::player::Player;
 use smallvec::{Array, SmallVec};
 use std::ops::Index;
@@ -96,29 +96,22 @@ fn runs_settled(field: &Field, center: Pos, player: Player) -> bool {
     })
 }
 
-/// [`Field::number_near_groups`] of `center`, or 2 if that may still change by
-/// a capture (see [`runs_settled`]), so that a dot is never ruled out by a
-/// count that may still change.
-fn number_near_groups_settled(field: &Field, center: Pos, player: Player) -> u32 {
-  let groups = field.number_near_groups(center, player);
-  if groups >= 2 || runs_settled(field, center, player) {
-    groups
-  } else {
-    2
-  }
-}
-
 /// [`Field::number_near_groups`] of `center` with a dot of `player`'s at
 /// `extra` as well, or 2 if that may still change by a capture (see
 /// [`runs_settled`]).
 fn number_near_groups_with(field: &Field, center: Pos, extra: Pos, player: Player) -> u32 {
-  let own = |pos: Pos| pos == extra || field.cell(pos).is_live_players_point(player);
-  let (n, s, w, e) = (field.n(center), field.s(center), field.w(center), field.e(center));
-  let (nw, ne, sw, se) = (field.nw(center), field.ne(center), field.sw(center), field.se(center));
-  let groups = [(w, nw, n), (s, sw, w), (e, se, s), (n, ne, e)]
-    .into_iter()
-    .filter(|&(gap, a, b)| !own(gap) && (own(a) || own(b)))
-    .count() as u32;
+  let mut ring = field.live_ring(center, player);
+  if let Some(direction) = (0..8).find(|&direction| field.ring_pos(center, direction) == extra) {
+    ring |= 1 << direction;
+  }
+  ring_runs_settled(field, center, ring, player)
+}
+
+/// [`ring_groups`] of `ring`, the dots around `center`, or 2 if that may
+/// still change by a capture (see [`runs_settled`]), so that a dot is never
+/// ruled out by a count that may still change.
+fn ring_runs_settled(field: &Field, center: Pos, ring: u8, player: Player) -> u32 {
+  let groups = ring_groups(ring);
   if groups >= 2 || runs_settled(field, center, player) {
     groups
   } else {
@@ -184,12 +177,31 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajector
     // dot, so whether it and the dots before it qualify is known before it is
     // played.
     if depth == 0
-      && (number_near_groups_settled(field, pos, player) < 2
+      && (ring_runs_settled(field, pos, field.live_ring(pos, player), player) < 2
         || field.moves[field.moves_count() + 1 - cur_depth as usize..]
           .iter()
           .any(|&prev| number_near_groups_with(field, prev, pos, player) < 2))
     {
       continue;
+    }
+    // Likewise one dot ahead of the last: a dot short of two runs needs the
+    // last one next to it, giving it a second run and joining two runs
+    // itself. Which neighbours give it a second run is read from its ring, so
+    // most dots are ruled out without looking further.
+    if depth == 1 {
+      let ring = field.live_ring(pos, player);
+      if ring_runs_settled(field, pos, ring, player) < 2
+        && !(0..8).any(|direction| {
+          ring >> direction & 1 == 0 && ring_groups(ring | 1 << direction) >= 2 && {
+            let next = field.ring_pos(pos, direction);
+            let back = 1 << ((direction + 4) & 7);
+            field.cell(next).is_putting_allowed()
+              && ring_runs_settled(field, next, field.live_ring(next, player) | back, player) >= 2
+          }
+        })
+      {
+        continue;
+      }
     }
     let cell = field.cell(pos);
     field.put_point(pos, player);
