@@ -18,14 +18,17 @@
 //! - optionally, a depthwise convolution in the feed-forward layers tells
 //!   every token what its neighbors hold, the same way on every board.
 
-use crate::model::{NormActConv, TransformerConfig};
+use crate::{
+  distance_attention::distance_attention,
+  model::{NormActConv, TransformerConfig},
+};
 use burn::{
   module::{Initializer, Module, Param},
   tensor::{
-    Bool, Device, Distribution, FloatDType, Tensor, TensorData,
+    Device, Distribution, FloatDType, Tensor, TensorData,
     activation::{sigmoid, silu, softplus},
-    module::{attention, conv2d, linear},
-    ops::{AttentionModuleOptions, ConvOptions},
+    module::{conv2d, linear},
+    ops::ConvOptions,
     s,
   },
 };
@@ -128,14 +131,6 @@ impl Cells {
       rows: Tensor::from_data(TensorData::new(rows, shape), device),
       columns: Tensor::from_data(TensorData::new(columns, shape), device),
     }
-  }
-
-  /// The euclidean distance between every two cells, in cells,
-  /// `[1, 1, cells, cells]`.
-  fn distances(&self) -> Tensor<4> {
-    let rows = self.rows.clone() - self.rows.clone().swap_dims(2, 3);
-    let columns = self.columns.clone() - self.columns.clone().swap_dims(2, 3);
-    (rows.square() + columns.square()).sqrt()
   }
 }
 
@@ -262,14 +257,12 @@ pub struct AttentionContext {
   height: usize,
   width: usize,
   cells: Cells,
-  /// See [`Cells::distances`].
-  distances: Tensor<4>,
   /// `[batch, 1, 1, 1]`, the natural logarithm of the number of cells on the
   /// board, in single precision.
   log_area: Tensor<4>,
-  /// `[batch, 1, 1, cells]`, true for the cells off the board, which no token
-  /// may attend to.
-  off_board: Tensor<4, Bool>,
+  /// `[batch, cells]`, one on the board and zero off it, in single
+  /// precision: no token attends to a cell off the board.
+  board: Tensor<2>,
   /// `[batch, cells, 1]`, one on the board and zero off it.
   on_board: Tensor<3>,
 }
@@ -282,7 +275,6 @@ impl AttentionContext {
     Self {
       height,
       width,
-      distances: cells.distances(),
       cells,
       log_area: mask
         .clone()
@@ -291,7 +283,7 @@ impl AttentionContext {
         .sum_dim(3)
         .clamp_min(1.0)
         .log(),
-      off_board: mask.clone().reshape([batch, 1, 1, height * width]).lower_elem(0.5),
+      board: mask.clone().cast(FloatDType::F32).reshape([batch, height * width]),
       on_board: mask.clone().reshape([batch, height * width, 1]),
     }
   }
@@ -383,21 +375,13 @@ impl Attention {
     };
     let per_head = |values: Tensor<1>| values.cast(FloatDType::F32).reshape([1, heads, 1, 1]);
     let query = query * (per_head(self.logit_scales.val()) * context.log_area.clone()).cast(dtype);
-    // Broadcast rather than materialized over the batch: both depend on the
-    // cells alone.
-    let bias = (per_head(softplus(self.distance_slopes.val().cast(FloatDType::F32), 1.0)) * context.distances.clone())
-      .neg()
-      .cast(dtype)
-      .expand([batch, heads, cells, cells]);
-    let mask = context.off_board.clone().expand([batch, heads, cells, cells]);
-    let out = attention(
+    let out = distance_attention(
       query,
       key,
       value,
-      Some(mask),
-      Some(bias),
-      None,
-      AttentionModuleOptions::default(),
+      context.board.clone(),
+      softplus(self.distance_slopes.val().cast(FloatDType::F32), 1.0),
+      context.width,
     );
     let gate = sigmoid(self.gate.forward(inputs));
     self
