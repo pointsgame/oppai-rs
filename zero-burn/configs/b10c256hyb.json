@@ -1,0 +1,21 @@
+{
+  "inner_channels": 256,
+  "blocks": [
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "nbt", "mid_channels": 128, "size": 2, "gpool": {"channels": 64, "gate": true}},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "transformer", "mid_channels": 128, "layers": 2, "attention_heads": 4, "ffn_channels": 352, "rotary_channels": 24, "min_train_side": 16, "ffn_conv": true},
+    {"type": "nbt", "mid_channels": 128, "size": 2, "gpool": {"channels": 64, "gate": true}},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "transformer", "mid_channels": 128, "layers": 2, "attention_heads": 4, "ffn_channels": 352, "rotary_channels": 24, "min_train_side": 16, "ffn_conv": true},
+    {"type": "nbt", "mid_channels": 128, "size": 2, "gpool": {"channels": 64, "gate": true}},
+    {"type": "nbt", "mid_channels": 128, "size": 2},
+    {"type": "transformer", "mid_channels": 128, "layers": 2, "attention_heads": 4, "ffn_channels": 352, "rotary_channels": 24, "min_train_side": 16, "ffn_conv": true}
+  ],
+  "v1_channels": 32,
+  "p1_channels": 32,
+  "g1_channels": 32,
+  "v2_size": 96,
+  "sbv2_size": 80,
+  "num_scorebeliefs": 8
+}
