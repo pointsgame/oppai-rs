@@ -9,9 +9,11 @@
 //! backward pass. Burn's own memory efficient kernels take no bias, so on the
 //! GPU this runs kernels of its own instead, which keep nothing but the output
 //! and the logarithm of every query's softmax denominator and recompute the
-//! rest in the backward pass, see [`cube`]. On the other backends it is
-//! composed of burn's operations, see [`composed`], which also serves as the
-//! reference the kernels are tested against.
+//! rest in the backward pass, see [`cube`]; in half precision, on GPUs with
+//! matrix units laid out as AMD's RDNA4 lays them out, kernels that multiply
+//! on those, see [`mma`]. On the other backends it is composed of burn's
+//! operations, see [`composed`], which also serves as the reference the
+//! kernels are tested against.
 //!
 //! TODO: replace with burn's attention once its memory efficient kernels take
 //! a bias, both forward and backward.
@@ -20,6 +22,8 @@ mod autodiff;
 mod composed;
 #[cfg(feature = "cube")]
 mod cube;
+#[cfg(feature = "cube")]
+mod mma;
 
 use burn::{
   backend::{Backend, Dispatch, backend_extension, tensor::FloatTensor},

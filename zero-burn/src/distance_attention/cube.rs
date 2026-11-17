@@ -15,7 +15,7 @@
 //! gradient over every key's column; those sums are added up over the batch
 //! and the cells afterwards.
 
-use super::{DistanceAttentionBackend, composed::scale};
+use super::{DistanceAttentionBackend, composed::scale, mma};
 use burn::{
   backend::{cubecl::dtype_to_storage_type, ops::FloatTensorOps, tensor::FloatTensor},
   tensor::{DType, FloatDType, Shape},
@@ -24,7 +24,7 @@ use burn_cubecl::{CubeBackend, kernel::into_contiguous, tensor::CubeTensor};
 use cubecl::{CubeCount, CubeDim, prelude::*};
 
 /// A score no key gets; finite, as WGSL has no infinity.
-const NO_SCORE: f64 = -1e30;
+pub(super) const NO_SCORE: f64 = -1e30;
 
 /// The shared memory of a block: that of the keys and values of
 /// [`forward_kernel`], or of the queries and output gradients of
@@ -54,7 +54,7 @@ const GRAD_QUERIES: usize = 2;
 
 /// The distance between two cells, by their rows and columns.
 #[cube]
-fn distance(row: f32, column: f32, other_row: f32, other_column: f32) -> f32 {
+pub(super) fn distance(row: f32, column: f32, other_row: f32, other_column: f32) -> f32 {
   let rows = row - other_row;
   let columns = column - other_column;
   (rows * rows + columns * columns).sqrt()
@@ -62,7 +62,7 @@ fn distance(row: f32, column: f32, other_row: f32, other_column: f32) -> f32 {
 
 /// The row and column of a cell of a board `width` cells wide.
 #[cube]
-fn position(cell: usize, width: usize) -> (f32, f32) {
+pub(super) fn position(cell: usize, width: usize) -> (f32, f32) {
   (f32::cast_from((cell / width) as u32), f32::cast_from((cell % width) as u32))
 }
 
@@ -573,17 +573,17 @@ fn grad_key_value_kernel<F: Float>(
 
 /// The tensors every kernel reads, contiguous, `on_board` and `slopes` in
 /// single precision, and the dimensions of the queries.
-struct Inputs {
-  query: CubeTensor,
-  key: CubeTensor,
-  value: CubeTensor,
-  on_board: CubeTensor,
-  slopes: CubeTensor,
-  dims: [usize; 4],
+pub(super) struct Inputs {
+  pub(super) query: CubeTensor,
+  pub(super) key: CubeTensor,
+  pub(super) value: CubeTensor,
+  pub(super) on_board: CubeTensor,
+  pub(super) slopes: CubeTensor,
+  pub(super) dims: [usize; 4],
 }
 
 impl Inputs {
-  fn new(
+  pub(super) fn new(
     query: CubeTensor,
     key: CubeTensor,
     value: CubeTensor,
@@ -616,7 +616,7 @@ impl Inputs {
     }
   }
 
-  fn empty(&self, shape: Shape, dtype: DType) -> CubeTensor {
+  pub(super) fn empty(&self, shape: Shape, dtype: DType) -> CubeTensor {
     let buffer = self.query.client.empty(shape.num_elements() * dtype.size());
     CubeTensor::new_contiguous(
       self.query.client.clone(),
@@ -640,6 +640,104 @@ impl Inputs {
   }
 }
 
+/// The output and the log-sum-exp of every query, by [`forward_kernel`].
+pub(super) fn forward(inputs: Inputs, width: usize) -> (CubeTensor, CubeTensor) {
+  let [batch, heads, cells, channels] = inputs.dims;
+  let dtype = inputs.query.dtype;
+  let output = inputs.empty(inputs.query.meta.shape().clone(), dtype);
+  let log_sum_exp = inputs.empty(Shape::new([batch, heads, cells]), DType::F32);
+  let queries = FORWARD_QUERIES;
+  let (cube_count, cube_dim, block) = inputs.launch_dims(queries);
+  let client = inputs.query.client.clone();
+  forward_kernel::launch(
+    &client,
+    cube_count,
+    cube_dim,
+    inputs.query.into_tensor_arg(),
+    inputs.key.into_tensor_arg(),
+    inputs.value.into_tensor_arg(),
+    inputs.on_board.into_tensor_arg(),
+    inputs.slopes.into_tensor_arg(),
+    output.clone().into_tensor_arg(),
+    log_sum_exp.clone().into_tensor_arg(),
+    width as u32,
+    scale(channels) as f32,
+    channels,
+    block,
+    queries,
+    dtype_to_storage_type(dtype),
+  );
+  (output, log_sum_exp)
+}
+
+/// The gradients of the queries, the keys and the values, and the parts of
+/// the gradient of the slopes of every key, `[batch, heads, cells]`, by
+/// [`grad_query_kernel`] and [`grad_key_value_kernel`], from the output, the
+/// log-sum-exp and the output's gradient, contiguous, the output and its
+/// gradient in the float type of the queries.
+pub(super) fn backward(
+  inputs: Inputs,
+  output: CubeTensor,
+  log_sum_exp: CubeTensor,
+  grad: CubeTensor,
+  width: usize,
+) -> (CubeTensor, CubeTensor, CubeTensor, CubeTensor) {
+  let [batch, heads, cells, channels] = inputs.dims;
+  let dtype = inputs.query.dtype;
+  let shape = inputs.query.meta.shape().clone();
+  let grad_query = inputs.empty(shape.clone(), dtype);
+  let grad_key = inputs.empty(shape.clone(), dtype);
+  let grad_value = inputs.empty(shape, dtype);
+  let grad_slopes = inputs.empty(Shape::new([batch, heads, cells]), DType::F32);
+  let scale = scale(channels) as f32;
+  let client = inputs.query.client.clone();
+  let queries = GRAD_QUERIES;
+  let (cube_count, cube_dim, block) = inputs.launch_dims(queries);
+  grad_query_kernel::launch(
+    &client,
+    cube_count,
+    cube_dim,
+    inputs.query.clone().into_tensor_arg(),
+    inputs.key.clone().into_tensor_arg(),
+    inputs.value.clone().into_tensor_arg(),
+    inputs.on_board.clone().into_tensor_arg(),
+    inputs.slopes.clone().into_tensor_arg(),
+    output.clone().into_tensor_arg(),
+    log_sum_exp.clone().into_tensor_arg(),
+    grad.clone().into_tensor_arg(),
+    grad_query.clone().into_tensor_arg(),
+    width as u32,
+    scale,
+    channels,
+    block,
+    queries,
+    dtype_to_storage_type(dtype),
+  );
+  let (cube_count, cube_dim, block) = inputs.launch_dims(1);
+  grad_key_value_kernel::launch(
+    &client,
+    cube_count,
+    cube_dim,
+    inputs.query.into_tensor_arg(),
+    inputs.key.into_tensor_arg(),
+    inputs.value.into_tensor_arg(),
+    inputs.on_board.into_tensor_arg(),
+    inputs.slopes.into_tensor_arg(),
+    output.into_tensor_arg(),
+    log_sum_exp.into_tensor_arg(),
+    grad.into_tensor_arg(),
+    grad_key.clone().into_tensor_arg(),
+    grad_value.clone().into_tensor_arg(),
+    grad_slopes.clone().into_tensor_arg(),
+    width as u32,
+    scale,
+    channels,
+    block,
+    dtype_to_storage_type(dtype),
+  );
+  (grad_query, grad_key, grad_value, grad_slopes)
+}
+
 impl DistanceAttentionBackend for CubeBackend {
   fn distance_attention_forward(
     query: FloatTensor<Self>,
@@ -650,32 +748,11 @@ impl DistanceAttentionBackend for CubeBackend {
     width: usize,
   ) -> (FloatTensor<Self>, FloatTensor<Self>) {
     let inputs = Inputs::new(query, key, value, on_board, slopes);
-    let [batch, heads, cells, channels] = inputs.dims;
-    let dtype = inputs.query.dtype;
-    let output = inputs.empty(inputs.query.meta.shape().clone(), dtype);
-    let log_sum_exp = inputs.empty(Shape::new([batch, heads, cells]), DType::F32);
-    let queries = FORWARD_QUERIES;
-    let (cube_count, cube_dim, block) = inputs.launch_dims(queries);
-    let client = inputs.query.client.clone();
-    forward_kernel::launch(
-      &client,
-      cube_count,
-      cube_dim,
-      inputs.query.into_tensor_arg(),
-      inputs.key.into_tensor_arg(),
-      inputs.value.into_tensor_arg(),
-      inputs.on_board.into_tensor_arg(),
-      inputs.slopes.into_tensor_arg(),
-      output.clone().into_tensor_arg(),
-      log_sum_exp.clone().into_tensor_arg(),
-      width as u32,
-      scale(channels) as f32,
-      channels,
-      block,
-      queries,
-      dtype_to_storage_type(dtype),
-    );
-    (output, log_sum_exp)
+    if mma::serves(&inputs) {
+      mma::forward(inputs, width)
+    } else {
+      forward(inputs, width)
+    }
   }
 
   fn distance_attention_backward(
@@ -691,62 +768,16 @@ impl DistanceAttentionBackend for CubeBackend {
   ) -> (FloatTensor<Self>, FloatTensor<Self>, FloatTensor<Self>, FloatTensor<Self>) {
     let slopes_dtype = slopes.dtype;
     let inputs = Inputs::new(query, key, value, on_board, slopes);
-    let [batch, heads, cells, channels] = inputs.dims;
+    let heads = inputs.dims[1];
     let dtype = inputs.query.dtype;
     let output = into_contiguous(Self::float_cast(output, dtype.into()));
     let grad = into_contiguous(Self::float_cast(grad, dtype.into()));
     let log_sum_exp = into_contiguous(log_sum_exp);
-    let shape = inputs.query.meta.shape().clone();
-    let grad_query = inputs.empty(shape.clone(), dtype);
-    let grad_key = inputs.empty(shape.clone(), dtype);
-    let grad_value = inputs.empty(shape, dtype);
-    let grad_slopes = inputs.empty(Shape::new([batch, heads, cells]), DType::F32);
-    let scale = scale(channels) as f32;
-    let client = inputs.query.client.clone();
-    let queries = GRAD_QUERIES;
-    let (cube_count, cube_dim, block) = inputs.launch_dims(queries);
-    grad_query_kernel::launch(
-      &client,
-      cube_count,
-      cube_dim,
-      inputs.query.clone().into_tensor_arg(),
-      inputs.key.clone().into_tensor_arg(),
-      inputs.value.clone().into_tensor_arg(),
-      inputs.on_board.clone().into_tensor_arg(),
-      inputs.slopes.clone().into_tensor_arg(),
-      output.clone().into_tensor_arg(),
-      log_sum_exp.clone().into_tensor_arg(),
-      grad.clone().into_tensor_arg(),
-      grad_query.clone().into_tensor_arg(),
-      width as u32,
-      scale,
-      channels,
-      block,
-      queries,
-      dtype_to_storage_type(dtype),
-    );
-    let (cube_count, cube_dim, block) = inputs.launch_dims(1);
-    grad_key_value_kernel::launch(
-      &client,
-      cube_count,
-      cube_dim,
-      inputs.query.into_tensor_arg(),
-      inputs.key.into_tensor_arg(),
-      inputs.value.into_tensor_arg(),
-      inputs.on_board.into_tensor_arg(),
-      inputs.slopes.into_tensor_arg(),
-      output.into_tensor_arg(),
-      log_sum_exp.into_tensor_arg(),
-      grad.into_tensor_arg(),
-      grad_key.clone().into_tensor_arg(),
-      grad_value.clone().into_tensor_arg(),
-      grad_slopes.clone().into_tensor_arg(),
-      width as u32,
-      scale,
-      channels,
-      block,
-      dtype_to_storage_type(dtype),
-    );
+    let (grad_query, grad_key, grad_value, grad_slopes) = if mma::serves(&inputs) {
+      mma::backward(inputs, output, log_sum_exp, grad, width)
+    } else {
+      backward(inputs, output, log_sum_exp, grad, width)
+    };
     let grad_slopes = Self::float_sum_dim(Self::float_sum_dim(grad_slopes, 2), 0);
     let grad_slopes = Self::float_reshape(grad_slopes, Shape::new([heads]));
     let grad_slopes = Self::float_cast(grad_slopes, slopes_dtype.into());
