@@ -241,4 +241,3 @@ fn cross_range() {
   assert_eq!(cells.iter().map(|&(_, y)| y).min(), Some(10));
   assert_eq!(cells.iter().map(|&(_, y)| y).max(), Some(21));
 }
-

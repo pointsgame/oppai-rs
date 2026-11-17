@@ -21,13 +21,7 @@ impl<B: DistanceAttentionBackend> Backward<B, 4> for DistanceAttentionBackward {
   /// The queries, the keys, the values and the slopes, which are
   /// differentiated; then `on_board`, the output, the log-sum-exp, and the
   /// width of the board.
-  type State = (
-    [NodeId; 4],
-    FloatTensor<B>,
-    FloatTensor<B>,
-    FloatTensor<B>,
-    usize,
-  );
+  type State = ([NodeId; 4], FloatTensor<B>, FloatTensor<B>, FloatTensor<B>, usize);
 
   fn backward(self, ops: Ops<Self::State, 4>, grads: &mut Gradients, checkpointer: &mut Checkpointer) {
     let grad = grads.consume::<B>(&ops.node);

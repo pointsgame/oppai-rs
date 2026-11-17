@@ -63,7 +63,10 @@ pub(super) fn distance(row: f32, column: f32, other_row: f32, other_column: f32)
 /// The row and column of a cell of a board `width` cells wide.
 #[cube]
 pub(super) fn position(cell: usize, width: usize) -> (f32, f32) {
-  (f32::cast_from((cell / width) as u32), f32::cast_from((cell % width) as u32))
+  (
+    f32::cast_from((cell / width) as u32),
+    f32::cast_from((cell % width) as u32),
+  )
 }
 
 /// Four channels, which the kernels read from shared memory at once.
@@ -591,8 +594,16 @@ impl Inputs {
     slopes: CubeTensor,
   ) -> Self {
     let dims = query.meta.shape().dims::<4>();
-    assert_eq!(key.meta.shape(), query.meta.shape(), "the keys are shaped as the queries");
-    assert_eq!(value.meta.shape(), query.meta.shape(), "the values are shaped as the queries");
+    assert_eq!(
+      key.meta.shape(),
+      query.meta.shape(),
+      "the keys are shaped as the queries"
+    );
+    assert_eq!(
+      value.meta.shape(),
+      query.meta.shape(),
+      "the values are shaped as the queries"
+    );
     assert!(
       key.dtype == query.dtype && value.dtype == query.dtype,
       "the queries, keys and values are of one float type"
@@ -603,9 +614,7 @@ impl Inputs {
       dims[3].is_multiple_of(LANES),
       "the kernels read the channels of a head four at a time"
     );
-    let single = |tensor: CubeTensor| {
-      into_contiguous(CubeBackend::float_cast(tensor, FloatDType::F32))
-    };
+    let single = |tensor: CubeTensor| into_contiguous(CubeBackend::float_cast(tensor, FloatDType::F32));
     Self {
       query: into_contiguous(query),
       key: into_contiguous(key),
@@ -765,7 +774,12 @@ impl DistanceAttentionBackend for CubeBackend {
     log_sum_exp: FloatTensor<Self>,
     grad: FloatTensor<Self>,
     width: usize,
-  ) -> (FloatTensor<Self>, FloatTensor<Self>, FloatTensor<Self>, FloatTensor<Self>) {
+  ) -> (
+    FloatTensor<Self>,
+    FloatTensor<Self>,
+    FloatTensor<Self>,
+    FloatTensor<Self>,
+  ) {
     let slopes_dtype = slopes.dtype;
     let inputs = Inputs::new(query, key, value, on_board, slopes);
     let heads = inputs.dims[1];

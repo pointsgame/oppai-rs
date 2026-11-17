@@ -44,10 +44,7 @@ fn scores<B: Backend>(
   let device = query.device();
   let query = B::float_mul_scalar(f32::<B>(query), Scalar::Float(scale(channels)));
   let scores = B::float_matmul(query, transpose::<B>(f32::<B>(key)));
-  let distances = B::float_from_data(
-    TensorData::new(distances(cells, width), [1, 1, cells, cells]),
-    &device,
-  );
+  let distances = B::float_from_data(TensorData::new(distances(cells, width), [1, 1, cells, cells]), &device);
   let slopes = B::float_reshape(f32::<B>(slopes), Shape::new([1, heads, 1, 1]));
   let scores = B::float_sub(scores, B::float_mul(slopes, distances.clone()));
   let off_board = B::float_mul_scalar(
@@ -72,10 +69,7 @@ pub fn forward<B: Backend>(
   let exp = B::float_exp(B::float_sub(scores, max.clone()));
   let sum = B::float_sum_dim(exp.clone(), 3);
   let output = B::float_matmul(B::float_div(exp, sum.clone()), f32::<B>(value.clone()));
-  let log_sum_exp = B::float_reshape(
-    B::float_add(max, B::float_log(sum)),
-    Shape::new([batch, heads, cells]),
-  );
+  let log_sum_exp = B::float_reshape(B::float_add(max, B::float_log(sum)), Shape::new([batch, heads, cells]));
   (cast::<B>(output, &value), log_sum_exp)
 }
 
@@ -101,15 +95,9 @@ pub fn backward<B: Backend>(
   // that of the output and the output's gradient.
   let output_dot_grad = B::float_sum_dim(B::float_mul(f32::<B>(output), grad.clone()), 3);
   let grad_probabilities = B::float_matmul(grad.clone(), transpose::<B>(f32::<B>(value.clone())));
-  let grad_scores = B::float_mul(
-    probabilities.clone(),
-    B::float_sub(grad_probabilities, output_dot_grad),
-  );
+  let grad_scores = B::float_mul(probabilities.clone(), B::float_sub(grad_probabilities, output_dot_grad));
   let grad_value = B::float_matmul(transpose::<B>(probabilities), grad);
-  let grad_query = B::float_mul_scalar(
-    B::float_matmul(grad_scores.clone(), f32::<B>(key.clone())),
-    scale,
-  );
+  let grad_query = B::float_mul_scalar(B::float_matmul(grad_scores.clone(), f32::<B>(key.clone())), scale);
   let grad_key = B::float_mul_scalar(
     B::float_matmul(transpose::<B>(grad_scores.clone()), f32::<B>(query.clone())),
     scale,
@@ -117,10 +105,7 @@ pub fn backward<B: Backend>(
   // A score has the slope's distance taken off.
   let grad_slopes = B::float_neg(B::float_mul(grad_scores, distances));
   let grad_slopes = B::float_sum_dim(B::float_sum_dim(B::float_sum_dim(grad_slopes, 3), 2), 0);
-  let grad_slopes = cast::<B>(
-    B::float_reshape(grad_slopes, Shape::new([heads])),
-    &slopes,
-  );
+  let grad_slopes = cast::<B>(B::float_reshape(grad_slopes, Shape::new([heads])), &slopes);
   (
     cast::<B>(grad_query, &query),
     cast::<B>(grad_key, &key),

@@ -90,7 +90,12 @@ pub trait DistanceAttentionBackend: Backend {
     log_sum_exp: FloatTensor<Self>,
     grad: FloatTensor<Self>,
     width: usize,
-  ) -> (FloatTensor<Self>, FloatTensor<Self>, FloatTensor<Self>, FloatTensor<Self>) {
+  ) -> (
+    FloatTensor<Self>,
+    FloatTensor<Self>,
+    FloatTensor<Self>,
+    FloatTensor<Self>,
+  ) {
     composed::backward::<Self>(query, key, value, on_board, slopes, output, log_sum_exp, grad, width)
   }
 }
@@ -111,10 +116,7 @@ mod fusion_meta {
     _width: &usize,
   ) -> (TensorSpec, TensorSpec) {
     let [batch, heads, cells, _] = query.shape.dims::<4>();
-    (
-      value.clone(),
-      TensorSpec::new([batch, heads, cells].into(), DType::F32),
-    )
+    (value.clone(), TensorSpec::new([batch, heads, cells].into(), DType::F32))
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -171,9 +173,7 @@ fn distances(cells: usize, width: usize) -> Vec<f32> {
 mod tests {
   use super::{distance_attention, distances};
   use burn::tensor::{
-    Device, Distribution, FloatDType, Tensor, TensorData,
-    module::attention,
-    ops::AttentionModuleOptions,
+    Device, Distribution, FloatDType, Tensor, TensorData, module::attention, ops::AttentionModuleOptions,
   };
 
   /// What [`distance_attention`] computes, as burn's attention with the mask
@@ -188,10 +188,7 @@ mod tests {
   ) -> Tensor<4> {
     let [batch, heads, cells, _] = query.dims();
     let device = query.device();
-    let distances = Tensor::<4>::from_data(
-      TensorData::new(distances(cells, width), [1, 1, cells, cells]),
-      &device,
-    );
+    let distances = Tensor::<4>::from_data(TensorData::new(distances(cells, width), [1, 1, cells, cells]), &device);
     let bias = (slopes.reshape([1, heads, 1, 1]) * distances)
       .neg()
       .cast(query.dtype())
@@ -233,7 +230,13 @@ mod tests {
   /// The output and the gradients of the queries, the keys, the values and
   /// the slopes on `device` agree with burn's attention, for boards that take
   /// several blocks of cells, with cells off the board.
-  fn agrees_with_attention(device: Device, channels: usize, (height, width): (usize, usize), dtype: FloatDType, tolerance: f32) {
+  fn agrees_with_attention(
+    device: Device,
+    channels: usize,
+    (height, width): (usize, usize),
+    dtype: FloatDType,
+    tolerance: f32,
+  ) {
     let device = device.autodiff();
     let (batch, heads) = (2, 3);
     let cells = height * width;
@@ -260,7 +263,9 @@ mod tests {
         slopes.clone(),
         width,
       );
-      let grads = (output.clone().cast(FloatDType::F32) * weights.clone()).sum().backward();
+      let grads = (output.clone().cast(FloatDType::F32) * weights.clone())
+        .sum()
+        .backward();
       let grad = |tensor: &Tensor<4>| tensor.grad(&grads).unwrap().cast(FloatDType::F32);
       (
         [
@@ -274,7 +279,10 @@ mod tests {
     };
     let (custom, custom_slopes) = run(true);
     let (expected, expected_slopes) = run(false);
-    for (name, (custom, expected)) in ["output", "query", "key", "value"].iter().zip(custom.into_iter().zip(expected)) {
+    for (name, (custom, expected)) in ["output", "query", "key", "value"]
+      .iter()
+      .zip(custom.into_iter().zip(expected))
+    {
       let difference = max_difference(custom, expected);
       assert!(difference < tolerance, "{name}: {difference}");
     }
