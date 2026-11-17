@@ -1,0 +1,35 @@
+[package]
+name = "oppai-zero-stats"
+version = "0.1.0"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "Open Points Artificial Intelligence"
+edition = "2024"
+
+[dependencies]
+ndarray.workspace = true
+futures.workspace = true
+burn.workspace = true
+burn-pack.workspace = true
+rand.workspace = true
+log.workspace = true
+env_logger.workspace = true
+clap = { workspace = true, features = [ "cargo" ] }
+anyhow.workspace = true
+flate2.workspace = true
+sgf-parse.workspace = true
+oppai-field = { path = "../field" }
+oppai-sgf = { path = "../sgf" }
+oppai-zero = { path = "../zero" }
+oppai-zero-burn = { path = "../zero-burn", default-features = false, features = ["fusion"] }
+oppai-zero-sgf = { path = "../zero-sgf" }
+
+[features]
+default = ["dsu", "unsafe", "flex", "vulkan"]
+dsu = ["oppai-field/dsu"]
+unsafe = ["oppai-field/unsafe"]
+cuda = ["oppai-zero-burn/cuda", "burn/cuda"]
+rocm = ["oppai-zero-burn/rocm", "burn/rocm"]
+flex = ["oppai-zero-burn/flex", "burn/flex"]
+vulkan = ["oppai-zero-burn/vulkan", "burn/vulkan"]
+webgpu = ["oppai-zero-burn/webgpu", "burn/webgpu"]

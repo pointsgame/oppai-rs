@@ -23,6 +23,23 @@ use std::hash::{BuildHasherDefault, Hasher};
 use std::mem;
 use std::{iter, iter::Sum};
 
+/// The probability of a draw from which the draw term of the utility starts to
+/// apply, see [`Search::aux_utility`]. Above a half the net expects a draw more
+/// than anything else.
+pub const SETTLED_DRAW_MIN: f64 = 0.5;
+
+/// The probability of a draw from which the draw term of the utility applies
+/// in full.
+pub const SETTLED_DRAW_MAX: f64 = 0.9;
+
+/// How settled a draw is for the draw term of the utility, from 0 to 1, given
+/// the net's probability of one.
+pub fn settled<N: Float>(draw: N) -> N {
+  ((draw - N::from(SETTLED_DRAW_MIN).unwrap()) / N::from(SETTLED_DRAW_MAX - SETTLED_DRAW_MIN).unwrap())
+    .max(N::zero())
+    .min(N::one())
+}
+
 /// Pass-through hasher for the transposition table.
 ///
 /// The keys are Zobrist hashes, which are already uniformly distributed 64-bit
@@ -1055,15 +1072,6 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
-  /// The probability of a draw from which the draw term of
-  /// [`Self::aux_utility`] starts to apply. Above a half the net expects a
-  /// draw more than anything else.
-  const SETTLED_DRAW_MIN: f64 = 0.5;
-
-  /// The probability of a draw from which the draw term of
-  /// [`Self::aux_utility`] applies in full.
-  const SETTLED_DRAW_MAX: f64 = 0.9;
-
   /// Twice the points a side still has to secure before it may end the game:
   /// its ungrounded dots minus its lead, komi included, never below zero. The
   /// game ends as soon as either side's lead exceeds its ungrounded dots - see
@@ -1120,7 +1128,7 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// itself would not do: the search is zero-sum, so whatever makes one side
   /// want to end a draw makes the other want to drag it out. The term is
   /// scaled by how settled the draw is, read from `draw`, the probability of
-  /// one, between [`Self::SETTLED_DRAW_MIN`] and [`Self::SETTLED_DRAW_MAX`]:
+  /// one, between [`SETTLED_DRAW_MIN`] and [`SETTLED_DRAW_MAX`]:
   /// in a balanced position that is still open, rewarding grounding would
   /// reward passive play and make draws only more common. And it applies only
   /// with the board level, komi included, which a decided draw almost always
@@ -1139,10 +1147,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let finish_value = N::one() - N::from(2).unwrap() * two_over_pi * (shortfall / scale).atan();
     let score_value = (score / scale).atan() * two_over_pi;
     let draw_value = if field.score(player) * 2 + komi_x_2 == 0 {
-      let settled = ((draw - N::from(Self::SETTLED_DRAW_MIN).unwrap())
-        / N::from(Self::SETTLED_DRAW_MAX - Self::SETTLED_DRAW_MIN).unwrap())
-      .max(N::zero())
-      .min(N::one());
+      let settled = settled(draw);
       let (own, opponent) = match player {
         Player::Red => (field.non_grounded_red, field.non_grounded_black),
         Player::Black => (field.non_grounded_black, field.non_grounded_red),

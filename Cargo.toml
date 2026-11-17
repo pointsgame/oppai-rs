@@ -13,6 +13,7 @@ members = [
   "zero-burn",
   "zero-sgf",
   "zero-train",
+  "zero-stats",
   "initial",
   "iced",
   "svg",

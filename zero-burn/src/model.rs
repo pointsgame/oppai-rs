@@ -567,7 +567,7 @@ pub struct ValueHead {
 const SCORE_BELIEF_OFFSET_SCALE: f64 = 0.05;
 
 /// The score belief's inputs for every bin, see [`score_belief_offsets`].
-const SCORE_BELIEF_OFFSETS: usize = 2;
+pub const SCORE_BELIEF_OFFSETS: usize = 2;
 
 /// The score of every bin of the score belief, in points: the bins are whole
 /// points.
