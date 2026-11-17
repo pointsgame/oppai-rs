@@ -509,6 +509,10 @@ impl TransformerBlock {
       "the channels must split evenly between the attention heads"
     );
     assert!(
+      config.head_channels().is_multiple_of(4),
+      "the attention kernels read the channels of a head four at a time"
+    );
+    assert!(
       config.rotary_channels.is_multiple_of(2) && config.rotary_channels <= config.head_channels(),
       "the 2D rotary encoding turns pairs of channels of an attention head"
     );
