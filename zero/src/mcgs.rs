@@ -1099,9 +1099,9 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// The score term squashes the expected score through an atan, so that the
   /// first few points of a lead matter most and a rout saturates. The squash
   /// scale of `sqrt(area) / 2` is a quarter of the scale a game that fills its
-  /// whole board would want: dots games fill only ~0.32 of the field, and only
-  /// a part of the filled area is captured, so realistic scores run about a
-  /// quarter as large.
+  /// whole board would want: dots games fill only a quarter to a third of the
+  /// field, and only a part of the filled area is captured, so realistic
+  /// scores run about a quarter as large.
   ///
   /// The draw term breaks the ties of a settled draw, where every move has the
   /// same value and both of the terms above are about 0: it is the difference

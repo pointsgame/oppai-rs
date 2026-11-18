@@ -10,6 +10,7 @@ pub mod examples_test;
 pub mod field_features;
 #[cfg(test)]
 pub mod field_features_test;
+pub mod game_length;
 pub mod mcgs;
 #[cfg(test)]
 pub mod mcgs_test;

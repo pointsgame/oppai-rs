@@ -1,9 +1,10 @@
 use crate::episode::{SidePosition, Visits};
 use crate::examples::{
-  ExampleGame, Examples, FUTURE_POSITION_MOVES, FUTURE_POSITIONS, TD_SHORT_LOOKAHEAD, TD_VALUE_COEFFS, TD_VALUES,
+  ExampleGame, Examples, FUTURE_POSITION_MOVES, FUTURE_POSITIONS, TD_GAME_FRACTIONS, TD_SHORT_LOOKAHEAD, TD_VALUES,
   td_lookaheads,
 };
 use crate::field_features::SCORE_ONE_HOT_SIZE;
+use crate::game_length::typical_game_length;
 use ndarray::Axis;
 use oppai_field::{
   construct_field::construct_field,
@@ -225,14 +226,23 @@ fn batch_future_positions_follow_the_game() {
   assert!(past_the_end, "some future position should be past the end of the game");
 }
 
-// The longer TD horizons are fractions of the area, the shortest a fixed
+// The longer TD horizons are fractions of a typical game, the shortest a fixed
 // number of turns, and they stay ordered longest first however small the
 // board.
 #[test]
 fn td_lookaheads_scale_but_the_shortest() {
-  assert_eq!(td_lookaheads(400.0), [32.0, 10.0, TD_SHORT_LOOKAHEAD]);
+  // A typical game on 20x20 is a hundred moves.
+  assert_eq!(typical_game_length(400.0), 100.0);
+  assert_eq!(
+    td_lookaheads(400.0),
+    [
+      TD_GAME_FRACTIONS[0] * 100.0,
+      TD_GAME_FRACTIONS[1] * 100.0,
+      TD_SHORT_LOOKAHEAD
+    ]
+  );
   let big = td_lookaheads(39.0 * 32.0);
-  assert_eq!(big[0], TD_VALUE_COEFFS[0] * 39.0 * 32.0);
+  assert_eq!(big[0], TD_GAME_FRACTIONS[0] * typical_game_length(39.0 * 32.0));
   assert_eq!(big[TD_VALUES - 1], TD_SHORT_LOOKAHEAD);
   for area in [16.0, 100.0, 256.0, 400.0, 1600.0] {
     let lookaheads = td_lookaheads(area);

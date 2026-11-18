@@ -1,4 +1,5 @@
 use crate::field_features::{add_unrotated_policy, field_features, global, rotation_sizes};
+use crate::game_length::typical_game_length;
 use crate::mcgs::{Params, Search};
 use crate::model::Model;
 use log::info;
@@ -60,10 +61,17 @@ const EARLY_FORK_PROB: f64 = 0.04;
 const LATE_FORK_PROB: f64 = 0.01;
 
 /// How far into the game, after the set opening, an early fork goes on
-/// average, as a fraction of the area: 1.25% of it, the counterpart of the
-/// raw policy opening's 2% - a fork happens about as early as the openings
-/// the raw policy plays end.
-const EARLY_FORK_AREA_PROP: f64 = 0.0125;
+/// average, as a fraction of a typical game: a little earlier than the raw
+/// policy opening ends, so that forks vary the openings.
+const EARLY_FORK_GAME_PROP: f64 = 0.035;
+
+/// How many moves the raw policy opening plays on average, as a fraction of a
+/// typical game.
+const RAW_POLICY_GAME_PROP: f64 = 0.06;
+
+/// The halflife of the early-game values of [`interpolate_early`], as a
+/// fraction of a typical game.
+const EARLY_VALUE_HALFLIFE: f64 = 0.07;
 
 /// The fewest random moves a fork picks the best of, so that the move it plays
 /// is a reasonable one rather than any.
@@ -521,12 +529,11 @@ where
 }
 
 /// Interpolates between an early-game and a rest-of-game value, decaying
-/// exponentially with the number of moves played. KataGo's interpolateEarly
-/// uses a halflife of `sqrt(area)` moves, spending ~7.6% of a typical go game
-/// at the early value; dots games fill only ~0.32 of the field, so half that
-/// halflife keeps the same fraction of a typical game.
+/// exponentially with the number of moves played, with a halflife of
+/// [`EARLY_VALUE_HALFLIFE`] of a typical game.
 fn interpolate_early<N: Float>(field: &Field, early_value: N, value: N) -> N {
-  let halflives = N::from(2 * field.moves_count()).unwrap() / N::from(field.width() * field.height()).unwrap().sqrt();
+  let halflife = EARLY_VALUE_HALFLIFE * typical_game_length(f64::from(field.width() * field.height()));
+  let halflives = N::from(field.moves_count() as f64 / halflife).unwrap();
   value + (early_value - value) * N::from(0.5).unwrap().powf(halflives)
 }
 
@@ -578,12 +585,11 @@ where
   Exp1: Distribution<N>,
   Open01: Distribution<N>,
 {
-  // The number of raw policy opening moves: an exponential with mean
-  // `area / 50`, i.e. 2% of the area (the argument is the rate, the inverse of
-  // the mean). KataGo's initializeGameUsingPolicy plays 4% of the area,
-  // targeting ~6% of a typical go game; dots games fill only ~0.32 of the
-  // field, so half of that keeps the same fraction of a typical game.
-  let exp = Exp::new(N::from(50).unwrap() / N::from(field.width() * field.height()).unwrap()).unwrap();
+  // The number of raw policy opening moves: an exponential with the mean of
+  // `RAW_POLICY_GAME_PROP` of a typical game (the argument is the rate, the
+  // inverse of the mean).
+  let mean = RAW_POLICY_GAME_PROP * typical_game_length(f64::from(field.width() * field.height()));
+  let exp = Exp::new(N::from(1.0 / mean).unwrap()).unwrap();
   let raw_policy_moves = exp.sample(rng).floor().to_u32().unwrap();
 
   info!("Playing {} raw policy moves", raw_policy_moves);
@@ -784,10 +790,10 @@ where
   }
   let r = rng.random::<f64>();
   let (turn, max_choices) = if r < EARLY_FORK_PROB {
-    // An exponential with the mean of `EARLY_FORK_AREA_PROP` of the area: the
-    // argument is the rate, the inverse of the mean.
-    let area = f64::from(field.width() * field.height());
-    let exp = Exp::<f64>::new(1.0 / (EARLY_FORK_AREA_PROP * area)).unwrap();
+    // An exponential with the mean of `EARLY_FORK_GAME_PROP` of a typical
+    // game: the argument is the rate, the inverse of the mean.
+    let mean = EARLY_FORK_GAME_PROP * typical_game_length(f64::from(field.width() * field.height()));
+    let exp = Exp::<f64>::new(1.0 / mean).unwrap();
     (opening + exp.sample(rng).floor() as usize, EARLY_FORK_MAX_CHOICES)
   } else if r < EARLY_FORK_PROB + LATE_FORK_PROB {
     (rng.random_range(opening..moves.len()), LATE_FORK_MAX_CHOICES)

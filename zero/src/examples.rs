@@ -4,6 +4,7 @@ use crate::{
     CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, SCORE_ONE_HOT_SIZE, captured_features_to_vec, field_features_to_vec,
     future_features_to_vec, global_to_vec, score_one_hot_to_vec,
   },
+  game_length::typical_game_length,
   tactics::Tactics,
 };
 use ndarray::{Array, Array1, Array2, Array3, Array4};
@@ -21,16 +22,13 @@ use std::{cmp::Ordering, iter, ops::Range, sync::Arc};
 pub const TD_VALUES: usize = 3;
 
 /// The expected lookaheads of the longer TD horizons, longest first, as
-/// fractions of the board area in turns: see [`td_lookaheads`].
+/// fractions of a typical game: see [`td_lookaheads`].
 ///
-/// These are fractions of the game: how far the value has gone towards the
-/// result after a number of turns is a constant fraction of the game's length,
-/// and the game's length is a constant number of turns per board cell. Go
-/// training puts these horizons at `0.176` and `0.056` of the area, roughly 25%
-/// and 8% of a typical go game (~0.7 moves per board cell). Self-play dots
-/// games fill only ~0.32 of the field, so they are scaled down accordingly to
-/// keep the same fractions of a typical game.
-pub const TD_VALUE_COEFFS: [f64; TD_VALUES - 1] = [0.08, 0.025];
+/// How far the value has gone towards the result after a number of turns is a
+/// constant fraction of the game's length on every board size, so these
+/// horizons are fractions of the game too: a quarter of it, over which the
+/// target mostly becomes the result, and a twelfth.
+pub const TD_GAME_FRACTIONS: [f64; TD_VALUES - 1] = [0.25, 0.08];
 
 /// The expected lookahead of the shortest TD horizon, in turns, on every board
 /// size: it is the target of the short-term value and score error heads, which
@@ -51,8 +49,8 @@ pub const TD_SHORT_LOOKAHEAD: f64 = 5.0;
 /// they would be.
 pub fn td_lookaheads(area: f64) -> [f64; TD_VALUES] {
   let mut lookaheads = [TD_SHORT_LOOKAHEAD; TD_VALUES];
-  for (lookahead, c) in lookaheads.iter_mut().zip(TD_VALUE_COEFFS) {
-    *lookahead = (c * area).max(TD_SHORT_LOOKAHEAD);
+  for (lookahead, fraction) in lookaheads.iter_mut().zip(TD_GAME_FRACTIONS) {
+    *lookahead = (fraction * typical_game_length(area)).max(TD_SHORT_LOOKAHEAD);
   }
   lookaheads
 }
