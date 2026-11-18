@@ -1,5 +1,5 @@
 use crate::episode::{SidePosition, Visits};
-use crate::examples::{ExampleGame, Examples, TD_VALUE_COEFFS, TD_VALUES};
+use crate::examples::{ExampleGame, Examples, FUTURE_POSITION_MOVES, FUTURE_POSITIONS, TD_VALUE_COEFFS, TD_VALUES};
 use crate::field_features::SCORE_ONE_HOT_SIZE;
 use ndarray::Axis;
 use oppai_field::{
@@ -150,6 +150,77 @@ fn batch_td_scores_follow_the_game_score() {
       );
     }
   }
+}
+
+// Each future position is the board the given number of moves after the row's
+// position, from the perspective of the player to move there, and the final
+// board once that is past the end of the game.
+#[test]
+fn batch_future_positions_follow_the_game() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+  let field = construct_field(
+    &mut rng,
+    "
+    ..........
+    .a........
+    ..A.......
+    ...b......
+    ....B.....
+    .....c....
+    ......C...
+    ..........
+    ..........
+    ..........
+    ",
+  );
+  let (width, height) = (field.width(), field.height());
+
+  let mut examples = Examples::default();
+  let visits = (0..field.moves_count())
+    .map(|_| Visits(Vec::new(), 1.0, 0.0, 0.0, 0.0, Vec::new()))
+    .collect();
+  examples.add(0, visits, &field, false, false, &mut rng);
+  // Unrotated, so the expected planes can be read off the field directly.
+  for example in &mut examples.examples {
+    example.rotation = 0;
+  }
+
+  let zobrist = Arc::new(Zobrist::new(length(width, height) * 3, &mut rng));
+  let rows = examples.len();
+  let batch = examples.batches::<f64>(zobrist.clone(), rows).next().unwrap();
+  assert_eq!(
+    batch.future.dim(),
+    (rows, FUTURE_POSITIONS, height as usize, width as usize)
+  );
+
+  let mut past_the_end = false;
+  for (row, example) in examples.examples.iter().enumerate() {
+    let game = &examples.games[example.game];
+    let player = game.moves[example.position].1;
+    for (horizon, &moves) in FUTURE_POSITION_MOVES.iter().enumerate() {
+      let end = (example.position + moves).min(game.moves.len());
+      past_the_end |= example.position + moves > game.moves.len();
+      let mut replay = Field::new(game.width, game.height, zobrist.clone());
+      for &(pos, move_player) in &game.moves[..end] {
+        assert!(replay.put_point(pos, move_player));
+      }
+      for y in 0..height {
+        for x in 0..width {
+          let expected = match replay.cell(replay.to_pos(x, y)).get_players_point() {
+            Some(p) if p == player => 1.0,
+            Some(_) => -1.0,
+            None => 0.0,
+          };
+          assert_eq!(
+            batch.future[(row, horizon, y as usize, x as usize)],
+            expected,
+            "row {row} horizon {horizon} at ({x}, {y})"
+          );
+        }
+      }
+    }
+  }
+  assert!(past_the_end, "some future position should be past the end of the game");
 }
 
 // A position at the very end of a game has no coming turns to blend, so every
@@ -466,6 +537,7 @@ fn side_positions_learn_from_their_own_search() {
   assert_eq!(batch.scores.index_axis(Axis(0), row).len(), SCORE_ONE_HOT_SIZE);
   assert!(batch.scores.index_axis(Axis(0), row).iter().all(|&v| v == 0.0));
   assert!(batch.captured.index_axis(Axis(0), row).iter().all(|&v| v == 0.0));
+  assert!(batch.future.index_axis(Axis(0), row).iter().all(|&v| v == 0.0));
   assert_eq!(batch.opponent_policies.index_axis(Axis(0), row).sum(), 0.0);
   assert!((batch.policies.index_axis(Axis(0), row).sum() - 1.0).abs() < 1e-12);
   assert!(

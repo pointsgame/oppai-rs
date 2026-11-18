@@ -14,7 +14,7 @@ use std::{
 };
 
 /// The components shown when none are asked for.
-pub const DEFAULT_COMPONENTS: &str = "value,td value,policy,opponent policy,pdf,cdf,captured,q";
+pub const DEFAULT_COMPONENTS: &str = "value,td value,policy,opponent policy,pdf,cdf,captured,future position,q";
 
 /// Seconds since the epoch of a log line's `[YYYY-MM-DDTHH:MM:SSZ` prefix.
 fn timestamp(line: &str) -> Option<i64> {

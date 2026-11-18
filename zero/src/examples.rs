@@ -2,7 +2,7 @@ use crate::{
   episode::{SidePosition, Visits},
   field_features::{
     CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, SCORE_ONE_HOT_SIZE, captured_features_to_vec, field_features_to_vec,
-    global_to_vec, score_one_hot_to_vec,
+    future_features_to_vec, global_to_vec, score_one_hot_to_vec,
   },
   tactics::Tactics,
 };
@@ -34,6 +34,22 @@ pub const TD_VALUES: usize = 3;
 /// shortest is kept at ~5 turns to stay meaningful for the value error head.
 pub const TD_VALUE_COEFFS: [f64; TD_VALUES] = [0.08, 0.025, 0.012];
 
+/// Number of future positions the future-position targets hold.
+pub const FUTURE_POSITIONS: usize = 2;
+
+/// How many moves ahead of a position each future position is, nearest first.
+///
+/// The same on every board size, unlike the TD horizons: the future positions
+/// are a target of local reading, of where the coming moves of a fight land,
+/// and how far a fight reaches in a few moves doesn't grow with the board
+/// around it, while the TD horizons are fractions of the game, which does.
+///
+/// For go they are 8 and 32 moves. Dots games are about half as long for the
+/// board (they fill ~0.32 of it, against ~0.7 moves per cell in go, see
+/// [`TD_VALUE_COEFFS`]), so these are half of that, the nearer one rounded up
+/// to the ~5 moves the shortest TD horizon looks ahead on a 20x20 board.
+pub const FUTURE_POSITION_MOVES: [usize; FUTURE_POSITIONS] = [5, 16];
+
 #[derive(Clone, Debug)]
 pub struct Batch<N> {
   pub inputs: Array4<N>,
@@ -52,6 +68,11 @@ pub struct Batch<N> {
   /// Captured cells at the terminal game state, 2 channels:
   /// the cells captured by the current player and by the opponent.
   pub captured: Array4<N>,
+  /// The dots on the board [`FUTURE_POSITION_MOVES`] ahead, one channel per
+  /// future position, nearest first: 1 for a dot of the current player, -1
+  /// for a dot of the opponent, 0 for no dot. A future position past the end
+  /// of the game is the game's final position.
+  pub future: Array4<N>,
   /// Per-move q targets, 3 channels: the value the search settled on for each
   /// explored child of the position, the score it settled on in points, then
   /// the search weight behind them. Cells the search never explored - and
@@ -59,7 +80,8 @@ pub struct Batch<N> {
   /// zero weight, which masks them out of the loss.
   pub q_values: Array4<N>,
   /// The weight of the targets only the end of the game gives - the final
-  /// score, the TD scores and the captured cells: 1 for a position of a game
+  /// score, the TD scores, the captured cells and the future positions: 1 for
+  /// a position of a game
   /// played out, 0 for a side position, which has none, see
   /// [`ExampleGame::played_out`].
   pub outcome_weights: Array1<N>,
@@ -496,6 +518,7 @@ impl Examples {
     let mut td_scores = Vec::<N>::with_capacity(range.len() * TD_VALUES);
     let mut scores = Vec::<N>::with_capacity(range.len() * SCORE_ONE_HOT_SIZE);
     let mut captured = Vec::<N>::with_capacity(range.len() * 2 * height as usize * width as usize);
+    let mut future = Vec::<N>::with_capacity(range.len() * FUTURE_POSITIONS * height as usize * width as usize);
     let mut q_values = Vec::<N>::with_capacity(range.len() * 3 * height as usize * width as usize);
     let mut outcome_weights = Vec::<N>::with_capacity(range.len());
     for example in self.examples.get(range.clone()).unwrap() {
@@ -570,6 +593,7 @@ impl Examples {
         td_scores.extend(iter::repeat_n(N::zero(), TD_VALUES));
         scores.extend(iter::repeat_n(N::zero(), SCORE_ONE_HOT_SIZE));
         captured.extend(iter::repeat_n(N::zero(), 2 * (width * height) as usize));
+        future.extend(iter::repeat_n(N::zero(), FUTURE_POSITIONS * (width * height) as usize));
         outcome_weights.push(N::zero());
         continue;
       }
@@ -583,14 +607,22 @@ impl Examples {
       );
       score_one_hot_to_vec(score, komi_x_2, &mut scores);
       // Replay the rest of the game to get the captured dots at the terminal
-      // state, collecting the score the game stood at on every turn from this
-      // position on for the TD score targets. Grounded state is not updated
-      // since it affects neither the captures nor the score.
+      // state and the future positions on the way there, collecting the score
+      // the game stood at on every turn from this position on for the TD
+      // score targets. Grounded state is not updated since it affects neither
+      // the dots, the captures nor the score.
       let komi = f64::from(komi_x_2) / 2.0;
+      let mut future_positions = FUTURE_POSITION_MOVES.iter().peekable();
       let mut turn_scores = Vec::with_capacity(game.moves.len() - example.position);
-      for &(pos, move_player) in game.moves.iter().skip(example.position) {
+      for (i, &(pos, move_player)) in game.moves.iter().skip(example.position).enumerate() {
+        while future_positions.next_if(|&&moves| moves == i).is_some() {
+          future_features_to_vec(&field, player, width, height, example.rotation, &mut future);
+        }
         turn_scores.push(f64::from(field.score(player)) + komi);
         assert!(field.put_point(pos, move_player));
+      }
+      for _ in future_positions {
+        future_features_to_vec(&field, player, width, height, example.rotation, &mut future);
       }
       Self::td_scores_to_vec::<N>(
         f64::from(game.width * game.height),
@@ -626,6 +658,9 @@ impl Examples {
         .unwrap(),
       captured: Array::from(captured)
         .into_shape_with_order((range.len(), 2, height as usize, width as usize))
+        .unwrap(),
+      future: Array::from(future)
+        .into_shape_with_order((range.len(), FUTURE_POSITIONS, height as usize, width as usize))
         .unwrap(),
       q_values: Array::from(q_values)
         .into_shape_with_order((range.len(), 3, height as usize, width as usize))

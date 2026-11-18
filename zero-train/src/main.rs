@@ -576,6 +576,7 @@ fn train<R: Rng>(params: TrainParams, device: Device, rng: &mut R, should_stop: 
       batch.td_scores,
       batch.scores,
       batch.captured,
+      batch.future,
       batch.q_values,
       batch.outcome_weights,
       learning_rate,
@@ -634,6 +635,7 @@ fn validate(learner: &Learner, validation: &Examples, batch_size: usize, zobrist
         batch.td_scores,
         batch.scores,
         batch.captured,
+        batch.future,
         batch.q_values,
         batch.outcome_weights,
       )

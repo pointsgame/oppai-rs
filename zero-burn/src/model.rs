@@ -13,7 +13,7 @@ use burn::{
   store::{ModuleRecord, RecordError},
   tensor::{
     DType, DataError, Device, ExecutionError, FloatDType, Int, Tensor, TensorData, Transaction, ZeroDimPlaceholders,
-    activation::{log_softmax, mish, sigmoid, softmax, softplus},
+    activation::{log_softmax, mish, sigmoid, softmax, softplus, tanh},
     module::{conv2d, linear},
     ops::ConvOptions,
     s,
@@ -22,7 +22,7 @@ use burn::{
 use derive_more::From;
 use ndarray::{Array, Array1, Array2, Array3, Array4, Dimension, ShapeError};
 use oppai_zero::{
-  examples::TD_VALUES,
+  examples::{FUTURE_POSITIONS, TD_VALUES},
   field_features::{CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel, VALUE_COLUMNS},
 };
@@ -923,6 +923,19 @@ impl PolicyHead {
   }
 }
 
+/// Output channels of the captured head: the logits of the cells captured by
+/// the current player and by the opponent at the end of the game, then for
+/// each future position the pre-tanh prediction of its dots, see
+/// [`Batch::future`](oppai_zero::examples::Batch::future).
+const CAPTURED_OUTPUTS: usize = 2 + FUTURE_POSITIONS;
+
+/// How much each future position counts towards its loss, nearest first: the
+/// farther one is much harder to predict, so it gets less of the weight.
+const FUTURE_POSITION_WEIGHTS: [f32; FUTURE_POSITIONS] = [1.0, 0.25];
+
+/// The per-cell predictions of the board ahead: the captured cells at the end
+/// of the game and the future positions, see [`CAPTURED_OUTPUTS`]. Search
+/// reads neither, they are there to be learned.
 #[derive(Module, Debug)]
 pub struct CapturedHead {
   conv: Conv2d,
@@ -931,7 +944,7 @@ pub struct CapturedHead {
 impl CapturedHead {
   pub fn new(device: &Device, inner_channels: usize) -> Self {
     Self {
-      conv: Conv2dConfig::new([inner_channels, 2], [1, 1])
+      conv: Conv2dConfig::new([inner_channels, CAPTURED_OUTPUTS], [1, 1])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -1097,6 +1110,8 @@ impl Model {
     (mish(x), mask, mask_sum_hw)
   }
 
+  /// The policy logits, the value outputs and the outputs of the captured
+  /// head, see [`CAPTURED_OUTPUTS`].
   pub fn forward(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, ValuePredictions, Tensor<4>) {
     let komi = global.clone().slice(s![.., GLOBAL_KOMI..GLOBAL_KOMI + 1]);
     let (x, mask, mask_sum_hw) = self.trunk(spatial, global);
@@ -1442,7 +1457,7 @@ fn scale_gradients(model: &Model, grads: GradientsParams, scale: f32) -> Gradien
 
 /// Every term of the training loss, each already weighted and averaged over the
 /// batch, named as they are logged and in that order.
-pub struct Losses(pub [(&'static str, Tensor<1>); 16]);
+pub struct Losses(pub [(&'static str, Tensor<1>); 17]);
 
 impl Losses {
   /// The terms as numbers, reading them back from the device.
@@ -1483,6 +1498,7 @@ impl Predictor {
     td_scores: Array2<f32>,
     scores: Array2<f32>,
     captured: Array4<f32>,
+    future: Array4<f32>,
     q_values: Array4<f32>,
     outcome_weights: Array1<f32>,
   ) -> Losses {
@@ -1521,6 +1537,10 @@ impl Predictor {
       TensorData::new(into_data_vec(captured), [batch, 2, height, width]),
       &self.device,
     );
+    let future: Tensor<4> = Tensor::from_data(
+      TensorData::new(into_data_vec(future), [batch, FUTURE_POSITIONS, height, width]),
+      &self.device,
+    );
     let q_values: Tensor<4> = Tensor::from_data(
       TensorData::new(into_data_vec(q_values), [batch, 3, height, width]),
       &self.device,
@@ -1540,15 +1560,18 @@ impl Predictor {
       .slice(s![.., 1..2])
       .reshape(ZeroDimPlaceholders([0, -1]));
     let q_weights = q_values.slice(s![.., 2..3]).reshape(ZeroDimPlaceholders([0, -1]));
-    // The captured head predicts the terminal captured state of every board
-    // cell, so the loss is masked only by the board mask.
+    // The captured head predicts the terminal captured state and the future
+    // dots of every board cell, so its losses are masked only by the board
+    // mask.
     let mask = inputs.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let model = match compute_dtype {
       Some(dtype) => self.model.clone().with_compute_dtype(dtype),
       None => self.model.clone(),
     };
-    let (out_policy_logits, out_value, out_captured_logits) = model.forward(inputs, global);
+    let (out_policy_logits, out_value, out_captured) = model.forward(inputs, global);
+    let out_captured_logits = out_captured.clone().slice(s![.., 0..2]);
+    let out_future = tanh(out_captured.slice(s![.., 2..CAPTURED_OUTPUTS]));
     let ValuePredictions {
       value: out_value_logits,
       value_error: out_value_error,
@@ -1748,10 +1771,27 @@ impl Predictor {
     // like KataGo's ownership loss.
     let captured_bce = out_captured_logits.clone().clamp_min(0.0) - out_captured_logits.clone() * captured
       + (-out_captured_logits.abs()).exp().log1p();
-    let captured_loss = ((captured_bce * mask).sum_dim(2).sum_dim(3) / mask_sum_hw
-      * outcome_weights.reshape(ZeroDimPlaceholders([0, 1, 1, 1])))
+    let captured_loss = ((captured_bce * mask.clone()).sum_dim(2).sum_dim(3) / mask_sum_hw.clone()
+      * outcome_weights.clone().reshape(ZeroDimPlaceholders([0, 1, 1, 1])))
     .sum()
       * 1.5
+      / batch;
+    // The squared error of the predicted dots at each future position. The
+    // future positions are a fixed number of moves ahead, so about the same
+    // number of cells changes by then on every board - which would make it a
+    // sum over the cells - but on a bigger board where those moves land is
+    // less certain, so it is normalized by the side of the board, between the
+    // sum and the mean over the area.
+    let future_weights =
+      Tensor::<1>::from_floats(FUTURE_POSITION_WEIGHTS, &self.device).reshape([1, FUTURE_POSITIONS as i32, 1, 1]);
+    let future_loss = (((out_future - future).square() * mask * future_weights)
+      .sum_dim(1)
+      .sum_dim(2)
+      .sum_dim(3)
+      / mask_sum_hw.sqrt()
+      * outcome_weights.reshape(ZeroDimPlaceholders([0, 1, 1, 1])))
+    .sum()
+      * 0.25
       / batch;
 
     // Per-move q loss: each explored move's predicted value against the value
@@ -1800,6 +1840,7 @@ impl Predictor {
       ("pdf", pdf_loss),
       ("cdf", cdf_loss),
       ("captured", captured_loss),
+      ("future position", future_loss),
       ("q", q_values_loss),
       ("q score", q_scores_loss),
     ])
@@ -1821,6 +1862,7 @@ impl Learner {
     td_scores: Array2<f32>,
     scores: Array2<f32>,
     captured: Array4<f32>,
+    future: Array4<f32>,
     q_values: Array4<f32>,
     outcome_weights: Array1<f32>,
   ) -> Losses {
@@ -1835,6 +1877,7 @@ impl Learner {
       td_scores,
       scores,
       captured,
+      future,
       q_values,
       outcome_weights,
     )
@@ -1855,6 +1898,7 @@ impl OppaiTrainableModel<f32> for Learner {
     td_scores: Array2<f32>,
     scores: Array2<f32>,
     captured: Array4<f32>,
+    future: Array4<f32>,
     q_values: Array4<f32>,
     outcome_weights: Array1<f32>,
     learning_rate: f64,
@@ -1869,6 +1913,7 @@ impl OppaiTrainableModel<f32> for Learner {
       td_scores,
       scores,
       captured,
+      future,
       q_values,
       outcome_weights,
     );
@@ -1932,7 +1977,7 @@ mod tests {
   #[cfg(feature = "flex")]
   use oppai_zero::field_features::score_one_hot;
   use oppai_zero::{
-    examples::TD_VALUES,
+    examples::{FUTURE_POSITIONS, TD_VALUES},
     field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
     model::{Model as OppaiModel, TrainableModel, VALUE_COLUMNS},
   };
@@ -2771,6 +2816,7 @@ mod tests {
         let mut scores = Array2::from_elem((1, SCORE_ONE_HOT_SIZE), 0.0);
         scores[(0, 0)] = 1.0;
         let captured = Array4::from_elem((1, 2, 4, 8), 1.0);
+        let future = Array4::from_elem((1, FUTURE_POSITIONS, 4, 8), 0.5);
         // One explored move with a recorded q value, q score and search
         // weight; every other cell keeps zero weight and stays out of the q
         // losses.
@@ -2792,6 +2838,7 @@ mod tests {
             td_scores,
             scores,
             captured,
+            future,
             q_values,
             array![1.0],
             0.01,
@@ -2843,13 +2890,14 @@ mod tests {
       Array2::from_elem((1, TD_VALUES), 3.0),
       scores,
       Array4::from_elem((1, 2, 4, 8), 0.0),
+      Array4::from_elem((1, FUTURE_POSITIONS, 4, 8), -1.0),
       q_values,
       array![1.0],
     );
     let losses = |learner: &Learner| {
       let b = batch.clone();
       learner
-        .losses(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10)
+        .losses(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10, b.11)
         .values()
     };
 
@@ -2860,7 +2908,7 @@ mod tests {
     assert!(!valid.device.is_autodiff());
     let b = batch.clone();
     let valid_losses = valid
-      .losses(None, b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10)
+      .losses(None, b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10, b.11)
       .values();
     for (&(name, training), &(_, validation)) in before.iter().zip(&valid_losses) {
       assert!(
@@ -2869,15 +2917,15 @@ mod tests {
       );
     }
     let names = before.iter().map(|&(name, _)| name).collect::<Vec<_>>();
-    assert_eq!(names.len(), 16);
-    assert_eq!(names.iter().collect::<std::collections::HashSet<_>>().len(), 16);
+    assert_eq!(names.len(), 17);
+    assert_eq!(names.iter().collect::<std::collections::HashSet<_>>().len(), 17);
     assert_eq!(&names[..2], &["value", "td value"]);
     assert!(before.iter().all(|&(_, loss)| loss.is_finite()));
 
     for _ in 0..4 {
       let b = batch.clone();
       learner = learner
-        .train(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10, 0.01)
+        .train(b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7, b.8, b.9, b.10, b.11, 0.01)
         .unwrap();
     }
     let total = |losses: &[(&str, f32)]| losses.iter().map(|&(_, loss)| loss).sum::<f32>();
@@ -2885,8 +2933,8 @@ mod tests {
   }
 
   // A side position has no game played out from it, so the targets of the
-  // game's end - the final score, the TD scores, the captured cells and the
-  // policy of the won games - are left out of its losses, whatever they hold,
+  // game's end - the final score, the TD scores, the captured cells, the
+  // future positions and the policy of the won games - are left out of its losses, whatever they hold,
   // while the targets of its own search still count.
   #[cfg(feature = "flex")]
   #[test]
@@ -2909,6 +2957,7 @@ mod tests {
           Array2::from_elem((1, TD_VALUES), 3.0),
           scores.clone(),
           Array4::from_elem((1, 2, 4, 8), 1.0),
+          Array4::from_elem((1, FUTURE_POSITIONS, 4, 8), 1.0),
           Array4::from_elem((1, 3, 4, 8), 0.0),
           array![outcome_weight],
         )
@@ -2921,6 +2970,7 @@ mod tests {
       "pdf",
       "cdf",
       "captured",
+      "future position",
     ];
     let played_out = losses(1.0);
     let side = losses(0.0);
@@ -2985,6 +3035,9 @@ mod tests {
         Array2::from_elem((2, TD_VALUES), 3.0),
         scores.clone(),
         Array4::from_elem((2, 2, 4, 8), 0.0),
+        Array4::from_shape_fn((2, FUTURE_POSITIONS, 4, 8), |(b, _, y, x)| {
+          [-1.0, 0.0, 1.0][(b + y + x) % 3]
+        }),
         Array4::from_elem((2, 3, 4, 8), 0.0),
         array![1.0, 1.0],
       )

@@ -255,6 +255,32 @@ pub fn captured_features_to_vec<N: Float + Zero + One + Copy>(
   );
 }
 
+/// One plane of the dots in the given field state: 1 for a dot of `player`,
+/// -1 for a dot of the enemy and 0 for a cell without one. Captured dots stay
+/// on the board in dots, so they count as dots of whoever put them, the same
+/// as in the input planes of [`field_features_to_vec`].
+pub fn future_features_to_vec<N: Float + Zero + One + Copy>(
+  field: &Field,
+  player: Player,
+  width: u32,
+  height: u32,
+  rotation: u8,
+  features: &mut Vec<N>,
+) {
+  push_features(
+    field,
+    |cell| match cell.get_players_point() {
+      Some(p) if p == player => N::one(),
+      Some(_) => -N::one(),
+      None => N::zero(),
+    },
+    features,
+    width,
+    height,
+    rotation,
+  );
+}
+
 /// The input planes of [`field_features_to_vec`] as an array, with every
 /// history plane filled. Builds the [`Tactics`] on a copy of `field`, so it
 /// is for the places that need the planes of few positions.
