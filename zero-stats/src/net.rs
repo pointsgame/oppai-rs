@@ -8,7 +8,9 @@ use anyhow::{Result, anyhow};
 use ndarray::{Array1, Array2, Array4, s};
 use oppai_field::player::Player;
 use oppai_zero::{
-  field_features::{CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, field_features_to_vec, global_to_vec},
+  field_features::{
+    CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, GLOBAL_SHORTFALL, HISTORY_CHANNELS, field_features_to_vec, global_to_vec,
+  },
   mcgs::settled,
   model::Model,
   tactics::{TACTICAL_CHANNELS, Tactics},
@@ -22,16 +24,18 @@ pub enum Blank {
   Tactics,
   History,
   Komi,
+  Shortfall,
 }
 
 impl Blank {
-  pub const NAMES: &str = "tactics, history, komi";
+  pub const NAMES: &str = "tactics, history, komi, shortfall";
 
   pub fn parse(name: &str) -> Result<Self> {
     match name.trim() {
       "tactics" => Ok(Blank::Tactics),
       "history" => Ok(Blank::History),
       "komi" => Ok(Blank::Komi),
+      "shortfall" => Ok(Blank::Shortfall),
       other => Err(anyhow!("unknown input group {other}, expected one of {}", Self::NAMES)),
     }
   }
@@ -41,6 +45,7 @@ impl Blank {
       Blank::Tactics => "tactics",
       Blank::History => "history",
       Blank::Komi => "komi",
+      Blank::Shortfall => "shortfall",
     }
   }
 
@@ -49,15 +54,17 @@ impl Blank {
     match self {
       Blank::Tactics => CHANNELS - TACTICAL_CHANNELS..CHANNELS,
       Blank::History => CHANNELS - TACTICAL_CHANNELS - HISTORY_CHANNELS..CHANNELS - TACTICAL_CHANNELS,
-      Blank::Komi => 0..0,
+      Blank::Komi | Blank::Shortfall => 0..0,
     }
   }
 
-  /// The global features the group covers: the komi features, everything
-  /// after the lead, see `global_to_vec`.
+  /// The global features the group covers: the komi features, those after
+  /// the lead up to the komi itself, or the two shortfalls, see
+  /// `global_to_vec`.
   fn globals(self) -> Range<usize> {
     match self {
-      Blank::Komi => 1..GLOBAL_FEATURES,
+      Blank::Komi => 1..GLOBAL_KOMI + 1,
+      Blank::Shortfall => GLOBAL_SHORTFALL..GLOBAL_SHORTFALL + 2,
       _ => 0..0,
     }
   }

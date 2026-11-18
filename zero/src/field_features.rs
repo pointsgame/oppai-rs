@@ -341,11 +341,30 @@ pub fn score_one_hot<N: Float + Zero + One + Copy>(score: i32, komi_x_2: i32) ->
 }
 
 /// The features of the position as a whole, see [`global_to_vec`].
-pub const GLOBAL_FEATURES: usize = 3;
+pub const GLOBAL_FEATURES: usize = 5;
 
 /// The index of the komi among the [`GLOBAL_FEATURES`], in points from the
 /// view of the player to move.
 pub const GLOBAL_KOMI: usize = 2;
+
+/// The index of the first of the two shortfalls among the
+/// [`GLOBAL_FEATURES`], see [`shortfall_x_2`].
+pub const GLOBAL_SHORTFALL: usize = 3;
+
+/// Twice the points `player` still has to secure before the game may end in
+/// its favour: its ungrounded dots minus its lead, with `komi_x_2` from its
+/// view, never below zero. The game ends as soon as either side's lead
+/// exceeds its ungrounded dots - see [`Field::is_game_over`] - so this is the
+/// distance to the end that a side can close by its own moves: every dot it
+/// grounds and every point it captures takes it closer.
+pub fn shortfall_x_2(field: &Field, player: Player, komi_x_2: i32) -> i32 {
+  let lead_x_2 = field.score(player) * 2 + komi_x_2;
+  let non_grounded = match player {
+    Player::Red => field.non_grounded_red,
+    Player::Black => field.non_grounded_black,
+  } as i32;
+  (non_grounded * 2 - lead_x_2).max(0)
+}
 
 /// The features of the position as a whole, from the view of `player`, the
 /// player to move, with `komi_x_2` from that view too:
@@ -353,17 +372,28 @@ pub const GLOBAL_KOMI: usize = 2;
 /// 0. the lead with the komi, in units of 20 points;
 /// 1. 1 if the komi is whole, so that the game can end in a draw, and 0 if it
 ///    is a half point;
-/// 2. the komi itself, in points.
+/// 2. the komi itself, in points;
+/// 3. the shortfall of the player to move, see [`shortfall_x_2`], in units of
+///    20 points like the lead;
+/// 4. the same for the opponent.
 ///
 /// The lead alone hides the komi: a lead of one point under a komi of -0.5 is
 /// the same number as no lead under a komi of 0.5, and a whole komi differs
 /// from a half one by 1/40 of it, too little for the network to read whether
-/// a draw is possible. The last two features tell both apart exactly.
+/// a draw is possible. The komi features tell both apart exactly.
+///
+/// The shortfalls say how close the game is to its end. Whether a side may
+/// end it rests on a count of its ungrounded dots over the whole board, which
+/// the network could only approximate by pooling the grounded plane; the
+/// search already steers by the same distance, see `Search::aux_utility`.
 pub fn global_to_vec<N: Float + Zero + One + Copy>(field: &Field, player: Player, komi_x_2: i32, global: &mut Vec<N>) {
-  let score = N::from(field.score(player) * 2 + komi_x_2).unwrap() / N::from(40).unwrap();
+  let forty = N::from(40).unwrap();
+  let score = N::from(field.score(player) * 2 + komi_x_2).unwrap() / forty;
   global.push(score);
   global.push(if komi_x_2 % 2 == 0 { N::one() } else { N::zero() });
   global.push(N::from(komi_x_2).unwrap() / (N::one() + N::one()));
+  global.push(N::from(shortfall_x_2(field, player, komi_x_2)).unwrap() / forty);
+  global.push(N::from(shortfall_x_2(field, player.next(), -komi_x_2)).unwrap() / forty);
 }
 
 pub fn global<N: Float + Zero + One>(field: &Field, player: Player, komi_x_2: i32) -> Array1<N> {

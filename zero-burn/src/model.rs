@@ -2230,7 +2230,14 @@ mod tests {
     let mut model = Model::new(&device, &ModelConfig::default());
     model.initialize(&device);
     let inputs = Tensor::<4>::random([3, CHANNELS, 5, 6], burn::tensor::Distribution::Default, &device);
-    let global = Tensor::<2>::from_floats([[0.1, 1.0, 0.0], [0.0, 0.0, 0.5], [-0.1, 1.0, -1.0]], &device);
+    let global = Tensor::<2>::from_floats(
+      [
+        [0.1, 1.0, 0.0, 0.2, 0.0],
+        [0.0, 0.0, 0.5, 0.0, 0.3],
+        [-0.1, 1.0, -1.0, 0.1, 0.1],
+      ],
+      &device,
+    );
     let (_, predictions, _) = model.forward(inputs.clone(), global.clone());
     let center = SCORE_ONE_HOT_SIZE / 2;
     let expected = predictions
@@ -2587,7 +2594,7 @@ mod tests {
         let predictor = Predictor { model, device };
         let (policies, values) = futures::executor::block_on(predictor.predict(
           Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
-          array![[0.2, 1.0, 0.0]],
+          array![[0.2, 1.0, 0.0, 0.3, 0.1]],
           array![0.0],
         ))
         .unwrap();
@@ -2605,7 +2612,11 @@ mod tests {
         // to be blended by its own weight rather than the batch's first.
         let (batched, _) = futures::executor::block_on(predictor.predict(
           Array4::from_elem((3, CHANNELS, 4, 8), 1.0),
-          array![[0.2, 1.0, 0.0], [0.2, 1.0, 0.0], [0.2, 1.0, 0.0]],
+          array![
+            [0.2, 1.0, 0.0, 0.3, 0.1],
+            [0.2, 1.0, 0.0, 0.3, 0.1],
+            [0.2, 1.0, 0.0, 0.3, 0.1]
+          ],
           array![0.0, 1.0, 0.5],
         ))
         .unwrap();
@@ -2824,7 +2835,7 @@ mod tests {
     scores[(0, SCORE_ONE_HOT_SIZE / 2)] = 1.0;
     let batch = (
       Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
-      array![[0.2, 1.0, 0.0]],
+      array![[0.2, 1.0, 0.0, 0.3, 0.1]],
       Array3::from_elem((1, 4, 8), 1.0 / 32.0),
       Array3::from_elem((1, 4, 8), 1.0 / 32.0),
       array![[1.0, 0.0]],
@@ -2890,7 +2901,7 @@ mod tests {
         .losses(
           None,
           Array4::from_elem((1, CHANNELS, 4, 8), 1.0),
-          array![[0.2, 1.0, 0.0]],
+          array![[0.2, 1.0, 0.0, 0.3, 0.1]],
           Array3::from_elem((1, 4, 8), 1.0 / 32.0),
           Array3::from_elem((1, 4, 8), 0.0),
           array![[1.0, 0.0]],
@@ -2966,7 +2977,7 @@ mod tests {
     let losses = |learner: &Learner| {
       learner.losses(
         inputs.clone(),
-        array![[0.2, 1.0, 0.0], [-0.2, 0.0, 0.5]],
+        array![[0.2, 1.0, 0.0, 0.3, 0.1], [-0.2, 0.0, 0.5, 0.0, 0.4]],
         Array3::from_elem((2, 4, 8), 1.0 / 32.0),
         Array3::from_elem((2, 4, 8), 1.0 / 32.0),
         array![[1.0, 0.0], [0.0, 1.0]],

@@ -1,5 +1,6 @@
 use crate::field_features::{
-  CHANNELS, SCORE_ONE_HOT_SIZE, add_unrotated_policy, field_features, rotation_sizes, score_one_hot,
+  CHANNELS, GLOBAL_FEATURES, GLOBAL_SHORTFALL, SCORE_ONE_HOT_SIZE, add_unrotated_policy, field_features, global,
+  rotation_sizes, score_one_hot,
 };
 use crate::tactics::{TACTICAL_CHANNELS, Tactics};
 use ndarray::prelude::{Array2, array, s};
@@ -614,4 +615,37 @@ fn tactics_leave_the_field_unchanged() {
   let tactics = Tactics::new(&mut field, Player::Black);
   assert!((0..field.length()).any(|pos| tactics.plane(1, pos)));
   assert_eq!(state(&field), before);
+}
+
+// The shortfalls are each side's ungrounded dots minus its lead, komi
+// included, from the view of the player to move first, and never negative.
+#[test]
+fn global_shortfalls() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .......
+    .a.a...
+    .......
+    ....A..
+    .......
+    ",
+  );
+  assert_eq!(field.non_grounded_red, 2);
+  assert_eq!(field.non_grounded_black, 1);
+
+  let shortfalls = |player: Player, komi_x_2: i32| {
+    let features = global::<f64>(&field, player, komi_x_2);
+    assert_eq!(features.len(), GLOBAL_FEATURES);
+    (features[GLOBAL_SHORTFALL] * 20.0, features[GLOBAL_SHORTFALL + 1] * 20.0)
+  };
+  assert_eq!(shortfalls(Player::Red, 0), (2.0, 1.0));
+  assert_eq!(shortfalls(Player::Black, 0), (1.0, 2.0));
+  // Half a point of komi for Red takes half a point off Red's shortfall and
+  // adds it to Black's.
+  assert_eq!(shortfalls(Player::Red, 1), (1.5, 1.5));
+  assert_eq!(shortfalls(Player::Black, -1), (1.5, 1.5));
+  // A lead beyond the ungrounded dots leaves no shortfall rather than a
+  // negative one.
+  assert_eq!(shortfalls(Player::Black, 6), (0.0, 5.0));
 }

@@ -1,6 +1,6 @@
 use crate::field_features::{
   CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, add_unrotated_policy, field_features_len, field_features_to_vec,
-  global_to_vec, rotation_sizes,
+  global_to_vec, rotation_sizes, shortfall_x_2,
 };
 use crate::model::{Model, VALUE_COLUMNS};
 use crate::tactics::Tactics;
@@ -1072,21 +1072,6 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
   }
 
-  /// Twice the points a side still has to secure before it may end the game:
-  /// its ungrounded dots minus its lead, komi included, never below zero. The
-  /// game ends as soon as either side's lead exceeds its ungrounded dots - see
-  /// [`Field::is_game_over`] - so this is the distance to the end that a side
-  /// can close by its own moves: every dot it grounds and every point it
-  /// captures takes it closer.
-  fn shortfall_x_2(field: &Field, player: Player, komi_x_2: i32) -> i32 {
-    let lead_x_2 = field.score(player) * 2 + komi_x_2;
-    let non_grounded = match player {
-      Player::Red => field.non_grounded_red,
-      Player::Black => field.non_grounded_black,
-    } as i32;
-    (non_grounded * 2 - lead_x_2).max(0)
-  }
-
   /// The auxiliary utility of a leaf evaluation: what the search plays for
   /// beyond winning. Added on top of the win/loss value to form the utility the
   /// tree selects moves by, while the win/loss value itself is carried
@@ -1097,7 +1082,7 @@ impl<N: Float + Sum + Copy> Search<N> {
   ///
   /// The early-finish term rewards the side the win/loss value favours for
   /// being close to able to end the game: it squashes that side's
-  /// shortfall (see [`Self::shortfall_x_2`]) through an atan, from 1 at no shortfall - where every
+  /// shortfall (see [`shortfall_x_2`]) through an atan, from 1 at no shortfall - where every
   /// terminal sits - towards -1 as it grows. A term on the number of moves
   /// played would only tell lines apart once they reach a terminal, which in a
   /// decided game with dozens of ungrounded dots on the board lies beyond the
@@ -1138,12 +1123,12 @@ impl<N: Float + Sum + Copy> Search<N> {
     let two_over_pi = N::from(std::f64::consts::FRAC_2_PI).unwrap();
     let area = N::from(field.width() * field.height()).unwrap();
     let scale = area.sqrt() / N::from(2).unwrap();
-    let shortfall_x_2 = if winloss >= N::zero() {
-      Self::shortfall_x_2(field, player, komi_x_2)
+    let leader_shortfall_x_2 = if winloss >= N::zero() {
+      shortfall_x_2(field, player, komi_x_2)
     } else {
-      Self::shortfall_x_2(field, player.next(), -komi_x_2)
+      shortfall_x_2(field, player.next(), -komi_x_2)
     };
-    let shortfall = N::from(shortfall_x_2).unwrap() / N::from(2).unwrap();
+    let shortfall = N::from(leader_shortfall_x_2).unwrap() / N::from(2).unwrap();
     let finish_value = N::one() - N::from(2).unwrap() * two_over_pi * (shortfall / scale).atan();
     let score_value = (score / scale).atan() * two_over_pi;
     let draw_value = if field.score(player) * 2 + komi_x_2 == 0 {

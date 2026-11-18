@@ -20,7 +20,7 @@ use oppai_zero_burn::model::SCORE_BELIEF_OFFSETS;
 use std::{collections::BTreeMap, path::PathBuf};
 
 /// The names of the global features, see `global_to_vec`.
-const GLOBAL_NAMES: [&str; GLOBAL_FEATURES] = ["lead", "whole komi", "komi"];
+const GLOBAL_NAMES: [&str; GLOBAL_FEATURES] = ["lead", "whole komi", "komi", "shortfall", "opponent shortfall"];
 
 /// The names of the score belief's per-bin inputs, see `score_belief_offsets`.
 const OFFSET_NAMES: [&str; SCORE_BELIEF_OFFSETS] = ["bin score", "level"];
