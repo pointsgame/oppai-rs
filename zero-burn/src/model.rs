@@ -1482,6 +1482,39 @@ impl Predictor {
     }
   }
 
+  /// What the captured head predicts for each cell: the probabilities of it
+  /// being captured at the end of the game by the player to move and by the
+  /// opponent, then the predicted dots of each future position, see
+  /// [`CAPTURED_OUTPUTS`]. Search never reads these, they are for checking
+  /// what the head has learned.
+  pub fn predict_board_ahead(&self, inputs: Array4<f32>, global: Array2<f32>) -> Result<Array4<f32>, ModelError> {
+    let (batch, channels, height, width) = inputs.dim();
+    let dtype = self.model.input_dtype();
+    let inputs = Tensor::<4>::from_data(
+      TensorData::new(into_data_vec(inputs), [batch, channels, height, width]),
+      &self.device,
+    )
+    .cast(dtype);
+    let global = Tensor::<2>::from_data(
+      TensorData::new(into_data_vec(global), [batch, GLOBAL_FEATURES]),
+      &self.device,
+    )
+    .cast(dtype);
+    let (_, _, captured) = self.model.forward(inputs, global);
+    let captured = captured.cast(FloatDType::F32);
+    let outputs = Tensor::cat(
+      vec![
+        sigmoid(captured.clone().slice(s![.., 0..2])),
+        tanh(captured.slice(s![.., 2..CAPTURED_OUTPUTS])),
+      ],
+      1,
+    );
+    Ok(Array4::from_shape_vec(
+      (batch, CAPTURED_OUTPUTS, height, width),
+      outputs.into_data().try_into_vec()?,
+    )?)
+  }
+
   /// The loss terms of a batch for the model as it is, with the convolutions
   /// and projections computing in `compute_dtype` (see
   /// [`Model::with_compute_dtype`]).

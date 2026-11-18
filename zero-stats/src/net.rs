@@ -119,6 +119,11 @@ struct Position {
   /// The policy indices of the cells where the player to move and the
   /// opponent capture with a single dot.
   captures: [Vec<usize>; 2],
+  /// For every cell, whether it is captured by the player to move and by the
+  /// opponent now and at the end of the game: what the captured head
+  /// predicts the latter of.
+  captured_now: [Vec<bool>; 2],
+  captured_end: [Vec<bool>; 2],
 }
 
 /// The inputs for the positions of one game.
@@ -183,6 +188,17 @@ fn batch(game: &Game, from: usize, stride: usize) -> Option<Batch> {
           }
         }
       }
+      let captured = |field: &oppai_field::field::Field, owner: Player| -> Vec<bool> {
+        (0..height)
+          .flat_map(|y| (0..width).map(move |x| (x, y)))
+          .map(|(x, y)| {
+            let cell = field.cell(field.to_pos(x, y));
+            cell.is_captured() && cell.is_owner(owner)
+          })
+          .collect()
+      };
+      let captured_now = [captured(&field, player), captured(&field, player.next())];
+      let captured_end = [captured(&final_field, player), captured(&final_field, player.next())];
       let red_outcome = result_x_2.signum() as f64;
       positions.push(Position {
         quarter: (4 * i / (length + 1)).min(3),
@@ -196,6 +212,8 @@ fn batch(game: &Game, from: usize, stride: usize) -> Option<Batch> {
         last: i == length,
         played: (i < length).then(|| index(game.moves[i].0)),
         captures,
+        captured_now,
+        captured_end,
       });
     }
     if i < length {
@@ -252,6 +270,97 @@ struct Ablation {
   /// Per own and opponent's capture cells: positions with any, and the policy
   /// on them before and after blanking.
   captures: [(usize, f64, f64); 2],
+}
+
+/// The predictions of the captured head for one of its two channels, against
+/// what got captured by the end of the game.
+#[derive(Default)]
+struct CapturedStats {
+  cells: usize,
+  /// The cross-entropy of the predictions, summed over the cells.
+  bce: f64,
+  /// Cells captured at the end.
+  captured_end: usize,
+  /// The cells captured already, and of them those still captured at the end.
+  now: usize,
+  now_kept: usize,
+  /// The summed predictions on the cells captured already.
+  p_now: f64,
+  /// The predictions and the outcomes on the cells not captured yet.
+  open: Vec<(f32, bool)>,
+}
+
+impl CapturedStats {
+  fn add(&mut self, p: f32, now: bool, end: bool) {
+    let q = (p as f64).clamp(1e-7, 1.0 - 1e-7);
+    self.cells += 1;
+    self.bce -= if end { q.ln() } else { (1.0 - q).ln() };
+    self.captured_end += end as usize;
+    if now {
+      self.now += 1;
+      self.now_kept += end as usize;
+      self.p_now += p as f64;
+    } else {
+      self.open.push((p, end));
+    }
+  }
+
+  /// The cross-entropy of always predicting the share of the cells captured
+  /// at the end: what a head that ignores the board gets at best.
+  fn base_bce(&self) -> f64 {
+    let p = (self.captured_end as f64 / self.cells as f64).clamp(1e-7, 1.0 - 1e-7);
+    -(p * p.ln() + (1.0 - p) * (1.0 - p).ln())
+  }
+
+  /// The cross-entropy of telling the cells captured now from the rest and
+  /// predicting for each of the two groups the share of it captured at the
+  /// end: what a head that only reads the current captures gets at best.
+  fn copy_bce(&self) -> f64 {
+    let group = |positives: usize, total: usize| {
+      let p = (positives as f64 / total.max(1) as f64).clamp(1e-7, 1.0 - 1e-7);
+      -(positives as f64 * p.ln() + (total - positives) as f64 * (1.0 - p).ln())
+    };
+    let later = self.open.iter().filter(|(_, end)| *end).count();
+    (group(later, self.open.len()) + group(self.now_kept, self.now)) / self.cells as f64
+  }
+
+  /// The probability that a cell not captured yet that gets captured is
+  /// predicted higher than one that does not (the area under the ROC curve).
+  fn open_auc(&mut self) -> Option<f64> {
+    self.open.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let positives = self.open.iter().filter(|(_, end)| *end).count();
+    let negatives = self.open.len() - positives;
+    if positives == 0 || negatives == 0 {
+      return None;
+    }
+    // Ranks with ties averaged.
+    let mut rank_sum = 0.0;
+    let mut i = 0;
+    while i < self.open.len() {
+      let mut j = i;
+      while j < self.open.len() && self.open[j].0 == self.open[i].0 {
+        j += 1;
+      }
+      let rank = (i + j + 1) as f64 / 2.0;
+      rank_sum += rank * self.open[i..j].iter().filter(|(_, end)| *end).count() as f64;
+      i = j;
+    }
+    Some((rank_sum - (positives * (positives + 1)) as f64 / 2.0) / (positives * negatives) as f64)
+  }
+
+  /// The mean prediction on the cells not captured yet that get captured and
+  /// on those that do not.
+  fn open_means(&self) -> (Option<f64>, Option<f64>) {
+    let (mut later, mut never) = (Vec::new(), Vec::new());
+    for &(p, end) in &self.open {
+      if end {
+        later.push(p as f64)
+      } else {
+        never.push(p as f64)
+      }
+    }
+    (mean(&later), mean(&never))
+  }
 }
 
 fn argmax(values: &[f32]) -> usize {
@@ -319,6 +428,22 @@ pub fn run(params: NetParams) -> Result<()> {
       "opponent's captures",
     ],
   );
+  let mut captured_table = Table::new(
+    "Captured head: cells captured at the end of the game by the player to move (own) and the opponent, cross-entropy per cell against a constant and against copying the current captures, and the mean predicted probability by what happened",
+    &[
+      "model",
+      "captures",
+      "captured at end",
+      "of them already",
+      "BCE",
+      "constant",
+      "copy current",
+      "p already",
+      "p captured later",
+      "p never",
+      "AUC of later",
+    ],
+  );
 
   for path in &params.models {
     let model = BurnModel::load(&device, &config, path).map_err(|e| anyhow!("loading {}: {e:?}", path.display()))?;
@@ -334,10 +459,26 @@ pub fn run(params: NetParams) -> Result<()> {
     let mut calibration = Calibration::default();
     let mut draws = DrawStats::default();
     let mut ablations: Vec<Ablation> = params.blanks.iter().map(|_| Ablation::default()).collect();
+    let mut captured_stats = [CapturedStats::default(), CapturedStats::default()];
 
     for batch in &batches {
       let (policies, values) = predict(batch.inputs.clone(), batch.global.clone())?;
       let k = kind_index(batch.kind);
+      let ahead = predictor
+        .predict_board_ahead(batch.inputs.clone(), batch.global.clone())
+        .map_err(|e| anyhow!("prediction failed: {e:?}"))?;
+      for (j, position) in batch.positions.iter().enumerate() {
+        for (channel, stats) in captured_stats.iter_mut().enumerate() {
+          let p = ahead.slice(s![j, channel, .., ..]);
+          for ((&p, &now), &end) in p
+            .iter()
+            .zip(&position.captured_now[channel])
+            .zip(&position.captured_end[channel])
+          {
+            stats.add(p, now, end);
+          }
+        }
+      }
       let policy = |p: &ndarray::Array3<f32>, j: usize| p.slice(s![j, .., ..]).iter().copied().collect::<Vec<f32>>();
       for (j, position) in batch.positions.iter().enumerate() {
         let value = (values[(j, 0)] - values[(j, 1)]) as f64;
@@ -454,6 +595,23 @@ pub fn run(params: NetParams) -> Result<()> {
         .join(" "),
     ]);
 
+    for (channel, stats) in ["own", "opponent's"].into_iter().zip(&mut captured_stats) {
+      let (later, never) = stats.open_means();
+      captured_table.row(vec![
+        name.clone(),
+        channel.to_string(),
+        percent(stats.captured_end, stats.cells),
+        percent(stats.now_kept, stats.captured_end),
+        fmt(Some(stats.bce / stats.cells as f64), 4),
+        fmt(Some(stats.base_bce()), 4),
+        fmt(Some(stats.copy_bce()), 4),
+        fmt(Some(stats.p_now / stats.now.max(1) as f64), 3),
+        fmt(later, 3),
+        fmt(never, 4),
+        fmt(stats.open_auc(), 3),
+      ]);
+    }
+
     for (blanks, ablation) in params.blanks.iter().zip(&ablations) {
       let n = ablation.positions.max(1) as f64;
       let captures = |(count, before, after): (usize, f64, f64)| {
@@ -488,6 +646,7 @@ pub fn run(params: NetParams) -> Result<()> {
 
   calibration_table.print();
   draw_table.print();
+  captured_table.print();
   if !params.blanks.is_empty() {
     ablation_table.print();
   }
