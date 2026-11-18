@@ -19,6 +19,7 @@
 //!   every token what its neighbors hold, the same way on every board.
 
 use crate::{
+  conv_glu::{self, conv_glu},
   distance_attention::distance_attention,
   model::{NormActConv, TransformerConfig},
 };
@@ -433,6 +434,18 @@ impl DepthwiseConv {
       .reshape([batch, cells, channels])
       .cast(dtype)
   }
+
+  /// The [`glu`] of `hidden` plus its [`forward`](Self::forward), fused into
+  /// kernels of their own; only on the devices [`conv_glu`] serves.
+  pub fn glu(&self, hidden: Tensor<3>, context: &AttentionContext) -> Tensor<3> {
+    conv_glu(
+      hidden,
+      context.board.clone(),
+      self.weight.val(),
+      context.height,
+      context.width,
+    )
+  }
 }
 
 /// Feed-forward layer with a SiLU gated linear unit, normalized first; it
@@ -463,15 +476,22 @@ impl FeedForward {
   /// `[batch, cells, channels]` tokens.
   pub fn forward(&self, inputs: Tensor<3>, context: &AttentionContext) -> Tensor<3> {
     let hidden = self.input.forward(self.norm.forward(inputs));
-    let hidden = match &self.conv {
-      Some(conv) => hidden.clone() + conv.forward(hidden, context),
-      None => hidden,
+    let gated = match &self.conv {
+      Some(conv) if conv_glu::serves(&hidden.device()) => conv.glu(hidden, context),
+      Some(conv) => glu(hidden.clone() + conv.forward(hidden, context)),
+      None => glu(hidden),
     };
-    let [.., hidden_channels] = hidden.dims();
-    let activations = hidden.clone().slice(s![.., .., 0..hidden_channels / 2]);
-    let gates = hidden.slice(s![.., .., hidden_channels / 2..]);
-    self.output.forward(silu(activations) * gates)
+    self.output.forward(gated)
   }
+}
+
+/// The SiLU gated linear unit of `[batch, cells, channels]` hidden values,
+/// the activations then their gates: `[batch, cells, channels / 2]`.
+pub fn glu(hidden: Tensor<3>) -> Tensor<3> {
+  let [.., channels] = hidden.dims();
+  let activations = hidden.clone().slice(s![.., .., 0..channels / 2]);
+  let gates = hidden.slice(s![.., .., channels / 2..]);
+  silu(activations) * gates
 }
 
 /// Attention followed by a feed-forward layer, each adding its residual.
