@@ -412,18 +412,25 @@ impl DepthwiseConv {
   /// `[batch, cells, channels]` tokens. Those off the board are taken as
   /// zero, so that the edge of the board looks the same to it whatever
   /// padding is around.
+  ///
+  /// The tokens are already laid out as the GPU backends convolve, channels
+  /// last, so the channels are only permuted to where `conv2d` takes them,
+  /// and back: splitting the cells into rows and columns before permuting
+  /// keeps both a matter of strides. Permuting first and splitting after, the
+  /// split of the permuted tokens would copy them, and the output would come
+  /// back strided, keeping whatever consumes it from being fused.
   pub fn forward(&self, inputs: Tensor<3>, context: &AttentionContext) -> Tensor<3> {
     let [batch, cells, channels] = inputs.dims();
     let dtype = inputs.dtype();
     let weight = self.weight.val();
     let inputs = (inputs * context.on_board.clone().cast(dtype))
       .cast(weight.dtype())
-      .swap_dims(1, 2)
-      .reshape([batch, channels, context.height, context.width]);
+      .reshape([batch, context.height, context.width, channels])
+      .permute([0, 3, 1, 2]);
     let options = ConvOptions::new([1, 1], [1, 1], [1, 1], channels);
     conv2d(inputs, weight, None, options)
-      .reshape([batch, channels, cells])
-      .swap_dims(1, 2)
+      .permute([0, 2, 3, 1])
+      .reshape([batch, cells, channels])
       .cast(dtype)
   }
 }
