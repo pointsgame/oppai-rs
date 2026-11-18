@@ -1,5 +1,8 @@
 use crate::episode::{SidePosition, Visits};
-use crate::examples::{ExampleGame, Examples, FUTURE_POSITION_MOVES, FUTURE_POSITIONS, TD_VALUE_COEFFS, TD_VALUES};
+use crate::examples::{
+  ExampleGame, Examples, FUTURE_POSITION_MOVES, FUTURE_POSITIONS, TD_SHORT_LOOKAHEAD, TD_VALUE_COEFFS, TD_VALUES,
+  td_lookaheads,
+};
 use crate::field_features::SCORE_ONE_HOT_SIZE;
 use ndarray::Axis;
 use oppai_field::{
@@ -14,8 +17,8 @@ use std::sync::Arc;
 
 fn game(values: [f64; 2]) -> ExampleGame {
   ExampleGame {
-    width: 4,
-    height: 4,
+    width: 20,
+    height: 20,
     moves: vec![(0, Player::Red), (1, Player::Black)],
     komi_x_2: 0,
     score: 1,
@@ -37,9 +40,8 @@ fn td_values_blend_search_values() {
   Examples::td_values_to_vec(&game, 0, Player::Red, 1.0, &mut td_values);
   assert_eq!(td_values.len(), TD_VALUES * 2);
 
-  let area = 16.0;
-  for (i, c) in TD_VALUE_COEFFS.into_iter().enumerate() {
-    let now_factor = 1.0 / (1.0 + area * c);
+  for (i, lookahead) in td_lookaheads(400.0).into_iter().enumerate() {
+    let now_factor = 1.0 / (1.0 + lookahead);
     let expected =
       now_factor * 0.5 + (1.0 - now_factor) * now_factor * 0.25 + (1.0 - now_factor) * (1.0 - now_factor) * 1.0;
     let expected_win = (1.0 + expected) / 2.0;
@@ -58,7 +60,7 @@ fn td_values_blend_search_values() {
 // score the game ended at.
 #[test]
 fn td_scores_blend_the_coming_turns() {
-  let area = 16.0;
+  let area = 400.0;
   // Two points behind now, level next turn, and the game ends four points up.
   let turn_scores = [-2.0, 0.0];
   let final_score = 4.0;
@@ -66,8 +68,8 @@ fn td_scores_blend_the_coming_turns() {
   Examples::td_scores_to_vec(area, &turn_scores, final_score, &mut td_scores);
   assert_eq!(td_scores.len(), TD_VALUES);
 
-  for (i, c) in TD_VALUE_COEFFS.into_iter().enumerate() {
-    let now_factor = 1.0 / (1.0 + area * c);
+  for (i, lookahead) in td_lookaheads(area).into_iter().enumerate() {
+    let now_factor = 1.0 / (1.0 + lookahead);
     let expected =
       now_factor * -2.0 + (1.0 - now_factor) * now_factor * 0.0 + (1.0 - now_factor) * (1.0 - now_factor) * final_score;
     assert!((td_scores[i] - expected).abs() < 1e-12);
@@ -221,6 +223,21 @@ fn batch_future_positions_follow_the_game() {
     }
   }
   assert!(past_the_end, "some future position should be past the end of the game");
+}
+
+// The longer TD horizons are fractions of the area, the shortest a fixed
+// number of turns, and they stay ordered longest first however small the
+// board.
+#[test]
+fn td_lookaheads_scale_but_the_shortest() {
+  assert_eq!(td_lookaheads(400.0), [32.0, 10.0, TD_SHORT_LOOKAHEAD]);
+  let big = td_lookaheads(39.0 * 32.0);
+  assert_eq!(big[0], TD_VALUE_COEFFS[0] * 39.0 * 32.0);
+  assert_eq!(big[TD_VALUES - 1], TD_SHORT_LOOKAHEAD);
+  for area in [16.0, 100.0, 256.0, 400.0, 1600.0] {
+    let lookaheads = td_lookaheads(area);
+    assert!(lookaheads.windows(2).all(|w| w[0] >= w[1]), "{area}: {lookaheads:?}");
+  }
 }
 
 // A position at the very end of a game has no coming turns to blend, so every

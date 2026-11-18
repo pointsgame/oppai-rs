@@ -770,7 +770,7 @@ impl ValueHead {
     );
     let out_value_error = self.value_error(outv2.clone());
     // The TD score is a single small layer on features this path computes
-    // anyway. The longest horizon comes first in [`TD_VALUE_COEFFS`].
+    // anyway. The longest horizon comes first, see `td_lookaheads`.
     let out_td_score = linear(
       outv2,
       self.linear_td_score.weight.val().slice(s![.., 0..1]),

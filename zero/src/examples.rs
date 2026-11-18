@@ -20,35 +20,57 @@ use std::{cmp::Ordering, iter, ops::Range, sync::Arc};
 /// Number of TD value horizons.
 pub const TD_VALUES: usize = 3;
 
-/// Per-step blending coefficients of the TD value horizons, longest first:
-/// each step of a horizon takes the fraction `1 / (1 + area * c)` of the
-/// remaining weight, so larger coefficients spread the target over more future
-/// turns. The last (shortest) horizon is also the target of the short-term
-/// value error head.
+/// The expected lookaheads of the longer TD horizons, longest first, as
+/// fractions of the board area in turns: see [`td_lookaheads`].
 ///
-/// The expected lookahead of a horizon is `c * area` turns. KataGo uses
-/// `[0.176, 0.056, 0.016]`, placing the horizons at roughly 25%, 8% and 2.3%
-/// of a typical go game (~0.7 moves per board cell). Self-play dots games fill
-/// only ~0.32 of the field, so the longer horizons are scaled down
-/// accordingly to keep the same fractions of a typical game, while the
-/// shortest is kept at ~5 turns to stay meaningful for the value error head.
-pub const TD_VALUE_COEFFS: [f64; TD_VALUES] = [0.08, 0.025, 0.012];
+/// These are fractions of the game: how far the value has gone towards the
+/// result after a number of turns is a constant fraction of the game's length,
+/// and the game's length is a constant number of turns per board cell. Go
+/// training puts these horizons at `0.176` and `0.056` of the area, roughly 25%
+/// and 8% of a typical go game (~0.7 moves per board cell). Self-play dots
+/// games fill only ~0.32 of the field, so they are scaled down accordingly to
+/// keep the same fractions of a typical game.
+pub const TD_VALUE_COEFFS: [f64; TD_VALUES - 1] = [0.08, 0.025];
+
+/// The expected lookahead of the shortest TD horizon, in turns, on every board
+/// size: it is the target of the short-term value and score error heads, which
+/// say how much the evaluation is about to move.
+///
+/// The search value changes by about the same over a number of turns on every
+/// board size, so a fixed lookahead makes the short-term error mean the same
+/// on all of them - a fraction of the area would make it grow with the board,
+/// and the weight the search gives an evaluation with it. That change grows
+/// smoothly with the lookahead, without a point where fights settle, so the
+/// number is a choice: about what a fraction of the area gave on 20x20.
+pub const TD_SHORT_LOOKAHEAD: f64 = 5.0;
+
+/// The expected lookahead in turns of each TD horizon, longest first, on a
+/// board of `area` cells: a step of a horizon takes the fraction
+/// `1 / (1 + lookahead)` of the remaining weight. The longer horizons are
+/// never shorter than the shortest, which on boards smaller than any played
+/// they would be.
+pub fn td_lookaheads(area: f64) -> [f64; TD_VALUES] {
+  let mut lookaheads = [TD_SHORT_LOOKAHEAD; TD_VALUES];
+  for (lookahead, c) in lookaheads.iter_mut().zip(TD_VALUE_COEFFS) {
+    *lookahead = (c * area).max(TD_SHORT_LOOKAHEAD);
+  }
+  lookaheads
+}
 
 /// Number of future positions the future-position targets hold.
 pub const FUTURE_POSITIONS: usize = 2;
 
 /// How many moves ahead of a position each future position is, nearest first.
 ///
-/// The same on every board size, unlike the TD horizons: the future positions
-/// are a target of local reading, of where the coming moves of a fight land,
-/// and how far a fight reaches in a few moves doesn't grow with the board
-/// around it, while the TD horizons are fractions of the game, which does.
-///
-/// For go they are 8 and 32 moves. Dots games are about half as long for the
-/// board (they fill ~0.32 of it, against ~0.7 moves per cell in go, see
-/// [`TD_VALUE_COEFFS`]), so these are half of that, the nearer one rounded up
-/// to the ~5 moves the shortest TD horizon looks ahead on a 20x20 board.
-pub const FUTURE_POSITION_MOVES: [usize; FUTURE_POSITIONS] = [5, 16];
+/// The same on every board size, unlike the longer TD horizons: the future
+/// positions are a target of local reading, of where the coming moves of a
+/// fight land, and how far play stays near the last moves is the same number
+/// of moves on every board size. Self-play shows that excess of moves near the
+/// last ones halving after about 6 moves and down to a fifth after 16, so the
+/// nearer position is still mostly the current fight, but no longer trivial to
+/// predict, and the farther one is mostly past it. Both are even, so the board
+/// predicted always has the player of the position to move.
+pub const FUTURE_POSITION_MOVES: [usize; FUTURE_POSITIONS] = [6, 16];
 
 #[derive(Clone, Debug)]
 pub struct Batch<N> {
@@ -432,9 +454,9 @@ impl Examples {
     let initial_moves = game.moves.len() - game.visits.len();
     let has_values = game.visits.iter().any(|visits| visits.3 != 0.0);
     let area = (game.width * game.height) as f64;
-    for c in TD_VALUE_COEFFS {
+    for lookahead in td_lookaheads(area) {
       let value = if has_values {
-        let now_factor = 1.0 / (1.0 + area * c);
+        let now_factor = 1.0 / (1.0 + lookahead);
         let mut weight_left = 1.0;
         let mut value = 0.0;
         for (i, visits) in game.visits.iter().enumerate().skip(start) {
@@ -476,8 +498,8 @@ impl Examples {
     final_score: f64,
     td_scores: &mut Vec<N>,
   ) {
-    for c in TD_VALUE_COEFFS {
-      let now_factor = 1.0 / (1.0 + area * c);
+    for lookahead in td_lookaheads(area) {
+      let now_factor = 1.0 / (1.0 + lookahead);
       let mut weight_left = 1.0;
       let mut score = 0.0;
       for &turn_score in scores {

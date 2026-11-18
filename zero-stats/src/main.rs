@@ -5,6 +5,7 @@
 
 mod common;
 mod games;
+mod horizons;
 mod losses;
 mod net;
 mod weights;
@@ -47,6 +48,39 @@ fn cli() -> Command {
             .long("by-size")
             .help("Also split each file by board size")
             .action(ArgAction::SetTrue),
+        ),
+    )
+    .subcommand(
+      Command::new("horizons")
+        .about("How far ahead play stays connected to a position, by board size: for picking the horizons of targets")
+        .arg(files("files", "Games files, gzip-compressed or not, pooled together"))
+        .arg(
+          Arg::new("count")
+            .long("count")
+            .short('c')
+            .help("Read at most this many games of each file")
+            .value_parser(value_parser!(usize)),
+        )
+        .arg(
+          Arg::new("bucket")
+            .long("bucket")
+            .help("Width of the board size buckets, in the square root of the area")
+            .default_value("4")
+            .value_parser(value_parser!(u32).range(1..)),
+        )
+        .arg(
+          Arg::new("recent")
+            .long("recent")
+            .help("Moves before a position that make its recent play")
+            .default_value("4")
+            .value_parser(value_parser!(u64).range(1..)),
+        )
+        .arg(
+          Arg::new("radius")
+            .long("radius")
+            .help("Chebyshev distance from the recent play within which a move counts as near it")
+            .default_value("2")
+            .value_parser(value_parser!(u32)),
         ),
     )
     .subcommand(
@@ -153,6 +187,13 @@ fn main() -> Result<()> {
       m.get_one::<usize>("count").copied(),
       m.get_flag("by-size"),
     ),
+    Some(("horizons", m)) => horizons::run(horizons::HorizonsParams {
+      files: paths(m, "files"),
+      count: m.get_one::<usize>("count").copied(),
+      bucket: *m.get_one::<u32>("bucket").unwrap(),
+      recent: *m.get_one::<u64>("recent").unwrap() as usize,
+      radius: *m.get_one::<u32>("radius").unwrap(),
+    }),
     Some(("losses", m)) => losses::run(
       m.get_one::<PathBuf>("log").unwrap(),
       m.get_one::<String>("components").map(String::as_str),
