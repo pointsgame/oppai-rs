@@ -40,6 +40,13 @@ struct GameStats {
   /// Decided games: the moves after the winner's search value last rose to
   /// [`WON_VALUE`].
   winner_tail: Option<usize>,
+  /// Decided games won on the board: the moves after the winner's lead in
+  /// captured dots, komi left out, last rose above zero - how long it took to
+  /// end the game once ahead for good, whatever the net thought of it. The
+  /// komi is left out because a half komi puts one side ahead from the start.
+  lead_tail: Option<usize>,
+  /// The moves after the last capture, if there was one.
+  capture_tail: Option<usize>,
   /// Decided games: the winner's ungrounded dots at the end.
   winner_ungrounded: Option<u32>,
   settled: Option<Settled>,
@@ -58,6 +65,10 @@ impl GameStats {
     let mut field = game.field();
     let mut captures = 0;
     let mut first_capture = None;
+    let mut last_capture = None;
+    // The last move after which the eventual winner was not ahead on the board.
+    let mut last_not_ahead = None;
+    let mut ever_ahead = false;
     let result_x_2 = game.final_field().score(Player::Red) * 2 + game.komi_x_2;
     let sign = result_x_2.signum() as f64;
     let winner_tail = (result_x_2 != 0).then(|| tail(&|v| v * sign >= WON_VALUE).unwrap_or(0));
@@ -87,6 +98,12 @@ impl GameStats {
       if field.get_delta_score(player) != 0 {
         captures += 1;
         first_capture.get_or_insert(i);
+        last_capture = Some(i);
+      }
+      if field.score(Player::Red) * result_x_2.signum() <= 0 {
+        last_not_ahead = Some(i);
+      } else {
+        ever_ahead = true;
       }
       if settled_start.is_some_and(|start| i >= start)
         && let Some(settled) = settled.as_mut()
@@ -109,6 +126,9 @@ impl GameStats {
       first_capture,
       mean_abs_value: mean(&values.iter().map(|v| v.abs()).collect::<Vec<_>>()),
       winner_tail,
+      lead_tail: (result_x_2 != 0 && ever_ahead && last_not_ahead != Some(game.moves.len() - 1))
+        .then(|| last_not_ahead.map_or(game.moves.len(), |i| game.moves.len() - i - 1)),
+      capture_tail: last_capture.map(|i| game.moves.len() - i - 1),
       winner_ungrounded: (result_x_2 != 0).then_some(if result_x_2 > 0 {
         field.non_grounded_red
       } else {
@@ -196,12 +216,19 @@ fn rows(name: &str, games: &[&GameStats]) -> Rows {
     .iter()
     .filter_map(|g| g.winner_ungrounded.map(|u| u as f64))
     .collect();
+  let lead_tails: Vec<f64> = decided.iter().filter_map(|g| g.lead_tail.map(|t| t as f64)).collect();
+  let capture_tails: Vec<f64> = decided
+    .iter()
+    .filter_map(|g| g.capture_tail.map(|t| t as f64))
+    .collect();
+  let median_p90 = |values: &[f64]| format!("{} / {}", fmt(median(values), 0), fmt(quantile(values, 0.9), 0));
   let decided_row = vec![
     name.to_string(),
     decided.len().to_string(),
-    fmt(median(&tails), 0),
-    fmt(quantile(&tails, 0.9), 0),
+    median_p90(&tails),
     fmt(mean(&tails), 1),
+    median_p90(&lead_tails),
+    median_p90(&capture_tails),
     fmt(mean(&winner_ungrounded), 1),
   ];
 
@@ -280,13 +307,14 @@ pub fn run(files: &[PathBuf], limit: Option<usize>, by_size: bool) -> Result<()>
     ],
   );
   let mut decided = Table::new(
-    &format!("Decided games: moves after the winner's search value last reached {WON_VALUE}"),
+    "Decided games: moves to the end after each event, median / p90",
     &[
       "games",
       "n",
-      "median",
-      "p90",
+      &format!("winner's search value >= {WON_VALUE}"),
       "mean",
+      "winner ahead on the board for good",
+      "last capture",
       "winner's ungrounded dots at the end",
     ],
   );

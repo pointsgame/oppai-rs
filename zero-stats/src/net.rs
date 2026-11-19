@@ -3,7 +3,7 @@
 //! draw term of the search reads, and, with inputs blanked, how much the
 //! networks rely on each group of inputs.
 
-use crate::common::{Game, Table, fmt, label, mean, median, percent};
+use crate::common::{Game, Table, fmt, label, mean, median, percent, quantile};
 use anyhow::{Result, anyhow};
 use ndarray::{Array1, Array2, Array4, s};
 use oppai_field::player::Player;
@@ -256,6 +256,9 @@ struct DrawStats {
   level: [Vec<f64>; 4],
   /// `settled` at level positions of drawn games, per quarter.
   draw_quarters: [Vec<f64>; 4],
+  /// P(draw) at level positions of games under a whole komi, per quarter: of
+  /// drawn games and of decided ones.
+  level_quarters: [[Vec<f64>; 4]; 2],
 }
 
 #[derive(Default)]
@@ -414,6 +417,10 @@ pub fn run(params: NetParams) -> Result<()> {
       "draws by quarter (active)",
     ],
   );
+  let mut level_table = Table::new(
+    "P(draw) at level positions under a whole komi, by quarter of the game (p10 / median / p90), for the bounds of the draw term",
+    &["model", "games", "positions", "1st quarter", "2nd", "3rd", "4th"],
+  );
   let mut ablation_table = Table::new(
     "Blanked inputs: change of the outputs, and the policy on single-dot capture cells (own / opponent's)",
     &[
@@ -510,6 +517,9 @@ pub fn run(params: NetParams) -> Result<()> {
           if batch.kind == Kind::Draw {
             draws.draw_quarters[position.quarter].push(settled(draw));
           }
+          if batch.whole_komi {
+            draws.level_quarters[usize::from(batch.kind != Kind::Draw)][position.quarter].push(draw);
+          }
         }
       }
 
@@ -595,6 +605,23 @@ pub fn run(params: NetParams) -> Result<()> {
         .join(" "),
     ]);
 
+    for (outcome, quarters) in ["drawn", "decided"].into_iter().zip(&draws.level_quarters) {
+      let mut row = vec![
+        name.clone(),
+        outcome.to_string(),
+        quarters.iter().map(Vec::len).sum::<usize>().to_string(),
+      ];
+      row.extend(quarters.iter().map(|q| {
+        format!(
+          "{} / {} / {}",
+          fmt(quantile(q, 0.1), 2),
+          fmt(median(q), 2),
+          fmt(quantile(q, 0.9), 2)
+        )
+      }));
+      level_table.row(row);
+    }
+
     for (channel, stats) in ["own", "opponent's"].into_iter().zip(&mut captured_stats) {
       let (later, never) = stats.open_means();
       captured_table.row(vec![
@@ -646,6 +673,7 @@ pub fn run(params: NetParams) -> Result<()> {
 
   calibration_table.print();
   draw_table.print();
+  level_table.print();
   captured_table.print();
   if !params.blanks.is_empty() {
     ablation_table.print();
