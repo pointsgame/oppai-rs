@@ -386,12 +386,19 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
             let should_stop = self.should_stop.clone();
             return Task::perform(
               async move {
-                let mut oppai = oppai.lock().unwrap();
-                let mut oppai = TimeLimitedAI(time, oppai.deref_mut());
-                futures::executor::block_on(oppai.analyze(&mut rng, &mut field, player, None, &|| {
-                  should_stop.load(Ordering::Relaxed)
-                }))
-                .best_move(&mut rng)
+                // iced polls tasks on a futures executor, where nested
+                // `block_on` panics, so the search runs on its own thread.
+                let (tx, rx) = futures::channel::oneshot::channel();
+                std::thread::spawn(move || {
+                  let mut oppai = oppai.lock().unwrap();
+                  let mut oppai = TimeLimitedAI(time, oppai.deref_mut());
+                  let best_move = futures::executor::block_on(oppai.analyze(&mut rng, &mut field, player, None, &|| {
+                    should_stop.load(Ordering::Relaxed)
+                  }))
+                  .best_move(&mut rng);
+                  let _ = tx.send(best_move);
+                });
+                rx.await.ok().flatten()
               },
               Message::BotMove,
             );
