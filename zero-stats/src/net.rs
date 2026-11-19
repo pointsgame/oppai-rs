@@ -11,7 +11,7 @@ use oppai_zero::{
   field_features::{
     CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, GLOBAL_SHORTFALL, HISTORY_CHANNELS, field_features_to_vec, global_to_vec,
   },
-  mcgs::settled,
+  mcgs::{draw_phase, settled},
   model::Model,
   tactics::{TACTICAL_CHANNELS, Tactics},
 };
@@ -113,6 +113,9 @@ struct Position {
   final_score: f64,
   /// The board level, komi included: where the draw term applies.
   level: bool,
+  /// How far into the part of the game where the draw term applies, see
+  /// `draw_phase`.
+  phase: f64,
   last: bool,
   /// The index into the policy of the move played, if any.
   played: Option<usize>,
@@ -209,6 +212,7 @@ fn batch(game: &Game, from: usize, stride: usize) -> Option<Batch> {
         },
         final_score: final_field.score(player) as f64,
         level: field.score(player) * 2 + komi_x_2 == 0,
+        phase: draw_phase(&field),
         last: i == length,
         played: (i < length).then(|| index(game.moves[i].0)),
         captures,
@@ -251,10 +255,12 @@ struct Calibration {
 struct DrawStats {
   /// P(draw) at the final position, per kind.
   last: [Vec<f64>; 4],
-  /// `settled` at level positions, per kind; a half komi never leaves the
+  /// The weight of the draw term, `settled` times the phase, at level
+  /// positions, per kind; a half komi never leaves the
   /// board level.
   level: [Vec<f64>; 4],
-  /// `settled` at level positions of drawn games, per quarter.
+  /// The weight of the draw term at level positions of drawn games, per
+  /// quarter.
   draw_quarters: [Vec<f64>; 4],
   /// P(draw) at level positions of games under a whole komi, per quarter: of
   /// drawn games and of decided ones.
@@ -513,9 +519,10 @@ pub fn run(params: NetParams) -> Result<()> {
           draws.last[k].push(draw);
         }
         if position.level {
-          draws.level[k].push(settled(draw));
+          let weight = settled(draw) * position.phase;
+          draws.level[k].push(weight);
           if batch.kind == Kind::Draw {
-            draws.draw_quarters[position.quarter].push(settled(draw));
+            draws.draw_quarters[position.quarter].push(weight);
           }
           if batch.whole_komi {
             draws.level_quarters[usize::from(batch.kind != Kind::Draw)][position.quarter].push(draw);

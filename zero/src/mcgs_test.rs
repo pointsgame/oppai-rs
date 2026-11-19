@@ -9,7 +9,7 @@ use oppai_field::player::Player;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 
-use crate::mcgs::{BiasEntry, Edge, Node, Params, Search, t_cdf, value_weight_cdf};
+use crate::mcgs::{BiasEntry, Edge, Node, Params, Search, draw_phase, t_cdf, value_weight_cdf};
 use crate::model::{Model, VALUE_COLUMNS};
 
 /// Play's parameters, but without forbidding apriori bad moves: the tests use
@@ -2559,9 +2559,21 @@ const DRAW_PARAMS: Params = Params {
   ..PARAMS
 };
 
-/// Red's dot is on the edge and grounded, Black's is not, and nothing is
-/// captured: a level board where Red is the closer to being done.
+/// Red's dots are on the edge and grounded, one of Black's is not, and
+/// nothing is captured: a level board where Red is the closer to being done.
+/// Four moves on a board this small are far enough into the game for the draw
+/// term to apply in full, see [`draw_phase`].
 const RED_GROUNDED: &str = "
+    a.a.A
+    .....
+    ..A..
+    .....
+    .....
+    ";
+
+/// The same lead in grounded dots as [`RED_GROUNDED`], two moves into the
+/// game.
+const RED_GROUNDED_EARLY: &str = "
     ..a..
     .....
     ..A..
@@ -2625,6 +2637,38 @@ fn draw_term_needs_a_likely_draw_on_a_level_board() {
 
   assert_eq!(utility(1, 0.9), 0.0);
   assert_eq!(utility(-2, 0.9), 0.0);
+}
+
+/// The draw term stays out of the opening, however likely the net finds a
+/// draw, and ramps in with the moves played: two moves are 0.32 of a typical
+/// game on a 5x5 board, a tenth of the way from where the term starts to where
+/// it applies in full.
+#[test]
+fn draw_term_ramps_in_with_the_game() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let late = construct_field(&mut rng, RED_GROUNDED);
+  let early = construct_field(&mut rng, RED_GROUNDED_EARLY);
+  assert_eq!((early.non_grounded_red, early.non_grounded_black), (0, 1));
+  assert_eq!(draw_phase(&late), 1.0);
+  assert!((draw_phase(&early) - 0.1).abs() < 1e-12);
+  let search = Search::<f64>::new(DRAW_PARAMS);
+
+  let full = search.aux_utility(&late, Player::Red, 0, 0.0, 0.0, 0.9);
+  let ramped = search.aux_utility(&early, Player::Red, 0, 0.0, 0.0, 0.9);
+  assert!(full > 0.0);
+  assert!((ramped - full / 10.0).abs() < 1e-12);
+
+  let opening = construct_field(
+    &mut rng,
+    "
+    .....
+    .....
+    ..a..
+    .....
+    .....
+    ",
+  );
+  assert_eq!(draw_phase(&opening), 0.0);
 }
 
 /// The search reads the probability of a draw from the net's fifth value

@@ -2,6 +2,7 @@ use crate::field_features::{
   CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS, add_unrotated_policy, field_features_len, field_features_to_vec,
   global_to_vec, rotation_sizes, shortfall_x_2,
 };
+use crate::game_length::typical_game_length;
 use crate::model::{Model, VALUE_COLUMNS};
 use crate::tactics::Tactics;
 use either::Either;
@@ -38,6 +39,25 @@ pub fn settled<N: Float>(draw: N) -> N {
   ((draw - N::from(SETTLED_DRAW_MIN).unwrap()) / N::from(SETTLED_DRAW_MAX - SETTLED_DRAW_MIN).unwrap())
     .max(N::zero())
     .min(N::one())
+}
+
+/// The part of a typical game, see [`typical_game_length`], before which the
+/// draw term of the utility does not apply: a level position that early is
+/// an open game, however likely the net finds a draw. Once a network is
+/// trained on games that are mostly drawn, it expects a draw from the first
+/// moves on, and the probability of one no longer tells an open position from
+/// a settled one.
+pub const DRAW_TERM_START: f64 = 0.3;
+
+/// The part of a typical game from which the draw term of the utility applies
+/// in full.
+pub const DRAW_TERM_FULL: f64 = 0.5;
+
+/// How far a game on `field` is into the part where the draw term of the
+/// utility applies, from 0 to 1, by the moves played.
+pub fn draw_phase(field: &Field) -> f64 {
+  let progress = field.moves_count() as f64 / typical_game_length(f64::from(field.width() * field.height()));
+  ((progress - DRAW_TERM_START) / (DRAW_TERM_FULL - DRAW_TERM_START)).clamp(0.0, 1.0)
 }
 
 /// Pass-through hasher for the transposition table.
@@ -1113,9 +1133,13 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// itself would not do: the search is zero-sum, so whatever makes one side
   /// want to end a draw makes the other want to drag it out. The term is
   /// scaled by how settled the draw is, read from `draw`, the probability of
-  /// one, between [`SETTLED_DRAW_MIN`] and [`SETTLED_DRAW_MAX`]:
-  /// in a balanced position that is still open, rewarding grounding would
-  /// reward passive play and make draws only more common. And it applies only
+  /// one, between [`SETTLED_DRAW_MIN`] and [`SETTLED_DRAW_MAX`], and by how far
+  /// the game is, see [`draw_phase`]: in a balanced position that is still
+  /// open, rewarding grounding would reward passive play and make draws only
+  /// more common. The probability keeps the term out of sharp level positions,
+  /// where a capture is coming; the phase keeps it out of the opening, which a
+  /// net trained on mostly drawn games expects to be drawn too. Both ramp in,
+  /// so the term grows smoothly along a game. And it applies only
   /// with the board level, komi included, which a decided draw almost always
   /// already is: a side behind on points is never steered into grounding,
   /// however wrong the net is about the draw.
@@ -1132,13 +1156,13 @@ impl<N: Float + Sum + Copy> Search<N> {
     let finish_value = N::one() - N::from(2).unwrap() * two_over_pi * (shortfall / scale).atan();
     let score_value = (score / scale).atan() * two_over_pi;
     let draw_value = if field.score(player) * 2 + komi_x_2 == 0 {
-      let settled = settled(draw);
+      let weight = settled(draw) * N::from(draw_phase(field)).unwrap();
       let (own, opponent) = match player {
         Player::Red => (field.non_grounded_red, field.non_grounded_black),
         Player::Black => (field.non_grounded_black, field.non_grounded_red),
       };
       let squash = |dots| (N::from(dots).unwrap() / scale).atan();
-      settled * two_over_pi * (squash(opponent) - squash(own))
+      weight * two_over_pi * (squash(opponent) - squash(own))
     } else {
       N::zero()
     };
