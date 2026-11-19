@@ -10,6 +10,8 @@ use crate::config::{Config, cli_parse};
 use crate::worker_message::{Request, Response};
 #[cfg(not(target_arch = "wasm32"))]
 use burn::module::Module;
+#[cfg(not(target_arch = "wasm32"))]
+use burn::tensor::{DeviceConfig, FloatDType};
 use canvas_field::{CanvasField, CanvasMessage, Label};
 #[cfg(not(target_arch = "wasm32"))]
 use either::Either;
@@ -81,7 +83,13 @@ pub fn main() -> iced::Result {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn run(config: Config) -> iced::Result {
-  let device = config.device.clone();
+  let mut device = config.device.clone();
+  if config.half {
+    // Before the model is loaded, so that its weights are converted too.
+    device
+      .configure(DeviceConfig::default().float_dtype(FloatDType::F16))
+      .expect("Failed to configure the device for half precision.");
+  }
   let model = config.model.as_ref().map(|model_path| {
     BurnModel::new(&device, &config.model_config)
       .try_load_file(model_path)

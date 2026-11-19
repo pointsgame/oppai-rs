@@ -26,7 +26,7 @@ pub fn groups() -> [ArgGroup; 2] {
   ]
 }
 
-pub fn args() -> [Arg; 20] {
+pub fn args() -> [Arg; 21] {
   [
     Arg::new("solver")
       .short('s')
@@ -174,6 +174,16 @@ pub fn args() -> [Arg; 20] {
       .num_args(1)
       .value_parser(value_parser!(humantime::Duration))
       .default_value("1s"),
+    Arg::new("komi-x2")
+      .long("komi-x2")
+      .help(
+        "Komi multiplied by 2 (to allow half-integer komi values) for the zero solvers. It is added to \
+         Red's score, so positive values favor Red",
+      )
+      .num_args(1)
+      .value_parser(value_parser!(i32))
+      .allow_negative_numbers(true)
+      .default_value("0"),
   ]
 }
 
@@ -211,5 +221,6 @@ pub fn parse_config(matches: &ArgMatches) -> Config {
       .copied()
       .unwrap()
       .into(),
+    komi_x_2: matches.get_one("komi-x2").copied().unwrap(),
   }
 }

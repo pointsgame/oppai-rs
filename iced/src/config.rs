@@ -28,6 +28,8 @@ pub struct Config {
   pub model_config: ModelConfig,
   #[cfg(not(target_arch = "wasm32"))]
   pub device: Device,
+  #[cfg(not(target_arch = "wasm32"))]
+  pub half: bool,
   pub time: Duration,
 }
 
@@ -47,6 +49,8 @@ impl Default for Config {
       model_config: ModelConfig::default(),
       #[cfg(not(target_arch = "wasm32"))]
       device: Device::default(),
+      #[cfg(not(target_arch = "wasm32"))]
+      half: false,
       time: Duration::from_secs(5),
     }
   }
@@ -204,6 +208,15 @@ pub fn cli_parse() -> Config {
         .num_args(1)
         .value_parser(parse_device)
         .default_value("auto"),
+    )
+    .arg(
+      Arg::new("half")
+        .long("half")
+        .help(
+          "Evaluate the network in half precision. Convolutions in single precision cannot use the matrix units \
+           of many GPUs, so this is often many times faster",
+        )
+        .action(ArgAction::SetTrue),
     );
 
   #[cfg(not(target_arch = "wasm32"))]
@@ -259,6 +272,8 @@ pub fn cli_parse() -> Config {
     });
   #[cfg(not(target_arch = "wasm32"))]
   let device = matches.get_one::<Device>("device").cloned().unwrap();
+  #[cfg(not(target_arch = "wasm32"))]
+  let half = matches.get_flag("half");
 
   Config {
     width,
@@ -285,6 +300,8 @@ pub fn cli_parse() -> Config {
     model_config,
     #[cfg(not(target_arch = "wasm32"))]
     device,
+    #[cfg(not(target_arch = "wasm32"))]
+    half,
     time,
   }
 }

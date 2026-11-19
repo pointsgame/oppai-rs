@@ -29,6 +29,14 @@ pub struct Zero<N: Float, M: Model<N>> {
   moves_count: usize,
   /// Zobrist hash of the root position, used to detect history divergence.
   hash: Hash,
+  /// Komi multiplied by 2 from Red's perspective.
+  komi_x_2: i32,
+}
+
+/// Komi multiplied by 2 from the perspective of `player`, given it from Red's
+/// perspective.
+fn player_komi_x_2(player: Player, komi_x_2: i32) -> i32 {
+  if player == Player::Red { komi_x_2 } else { -komi_x_2 }
 }
 
 impl<N, M> Zero<N, M>
@@ -36,7 +44,8 @@ where
   M: Model<N>,
   N: Float + Sum + Display + Debug,
 {
-  pub fn new(model: M) -> Self {
+  /// `komi_x_2` is the komi multiplied by 2 from Red's perspective.
+  pub fn new(model: M, komi_x_2: i32) -> Self {
     Zero {
       model,
       search: Search::new(Params::PLAY),
@@ -45,6 +54,7 @@ where
       player: Player::Red,
       moves_count: 0,
       hash: 0,
+      komi_x_2,
     }
   }
 
@@ -109,8 +119,9 @@ where
     // TODO: check if game is over
     let mut iterations = 0;
     let mut field = field.clone();
+    let komi_x_2 = player_komi_x_2(player, self.komi_x_2);
     while !should_stop() && iterations < max_iterations_count {
-      self.search.mcgs(&mut field, player, &self.model, 0, rng).await?;
+      self.search.mcgs(&mut field, player, &self.model, komi_x_2, rng).await?;
       iterations += 1;
     }
 
@@ -122,18 +133,18 @@ where
 /// running any Monte Carlo search. A single forward pass produces the policy
 /// and value; the legal moves are returned weighted by their policy priors
 /// (renormalized over the legal moves) and the value is the estimation.
+/// `komi_x_2` is the komi multiplied by 2 from Red's perspective.
 pub async fn policy_moves<N, M>(
   model: &M,
   field: &Field,
   player: Player,
+  komi_x_2: i32,
 ) -> Result<PolicyAnalysis<N>, <M as Model<N>>::E>
 where
   N: Float + Sum,
   M: Model<N>,
 {
-  // The raw policy carries no notion of komi, matching the search which is
-  // driven with a zero komi here.
-  let komi_x_2 = 0;
+  let komi_x_2 = player_komi_x_2(player, komi_x_2);
   let features = field_features::<N>(field, player, field.width(), field.height(), 0).insert_axis(Axis(0));
   let global = global::<N>(field, player, komi_x_2).insert_axis(Axis(0));
 

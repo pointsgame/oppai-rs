@@ -59,13 +59,16 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
 /// Monte Carlo search.
 pub struct ZeroPolicy<N: Float + Sum + Display + Debug, M: Model<N>> {
   pub model: M,
+  /// Komi multiplied by 2 from Red's perspective.
+  pub komi_x_2: i32,
   phantom: PhantomData<N>,
 }
 
 impl<N: Float + Sum + Display + Debug, M: Model<N>> ZeroPolicy<N, M> {
-  pub fn new(model: M) -> Self {
+  pub fn new(model: M, komi_x_2: i32) -> Self {
     ZeroPolicy {
       model,
+      komi_x_2,
       phantom: PhantomData,
     }
   }
@@ -88,7 +91,7 @@ impl<N: Float + Sum + Display + Debug + PartialOrd + 'static, M: Model<N> + 'sta
     StandardUniform: Distribution<S>,
     SS: Fn() -> bool + Sync,
   {
-    if let Ok((moves, estimation)) = policy_moves(&self.model, field, player).await {
+    if let Ok((moves, estimation)) = policy_moves(&self.model, field, player, self.komi_x_2).await {
       SimpleAnalysis {
         moves,
         estimation,

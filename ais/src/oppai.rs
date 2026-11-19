@@ -44,6 +44,8 @@ pub struct Config {
   pub ladders_score_limit: u32,
   pub ladders_depth_limit: u32,
   pub ladders_time_limit: Duration,
+  /// Komi multiplied by 2 from Red's perspective, used by the zero solvers.
+  pub komi_x_2: i32,
 }
 
 impl Default for Config {
@@ -56,6 +58,7 @@ impl Default for Config {
       ladders_score_limit: 0,
       ladders_depth_limit: 0,
       ladders_time_limit: Duration::from_secs(1),
+      komi_x_2: 0,
     }
   }
 }
@@ -254,8 +257,8 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> Oppai<N,
         config.uct.clone(),
         length(width, height),
       )))),
-      Solver::Zero => Either::Right(Either::Right(Either::Left(Zero(InnerZero::new(model))))),
-      Solver::ZeroPolicy => Either::Right(Either::Right(Either::Right(ZeroPolicy::new(model)))),
+      Solver::Zero => Either::Right(Either::Right(Either::Left(Zero(InnerZero::new(model, config.komi_x_2))))),
+      Solver::ZeroPolicy => Either::Right(Either::Right(Either::Right(ZeroPolicy::new(model, config.komi_x_2)))),
     };
     Oppai {
       config,
