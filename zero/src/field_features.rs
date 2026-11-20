@@ -1,9 +1,9 @@
-use std::iter;
+use std::{collections::VecDeque, iter};
 
 use ndarray::{Array, Array1, Array2, Array3, ArrayView2};
 use num_traits::{Float, One, Zero};
 use oppai_field::cell::Cell;
-use oppai_field::field::{Field, NonZeroPos, Pos};
+use oppai_field::field::{Field, NonZeroPos, Pos, wave_diag};
 use oppai_field::player::Player;
 use oppai_rotate::rotate::{rotate, rotate_back, rotate_sizes};
 
@@ -12,8 +12,17 @@ use crate::tactics::{TACTICAL_CHANNELS, Tactics};
 /// Number of history planes, each marking the location of one past move.
 pub const HISTORY_CHANNELS: usize = 5;
 
+/// The number of input planes that hold features of the cells, see
+/// [`field_features_to_vec`]: the ones the network's first convolution reads.
+pub const FEATURE_CHANNELS: usize = 8 + HISTORY_CHANNELS + TACTICAL_CHANNELS;
+
+/// The number of input planes after the features that label the chains of
+/// dots, one for each player, see [`push_chains`]. The network does not
+/// convolve them: it reads them as which cells to pool together.
+pub const CHAIN_CHANNELS: usize = 2;
+
 /// The number of input planes, see [`field_features_to_vec`].
-pub const CHANNELS: usize = 8 + HISTORY_CHANNELS + TACTICAL_CHANNELS;
+pub const CHANNELS: usize = FEATURE_CHANNELS + CHAIN_CHANNELS;
 
 #[inline]
 pub fn field_features_len(width: u32, height: u32) -> usize {
@@ -82,7 +91,9 @@ fn push_plane<N: Zero, F: Fn(Pos) -> N + Copy>(
 /// 7. the grounded cells;
 /// 8. to 12. the last [`HISTORY_CHANNELS`] moves, the latest first;
 /// 13. to 16. the tactical planes of `tactics`, see [`Tactics`], which has to
-///     be built for this field and `player`.
+///     be built for this field and `player`;
+/// 17. and 18. the chains of the player to move and of the opponent, see
+///     [`push_chains`].
 ///
 /// `history` is the number of history planes to fill; the remaining ones are
 /// left empty. Inference uses the full `HISTORY_CHANNELS` while training
@@ -211,6 +222,89 @@ pub fn field_features_to_vec<N: Float + Zero + One + Copy>(
       height,
       rotation,
     );
+  }
+  push_chains(field, player, features, width, height, rotation);
+}
+
+/// Pushes two planes labelling the chains of live dots - the dots connected
+/// through their 8 neighbours, the way enclosing walls run - first of
+/// `player`'s chains, then of the enemy's. Every dot of a chain holds the rank
+/// of its chain by size among its player's chains: 1 for the biggest chain, 2
+/// for the next one, and so on, with chains of the same size ordered by their
+/// first cell in row order as rotated. Every other cell holds zero, as does the
+/// padding.
+///
+/// A rank does not depend on how far a batch pads the board, unlike an index of
+/// a cell, and ranking by size means that a network that pools only so many
+/// chains leaves out the smallest ones. Ranks are exact in every float type the
+/// network runs in up to 256, and the bigger ones it does not tell apart from
+/// each other anyway.
+fn push_chains<N: Float + Zero + One + Copy>(
+  field: &Field,
+  player: Player,
+  features: &mut Vec<N>,
+  width: u32,
+  height: u32,
+  rotation: u8,
+) {
+  let field_width = field.width();
+  let field_height = field.height();
+  let plane = (width * height) as usize;
+  let start = features.len();
+  features.resize(start + CHAIN_CHANNELS * plane, N::zero());
+  let planes = &mut features[start..];
+  // Where `pos` is in the plane of `player`'s chains or in that of the
+  // enemy's, and its coordinates as rotated, `(y, x)`.
+  let cell = |pos: Pos, own: bool| {
+    let (x, y) = field.to_xy(pos);
+    let (x, y) = rotate(field_width, field_height, x, y, rotation);
+    (usize::from(!own) * plane + (y * width + x) as usize, (y, x))
+  };
+  // Whether every chain is `player`'s, its size and its first cell in row
+  // order as rotated, `(y, x)`. The planes hold the chain's index plus one
+  // while the chains are found - exact, as there are fewer chains than cells -
+  // which also marks the dots already reached.
+  let mut chains: Vec<(bool, u32, (u32, u32))> = Vec::new();
+  let mut q = VecDeque::new();
+  for pos in field.min_pos()..=field.max_pos() {
+    let Some(owner) = field.cell(pos).get_live_players_point() else {
+      continue;
+    };
+    let own = owner == player;
+    let label = N::from(chains.len() + 1).unwrap();
+    let mut size = 0;
+    let mut first = (u32::MAX, u32::MAX);
+    wave_diag(&mut q, field.stride, pos, |pos| {
+      if !field.cell(pos).is_live_players_point(owner) {
+        return false;
+      }
+      let (i, yx) = cell(pos, own);
+      if planes[i] != N::zero() {
+        return false;
+      }
+      planes[i] = label;
+      size += 1;
+      first = first.min(yx);
+      true
+    });
+    if size > 0 {
+      chains.push((own, size, first));
+    }
+  }
+  let mut order: Vec<usize> = (0..chains.len()).collect();
+  order.sort_unstable_by_key(|&chain| {
+    let (own, size, first) = chains[chain];
+    (!own, std::cmp::Reverse(size), first)
+  });
+  // The ranks replace the sizes, which the order no longer needs.
+  let own_chains = chains.iter().filter(|&&(own, ..)| own).count();
+  for (i, &chain) in order.iter().enumerate() {
+    chains[chain].1 = if i < own_chains { i + 1 } else { i - own_chains + 1 } as u32;
+  }
+  for value in planes {
+    if *value != N::zero() {
+      *value = N::from(chains[value.to_usize().unwrap() - 1].1).unwrap();
+    }
   }
 }
 

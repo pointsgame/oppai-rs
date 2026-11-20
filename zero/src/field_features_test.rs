@@ -1,6 +1,6 @@
 use crate::field_features::{
-  CHANNELS, GLOBAL_FEATURES, GLOBAL_SHORTFALL, SCORE_ONE_HOT_SIZE, add_unrotated_policy, field_features, global,
-  rotation_sizes, score_one_hot,
+  CHANNELS, FEATURE_CHANNELS, GLOBAL_FEATURES, GLOBAL_SHORTFALL, SCORE_ONE_HOT_SIZE, add_unrotated_policy,
+  field_features, global, rotation_sizes, score_one_hot,
 };
 use crate::tactics::{TACTICAL_CHANNELS, Tactics};
 use ndarray::prelude::{Array2, array, s};
@@ -481,7 +481,7 @@ fn tactical_planes(field: &Field, player: Player) -> Vec<Array2<f64>> {
   (0..TACTICAL_CHANNELS)
     .map(|plane| {
       features
-        .slice(s![CHANNELS - TACTICAL_CHANNELS + plane, .., ..])
+        .slice(s![FEATURE_CHANNELS - TACTICAL_CHANNELS + plane, .., ..])
         .to_owned()
     })
     .collect()
@@ -575,7 +575,7 @@ fn tactical_planes_rotate_with_the_board() {
     for (plane, expected) in expected.iter().enumerate() {
       let mut unrotated = Array2::zeros((field.height() as usize, field.width() as usize));
       add_unrotated_policy(
-        features.slice(s![CHANNELS - TACTICAL_CHANNELS + plane, .., ..]),
+        features.slice(s![FEATURE_CHANNELS - TACTICAL_CHANNELS + plane, .., ..]),
         field.width(),
         field.height(),
         rotation,
@@ -648,4 +648,120 @@ fn global_shortfalls() {
   // A lead beyond the ungrounded dots leaves no shortfall rather than a
   // negative one.
   assert_eq!(shortfalls(Player::Black, 6), (0.0, 5.0));
+}
+
+/// The chain plane of the player to move, or of the opponent, see
+/// `push_chains`.
+fn chain_plane(features: &ndarray::Array3<f64>, own: bool) -> Array2<f64> {
+  features
+    .slice(s![FEATURE_CHANNELS + if own { 0 } else { 1 }, .., ..])
+    .to_owned()
+}
+
+#[test]
+fn chain_planes_rank_the_chains_by_size() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    a.b..
+    .c...
+    ....d
+    .A.e.
+    ",
+  );
+  assert_eq!(CHANNELS, FEATURE_CHANNELS + 2);
+
+  #[rustfmt::skip]
+  let red = array![
+    [1., 0., 1., 0., 0.],
+    [0., 1., 0., 0., 0.],
+    [0., 0., 0., 0., 2.],
+    [0., 0., 0., 2., 0.],
+  ];
+  #[rustfmt::skip]
+  let black = array![
+    [0., 0., 0., 0., 0.],
+    [0., 0., 0., 0., 0.],
+    [0., 0., 0., 0., 0.],
+    [0., 1., 0., 0., 0.],
+  ];
+
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
+  assert_eq!(chain_plane(&features, true), red);
+  assert_eq!(chain_plane(&features, false), black);
+  let features = field_features::<f64>(&field, Player::Black, field.width(), field.height(), 0);
+  assert_eq!(chain_plane(&features, true), black);
+  assert_eq!(chain_plane(&features, false), red);
+}
+
+// Chains of the same size go by their first cell in row order, of the board
+// as rotated.
+#[test]
+fn chain_planes_order_equal_chains_by_their_first_cell() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    ...a
+    b...
+    ",
+  );
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
+  assert_eq!(chain_plane(&features, true), array![[0., 0., 0., 1.], [2., 0., 0., 0.]]);
+  // Rotation 1 mirrors the columns.
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 1);
+  assert_eq!(chain_plane(&features, true), array![[1., 0., 0., 0.], [0., 0., 0., 2.]]);
+}
+
+#[test]
+fn chain_planes_skip_captured_dots() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    .b.
+    cAd
+    .e.
+    ",
+  );
+  let features = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
+  #[rustfmt::skip]
+  let red = array![
+    [0., 1., 0.],
+    [1., 0., 1.],
+    [0., 1., 0.],
+  ];
+  assert_eq!(chain_plane(&features, true), red);
+  assert_eq!(chain_plane(&features, false).sum(), 0.0);
+}
+
+/// Under every rotation, and padded to a square, the chain planes are the
+/// planes of the board as it is, rotated: the chains here all differ in size,
+/// so their ranks do not depend on the rotation.
+#[test]
+fn chain_planes_follow_the_rotation() {
+  let field = construct_field(
+    &mut Xoshiro256PlusPlus::seed_from_u64(SEED),
+    "
+    a.b..
+    .c...
+    ....d
+    .A.e.
+    ",
+  );
+  let (width, height) = rotation_sizes(field.width(), field.height());
+  let expected = field_features::<f64>(&field, Player::Red, field.width(), field.height(), 0);
+  for rotation in 0..oppai_rotate::rotate::ROTATIONS {
+    let features = field_features::<f64>(&field, Player::Red, width, height, rotation);
+    for own in [true, false] {
+      let mut unrotated = Array2::zeros((field.height() as usize, field.width() as usize));
+      add_unrotated_policy(
+        chain_plane(&features, own).view(),
+        field.width(),
+        field.height(),
+        rotation,
+        1.0,
+        &mut unrotated,
+      );
+      assert_eq!(unrotated, chain_plane(&expected, own), "rotation {rotation}, own {own}");
+    }
+  }
 }

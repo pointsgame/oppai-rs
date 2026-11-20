@@ -1,7 +1,7 @@
 use either::Either;
 use ndarray::{Array, Array1, Array2, Array3, Array4, Axis, array, s};
 
-use crate::field_features::CHANNELS;
+use crate::field_features::FEATURE_CHANNELS;
 use crate::tactics::TACTICAL_CHANNELS;
 use oppai_field::construct_field::construct_field;
 use oppai_field::field::{Hash, Pos};
@@ -279,7 +279,7 @@ fn mcts_last_iterations() {
 fn board_mass(inputs: &Array4<f64>, i: usize) -> f64 {
   inputs
     .index_axis(Axis(0), i)
-    .slice(s![..CHANNELS - TACTICAL_CHANNELS, .., ..])
+    .slice(s![..FEATURE_CHANNELS - TACTICAL_CHANNELS, .., ..])
     .sum()
 }
 

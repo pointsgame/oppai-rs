@@ -10,6 +10,9 @@ use std::path::PathBuf;
 pub struct InitParams {
   pub model: PathBuf,
   pub model_config: ModelConfig,
+  /// The model to take the weights from, trained without pooling over chains,
+  /// see `Model::load_adding_chains`.
+  pub from: Option<PathBuf>,
   pub optimizer: PathBuf,
   pub optimizer_config: OptimizerConfig,
 }
@@ -370,6 +373,17 @@ pub fn cli_parse() -> (Config, Action) {
     .about("Initialize the neural network")
     .arg(model_arg())
     .arg(model_config_arg())
+    .arg(
+      Arg::new("from")
+        .long("from")
+        .help(
+          "Start from the weights of this model rather than from scratch. It has to have the architecture of the \
+           model config without pooling over chains: the pooling the config adds starts as the identity, so the \
+           new model predicts what this one does. The optimizer state starts afresh",
+        )
+        .num_args(1)
+        .value_parser(value_parser!(PathBuf)),
+    )
     .arg(optimizer_arg())
     .args(optimizer_config_args())
     .arg(batch_size_arg());
@@ -760,6 +774,7 @@ pub fn cli_parse() -> (Config, Action) {
       Action::Init(InitParams {
         model,
         model_config,
+        from: matches.get_one("from").cloned(),
         optimizer,
         optimizer_config,
       })

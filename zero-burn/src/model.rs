@@ -1,4 +1,7 @@
-use crate::resnet::ResidualBlock;
+use crate::{
+  chains::{Chains, ChainsConfig},
+  resnet::ResidualBlock,
+};
 use burn::{
   module::{Initializer, Module, ModuleMapper, ModuleVisitor, Param},
   nn::{
@@ -20,7 +23,7 @@ use derive_more::From;
 use ndarray::{Array, Array1, Array2, Array3, Array4, Dimension, ShapeError};
 use oppai_zero::{
   examples::{FUTURE_POSITIONS, TD_VALUES},
-  field_features::{CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, SCORE_ONE_HOT_SIZE},
+  field_features::{CHANNELS, FEATURE_CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, SCORE_ONE_HOT_SIZE},
   model::{Model as OppaiModel, TrainableModel as OppaiTrainableModel, VALUE_COLUMNS},
 };
 use serde::{Deserialize, Serialize};
@@ -51,6 +54,9 @@ pub struct NbtConfig {
   /// any.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub gpool: Option<GpoolConfig>,
+  /// Pooling over the chains of dots after the first inner block, if any.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub chains: Option<ChainsConfig>,
 }
 
 /// A convolution part of whose channels is pooled over the whole board rather
@@ -99,6 +105,7 @@ impl Default for ModelConfig {
               channels: 32,
               gate: true,
             }),
+            chains: None,
           })
         })
         .collect(),
@@ -115,6 +122,25 @@ impl Default for ModelConfig {
 }
 
 impl ModelConfig {
+  /// Whether any block pools over the chains of dots.
+  pub fn pools_chains(&self) -> bool {
+    self.blocks.iter().any(|block| match block {
+      BlockConfig::Nbt(config) => config.chains.is_some(),
+    })
+  }
+
+  /// The same architecture without any pooling over chains: the one a model
+  /// [`Model::adding_chains`] starts from.
+  pub fn without_chains(&self) -> Self {
+    let mut config = self.clone();
+    for block in &mut config.blocks {
+      match block {
+        BlockConfig::Nbt(config) => config.chains = None,
+      }
+    }
+    config
+  }
+
   pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ModelConfigError> {
     let file = File::open(path)?;
     Ok(serde_json::from_reader(BufReader::new(file))?)
@@ -153,7 +179,7 @@ pub(crate) fn init_weight<const D: usize>(
 }
 
 /// Reinitialize a convolution's weights. `fan_in = in_channels * kernel_h * kernel_w`.
-fn init_conv(conv: &mut Conv2d, scale: f64, gain: f64, device: &Device) {
+pub(crate) fn init_conv(conv: &mut Conv2d, scale: f64, gain: f64, device: &Device) {
   let [out_c, in_c, kh, kw] = conv.weight.val().dims();
   conv.weight = init_weight([out_c, in_c, kh, kw], in_c * kh * kw, scale, gain, device);
 }
@@ -930,9 +956,16 @@ impl Block {
     }
   }
 
-  fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
+  fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>, chains: Option<&Chains>) -> Tensor<4> {
     match self {
-      Self::Nbt(block) => block.forward(inputs, mask, mask_sum_hw),
+      Self::Nbt(block) => block.forward(inputs, mask, mask_sum_hw, chains),
+    }
+  }
+
+  /// Whether the block pools over the chains of dots.
+  fn pools_chains(&self) -> bool {
+    match self {
+      Self::Nbt(block) => block.chainpool.is_some(),
     }
   }
 }
@@ -954,7 +987,7 @@ impl Model {
   pub fn new(device: &Device, config: &ModelConfig) -> Self {
     let inner_channels = config.inner_channels;
     Self {
-      conv_spatial: Conv2dConfig::new([CHANNELS, inner_channels], [3, 3])
+      conv_spatial: Conv2dConfig::new([FEATURE_CHANNELS, inner_channels], [3, 3])
         .with_padding(PaddingConfig2d::Same)
         .with_bias(false)
         .init(device),
@@ -978,6 +1011,28 @@ impl Model {
   /// can be evaluated in half precision on a device configured for it.
   pub fn load<P: AsRef<Path>>(device: &Device, config: &ModelConfig, path: P) -> Result<Self, RecordError> {
     Self::new(device, config).try_load_record(ModuleRecord::load(path)?.cast_to_module_dtype())
+  }
+
+  /// Creates the model of `config`, which may pool over the chains of dots,
+  /// from the weights of a model trained with the same architecture without
+  /// that pooling: `base`, of [`ModelConfig::without_chains`]. The pooling
+  /// starts initialized, so as the identity - the new model computes what
+  /// `base` does - and grows in with training.
+  pub fn adding_chains(device: &Device, config: &ModelConfig, base: Self) -> Result<Self, RecordError> {
+    let mut model = Self::new(device, config);
+    model.initialize(device);
+    model.try_load_record(base.into_record().allow_partial(true))
+  }
+
+  /// [`Self::adding_chains`] to the model saved at `path`, which has to load
+  /// with [`ModelConfig::without_chains`] of `config`.
+  pub fn load_adding_chains<P: AsRef<Path>>(
+    device: &Device,
+    config: &ModelConfig,
+    path: P,
+  ) -> Result<Self, RecordError> {
+    let base = Self::load(device, &config.without_chains(), path)?;
+    Self::adding_chains(device, config, base)
   }
 
   /// The model with the weights of its convolutions cast to `dtype`, and with
@@ -1021,14 +1076,25 @@ impl Model {
 
   /// The embedding and the trunk: the features the heads read, the board
   /// mask, and its area.
+  ///
+  /// `spatial` holds all the input planes: the first convolution reads the
+  /// features, and the chain planes after them only tell the blocks that pool
+  /// over chains which cells to pool together - a model without such blocks
+  /// ignores them.
   fn trunk(&self, spatial: Tensor<4>, global: Tensor<2>) -> (Tensor<4>, Tensor<4>, Tensor<4>) {
+    let chains = self
+      .residuals
+      .iter()
+      .any(Block::pools_chains)
+      .then(|| Chains::new(spatial.clone().slice(s![.., FEATURE_CHANNELS..CHANNELS])));
+    let spatial = spatial.slice(s![.., 0..FEATURE_CHANNELS]);
     let mask = spatial.clone().slice(s![.., 0..1]);
     let mask_sum_hw = mask.clone().sum_dim(2).sum_dim(3);
     let x_spatial = conv_forward(&self.conv_spatial, spatial);
     let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
     let mut x = x_spatial + x_global;
     for residual in &self.residuals {
-      x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
+      x = residual.forward(x, mask.clone(), mask_sum_hw.clone(), chains.as_ref());
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
     (mish(x), mask, mask_sum_hw)
@@ -1903,6 +1969,7 @@ mod tests {
     VALUE_VARIANCE_FLOOR, gradient_norm, interpolate_policy, scale_gradients, score_bins, score_mean_and_variance,
     squared_softplus_with_gradient_floor, stdevs_excess_weight,
   };
+  use crate::chains::ChainsConfig;
   #[cfg(feature = "flex")]
   use crate::optimizer::{OptimizerConfig, OptimizerKind};
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
@@ -1915,12 +1982,39 @@ mod tests {
   use burn::{optim::SgdConfig, tensor::Device};
   use ndarray::{Array2, Array3, Array4, Axis, array};
   #[cfg(feature = "flex")]
+  use oppai_zero::field_features::FEATURE_CHANNELS;
+  #[cfg(feature = "flex")]
   use oppai_zero::field_features::score_one_hot;
   use oppai_zero::{
     examples::{FUTURE_POSITIONS, TD_VALUES},
     field_features::{CHANNELS, SCORE_ONE_HOT_SIZE},
     model::{Model as OppaiModel, TrainableModel, VALUE_COLUMNS},
   };
+
+  /// The default architecture with pooling over chains in its second and
+  /// fourth blocks, the ones that pool globally too.
+  fn chains_config() -> ModelConfig {
+    let mut config = ModelConfig::default();
+    for block in config.blocks.iter_mut().skip(1).step_by(2) {
+      let BlockConfig::Nbt(block) = block;
+      block.chains = Some(ChainsConfig { channels: 16 });
+    }
+    config
+  }
+
+  /// A chain plane of a board for the tests: chains labelled as the features
+  /// label them, by their rank. The player to move has one chain on the
+  /// cells of even `x + y`, and the opponent one on the odd columns below the
+  /// first row and another on the last cell of the first row.
+  #[cfg(feature = "flex")]
+  fn chain_plane(channel: usize, y: usize, x: usize, width: usize) -> f32 {
+    match channel - FEATURE_CHANNELS {
+      0 if (x + y).is_multiple_of(2) => 1.0,
+      1 if x % 2 == 1 && y >= 1 => 1.0,
+      1 if y == 0 && x == width - 1 => 2.0,
+      _ => 0.0,
+    }
+  }
 
   #[test]
   fn default_config_file_matches_default() {
@@ -2355,14 +2449,71 @@ mod tests {
     value.into_data().assert_eq(&plain_value.into_data(), true);
   }
 
+  // A trained network gains pooling over chains as the identity: the grown
+  // network predicts what the one it grew from does, and its pooling is in
+  // place to train, its output convolution zero but its input one not.
+  #[test]
+  #[cfg(feature = "flex")]
+  fn adding_chains_leaves_the_network_as_it_is() {
+    let device = Device::flex();
+    let config = chains_config();
+    let mut base = Model::new(&device, &config.without_chains());
+    base.initialize(&device);
+    let grown = Model::adding_chains(&device, &config, base.clone()).unwrap();
+    let pools = grown
+      .residuals
+      .iter()
+      .filter_map(|block| {
+        let Block::Nbt(block) = block;
+        block.chainpool.as_ref()
+      })
+      .count();
+    assert_eq!(pools, 2);
+    let mut paths = PathCollector::default();
+    burn::module::Module::visit(&grown, &mut paths);
+    assert!(
+      paths
+        .paths
+        .iter()
+        .any(|path| path == "residuals.1.Nbt.chainpool.conv1.weight")
+    );
+
+    let (height, width) = (4, 5);
+    let values = (0..CHANNELS * height * width)
+      .map(|i| {
+        let (channel, y, x) = (i / (height * width), i / width % height, i % width);
+        if channel == 0 {
+          1.0
+        } else if channel >= FEATURE_CHANNELS {
+          chain_plane(channel, y, x, width)
+        } else {
+          ((channel * 5 + y * 7 + x * 3) % 13) as f32 / 13.0
+        }
+      })
+      .collect::<Vec<_>>();
+    let inputs = Tensor::<4>::from_data(TensorData::new(values, [1, CHANNELS, height, width]), &device);
+    let global = Tensor::ones([1, GLOBAL_FEATURES], &device) * 0.5;
+    let (policy, value, ..) = grown.forward_inference(inputs.clone(), global.clone());
+    let (base_policy, base_value, ..) = base.forward_inference(inputs, global);
+    policy.into_data().assert_eq(&base_policy.into_data(), true);
+    value.into_data().assert_eq(&base_value.into_data(), true);
+  }
+
   // A board predicts the same in a grid of its own size as padded into a
   // bigger one, which is how boards of several sizes share a batch: nothing
   // off the board reaches the cells on it, nor the board's value.
   #[test]
   #[cfg(feature = "flex")]
   fn padding_leaves_the_board_as_it_is() {
+    for config in [ModelConfig::default(), chains_config()] {
+      padding_leaves_the_board_of(&config);
+    }
+  }
+
+  #[cfg(feature = "flex")]
+  fn padding_leaves_the_board_of(config: &ModelConfig) {
     let device = Device::flex();
-    let model = Model::new(&device, &ModelConfig::default());
+    let model = Model::new(&device, config);
     let (height, width) = (4, 5);
     let board = |padded_height: usize, padded_width: usize| {
       let values = (0..CHANNELS * padded_height * padded_width)
@@ -2373,6 +2524,8 @@ mod tests {
             0.0
           } else if channel == 0 {
             1.0
+          } else if channel >= FEATURE_CHANNELS {
+            chain_plane(channel, y, x, width)
           } else {
             ((channel * 7 + y * 3 + x * 5) % 11) as f32 / 11.0
           }
@@ -2493,6 +2646,8 @@ mod tests {
 
   #[cfg(feature = "flex")]
   predict_test!(predict_flex, Device::flex(), ModelConfig::default());
+  #[cfg(feature = "flex")]
+  predict_test!(predict_chains_flex, Device::flex(), chains_config());
 
   /// Casts every float parameter, which is what loading a model on a device
   /// configured for half precision does to it.
@@ -2921,6 +3076,8 @@ mod tests {
 
   #[cfg(feature = "flex")]
   train_test!(train_flex, Device::flex(), ModelConfig::default());
+  #[cfg(feature = "flex")]
+  train_test!(train_chains_flex, Device::flex(), chains_config());
   // Every optimizer, with its groups, steps the network.
   #[cfg(feature = "flex")]
   train_test!(
@@ -2941,5 +3098,11 @@ mod tests {
     train_wgpu,
     Device::wgpu(DeviceKind::DefaultDevice),
     ModelConfig::default()
+  );
+  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
+  train_test!(
+    train_chains_wgpu,
+    Device::wgpu(DeviceKind::DefaultDevice),
+    chains_config()
   );
 }

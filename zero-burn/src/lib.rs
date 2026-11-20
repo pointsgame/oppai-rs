@@ -1,3 +1,4 @@
+pub mod chains;
 pub mod device;
 pub mod model;
 pub mod optimizer;

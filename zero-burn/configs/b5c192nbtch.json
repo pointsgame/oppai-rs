@@ -1,0 +1,16 @@
+{
+  "inner_channels": 192,
+  "blocks": [
+    {"type": "nbt", "mid_channels": 96, "size": 2},
+    {"type": "nbt", "mid_channels": 96, "size": 2, "gpool": {"channels": 32, "gate": true}, "chains": {"channels": 32}},
+    {"type": "nbt", "mid_channels": 96, "size": 2},
+    {"type": "nbt", "mid_channels": 96, "size": 2, "gpool": {"channels": 32, "gate": true}, "chains": {"channels": 32}},
+    {"type": "nbt", "mid_channels": 96, "size": 2}
+  ],
+  "v1_channels": 32,
+  "p1_channels": 32,
+  "g1_channels": 32,
+  "v2_size": 80,
+  "sbv2_size": 80,
+  "num_scorebeliefs": 6
+}

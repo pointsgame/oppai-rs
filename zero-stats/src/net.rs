@@ -9,7 +9,8 @@ use ndarray::{Array1, Array2, Array4, s};
 use oppai_field::player::Player;
 use oppai_zero::{
   field_features::{
-    CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, GLOBAL_SHORTFALL, HISTORY_CHANNELS, field_features_to_vec, global_to_vec,
+    CHANNELS, FEATURE_CHANNELS, GLOBAL_FEATURES, GLOBAL_KOMI, GLOBAL_SHORTFALL, HISTORY_CHANNELS,
+    field_features_to_vec, global_to_vec,
   },
   mcgs::{draw_phase, settled},
   model::Model,
@@ -25,10 +26,13 @@ pub enum Blank {
   History,
   Komi,
   Shortfall,
+  /// The chain planes: every dot then is in no chain, and pooling over
+  /// chains pools nothing.
+  Chains,
 }
 
 impl Blank {
-  pub const NAMES: &str = "tactics, history, komi, shortfall";
+  pub const NAMES: &str = "tactics, history, komi, shortfall, chains";
 
   pub fn parse(name: &str) -> Result<Self> {
     match name.trim() {
@@ -36,6 +40,7 @@ impl Blank {
       "history" => Ok(Blank::History),
       "komi" => Ok(Blank::Komi),
       "shortfall" => Ok(Blank::Shortfall),
+      "chains" => Ok(Blank::Chains),
       other => Err(anyhow!("unknown input group {other}, expected one of {}", Self::NAMES)),
     }
   }
@@ -46,14 +51,16 @@ impl Blank {
       Blank::History => "history",
       Blank::Komi => "komi",
       Blank::Shortfall => "shortfall",
+      Blank::Chains => "chains",
     }
   }
 
   /// The board planes the group covers, see `field_features_to_vec`.
   fn planes(self) -> Range<usize> {
     match self {
-      Blank::Tactics => CHANNELS - TACTICAL_CHANNELS..CHANNELS,
-      Blank::History => CHANNELS - TACTICAL_CHANNELS - HISTORY_CHANNELS..CHANNELS - TACTICAL_CHANNELS,
+      Blank::Tactics => FEATURE_CHANNELS - TACTICAL_CHANNELS..FEATURE_CHANNELS,
+      Blank::History => FEATURE_CHANNELS - TACTICAL_CHANNELS - HISTORY_CHANNELS..FEATURE_CHANNELS - TACTICAL_CHANNELS,
+      Blank::Chains => FEATURE_CHANNELS..CHANNELS,
       Blank::Komi | Blank::Shortfall => 0..0,
     }
   }

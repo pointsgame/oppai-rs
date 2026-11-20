@@ -53,8 +53,14 @@ use std::{
 };
 
 fn init(params: InitParams, device: Device) -> Result<ExitCode> {
-  let mut model = BurnModel::new(&device, &params.model_config);
-  model.initialize(&device);
+  let model = match params.from {
+    Some(from) => BurnModel::load_adding_chains(&device, &params.model_config, from)?,
+    None => {
+      let mut model = BurnModel::new(&device, &params.model_config);
+      model.initialize(&device);
+      model
+    }
+  };
   model.save_file(params.model)?;
 
   params.optimizer_config.init().save(params.optimizer)?;

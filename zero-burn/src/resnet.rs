@@ -1,7 +1,11 @@
 //! The convolutional trunk: nested bottleneck residual blocks of `3x3`
-//! convolutions, some of which also pool the board globally.
+//! convolutions, some of which also pool the board globally or over the chains
+//! of dots.
 
-use crate::model::{GpoolConfig, NbtConfig, NormActConv};
+use crate::{
+  chains::{ChainPool, Chains},
+  model::{GpoolConfig, NbtConfig, NormActConv},
+};
 use burn::{
   module::Module,
   tensor::{Device, Tensor},
@@ -50,6 +54,8 @@ impl InnerResidualBlock {
 pub struct ResidualBlock {
   pub(crate) normactconvp: NormActConv,
   pub(crate) inner: Vec<InnerResidualBlock>,
+  /// Pooling over the chains of dots after the first inner block, if any.
+  pub(crate) chainpool: Option<ChainPool>,
   pub(crate) normactconvq: NormActConv,
 }
 
@@ -61,6 +67,9 @@ impl ResidualBlock {
       inner: (0..config.size)
         .map(|i| InnerResidualBlock::new(device, config.mid_channels, config.gpool.filter(|_| i == 0)))
         .collect(),
+      chainpool: config
+        .chains
+        .map(|chains| ChainPool::new(device, config.mid_channels, chains)),
       normactconvq: NormActConv::new(device, true, None, config.mid_channels, inner_channels, [1, 1]),
     }
   }
@@ -74,15 +83,31 @@ impl ResidualBlock {
     for inner in &mut self.inner {
       inner.initialize(inner_scale, device);
     }
+    if let Some(chainpool) = &mut self.chainpool {
+      chainpool.initialize(inner_scale, device);
+    }
     self.normactconvq.initialize(0.0, device);
   }
 
-  pub fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
+  /// `chains` are the batch's chains, which a block with chain pooling needs.
+  pub fn forward(
+    &self,
+    inputs: Tensor<4>,
+    mask: Tensor<4>,
+    mask_sum_hw: Tensor<4>,
+    chains: Option<&Chains>,
+  ) -> Tensor<4> {
     let mut out = self
       .normactconvp
       .forward(inputs.clone(), mask.clone(), mask_sum_hw.clone());
-    for inner in &self.inner {
+    for (i, inner) in self.inner.iter().enumerate() {
       out = inner.forward(out, mask.clone(), mask_sum_hw.clone());
+      if i == 0
+        && let Some(chainpool) = &self.chainpool
+      {
+        let chains = chains.expect("a block pooling over chains needs the chains");
+        out = out.clone() + chainpool.forward(out, mask.clone(), chains);
+      }
     }
     let out = self.normactconvq.forward(out, mask, mask_sum_hw);
     inputs + out

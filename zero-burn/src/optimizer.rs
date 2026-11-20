@@ -502,6 +502,9 @@ mod tests {
       ),
       ("residuals.0.Nbt.normactconvp.convgpool.Conv.weight", Group::Hidden),
       ("residuals.0.Nbt.normactconvp.norm.beta", Group::NoDecay),
+      ("residuals.1.Nbt.chainpool.conv1.weight", Group::Hidden),
+      ("residuals.1.Nbt.chainpool.conv2.weight", Group::Hidden),
+      ("residuals.1.Nbt.chainpool.normc.beta", Group::NoDecay),
       ("residuals.0.Nbt.normactconvq.norm.gamma", Group::Scale),
       ("residuals.0.Nbt.inner.0.normactconv2.norm.gamma", Group::Scale),
       ("norm_trunkfinal.beta", Group::OutputNoDecay),
@@ -538,18 +541,26 @@ mod tests {
     }
   }
 
-  // Every weight is decayed, and only the weights of the trunk are matrices
-  // for Muon.
+  // Every weight and every scale is decayed - a scale towards one, see
+  // `NormMask` - while the offsets and biases next to nothing, and only the
+  // weights of the trunk are matrices for Muon.
   #[test]
   fn every_weight_is_decayed() {
-    let device = Device::flex();
+    // Only the parameters of a model on an autodiff device are trained.
+    let device = Device::flex().autodiff();
     let mut paths = Paths::default();
-    Model::new(&device, &ModelConfig::default()).visit(&mut paths);
+    let mut config = ModelConfig::default();
+    for block in &mut config.blocks {
+      let crate::model::BlockConfig::Nbt(block) = block;
+      block.chains = Some(crate::chains::ChainsConfig { channels: 8 });
+    }
+    Model::new(&device, &config).visit(&mut paths);
+    assert!(paths.paths.iter().any(|path| path.contains(".chainpool.")));
     for path in &paths.paths {
       let group = group_of(path);
       assert_eq!(
         group == Group::NoDecay || group == Group::OutputNoDecay,
-        !path.ends_with(".weight"),
+        !(path.ends_with(".weight") || path.ends_with(".gamma")),
         "{path}"
       );
       assert_eq!(

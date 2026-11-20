@@ -13,7 +13,7 @@ use anyhow::{Context, Result, bail};
 use burn::tensor::{bf16, f16};
 use burn_pack::{DType, Reader};
 use oppai_zero::{
-  field_features::{CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS},
+  field_features::{FEATURE_CHANNELS, GLOBAL_FEATURES, HISTORY_CHANNELS},
   tactics::TACTICAL_CHANNELS,
 };
 use oppai_zero_burn::model::SCORE_BELIEF_OFFSETS;
@@ -25,10 +25,10 @@ const GLOBAL_NAMES: [&str; GLOBAL_FEATURES] = ["lead", "whole komi", "komi", "sh
 /// The names of the score belief's per-bin inputs, see `score_belief_offsets`.
 const OFFSET_NAMES: [&str; SCORE_BELIEF_OFFSETS] = ["bin score", "level"];
 
-/// The board planes in groups, as ranges of channels, see
-/// `field_features_to_vec`.
+/// The board planes the first convolution reads in groups, as ranges of
+/// channels, see `field_features_to_vec`.
 fn plane_groups() -> Vec<(String, std::ops::Range<usize>)> {
-  let board = CHANNELS - HISTORY_CHANNELS - TACTICAL_CHANNELS;
+  let board = FEATURE_CHANNELS - HISTORY_CHANNELS - TACTICAL_CHANNELS;
   let mut groups = vec![
     (format!("board 0-{}", board - 1), 0..board),
     (
@@ -96,7 +96,7 @@ pub fn run(models: &[PathBuf], per_channel: bool) -> Result<()> {
         continue;
       }
       let (input_dim, names): (usize, Vec<String>) = match shape.len() {
-        4 if shape[1] == CHANNELS => (1, Vec::new()),
+        4 if shape[1] == FEATURE_CHANNELS => (1, Vec::new()),
         2 if shape[0] == GLOBAL_FEATURES => (0, GLOBAL_NAMES.iter().map(|n| n.to_string()).collect()),
         2 if shape[0] == SCORE_BELIEF_OFFSETS => (0, OFFSET_NAMES.iter().map(|n| n.to_string()).collect()),
         _ => continue,
