@@ -1,8 +1,8 @@
 # Keep compiled kernels on disk, so that only the first run after a build
 # compiles them; otherwise every process compiles every kernel of the network
 # again when it first launches it, which takes a training run half a minute
-# and more. Only builds with burn's `persistence` feature, as `zero-train`,
-# have the cache. CubeCL looks for this file in the working directory and its
-# parents.
+# and more. Only builds with burn's `persistence` feature (`zero-train`,
+# `iced`, `cli`) have the cache. CubeCL looks for this file in the working
+# directory and its parents.
 [compilation]
 cache = true
