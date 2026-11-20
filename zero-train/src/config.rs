@@ -17,6 +17,7 @@ pub struct InitParams {
 pub struct PlayParams {
   pub width: Vec<u32>,
   pub height: Vec<u32>,
+  pub max_size_diff: u32,
   pub komi_x_2: Vec<i32>,
   pub model: Option<PathBuf>,
   pub model_config: ModelConfig,
@@ -59,10 +60,12 @@ pub struct TrainParams {
 pub struct PitParams {
   pub width: Vec<u32>,
   pub height: Vec<u32>,
+  pub max_size_diff: u32,
   pub model: PathBuf,
   pub model_config: ModelConfig,
   pub model_new: PathBuf,
   pub model_config_new: ModelConfig,
+  pub komi_x_2: Vec<i32>,
   pub games: Option<PathBuf>,
   pub count: u64,
   pub win_rate_threshold: f64,
@@ -205,6 +208,28 @@ fn parallel_games_arg(help: &'static str, default: &'static str) -> Arg {
     .num_args(1)
     .value_parser(value_parser!(usize))
     .default_value(default)
+}
+
+fn max_size_diff_arg() -> Arg {
+  Arg::new("max-size-diff")
+    .long("max-size-diff")
+    .help(
+      "Maximum difference between the field width and height. Sizes are drawn from the width and height lists \
+       only among the pairs that differ by no more than this",
+    )
+    .num_args(1)
+    .value_parser(value_parser!(u32))
+    .default_value("10")
+}
+
+fn komi_x2_arg(help: &'static str) -> Arg {
+  Arg::new("komi-x2")
+    .long("komi-x2")
+    .help(help)
+    .num_args(1..)
+    .value_parser(value_parser!(i32))
+    .default_value("0")
+    .allow_hyphen_values(true)
 }
 
 fn threads_arg() -> Arg {
@@ -352,15 +377,8 @@ pub fn cli_parse() -> (Config, Action) {
     .about("Self-play a single game")
     .arg(width_arg().num_args(1..))
     .arg(height_arg().num_args(1..))
-    .arg(
-      Arg::new("komi-x2")
-        .long("komi-x2")
-        .help("Komi multiplied by 2 (to allow half-integer komi values)")
-        .num_args(1..)
-        .value_parser(value_parser!(i32))
-        .default_value("0")
-        .allow_hyphen_values(true),
-    )
+    .arg(max_size_diff_arg())
+    .arg(komi_x2_arg("Komi multiplied by 2 (to allow half-integer komi values)"))
     .arg(model_arg().required(false))
     .arg(model_config_arg())
     .arg(
@@ -550,10 +568,17 @@ pub fn cli_parse() -> (Config, Action) {
     .about("Pit one neural network against another")
     .arg(width_arg().num_args(1..))
     .arg(height_arg().num_args(1..))
+    .arg(max_size_diff_arg())
     .arg(model_arg())
     .arg(model_config_arg())
     .arg(model_new_arg())
     .arg(model_config_new_arg())
+    .arg(komi_x2_arg(
+      "Komi multiplied by 2 (to allow half-integer komi values); every pair of games samples one of these \
+       values the way self-play does. It is stated from the side of the player moving after the opening, and \
+       the models swap sides within a pair, so each of them plays the pair once with the komi and once with \
+       its negation",
+    ))
     .arg(
       Arg::new("games")
         .long("games")
@@ -744,6 +769,7 @@ pub fn cli_parse() -> (Config, Action) {
     Some(("play", matches)) => {
       let width = matches.get_many("width").unwrap().copied().collect();
       let height = matches.get_many("height").unwrap().copied().collect();
+      let max_size_diff = matches.get_one("max-size-diff").copied().unwrap();
       let komi_x_2 = matches.get_many("komi-x2").unwrap().copied().collect();
       let model = matches.get_one("model").cloned();
       let model_config = parse_model_config(matches, "model-config");
@@ -761,6 +787,7 @@ pub fn cli_parse() -> (Config, Action) {
       Action::Play(PlayParams {
         width,
         height,
+        max_size_diff,
         komi_x_2,
         model,
         model_config,
@@ -834,10 +861,12 @@ pub fn cli_parse() -> (Config, Action) {
     Some(("pit", matches)) => {
       let width = matches.get_many("width").unwrap().copied().collect();
       let height = matches.get_many("height").unwrap().copied().collect();
+      let max_size_diff = matches.get_one("max-size-diff").copied().unwrap();
       let model = matches.get_one("model").cloned().unwrap();
       let model_config = parse_model_config(matches, "model-config");
       let model_new = matches.get_one("model-new").cloned().unwrap();
       let model_config_new = parse_model_config(matches, "model-config-new");
+      let komi_x_2 = matches.get_many("komi-x2").unwrap().copied().collect();
       let games = matches.get_one("games").cloned();
       let count = matches.get_one("count").copied().unwrap();
       let win_rate_threshold = matches.get_one("win-rate-threshold").copied().unwrap();
@@ -853,10 +882,12 @@ pub fn cli_parse() -> (Config, Action) {
       Action::Pit(PitParams {
         width,
         height,
+        max_size_diff,
         model,
         model_config,
         model_new,
         model_config_new,
+        komi_x_2,
         games,
         count,
         win_rate_threshold,

@@ -26,6 +26,88 @@ struct Settled {
   ungrounded_at_start: u32,
 }
 
+/// The search value from which the mover counts as winning for
+/// [`MoveKinds`]: the early-finish term of the utility grows with the square
+/// of the value, so it is the clearly winning side it steers.
+const WINNING_VALUE: f64 = 0.9;
+
+/// What the moves of a game were, by where the mover stood before them: behind,
+/// level and ahead on the board, komi included, or winning by the search's
+/// value, whatever the board.
+#[derive(Default, Clone, Copy)]
+struct MoveKinds {
+  total: [usize; 4],
+  /// Dots near the edge of the board - on its two outer lines - that capture
+  /// nothing and leave the mover's ungrounded dots as they were: grounded from
+  /// the start, by the edge or a grounded chain they join, and grounding
+  /// nothing else. Such a move changes nothing the utility reads, so a search
+  /// that penalises new ungrounded dots finds it free.
+  idle_edge: [usize; 4],
+  /// Moves after which the mover has fewer ungrounded dots.
+  grounding: [usize; 4],
+}
+
+impl MoveKinds {
+  fn add(&mut self, other: &MoveKinds) {
+    for i in 0..4 {
+      self.total[i] += other.total[i];
+      self.idle_edge[i] += other.idle_edge[i];
+      self.grounding[i] += other.grounding[i];
+    }
+  }
+}
+
+/// How many game moves after its placement a dot counts as a recent stone of
+/// the move that grounds it.
+const RECENT_MOVES: usize = 10;
+
+/// How the mover handles its ungrounded dots, split by whether it was winning
+/// by the search's value ([`WINNING_VALUE`]) or not: index 0 not winning, 1
+/// winning. A side that grounds its groups well places ungrounded stones
+/// between a group and the edge or a grounded chain and then connects them,
+/// rather than crawling from the edge one grounded dot at a time.
+#[derive(Default, Clone, Copy)]
+struct Grounding {
+  moves: [usize; 2],
+  captures: [usize; 2],
+  /// Moves after which the mover has fewer ungrounded dots.
+  grounding: [usize; 2],
+  /// Moves that capture nothing and leave the mover's ungrounded dots as they
+  /// were: the new dot is grounded and grounds nothing else.
+  same: [usize; 2],
+  /// Moves that add an ungrounded dot.
+  adding: [usize; 2],
+  /// The dots the grounding moves grounded, the new dot not counted; moves
+  /// that capture are left out, though they can ground dots too.
+  grounded_dots: [usize; 2],
+  /// Of them, those placed ungrounded by the mover in the last
+  /// [`RECENT_MOVES`] moves.
+  recent_stones: [usize; 2],
+  /// Grounding moves that grounded at least one recent stone.
+  grounding_recent: [usize; 2],
+  /// The ungrounded dots placed, by what became of them: grounded within
+  /// [`RECENT_MOVES`], grounded later, captured, ungrounded at the end.
+  stones: [[usize; 4]; 2],
+}
+
+impl Grounding {
+  fn add(&mut self, other: &Grounding) {
+    for i in 0..2 {
+      self.moves[i] += other.moves[i];
+      self.captures[i] += other.captures[i];
+      self.grounding[i] += other.grounding[i];
+      self.same[i] += other.same[i];
+      self.adding[i] += other.adding[i];
+      self.grounded_dots[i] += other.grounded_dots[i];
+      self.recent_stones[i] += other.recent_stones[i];
+      self.grounding_recent[i] += other.grounding_recent[i];
+      for k in 0..4 {
+        self.stones[i][k] += other.stones[i][k];
+      }
+    }
+  }
+}
+
 struct GameStats {
   width: u32,
   height: u32,
@@ -50,6 +132,10 @@ struct GameStats {
   /// Decided games: the winner's ungrounded dots at the end.
   winner_ungrounded: Option<u32>,
   settled: Option<Settled>,
+  moves: MoveKinds,
+  grounding: Grounding,
+  /// Points captured by the winner and the loser - red and black for a draw.
+  captured: (i32, i32),
 }
 
 impl GameStats {
@@ -82,11 +168,32 @@ impl GameStats {
       ungrounded_at_start: 0,
     });
 
+    let mut moves = MoveKinds::default();
+    let mut grounding = Grounding::default();
+    // The ungrounded dots of both sides not yet grounded or captured: where,
+    // whose, the move that placed them and whether its mover was winning.
+    let mut stones: Vec<(oppai_field::field::Pos, Player, usize, usize)> = Vec::new();
     for (i, &(pos, player)) in game.moves.iter().enumerate() {
       let own = |field: &oppai_field::field::Field| match player {
         Player::Red => field.non_grounded_red,
         Player::Black => field.non_grounded_black,
       };
+      let komi_x_2 = if player == Player::Red {
+        game.komi_x_2
+      } else {
+        -game.komi_x_2
+      };
+      let value = (i + values.len())
+        .checked_sub(game.moves.len())
+        .map(|k| if player == Player::Red { values[k] } else { -values[k] });
+      let lead = match (field.score(player) * 2 + komi_x_2).signum() {
+        _ if value.is_some_and(|v| v >= WINNING_VALUE) => 3,
+        -1 => 0,
+        0 => 1,
+        _ => 2,
+      };
+      let (x, y) = field.to_xy(pos);
+      let near_edge = x.min(y).min(game.width - 1 - x).min(game.height - 1 - y) <= 1;
       if Some(i) == settled_start
         && let Some(settled) = settled.as_mut()
       {
@@ -95,6 +202,53 @@ impl GameStats {
       let before = own(&field);
       assert!(field.put_point(pos, player));
       field.update_grounded();
+      moves.total[lead] += 1;
+      if own(&field) < before {
+        moves.grounding[lead] += 1;
+      }
+      if near_edge && own(&field) == before && field.get_delta_score(player) == 0 {
+        moves.idle_edge[lead] += 1;
+      }
+      let winning = usize::from(lead == 3);
+      let after = own(&field);
+      grounding.moves[winning] += 1;
+      if field.get_delta_score(player) != 0 {
+        grounding.captures[winning] += 1;
+      } else {
+        match after.cmp(&before) {
+          std::cmp::Ordering::Less => grounding.grounding[winning] += 1,
+          std::cmp::Ordering::Equal => grounding.same[winning] += 1,
+          std::cmp::Ordering::Greater => grounding.adding[winning] += 1,
+        }
+      }
+      let grounding_move = field.get_delta_score(player) == 0 && after < before;
+      let mut recent = 0;
+      stones.retain(|&(stone, owner, placed, stone_winning)| {
+        let cell = field.cell(stone);
+        let fate = if cell.is_captured() {
+          2
+        } else if cell.is_grounded() {
+          if owner == player && grounding_move {
+            grounding.grounded_dots[winning] += 1;
+            if i - placed <= RECENT_MOVES {
+              recent += 1;
+            }
+          }
+          if i - placed <= RECENT_MOVES { 0 } else { 1 }
+        } else {
+          return true;
+        };
+        grounding.stones[stone_winning][fate] += 1;
+        false
+      });
+      grounding.recent_stones[winning] += recent;
+      if recent > 0 {
+        grounding.grounding_recent[winning] += 1;
+      }
+      let cell = field.cell(pos);
+      if !cell.is_captured() && !cell.is_grounded() {
+        stones.push((pos, player, i, winning));
+      }
       if field.get_delta_score(player) != 0 {
         captures += 1;
         first_capture.get_or_insert(i);
@@ -116,6 +270,10 @@ impl GameStats {
       }
     }
 
+    for &(_, _, _, stone_winning) in &stones {
+      grounding.stones[stone_winning][3] += 1;
+    }
+
     GameStats {
       width: game.width,
       height: game.height,
@@ -135,6 +293,13 @@ impl GameStats {
         field.non_grounded_black
       }),
       settled,
+      moves,
+      grounding,
+      captured: if result_x_2 < 0 {
+        (field.score_black, field.score_red)
+      } else {
+        (field.score_red, field.score_black)
+      },
     }
   }
 
@@ -161,6 +326,9 @@ struct Rows {
   lengths: Vec<String>,
   decided: Vec<String>,
   draws: Vec<String>,
+  moves: Vec<String>,
+  grounding: Vec<Vec<String>>,
+  scores: Vec<String>,
 }
 
 fn rows(name: &str, games: &[&GameStats]) -> Rows {
@@ -252,11 +420,99 @@ fn rows(name: &str, games: &[&GameStats]) -> Rows {
     fmt(per_draw(&|s| s.ungrounded_at_start as usize), 1),
   ];
 
+  let mut kinds = MoveKinds::default();
+  for game in &all {
+    kinds.add(&game.moves);
+  }
+  let mut moves_row = vec![name.to_string()];
+  for lead in 0..4 {
+    moves_row.push(format!(
+      "{} / {} / {}",
+      kinds.total[lead],
+      percent(kinds.idle_edge[lead], kinds.total[lead]),
+      percent(kinds.grounding[lead], kinds.total[lead])
+    ));
+  }
+
+  let mut g = Grounding::default();
+  for game in &all {
+    g.add(&game.grounding);
+  }
+  let grounding_rows = (0..2)
+    .map(|w| {
+      let stones = g.stones[w].iter().sum();
+      vec![
+        name.to_string(),
+        (if w == 1 { "winning" } else { "not winning" }).to_string(),
+        g.moves[w].to_string(),
+        format!(
+          "{} / {} / {} / {}",
+          percent(g.captures[w], g.moves[w]),
+          percent(g.grounding[w], g.moves[w]),
+          percent(g.same[w], g.moves[w]),
+          percent(g.adding[w], g.moves[w])
+        ),
+        fmt(
+          (g.grounding[w] > 0).then(|| g.grounded_dots[w] as f64 / g.grounding[w] as f64),
+          1,
+        ),
+        percent(g.grounding_recent[w], g.grounding[w]),
+        percent(g.recent_stones[w], g.grounded_dots[w]),
+        format!(
+          "{} / {} / {} / {}",
+          percent(g.stones[w][0], stones),
+          percent(g.stones[w][1], stones),
+          percent(g.stones[w][2], stones),
+          percent(g.stones[w][3], stones)
+        ),
+      ]
+    })
+    .collect();
+
+  // The winner's margin in points, komi included.
+  let margins: Vec<f64> = all.iter().map(|g| (g.result_x_2.abs() as f64) / 2.0).collect();
+  let bucket = |low: f64, high: f64| {
+    percent(
+      margins.iter().filter(|&&m| m >= low && m <= high).count(),
+      margins.len(),
+    )
+  };
+  let max = margins
+    .iter()
+    .copied()
+    .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |m| m.max(v))));
+  let winner_captured: Vec<f64> = decided.iter().map(|g| g.captured.0 as f64).collect();
+  let loser_captured: Vec<f64> = decided.iter().map(|g| g.captured.1 as f64).collect();
+  let scores_row = vec![
+    name.to_string(),
+    margins.len().to_string(),
+    format!(
+      "{} / {} / {} / {} / {} / {}",
+      bucket(0.0, 0.0),
+      bucket(0.5, 2.0),
+      bucket(2.5, 5.0),
+      bucket(5.5, 10.0),
+      bucket(10.5, 20.0),
+      bucket(20.5, f64::INFINITY)
+    ),
+    format!(
+      "{} / {} / {} / {}",
+      fmt(median(&margins), 1),
+      fmt(quantile(&margins, 0.9), 1),
+      fmt(quantile(&margins, 0.99), 1),
+      fmt(max, 1)
+    ),
+    format!("{} / {}", fmt(mean(&winner_captured), 1), fmt(mean(&loser_captured), 1)),
+  ];
+
   Rows {
     outcomes,
     lengths: lengths_row,
     decided: decided_row,
     draws: draws_row,
+    moves: moves_row,
+    grounding: grounding_rows,
+    scores: scores_row,
   }
 }
 
@@ -333,6 +589,45 @@ pub fn run(files: &[PathBuf], limit: Option<usize>, by_size: bool) -> Result<()>
     ],
   );
 
+  let mut moves = Table::new(
+    &format!(
+      "Moves by where the mover stood: moves / idle edge moves (on the two outer lines, no capture, mover's ungrounded dots unchanged) / grounding the mover's dots"
+    ),
+    &[
+      "games",
+      "behind",
+      "level",
+      "ahead",
+      &format!("winning (value >= {WINNING_VALUE})"),
+    ],
+  );
+
+  let mut scores = Table::new(
+    "Final scores: the winner's margin in points, komi included, 0 for a draw",
+    &[
+      "games",
+      "n",
+      "margin 0 / 0.5-2 / 2.5-5 / 5.5-10 / 10.5-20 / >20",
+      "margin median / p90 / p99 / max",
+      "decided: points captured by winner / loser",
+    ],
+  );
+  let mut grounding = Table::new(
+    &format!(
+      "Ungrounded dots by whether the mover was winning (value >= {WINNING_VALUE}); recent: placed ungrounded in the last {RECENT_MOVES} moves"
+    ),
+    &[
+      "games",
+      "mover",
+      "moves",
+      "capture / grounding / grounded, no change / new ungrounded",
+      "dots grounded per grounding move",
+      "grounding moves with recent stones",
+      "recent stones of grounded dots",
+      "new ungrounded dots: grounded in 10 / later / captured / never",
+    ],
+  );
+
   for (path, stats) in files.iter().zip(stats) {
     let stats = stats?;
     let name = label(path);
@@ -351,6 +646,11 @@ pub fn run(files: &[PathBuf], limit: Option<usize>, by_size: bool) -> Result<()>
       lengths.row(rows.lengths);
       decided.row(rows.decided);
       draws.row(rows.draws);
+      moves.row(rows.moves);
+      scores.row(rows.scores);
+      for row in rows.grounding {
+        grounding.row(row);
+      }
     }
   }
 
@@ -358,5 +658,8 @@ pub fn run(files: &[PathBuf], limit: Option<usize>, by_size: bool) -> Result<()>
   lengths.print();
   decided.print();
   draws.print();
+  moves.print();
+  grounding.print();
+  scores.print();
   Ok(())
 }

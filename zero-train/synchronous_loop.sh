@@ -59,7 +59,7 @@ set -euo pipefail
 
 	# Parameters for the training run.
 
-	MODEL_CONFIG="$GITROOTDIR"/zero-burn/configs/b5c192nbt.json # Path to a JSON file with the model architecture configuration; empty for the default one
+	MODEL_CONFIG="$GITROOTDIR"/zero-burn/configs/b5c192nbt.json  # Path to a JSON file with the model architecture configuration; empty for the default one
 	WIDTHS="16 17 18 19 20 21 22 23 24"                          # Field widths to sample from during self-play, space separated
 	HEIGHTS="16 17 18 19 20 21 22 23 24"                         # Field heights to sample from during self-play, space separated
 	KOMIS_X2="0 1 -1"                                            # Komi values multiplied by 2 to sample from during self-play, space separated
@@ -383,7 +383,8 @@ set -euo pipefail
 				--model-new "$MODELSDIR"/model_swa_"$((N + 1))".bpk \
 				--games "$GAMESDIR"/pit_"$((N + 1))".sgf.gz \
 				--count "$PIT_GAMES" \
-				--win-rate-threshold "$WIN_RATE_THRESHOLD" 2>&1 | tee -a "$LOGSDIR"/pit.log || STATUS=$?
+				--win-rate-threshold "$WIN_RATE_THRESHOLD" \
+				--komi-x2 $KOMIS_X2 2>&1 | tee -a "$LOGSDIR"/pit.log || STATUS=$?
 			if ((STATUS == 2)); then
 				# Rejected: drop the new model and play another cycle of games
 				# with the previous one; the next training will start over from

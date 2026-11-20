@@ -154,6 +154,36 @@ fn encode_game(
   }
 }
 
+/// The field sizes formed from `widths` and `heights` whose sides differ by at
+/// most `max_diff`, so that the fields are not too elongated.
+fn allowed_sizes<'a>(widths: &'a [u32], heights: &'a [u32], max_diff: u32) -> impl Iterator<Item = (u32, u32)> + 'a {
+  widths
+    .iter()
+    .flat_map(move |&width| heights.iter().map(move |&height| (width, height)))
+    .filter(move |&(width, height)| width.abs_diff(height) <= max_diff)
+}
+
+/// A field size drawn uniformly from [`allowed_sizes`].
+fn sample_size<R: Rng>(widths: &[u32], heights: &[u32], max_diff: u32, rng: &mut R) -> (u32, u32) {
+  let count = allowed_sizes(widths, heights, max_diff).count();
+  allowed_sizes(widths, heights, max_diff)
+    .nth(rng.random_range(0..count))
+    .unwrap()
+}
+
+/// One of `komis_x_2` drawn at random for a game starting with an opening of
+/// `opening_moves` moves, leaving out the values whose magnitude is not below
+/// that count.
+fn sample_komi_x_2<R: Rng>(komis_x_2: &[i32], opening_moves: usize, rng: &mut R) -> i32 {
+  let allowed = || {
+    komis_x_2
+      .iter()
+      .copied()
+      .filter(move |&komi_x_2| (komi_x_2.unsigned_abs() as usize) < opening_moves)
+  };
+  allowed().nth(rng.random_range(0..allowed().count())).unwrap()
+}
+
 /// Plays games claimed from the shared `next_game` ticket, up to `parallel` of
 /// them concurrently, creating a fresh model per game with `new_model`.
 ///
@@ -205,22 +235,9 @@ where
   .map(|()| {
     let mut rng = SmallRng::from_seed(rng.random());
     let model = new_model();
-    let width = params.width[rng.random_range(0..params.width.len())];
-    let height = params.height[rng.random_range(0..params.height.len())];
+    let (width, height) = sample_size(&params.width, &params.height, params.max_size_diff, &mut rng);
     let op = opening(width, height, &mut rng);
-    let komi_x_2_count = params
-      .komi_x_2
-      .iter()
-      .copied()
-      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
-      .count();
-    let komi_x_2 = params
-      .komi_x_2
-      .iter()
-      .copied()
-      .filter(|&komi_x_2| (komi_x_2.unsigned_abs() as usize) < op.len())
-      .nth(rng.random_range(0..komi_x_2_count))
-      .unwrap();
+    let komi_x_2 = sample_komi_x_2(&params.komi_x_2, op.len(), &mut rng);
     async move {
       let mut player = Player::Red;
       let mut field = Field::new_from_rng(width, height, &mut rng);
@@ -296,6 +313,12 @@ fn split(total: usize, parts: usize, index: usize) -> usize {
 /// games are in flight. Here each thread drives its own share of the games while
 /// one evaluator, on this thread, serves all of them from one device.
 fn play<R: Rng>(params: PlayParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
+  anyhow::ensure!(
+    allowed_sizes(&params.width, &params.height, params.max_size_diff)
+      .next()
+      .is_some(),
+    "no width and height pair differs by at most the maximum size difference"
+  );
   // `count` and `parallel_games` stay the totals they always were, so existing
   // configurations keep their meaning. The games are claimed from one ticket as
   // threads become free, while the concurrency budget is split up front since it
@@ -655,11 +678,15 @@ fn validate(learner: &Learner, validation: &Examples, batch_size: usize, zobrist
   log::info!("{}", message);
 }
 
-/// The board and the opening a pair of pit games is played on.
+/// The board, the opening and the komi a pair of pit games is played on. The
+/// komi is from the side of the player moving after the opening, which is a
+/// different model in each game of the pair, so each model plays it once with
+/// the komi and once with its negation.
 struct PitPair {
   width: u32,
   height: u32,
   opening: Vec<(u32, u32)>,
+  komi_x_2: i32,
 }
 
 /// A finished pit game: its place in the order games are counted in, its score
@@ -713,10 +740,16 @@ where
         field.update_grounded();
         player = player.next();
       }
-      let score = if index.is_multiple_of(2) {
-        pit::play(&mut field, player, model_new, model_old, 0, &mut rng, stop).await
+      // The komi as the games record it, from Red's side.
+      let red_komi_x_2 = if player == Player::Red {
+        pair.komi_x_2
       } else {
-        pit::play(&mut field, player, model_old, model_new, 0, &mut rng, stop)
+        -pair.komi_x_2
+      };
+      let score = if index.is_multiple_of(2) {
+        pit::play(&mut field, player, model_new, model_old, pair.komi_x_2, &mut rng, stop).await
+      } else {
+        pit::play(&mut field, player, model_old, model_new, pair.komi_x_2, &mut rng, stop)
           .await
           .map(|score| score.map(|score| -score))
       }
@@ -724,7 +757,13 @@ where
       Ok::<_, Error>(score.map(|score| PitGame {
         index,
         score,
-        sgf: to_sgf(&field.into()).map(|node| serialize(iter::once(&GameTree::Unknown(node)))),
+        sgf: to_sgf(&field.into()).map(|mut node| {
+          node.properties.push(Prop::Unknown(
+            "KM".into(),
+            vec![(red_komi_x_2 as f32 / 2.0).to_string()],
+          ));
+          serialize(iter::once(&GameTree::Unknown(node)))
+        }),
       }))
     }
   });
@@ -846,6 +885,12 @@ async fn pit_results(
 /// searching with its model and never for ones blocked on the other.
 fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop: Arc<AtomicBool>) -> Result<ExitCode> {
   anyhow::ensure!(
+    allowed_sizes(&params.width, &params.height, params.max_size_diff)
+      .next()
+      .is_some(),
+    "no width and height pair differs by at most the maximum size difference"
+  );
+  anyhow::ensure!(
     params.early_stop_margin >= 0.0
       && (params.early_stop_margin == 0.0
         || (params.win_rate_threshold - params.early_stop_margin > 0.0
@@ -879,10 +924,15 @@ fn pit<R: Rng>(params: PitParams, device: Device, rng: &mut R, should_stop: Arc<
 
   let pairs = (0..params.count)
     .map(|_| {
-      let width = params.width[rng.random_range(0..params.width.len())];
-      let height = params.height[rng.random_range(0..params.height.len())];
+      let (width, height) = sample_size(&params.width, &params.height, params.max_size_diff, rng);
       let opening = opening(width, height, rng);
-      PitPair { width, height, opening }
+      let komi_x_2 = sample_komi_x_2(&params.komi_x_2, opening.len(), rng);
+      PitPair {
+        width,
+        height,
+        opening,
+        komi_x_2,
+      }
     })
     .collect::<Vec<_>>();
   let total = pairs.len() * 2;
