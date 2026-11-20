@@ -1,7 +1,4 @@
-use crate::{
-  resnet::ResidualBlock,
-  transformer::{AttentionContext, TransformerBlock},
-};
+use crate::resnet::ResidualBlock;
 use burn::{
   module::{Initializer, Module, ModuleMapper, ModuleVisitor, Param},
   nn::{
@@ -68,51 +65,11 @@ pub struct GpoolConfig {
   pub gate: bool,
 }
 
-/// A nested bottleneck block of transformer layers: a `1x1` convolution down
-/// to `mid_channels`, attention and feed-forward layers over the board's
-/// cells, and a `1x1` convolution back up.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TransformerConfig {
-  pub mid_channels: usize,
-  /// Attention and feed-forward layer pairs.
-  pub layers: usize,
-  /// Attention heads; `mid_channels` is split evenly between them.
-  pub attention_heads: usize,
-  /// Hidden channels of the feed-forward layers.
-  pub ffn_channels: usize,
-  /// Channels of every attention head that the rotary encoding turns, an even
-  /// number of them; the rest carry no position, so that a head can match
-  /// tokens by what they hold alone, however far apart they are.
-  pub rotary_channels: usize,
-  /// Side of the smallest board the network is trained on, in cells: every
-  /// rotary frequency completes a full turn within it, so that no offset on a
-  /// bigger board turns a pair by an angle training has not shown it, and the
-  /// attention scores start at their usual scale on it.
-  pub min_train_side: usize,
-  /// Whether the feed-forward layers have a depthwise `3x3` convolution over
-  /// the board.
-  pub ffn_conv: bool,
-}
-
-impl TransformerConfig {
-  pub fn head_channels(&self) -> usize {
-    self.mid_channels / self.attention_heads
-  }
-
-  /// The lowest frequency of the rotary encoding, in radians per cell: a full
-  /// turn across the smallest training board.
-  pub fn min_rotary_frequency(&self) -> f64 {
-    2.0 * std::f64::consts::PI / self.min_train_side as f64
-  }
-}
-
 /// A block of the trunk, which adds its residual to the trunk's channels.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BlockConfig {
   Nbt(NbtConfig),
-  Transformer(TransformerConfig),
 }
 
 /// Model architecture hyperparameters: the trunk's blocks, in order, and the
@@ -212,15 +169,12 @@ pub(crate) fn conv2d_same(inputs: Tensor<4>, weight: Tensor<4>) -> Tensor<4> {
   conv2d(inputs.cast(weight.dtype()), weight, None, options).cast(dtype)
 }
 
-/// Casts the weights of the [`Conv2d`],
-/// [`Projection`](crate::transformer::Projection) and
-/// [`DepthwiseConv`](crate::transformer::DepthwiseConv) modules it maps -
-/// the ones nearly all the work of the network is done by - leaving every
-/// other parameter as it is.
+/// Casts the weights of the [`Conv2d`] modules it maps - the ones nearly all
+/// the work of the network is done by - leaving every other parameter as it
+/// is.
 ///
 /// TODO: switch to burn's automatic mixed precision once it has one, which
-/// would also make the casts around every convolution and projection
-/// unnecessary.
+/// would also make the casts around every convolution unnecessary.
 struct ComputeCaster {
   dtype: FloatDType,
   /// Whether each module entered and not yet exited is one to cast.
@@ -229,10 +183,7 @@ struct ComputeCaster {
 
 impl ModuleMapper for ComputeCaster {
   fn enter_module(&mut self, _name: &str, container_type: &str) {
-    self.in_compute.push(matches!(
-      container_type,
-      "Struct:Conv2d" | "Struct:Projection" | "Struct:DepthwiseConv"
-    ));
+    self.in_compute.push(container_type == "Struct:Conv2d");
   }
 
   fn exit_module(&mut self, _name: &str, _container_type: &str) {
@@ -965,14 +916,12 @@ impl CapturedHead {
 #[derive(Module, Debug)]
 pub enum Block {
   Nbt(ResidualBlock),
-  Transformer(TransformerBlock),
 }
 
 impl Block {
   pub fn new(device: &Device, inner_channels: usize, config: &BlockConfig) -> Self {
     match config {
       BlockConfig::Nbt(config) => Self::Nbt(ResidualBlock::new(device, inner_channels, config)),
-      BlockConfig::Transformer(config) => Self::Transformer(TransformerBlock::new(device, inner_channels, config)),
     }
   }
 
@@ -981,26 +930,12 @@ impl Block {
   fn initialize(&mut self, fixup_scale: f64, device: &Device) {
     match self {
       Self::Nbt(block) => block.initialize(fixup_scale, device),
-      Self::Transformer(block) => block.initialize(fixup_scale, device),
     }
   }
 
-  /// `context` is there whenever the trunk has a transformer block.
-  fn forward(
-    &self,
-    inputs: Tensor<4>,
-    mask: Tensor<4>,
-    mask_sum_hw: Tensor<4>,
-    context: Option<&AttentionContext>,
-  ) -> Tensor<4> {
+  fn forward(&self, inputs: Tensor<4>, mask: Tensor<4>, mask_sum_hw: Tensor<4>) -> Tensor<4> {
     match self {
       Self::Nbt(block) => block.forward(inputs, mask, mask_sum_hw),
-      Self::Transformer(block) => block.forward(
-        inputs,
-        mask,
-        mask_sum_hw,
-        context.expect("the trunk has the attention context when it has a transformer block"),
-      ),
     }
   }
 }
@@ -1048,10 +983,9 @@ impl Model {
     Self::new(device, config).try_load_record(ModuleRecord::load(path)?.cast_to_module_dtype())
   }
 
-  /// The model with the weights of its convolutions and projections cast to
-  /// `dtype`, and with them the convolutions and projections themselves (see
-  /// [`conv2d_same`] and [`Projection`](crate::transformer::Projection)),
-  /// while everything else stays in the type it is in. Those are nearly all
+  /// The model with the weights of its convolutions cast to `dtype`, and with
+  /// them the convolutions themselves (see [`conv2d_same`]), while everything
+  /// else stays in the type it is in. Those are nearly all
   /// the work of the network, and in single precision many GPUs cannot run
   /// them on their matrix units, so a half precision type makes them many
   /// times faster. The casts are part of the autodiff graph, so the gradients
@@ -1096,15 +1030,8 @@ impl Model {
     let x_spatial = conv_forward(&self.conv_spatial, spatial);
     let x_global = self.linear_global.forward(global).unsqueeze_dims(&[-1, -1]);
     let mut x = x_spatial + x_global;
-    // Computed once for all the transformer blocks, and not at all without
-    // them.
-    let context = self
-      .residuals
-      .iter()
-      .any(|residual| matches!(residual, Block::Transformer(_)))
-      .then(|| AttentionContext::new(&mask));
     for residual in &self.residuals {
-      x = residual.forward(x, mask.clone(), mask_sum_hw.clone(), context.as_ref());
+      x = residual.forward(x, mask.clone(), mask_sum_hw.clone());
     }
     x = self.norm_trunkfinal.forward(x, mask.clone());
     (mish(x), mask, mask_sum_hw)
@@ -1221,7 +1148,7 @@ pub struct Learner {
   /// the norm of the whole gradient, see [`gradient_norm`] - exceeds it. `None`
   /// leaves the gradients as they come out of the backward pass.
   pub gradient_clipping: Option<f32>,
-  /// The float type the convolutions and projections compute in during
+  /// The float type the convolutions compute in during
   /// training, `None` for the type of the weights. See
   /// [`Model::with_compute_dtype`]; brain floating point keeps the range of
   /// single precision, so the small gradients of a loss averaged over a batch
@@ -1516,7 +1443,7 @@ impl Predictor {
   }
 
   /// The loss terms of a batch for the model as it is, with the convolutions
-  /// and projections computing in `compute_dtype` (see
+  /// computing in `compute_dtype` (see
   /// [`Model::with_compute_dtype`]).
   #[allow(clippy::too_many_arguments)]
   pub fn losses(
@@ -1987,9 +1914,7 @@ impl OppaiTrainableModel<f32> for Learner {
 
 #[cfg(all(test, any(feature = "flex", feature = "vulkan", feature = "webgpu")))]
 mod tests {
-  use super::{
-    Block, BlockConfig, GpoolConfig, HeadsConfig, Learner, Model, ModelConfig, NbtConfig, Predictor, TransformerConfig,
-  };
+  use super::{Block, BlockConfig, Learner, Model, ModelConfig, NbtConfig, Predictor};
   #[cfg(feature = "flex")]
   use super::{
     ConvOrGpool, GLOBAL_FEATURES, OPTIMISTIC_POLICY, POLICY_OUTPUTS, SCORE_VARIANCE_FLOOR, TD_SCORE_SCALE,
@@ -2015,72 +1940,6 @@ mod tests {
     model::{Model as OppaiModel, TrainableModel, VALUE_COLUMNS},
   };
 
-  /// A network small enough for the tests to train, with blocks of both
-  /// kinds: a transformer one, a convolutional one pooling globally, and
-  /// another transformer one. The attention has two heads of 8 channels, 6 of
-  /// which the rotary encoding turns, and there are depthwise convolutions in
-  /// the feed-forward layers.
-  fn hybrid_config() -> ModelConfig {
-    hybrid_config_with(6, true)
-  }
-
-  /// The hybrid network without what is optional: no channel the rotary
-  /// encoding turns, and no depthwise convolution.
-  fn bare_hybrid_config() -> ModelConfig {
-    hybrid_config_with(0, false)
-  }
-
-  fn hybrid_config_with(rotary_channels: usize, ffn_conv: bool) -> ModelConfig {
-    let transformer = BlockConfig::Transformer(TransformerConfig {
-      mid_channels: 16,
-      layers: 2,
-      attention_heads: 2,
-      ffn_channels: 24,
-      rotary_channels,
-      min_train_side: 4,
-      ffn_conv,
-    });
-    ModelConfig {
-      inner_channels: 32,
-      blocks: vec![
-        transformer.clone(),
-        BlockConfig::Nbt(NbtConfig {
-          mid_channels: 16,
-          size: 1,
-          gpool: Some(GpoolConfig {
-            channels: 8,
-            gate: true,
-          }),
-        }),
-        transformer,
-      ],
-      heads: HeadsConfig {
-        v1_channels: 8,
-        p1_channels: 8,
-        g1_channels: 8,
-        v2_size: 16,
-        sbv2_size: 16,
-        num_scorebeliefs: 2,
-      },
-    }
-  }
-
-  /// Declares a test running `$body` - a function of a [`ModelConfig`] - for
-  /// the default network, of convolutional blocks only, and for a hybrid one.
-  macro_rules! for_both_trunks {
-    ($resnet:ident, $hybrid:ident, $body:ident) => {
-      #[test]
-      fn $resnet() {
-        $body(ModelConfig::default());
-      }
-
-      #[test]
-      fn $hybrid() {
-        $body(hybrid_config());
-      }
-    };
-  }
-
   #[test]
   fn default_config_file_matches_default() {
     let config = ModelConfig::from_file(concat!(env!("CARGO_MANIFEST_DIR"), "/configs/b5c192nbt.json")).unwrap();
@@ -2095,10 +1954,13 @@ mod tests {
       let config = ModelConfig::from_file(&path).unwrap_or_else(|error| panic!("{path:?}: {error:?}"));
       assert!(!config.blocks.is_empty(), "{path:?}");
     }
-    let json = serde_json::to_string(&hybrid_config()).unwrap();
-    assert_eq!(serde_json::from_str::<ModelConfig>(&json).unwrap(), hybrid_config());
+    let json = serde_json::to_string(&ModelConfig::default()).unwrap();
+    assert_eq!(
+      serde_json::from_str::<ModelConfig>(&json).unwrap(),
+      ModelConfig::default()
+    );
     // A misspelled field of a block is an error rather than a default.
-    assert!(serde_json::from_str::<ModelConfig>(&json.replace("\"ffn_conv\"", "\"ffn_convolution\"")).is_err());
+    assert!(serde_json::from_str::<ModelConfig>(&json.replace("\"mid_channels\"", "\"mid_channel\"")).is_err());
   }
 
   // The forward value is squared softplus, while the gradient is that of the
@@ -2125,19 +1987,14 @@ mod tests {
     }
   }
 
-  #[cfg(feature = "flex")]
-  for_both_trunks!(
-    scaling_brings_the_whole_gradient_to_the_bound,
-    scaling_brings_the_whole_gradient_to_the_bound_transformer,
-    scaling_brings_the_whole_gradient_to_the_bound_with
-  );
-
   /// The norm being clipped is that of the whole gradient rather than of each
   /// parameter on its own, so scaling the gradient by the ratio of a bound to
   /// that norm brings it to exactly the bound - and every parameter's gradient
   /// takes the same factor, leaving the direction of the update as it was.
+  #[test]
   #[cfg(feature = "flex")]
-  fn scaling_brings_the_whole_gradient_to_the_bound_with(config: ModelConfig) {
+  fn scaling_brings_the_whole_gradient_to_the_bound() {
+    let config = ModelConfig::default();
     let device = Device::flex();
     let model = Model::new(&device.clone().autodiff(), &config);
     let inputs = Tensor::ones([1, CHANNELS, 4, 8], &device);
@@ -2263,11 +2120,10 @@ mod tests {
     assert_eq!(blended, vec![1.0, -1.0, -3.0, 5.0]);
   }
 
+  #[test]
   #[cfg(feature = "flex")]
-  for_both_trunks!(forward, forward_transformer, forward_with);
-
-  #[cfg(feature = "flex")]
-  fn forward_with(config: ModelConfig) {
+  fn forward() {
+    let config = ModelConfig::default();
     let model = Model::new(&Device::flex(), &config);
     let (policy_logits, predictions, _) = model.forward(
       Tensor::ones([1, CHANNELS, 4, 8], &Device::flex()),
@@ -2353,9 +2209,7 @@ mod tests {
     };
 
     for residual in &model.residuals {
-      let Block::Nbt(residual) = residual else {
-        panic!("the default network has convolutional blocks only");
-      };
+      let Block::Nbt(residual) = residual;
       assert_zero(&residual.normactconvq.convgpool);
       for inner in &residual.inner {
         assert_zero(&inner.normactconv2.convgpool);
@@ -2383,27 +2237,6 @@ mod tests {
     );
   }
 
-  // The same Fixup invariant for the hybrid network: the convolution out of
-  // every block is zero, so each block starts as the identity however its
-  // transformer layers are initialized.
-  #[test]
-  #[cfg(feature = "flex")]
-  fn initialize_zeroes_hybrid_branches() {
-    let device = Device::flex();
-    let mut model = Model::new(&device, &hybrid_config());
-    model.initialize(&device);
-    for residual in &model.residuals {
-      let normactconvq = match residual {
-        Block::Nbt(block) => &block.normactconvq,
-        Block::Transformer(block) => &block.normactconvq,
-      };
-      let ConvOrGpool::Conv(conv) = &normactconvq.convgpool else {
-        panic!("the block's output should be a plain conv");
-      };
-      assert_eq!(conv.weight.val().abs().sum().into_scalar::<f32>(), 0.0);
-    }
-  }
-
   /// The paths of every float parameter, in traversal order.
   #[cfg(feature = "flex")]
   #[derive(Default)]
@@ -2427,8 +2260,8 @@ mod tests {
     }
   }
 
-  // A block's parameters are under its index and its kind, so a record with
-  // another kind of block somewhere does not load.
+  // A block's parameters are under its index and its kind, and a record loads
+  // back into a model of the same config.
   #[test]
   #[cfg(feature = "flex")]
   fn records_have_the_paths_of_the_blocks() {
@@ -2458,12 +2291,6 @@ mod tests {
       .0
       .into_data()
       .assert_eq(&model.forward_inference(inputs, global).0.into_data(), true);
-
-    assert!(
-      Model::new(&device, &hybrid_config())
-        .try_load_record(model.into_record())
-        .is_err()
-    );
   }
 
   // The board size feature goes from -1 on a 16x16 board to 1 on a 40x40
@@ -2532,56 +2359,18 @@ mod tests {
       }
       config
     };
-    for config in [ModelConfig::default(), hybrid_config()] {
-      let mut gated = Model::new(&device, &config);
-      gated.initialize(&device);
-      let plain = Model::new(&device, &without_gates(config))
-        .try_load_record(gated.clone().into_record().allow_unused(true))
-        .unwrap();
-      let inputs = Tensor::<4>::random([2, CHANNELS, 5, 6], burn::tensor::Distribution::Default, &device);
-      let global = Tensor::ones([2, GLOBAL_FEATURES], &device);
-      let (policy, value, ..) = gated.forward_inference(inputs.clone(), global.clone());
-      let (plain_policy, plain_value, ..) = plain.forward_inference(inputs, global);
-      policy.into_data().assert_eq(&plain_policy.into_data(), true);
-      value.into_data().assert_eq(&plain_value.into_data(), true);
-    }
-  }
-
-  // The rotary frequencies and the depthwise convolutions are parameters of
-  // every transformer layer, which a network without them does not have: a record of
-  // one does not load into the other.
-  #[test]
-  #[cfg(feature = "flex")]
-  fn optional_parameters_are_in_the_record() {
-    use burn::module::Module;
-    let device = Device::flex();
-    let paths = |config: &ModelConfig| {
-      let mut paths = PathCollector::default();
-      Model::new(&device, config).visit(&mut paths);
-      paths.paths
-    };
-    let bare = paths(&bare_hybrid_config());
-    let full = paths(&hybrid_config());
-    let optional = full.iter().filter(|path| !bare.contains(path)).collect::<Vec<_>>();
-    let expected = ["residuals.0", "residuals.2"]
-      .into_iter()
-      .flat_map(|block| ["layers.0", "layers.1"].map(|layer| format!("{block}.Transformer.{layer}")))
-      .flat_map(|layer| {
-        [
-          format!("{layer}.attention.rope.directions"),
-          format!("{layer}.attention.rope.excess"),
-          format!("{layer}.ffn.conv.weight"),
-        ]
-      })
-      .collect::<Vec<_>>();
-    assert_eq!(optional, expected.iter().collect::<Vec<_>>());
-    assert!(bare.iter().all(|path| full.contains(path)));
-
-    assert!(
-      Model::new(&device, &hybrid_config())
-        .try_load_record(Model::new(&device, &bare_hybrid_config()).into_record())
-        .is_err()
-    );
+    let config = ModelConfig::default();
+    let mut gated = Model::new(&device, &config);
+    gated.initialize(&device);
+    let plain = Model::new(&device, &without_gates(config))
+      .try_load_record(gated.clone().into_record().allow_unused(true))
+      .unwrap();
+    let inputs = Tensor::<4>::random([2, CHANNELS, 5, 6], burn::tensor::Distribution::Default, &device);
+    let global = Tensor::ones([2, GLOBAL_FEATURES], &device);
+    let (policy, value, ..) = gated.forward_inference(inputs.clone(), global.clone());
+    let (plain_policy, plain_value, ..) = plain.forward_inference(inputs, global);
+    policy.into_data().assert_eq(&plain_policy.into_data(), true);
+    value.into_data().assert_eq(&plain_value.into_data(), true);
   }
 
   // A board predicts the same in a grid of its own size as padded into a
@@ -2591,7 +2380,7 @@ mod tests {
   #[cfg(feature = "flex")]
   fn padding_leaves_the_board_as_it_is() {
     let device = Device::flex();
-    let model = Model::new(&device, &hybrid_config());
+    let model = Model::new(&device, &ModelConfig::default());
     let (height, width) = (4, 5);
     let board = |padded_height: usize, padded_width: usize| {
       let values = (0..CHANNELS * padded_height * padded_width)
@@ -2624,17 +2413,12 @@ mod tests {
       .assert_approx_eq::<f32>(&value.into_data(), Default::default());
   }
 
-  #[cfg(feature = "flex")]
-  for_both_trunks!(
-    ema_update_endpoints,
-    ema_update_endpoints_transformer,
-    ema_update_endpoints_with
-  );
-
   // With factor 1 the average must become an exact copy of the model, and with
   // factor 0 it must stay unchanged - the two endpoints of the EMA lerp.
+  #[test]
   #[cfg(feature = "flex")]
-  fn ema_update_endpoints_with(config: ModelConfig) {
+  fn ema_update_endpoints() {
+    let config = ModelConfig::default();
     use super::ema_update;
 
     let device = Device::flex();
@@ -2727,10 +2511,6 @@ mod tests {
 
   #[cfg(feature = "flex")]
   predict_test!(predict_flex, Device::flex(), ModelConfig::default());
-  #[cfg(feature = "flex")]
-  predict_test!(predict_transformer_flex, Device::flex(), hybrid_config());
-  #[cfg(feature = "flex")]
-  predict_test!(predict_bare_transformer_flex, Device::flex(), bare_hybrid_config());
 
   /// Casts every float parameter, which is what loading a model on a device
   /// configured for half precision does to it.
@@ -2745,18 +2525,13 @@ mod tests {
     }
   }
 
-  #[cfg(feature = "flex")]
-  for_both_trunks!(
-    half_precision_predicts_what_single_precision_does,
-    half_precision_predicts_what_single_precision_does_transformer,
-    half_precision_predicts_what_single_precision_does_with
-  );
-
   // A model in half precision takes the same single precision inputs and gives
   // back the same single precision outputs, up to the rounding of its weights
   // and activations.
+  #[test]
   #[cfg(feature = "flex")]
-  fn half_precision_predicts_what_single_precision_does_with(config: ModelConfig) {
+  fn half_precision_predicts_what_single_precision_does() {
+    let config = ModelConfig::default();
     use burn::{module::Module, tensor::FloatDType};
     let device = Device::flex();
     let mut model = Model::new(&device, &config);
@@ -2811,12 +2586,6 @@ mod tests {
     predict_wgpu,
     Device::wgpu(DeviceKind::DefaultDevice),
     ModelConfig::default()
-  );
-  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  predict_test!(
-    predict_transformer_wgpu,
-    Device::wgpu(DeviceKind::DefaultDevice),
-    hybrid_config()
   );
 
   macro_rules! train_test {
@@ -2886,18 +2655,13 @@ mod tests {
     };
   }
 
-  #[cfg(feature = "flex")]
-  for_both_trunks!(
-    losses_are_the_training_terms,
-    losses_are_the_training_terms_transformer,
-    losses_are_the_training_terms_with
-  );
-
   // The loss terms validation reads are those of training, named as the
   // training log names them: computing them leaves the model as it is, and a
   // training step on the batch brings them down.
+  #[test]
   #[cfg(feature = "flex")]
-  fn losses_are_the_training_terms_with(config: ModelConfig) {
+  fn losses_are_the_training_terms() {
+    let config = ModelConfig::default();
     let device = Device::flex().autodiff();
     let model = Model::new(&device, &config);
     let predictor = Predictor { model, device };
@@ -3017,18 +2781,13 @@ mod tests {
     }
   }
 
-  #[cfg(feature = "flex")]
-  for_both_trunks!(
-    mixed_precision_trains_like_single_precision,
-    mixed_precision_trains_like_single_precision_transformer,
-    mixed_precision_trains_like_single_precision_with
-  );
-
   // Convolutions in brain floating point give the losses and the gradient that
   // single precision ones do, up to rounding - and do round, so they really run
   // in the other type - while the weights stay in single precision.
+  #[test]
   #[cfg(feature = "flex")]
-  fn mixed_precision_trains_like_single_precision_with(config: ModelConfig) {
+  fn mixed_precision_trains_like_single_precision() {
+    let config = ModelConfig::default();
     use burn::{
       module::Module,
       tensor::{DType, FloatDType},
@@ -3180,9 +2939,7 @@ mod tests {
 
   #[cfg(feature = "flex")]
   train_test!(train_flex, Device::flex(), ModelConfig::default());
-  #[cfg(feature = "flex")]
-  train_test!(train_transformer_flex, Device::flex(), hybrid_config());
-  // Every optimizer, with its groups, steps both networks.
+  // Every optimizer, with its groups, steps the network.
   #[cfg(feature = "flex")]
   train_test!(
     train_adamw_flex,
@@ -3192,37 +2949,15 @@ mod tests {
   );
   #[cfg(feature = "flex")]
   train_test!(
-    train_transformer_adamw_flex,
-    Device::flex(),
-    hybrid_config(),
-    OptimizerConfig::new(OptimizerKind::AdamW, 1).init()
-  );
-  #[cfg(feature = "flex")]
-  train_test!(
     train_muon_flex,
     Device::flex(),
     ModelConfig::default(),
     OptimizerConfig::new(OptimizerKind::Muon, 1).init()
   );
-  #[cfg(feature = "flex")]
-  train_test!(
-    train_transformer_muon_flex,
-    Device::flex(),
-    hybrid_config(),
-    OptimizerConfig::new(OptimizerKind::Muon, 1).init()
-  );
-  #[cfg(feature = "flex")]
-  train_test!(train_bare_transformer_flex, Device::flex(), bare_hybrid_config());
   #[cfg(any(feature = "vulkan", feature = "webgpu"))]
   train_test!(
     train_wgpu,
     Device::wgpu(DeviceKind::DefaultDevice),
     ModelConfig::default()
-  );
-  #[cfg(any(feature = "vulkan", feature = "webgpu"))]
-  train_test!(
-    train_transformer_wgpu,
-    Device::wgpu(DeviceKind::DefaultDevice),
-    hybrid_config()
   );
 }

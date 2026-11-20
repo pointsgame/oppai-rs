@@ -90,8 +90,7 @@ pub fn run(models: &[PathBuf], per_channel: bool) -> Result<()> {
     let mut found = false;
     for tensor in &tensors {
       let shape: Vec<usize> = tensor.shape.iter().copied().collect();
-      // Only weights of layers: other parameters, like those of attention, can
-      // have the same shapes. Convolutions are [out, in, kh, kw]; linear
+      // Only weights of layers: other parameters can have the same shapes. Convolutions are [out, in, kh, kw]; linear
       // layers [in, out].
       if !tensor.name.ends_with("weight") {
         continue;

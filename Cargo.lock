@@ -7322,9 +7322,7 @@ name = "oppai-zero-burn"
 version = "0.1.0"
 dependencies = [
  "burn",
- "burn-cubecl",
  "burn-pack",
- "cubecl",
  "derive_more",
  "futures",
  "log",

@@ -10,10 +10,8 @@ edition = "2024"
 ndarray.workspace = true
 thiserror.workspace = true
 num-traits.workspace = true
-burn = { workspace = true, features = ["optim", "autotune", "extension"] }
+burn = { workspace = true, features = ["optim", "autotune"] }
 burn-pack.workspace = true
-burn-cubecl = { workspace = true, optional = true }
-cubecl = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 log.workspace = true
@@ -24,15 +22,9 @@ derive_more = { workspace = true, features = ["from"] }
 futures.workspace = true
 
 [features]
-cuda = ["burn/cuda", "cube"]
-rocm = ["burn/rocm", "cube"]
+cuda = ["burn/cuda"]
+rocm = ["burn/rocm"]
 flex = ["burn/flex"]
-vulkan = ["burn/vulkan", "cube"]
-webgpu = ["burn/webgpu", "cube"]
-# The GPU kernels of the distance attention, see `distance_attention`. Enabled
-# by every GPU backend.
-cube = ["dep:burn-cubecl", "dep:cubecl"]
-# Has to be on whenever burn's own `fusion` feature is: the GPU backend is then
-# fused, and the distance attention has to implement it as well.
-fusion = ["burn/fusion"]
+vulkan = ["burn/vulkan"]
+webgpu = ["burn/webgpu"]
 default = ["flex", "vulkan"]

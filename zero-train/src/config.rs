@@ -311,8 +311,8 @@ fn optimizer_config_args() -> [Arg; 4] {
       .long("weight-decay")
       .short('w')
       .help(
-        "Weight decay of the weights of the hidden layers, the input layer and the heads; the attention's \
-         projections get half of it and the biases, offsets and rotary frequencies nearly none. With sgd it is an \
+        "Weight decay of the weights of the hidden layers, the input layer and the heads; the biases and offsets \
+         get nearly none. With sgd it is an \
          L2 penalty, with adamw and muon the weights shrink by learning rate * weight decay every step \
          [default: 0.000000004 for sgd, 0.005 * sqrt(batch size / 256) for adamw and muon]",
       )
@@ -508,7 +508,7 @@ pub fn cli_parse() -> (Config, Action) {
       Arg::new("mixed-precision")
         .long("mixed-precision")
         .help(
-          "Compute the convolutions and the transformer's projections in brain floating point while keeping the \
+          "Compute the convolutions in brain floating point while keeping the \
            weights, the optimizer and everything else in single precision. They cannot use the matrix units of many \
            GPUs in single precision, so this makes training many times faster",
         )
@@ -519,9 +519,7 @@ pub fn cli_parse() -> (Config, Action) {
         .long("gradient-checkpointing")
         .help(
           "Recompute the outputs of the cheap operations during the backward pass instead of keeping them from the \
-           forward one. Training memory is mostly what the forward pass keeps, and this cuts it by about a quarter \
-           for the convolutional network and more for the transformer, whose attention keeps several board area \
-           squared sized tensors per layer",
+           forward one. Training memory is mostly what the forward pass keeps, and this cuts it by about a quarter",
         )
         .action(clap::ArgAction::SetTrue),
     )

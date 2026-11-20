@@ -9,7 +9,7 @@ edition = "2024"
 [dependencies]
 ndarray.workspace = true
 futures.workspace = true
-burn.workspace = true
+burn = { workspace = true, features = ["fusion"] }
 burn-pack.workspace = true
 rand.workspace = true
 log.workspace = true
@@ -21,7 +21,7 @@ sgf-parse.workspace = true
 oppai-field = { path = "../field" }
 oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
-oppai-zero-burn = { path = "../zero-burn", default-features = false, features = ["fusion"] }
+oppai-zero-burn = { path = "../zero-burn", default-features = false }
 oppai-zero-sgf = { path = "../zero-sgf" }
 
 [features]
