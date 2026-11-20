@@ -9,7 +9,7 @@ use burn::{
   optim::{GradientsParams, ModuleOptimizer},
   store::{ModuleRecord, RecordError},
   tensor::{
-    DType, DataError, Device, ExecutionError, FloatDType, Int, Tensor, TensorData, Transaction, ZeroDimPlaceholders,
+    DType, DataError, Device, ExecutionError, FloatDType, Int, Tensor, TensorData, Transaction,
     activation::{log_softmax, mish, sigmoid, softmax, softplus, tanh},
     module::{conv2d, linear},
     ops::ConvOptions,
@@ -632,7 +632,7 @@ impl ValueHead {
     let outv1 = conv_forward(&self.conv1, inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
-    let outpooled = Self::gpool(outv1, mask_sum_hw).reshape(ZeroDimPlaceholders([0, -1]));
+    let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
 
     // Main Value Head
 
@@ -659,10 +659,7 @@ impl ValueHead {
   /// from the pooled features under the `[batch, 1]` komi in points.
   fn score_belief(&self, outpooled: Tensor<2>, komi: Tensor<2>) -> Tensor<2> {
     // Term 1: Linear from pooled
-    let s2_term = self
-      .linear_s2
-      .forward(outpooled.clone())
-      .reshape(ZeroDimPlaceholders([0, 1, -1]));
+    let s2_term = self.linear_s2.forward(outpooled.clone()).reshape([0, 1, -1]);
 
     // Term 2: the bins' own inputs
     let offsets = score_belief_offsets(komi).cast(self.linear_s2off.weight.val().dtype());
@@ -704,7 +701,7 @@ impl ValueHead {
     let outv1 = conv_forward(&self.conv1, inputs);
     let outv1 = self.bias1.forward(outv1, mask.clone());
     let outv1 = mish(outv1);
-    let outpooled = Self::gpool(outv1, mask_sum_hw).reshape(ZeroDimPlaceholders([0, -1]));
+    let outpooled = Self::gpool(outv1, mask_sum_hw).reshape([0, -1]);
 
     // Main Value Head
 
@@ -849,7 +846,7 @@ impl PolicyHead {
     let outg = conv_forward(&self.conv1g, inputs);
     let outg = self.biasg.forward(outg, mask.clone());
     let outg = mish(outg);
-    let outg = ConvAndGPool::gpool(outg, mask.clone(), mask_sum_hw).reshape(ZeroDimPlaceholders([0, -1]));
+    let outg = ConvAndGPool::gpool(outg, mask.clone(), mask_sum_hw).reshape([0, -1]);
     let outg = self.linearg.forward(outg).unsqueeze_dims(&[-1, -1]);
 
     let outp = outp + outg;
@@ -1216,7 +1213,7 @@ impl OppaiModel<f32> for Predictor {
       draw.cast(FloatDType::F32),
     );
     let policy_logits = interpolate_policy(policy_logits, optimism);
-    let policies = softmax(policy_logits.reshape(ZeroDimPlaceholders([0, -1])), 1);
+    let policies = softmax(policy_logits.reshape([0, -1]), 1);
     // The predicted squared error becomes a standard deviation for the
     // search's uncertainty weighting. The score estimate is the
     // longest-horizon TD score, the head whose target converges to the final
@@ -1511,15 +1508,9 @@ impl Predictor {
       TensorData::new(into_data_vec(outcome_weights), [batch, 1]),
       &self.device,
     );
-    let q_targets = q_values
-      .clone()
-      .slice(s![.., 0..1])
-      .reshape(ZeroDimPlaceholders([0, -1]));
-    let q_score_targets = q_values
-      .clone()
-      .slice(s![.., 1..2])
-      .reshape(ZeroDimPlaceholders([0, -1]));
-    let q_weights = q_values.slice(s![.., 2..3]).reshape(ZeroDimPlaceholders([0, -1]));
+    let q_targets = q_values.clone().slice(s![.., 0..1]).reshape([0, -1]);
+    let q_score_targets = q_values.clone().slice(s![.., 1..2]).reshape([0, -1]);
+    let q_weights = q_values.slice(s![.., 2..3]).reshape([0, -1]);
     // The captured head predicts the terminal captured state and the future
     // dots of every board cell, so its losses are masked only by the board
     // mask.
@@ -1540,52 +1531,49 @@ impl Predictor {
       score: out_scores,
     } = out_value;
     let out_policies = log_softmax(
-      out_policy_logits
-        .clone()
-        .slice(s![.., 0..1, .., ..])
-        .reshape(ZeroDimPlaceholders([0, -1])),
+      out_policy_logits.clone().slice(s![.., 0..1, .., ..]).reshape([0, -1]),
       1,
     );
     let out_opponent_policies = log_softmax(
       out_policy_logits
         .clone()
         .slice(s![.., OPPONENT_POLICY..OPPONENT_POLICY + 1, .., ..])
-        .reshape(ZeroDimPlaceholders([0, -1])),
+        .reshape([0, -1]),
       1,
     );
     let out_soft_policies = log_softmax(
       out_policy_logits
         .clone()
         .slice(s![.., SOFT_POLICY..SOFT_POLICY + 1, .., ..])
-        .reshape(ZeroDimPlaceholders([0, -1])),
+        .reshape([0, -1]),
       1,
     );
     let out_soft_opponent_policies = log_softmax(
       out_policy_logits
         .clone()
         .slice(s![.., SOFT_OPPONENT_POLICY..SOFT_OPPONENT_POLICY + 1, .., ..])
-        .reshape(ZeroDimPlaceholders([0, -1])),
+        .reshape([0, -1]),
       1,
     );
     let out_long_optimistic_policies = log_softmax(
       out_policy_logits
         .clone()
         .slice(s![.., LONG_OPTIMISTIC_POLICY..LONG_OPTIMISTIC_POLICY + 1, .., ..])
-        .reshape(ZeroDimPlaceholders([0, -1])),
+        .reshape([0, -1]),
       1,
     );
     let out_q_pretanh = out_policy_logits
       .clone()
       .slice(s![.., Q_VALUE_POLICY..Q_VALUE_POLICY + 1, .., ..])
-      .reshape(ZeroDimPlaceholders([0, -1]));
+      .reshape([0, -1]);
     let out_q_score_prescale = out_policy_logits
       .clone()
       .slice(s![.., Q_SCORE_POLICY..Q_SCORE_POLICY + 1, .., ..])
-      .reshape(ZeroDimPlaceholders([0, -1]));
+      .reshape([0, -1]);
     let out_optimistic_policies = log_softmax(
       out_policy_logits
         .slice(s![.., OPTIMISTIC_POLICY..OPTIMISTIC_POLICY + 1, .., ..])
-        .reshape(ZeroDimPlaceholders([0, -1])),
+        .reshape([0, -1]),
       1,
     );
     let out_values = log_softmax(out_value_logits.clone().slice(s![.., 0..2]), 1);
@@ -1595,7 +1583,7 @@ impl Predictor {
     // and renormalized over the board, so it's a flattened (higher entropy)
     // version of the same distribution. The epsilon gives unvisited on-board
     // cells a small uniform mass; off-board cells are zeroed by the mask.
-    let policy_mask = mask.clone().reshape(ZeroDimPlaceholders([0, -1]));
+    let policy_mask = mask.clone().reshape([0, -1]);
     let soft_policies = ((policies.clone() + 1e-7) * policy_mask.clone()).powf_scalar(0.25);
     let soft_policies = soft_policies.clone() / soft_policies.sum_dim(1);
     let soft_opponent_policies = ((opponent_policies.clone() + 1e-7) * policy_mask).powf_scalar(0.25);
@@ -1612,10 +1600,7 @@ impl Predictor {
     let td_values_loss = (0..TD_VALUES)
       .map(|i| {
         let logits = out_value_logits.clone().slice(s![.., 2 + 2 * i..4 + 2 * i]);
-        let target = td_values
-          .clone()
-          .slice(s![.., i..i + 1, ..])
-          .reshape(ZeroDimPlaceholders([0, -1]));
+        let target = td_values.clone().slice(s![.., i..i + 1, ..]).reshape([0, -1]);
         -(log_softmax(logits, 1) * target).sum()
       })
       .reduce(|a, b| a + b)
@@ -1634,10 +1619,7 @@ impl Predictor {
       1,
     );
     let pred_value = td_short_pred.clone().slice(s![.., 0..1]) - td_short_pred.slice(s![.., 1..2]);
-    let td_short_target = td_values
-      .clone()
-      .slice(s![.., TD_VALUES - 1.., ..])
-      .reshape(ZeroDimPlaceholders([0, -1]));
+    let td_short_target = td_values.clone().slice(s![.., TD_VALUES - 1.., ..]).reshape([0, -1]);
     let real_value = td_short_target.clone().slice(s![.., 0..1]) - td_short_target.slice(s![.., 1..2]);
     // Signed, so it also says which way the net was wrong: positive means the
     // position turned out better in the short term than it predicted.
@@ -1732,7 +1714,7 @@ impl Predictor {
     let captured_bce = out_captured_logits.clone().clamp_min(0.0) - out_captured_logits.clone() * captured
       + (-out_captured_logits.abs()).exp().log1p();
     let captured_loss = ((captured_bce * mask.clone()).sum_dim(2).sum_dim(3) / mask_sum_hw.clone()
-      * outcome_weights.clone().reshape(ZeroDimPlaceholders([0, 1, 1, 1])))
+      * outcome_weights.clone().reshape([0, 1, 1, 1]))
     .sum()
       * 1.5
       / batch;
@@ -1749,7 +1731,7 @@ impl Predictor {
       .sum_dim(2)
       .sum_dim(3)
       / mask_sum_hw.sqrt()
-      * outcome_weights.reshape(ZeroDimPlaceholders([0, 1, 1, 1])))
+      * outcome_weights.reshape([0, 1, 1, 1]))
     .sum()
       * 0.25
       / batch;
@@ -1928,7 +1910,7 @@ mod tests {
   #[cfg(feature = "flex")]
   use burn::{
     optim::GradientsParams,
-    tensor::{Tensor, TensorData, ZeroDimPlaceholders, activation::softmax, s},
+    tensor::{Tensor, TensorData, activation::softmax, s},
   };
   use burn::{optim::SgdConfig, tensor::Device};
   use ndarray::{Array2, Array3, Array4, Axis, array};
@@ -2130,7 +2112,7 @@ mod tests {
       Tensor::ones([1, GLOBAL_FEATURES], &Device::flex()),
     );
     let values = predictions.value;
-    let policies = softmax(policy_logits.reshape(ZeroDimPlaceholders([0, -1])), 1);
+    let policies = softmax(policy_logits.reshape([0, -1]), 1);
     assert!(
       policies
         .clone()
@@ -2221,7 +2203,7 @@ mod tests {
       Tensor::ones([1, GLOBAL_FEATURES], &device),
     );
     let values = predictions.value;
-    let policies = softmax(policy_logits.reshape(ZeroDimPlaceholders([0, -1])), 1);
+    let policies = softmax(policy_logits.reshape([0, -1]), 1);
     assert!(
       policies
         .iter_dim(0)
