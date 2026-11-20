@@ -3,6 +3,7 @@
 //! the networks predict. Every report takes the files it reads as arguments,
 //! so it works with any layout of the run's files and any model config.
 
+mod chains;
 mod common;
 mod games;
 mod horizons;
@@ -48,6 +49,18 @@ fn cli() -> Command {
             .long("by-size")
             .help("Also split each file by board size")
             .action(ArgAction::SetTrue),
+        ),
+    )
+    .subcommand(
+      Command::new("chains")
+        .about("How live dots split into 8-connected chains over the course of games")
+        .arg(files("files", "Games files, gzip-compressed or not, pooled together"))
+        .arg(
+          Arg::new("count")
+            .long("count")
+            .short('c')
+            .help("Read at most this many games of each file")
+            .value_parser(value_parser!(usize)),
         ),
     )
     .subcommand(
@@ -187,6 +200,7 @@ fn main() -> Result<()> {
       m.get_one::<usize>("count").copied(),
       m.get_flag("by-size"),
     ),
+    Some(("chains", m)) => chains::run(&paths(m, "files"), m.get_one::<usize>("count").copied()),
     Some(("horizons", m)) => horizons::run(horizons::HorizonsParams {
       files: paths(m, "files"),
       count: m.get_one::<usize>("count").copied(),
