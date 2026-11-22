@@ -552,7 +552,10 @@ mod tests {
     let mut config = ModelConfig::default();
     for block in &mut config.blocks {
       let crate::model::BlockConfig::Nbt(block) = block;
-      block.chains = Some(crate::chains::ChainsConfig { channels: 8 });
+      block.chains = Some(crate::chains::ChainsConfig {
+        channels: 8,
+        soft_max: Some(4.0),
+      });
     }
     Model::new(&device, &config).visit(&mut paths);
     assert!(paths.paths.iter().any(|path| path.contains(".chainpool.")));

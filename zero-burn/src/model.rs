@@ -44,7 +44,7 @@ pub struct HeadsConfig {
 /// A nested bottleneck residual block of convolutions: a `1x1` convolution
 /// down to `mid_channels`, inner residual blocks of two `3x3` convolutions
 /// each, and a `1x1` convolution back up.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NbtConfig {
   pub mid_channels: usize,
@@ -72,7 +72,7 @@ pub struct GpoolConfig {
 }
 
 /// A block of the trunk, which adds its residual to the trunk's channels.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BlockConfig {
   Nbt(NbtConfig),
@@ -81,7 +81,7 @@ pub enum BlockConfig {
 /// Model architecture hyperparameters: the trunk's blocks, in order, and the
 /// heads reading it. A model must be created with the same config it was
 /// trained with for the weights to load.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ModelConfig {
   /// Channels of the trunk the blocks add their residuals to.
   pub inner_channels: usize,
@@ -1992,12 +1992,16 @@ mod tests {
   };
 
   /// The default architecture with pooling over chains in its second and
-  /// fourth blocks, the ones that pool globally too.
+  /// fourth blocks, the ones that pool globally too: the second with a soft
+  /// max next to the means, the fourth without.
   fn chains_config() -> ModelConfig {
     let mut config = ModelConfig::default();
-    for block in config.blocks.iter_mut().skip(1).step_by(2) {
+    for (i, block) in config.blocks.iter_mut().skip(1).step_by(2).enumerate() {
       let BlockConfig::Nbt(block) = block;
-      block.chains = Some(ChainsConfig { channels: 16 });
+      block.chains = Some(ChainsConfig {
+        channels: 16,
+        soft_max: (i == 0).then_some(4.0),
+      });
     }
     config
   }
