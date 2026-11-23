@@ -7,6 +7,7 @@ use iced::{Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector, mouse
 use oppai_field::extended_field::ExtendedField;
 use oppai_field::field::Pos;
 use oppai_field::player::Player;
+use std::cell::Cell;
 
 impl From<Rgb> for Color {
   fn from(rgb: Rgb) -> Self {
@@ -80,6 +81,12 @@ pub struct CanvasField<E: Extra = ()> {
   pub edit_mode: bool,
   pub config: CanvasConfig,
   pub extra: E,
+  /// Ratio of physical to logical pixels of the window.
+  pub scale_factor: f32,
+  /// Canvas origin and scale factor the cached geometry was drawn for. Grid
+  /// lines are snapped to physical pixels, which depends on both, while the
+  /// cache itself is only invalidated on size changes.
+  pub cache_key: Cell<(Point, f32)>,
 }
 
 impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
@@ -121,10 +128,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
           .min(bounds.width / field_width as f32 * field_height as f32);
         let step_x = width / field_width as f32;
         let step_y = height / field_height as f32;
-        let shift = Vector::new(
-          ((bounds.width - width) / 2.0).round(),
-          ((bounds.height - height) / 2.0).round(),
-        );
+        let shift = Vector::new((bounds.width - width) / 2.0, (bounds.height - height) / 2.0);
         let cursor_shift = Vector::new(step_x / 2.0, step_y / 2.0);
 
         let point = cursor_position - shift;
@@ -198,17 +202,30 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
       .min(bounds.width / field_width as f32 * field_height as f32);
     let step_x = width / field_width as f32;
     let step_y = height / field_height as f32;
-    let shift = Vector::new(
-      ((bounds.width - width) / 2.0).round(),
-      ((bounds.height - height) / 2.0).round(),
-    );
+    let shift = Vector::new((bounds.width - width) / 2.0, (bounds.height - height) / 2.0);
     let cursor_shift = Vector::new(step_x / 2.0, step_y / 2.0);
 
-    let xy_to_point = |x: u32, y: u32| {
-      let offset_x = (step_x * x as f32 + step_x / 2.0).round() + 0.5;
-      let offset_y = (step_y * y as f32 + step_y / 2.0).round() + 0.5;
-      Point::new(offset_x, offset_y) + shift
+    let cache_key = (bounds.position(), self.scale_factor);
+    if self.cache_key.replace(cache_key) != cache_key {
+      self.field_cache.clear();
+    }
+
+    // Snap grid lines to physical pixels so they stay sharp with fractional
+    // scale factors: a line `grid_thickness` physical pixels wide is centered
+    // so that its edges fall on physical pixel boundaries.
+    let scale = self.scale_factor;
+    let grid_thickness = (self.config.grid_thickness * scale).round().max(1.0);
+    let snap = |v: f32, origin: f32| {
+      (((origin + v) * scale - grid_thickness / 2.0).round() + grid_thickness / 2.0) / scale - origin
     };
+    let xs = (0..field_width)
+      .map(|x| snap(shift.x + step_x * x as f32 + step_x / 2.0, bounds.x))
+      .collect::<Vec<_>>();
+    let ys = (0..field_height)
+      .map(|y| snap(shift.y + step_y * y as f32 + step_y / 2.0, bounds.y))
+      .collect::<Vec<_>>();
+
+    let xy_to_point = |x: u32, y: u32| Point::new(xs[x as usize], ys[y as usize]);
     let pos_to_point = |pos: Pos| {
       let x = self.extended_field.field.to_x(pos);
       let y = self.extended_field.field.to_y(pos);
@@ -221,22 +238,20 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
       // draw grid
 
       let grid = canvas::Path::new(|path| {
-        for x in 0..field_width {
-          let offset = (step_x * x as f32 + step_x / 2.0).round() + 0.5;
-          path.move_to(Point::new(offset, 0.0) + shift);
-          path.line_to(Point::new(offset, height) + shift);
+        for &x in &xs {
+          path.move_to(Point::new(x, shift.y));
+          path.line_to(Point::new(x, shift.y + height));
         }
-        for y in 0..field_height {
-          let offset = (step_y * y as f32 + step_y / 2.0).round() + 0.5;
-          path.move_to(Point::new(0.0, offset) + shift);
-          path.line_to(Point::new(width, offset) + shift);
+        for &y in &ys {
+          path.move_to(Point::new(shift.x, y));
+          path.line_to(Point::new(shift.x + width, y));
         }
       });
 
       frame.stroke(
         &grid,
         canvas::Stroke {
-          width: self.config.grid_thickness,
+          width: grid_thickness / scale,
           style: canvas::Style::Solid(self.config.grid_color.into()),
           ..canvas::Stroke::default()
         },
@@ -435,7 +450,7 @@ impl<E: Extra> canvas::Program<CanvasMessage> for CanvasField<E> {
 
     let mut frame = canvas::Frame::new(renderer, bounds.size());
 
-    if let Some(point) = cursor.position().and_then(|cursor_position| {
+    if let Some(point) = cursor.position_in(bounds).and_then(|cursor_position| {
       let point = cursor_position - shift;
       if point.x >= 0.0 && point.x <= width && point.y >= 0.0 && point.y <= height {
         let point = point - cursor_shift;

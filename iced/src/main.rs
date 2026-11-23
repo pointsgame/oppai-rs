@@ -171,6 +171,8 @@ fn run_app<M: Model<f32> + Clone + Send + 'static>(config: Config, model: M) -> 
           // TODO: split configs
           config: config.canvas_config.clone(),
           extra: Vec::new(),
+          scale_factor: 1.0,
+          cache_key: Default::default(),
         },
         #[cfg(not(target_arch = "wasm32"))]
         oppai: Arc::new(Mutex::new(oppai)),
@@ -372,6 +374,8 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
 
   pub fn update(&mut self, message: Message) -> Task<Message> {
     match message {
+      Message::WindowOpened(id) => return window::scale_factor(id).map(Message::Rescaled),
+      Message::Rescaled(scale_factor) => self.canvas_field.scale_factor = scale_factor,
       Message::Canvas(CanvasMessage::PutPoint(pos)) => {
         if self.is_locked() {
           return Task::none();
@@ -704,7 +708,9 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
       })
     };
 
-    let keys_subscription = event::listen_with(|event, _, _| match event {
+    let keys_subscription = event::listen_with(|event, _, id| match event {
+      Event::Window(window::Event::Opened { .. }) => Some(Message::WindowOpened(id)),
+      Event::Window(window::Event::Rescaled(scale_factor)) => Some(Message::Rescaled(scale_factor)),
       Event::Keyboard(keyboard::Event::KeyPressed {
         key: keyboard::Key::Named(keyboard::key::Named::ArrowLeft),
         ..
@@ -865,6 +871,8 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
 #[derive(Debug)]
 enum Message {
   Canvas(CanvasMessage),
+  WindowOpened(window::Id),
+  Rescaled(f32),
   Undo,
   UndoAll,
   Redo,
