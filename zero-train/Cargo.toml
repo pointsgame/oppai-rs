@@ -23,6 +23,7 @@ flate2.workspace = true
 sgf-parse.workspace = true
 ctrlc = "3.5"
 oppai-field = { path = "../field" }
+oppai-initial = { path = "../initial" }
 oppai-sgf = { path = "../sgf" }
 oppai-zero = { path = "../zero" }
 oppai-zero-burn = { path = "../zero-burn", default-features = false }

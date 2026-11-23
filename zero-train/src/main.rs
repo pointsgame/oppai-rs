@@ -19,6 +19,7 @@ use oppai_field::{
   player::Player,
   zobrist::Zobrist,
 };
+use oppai_initial::opening::opening;
 use oppai_sgf::{from_sgf, to_sgf};
 use oppai_zero::{
   batch_model::{batch_model, run_evaluator},
@@ -27,7 +28,6 @@ use oppai_zero::{
   field_features::{CHANNELS, GLOBAL_FEATURES},
   mcgs::{Params, Search},
   model::{Model, TrainableModel},
-  opening::opening,
   pit,
   random_model::RandomModel,
 };

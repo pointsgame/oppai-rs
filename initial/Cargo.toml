@@ -7,5 +7,10 @@ description = "Open Points Artificial Intelligence"
 edition = "2024"
 
 [dependencies]
+rand.workspace = true
+rand_distr.workspace = true
 strum.workspace = true
 oppai-field = { path = "../field" }
+
+[dev-dependencies]
+rand_xoshiro.workspace = true

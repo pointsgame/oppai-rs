@@ -7120,6 +7120,9 @@ name = "oppai-initial"
 version = "0.1.0"
 dependencies = [
  "oppai-field",
+ "rand 0.10.3",
+ "rand_distr",
+ "rand_xoshiro 0.8.1",
  "strum 0.28.0",
 ]
 
@@ -7424,6 +7427,7 @@ dependencies = [
  "num-traits",
  "num_cpus",
  "oppai-field",
+ "oppai-initial",
  "oppai-sgf",
  "oppai-zero",
  "oppai-zero-burn",

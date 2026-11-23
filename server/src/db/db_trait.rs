@@ -9,8 +9,8 @@ use uuid::Uuid;
 #[sqlx(rename_all = "snake_case")]
 pub enum Opening {
   Cross,
-  TwoCrosses,
   TripleCross,
+  QuadrupleCross,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]

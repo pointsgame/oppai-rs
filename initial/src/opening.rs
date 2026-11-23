@@ -41,7 +41,7 @@ fn offset<R: Rng>(field_size: u32, size: u32, rng: &mut R) -> u32 {
 /// swapped, so neither player is favored apart from the right to move. Off the
 /// center lines the position is mirrored to a different one, but both are
 /// equally likely.
-pub(crate) fn cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
+pub fn cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
   let rotation = rng.random();
   let x_points;
   let o_points;
@@ -97,7 +97,7 @@ pub(crate) fn cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u
 /// The pattern turns into itself when it's mirrored across its short axis and
 /// the colors are swapped, so neither player is favored apart from the right to
 /// move.
-pub(crate) fn triple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
+pub fn triple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
   let rotation = rng.random_range(0..4);
   let x_points;
   let o_points;
@@ -301,7 +301,7 @@ pub(crate) fn try_quadruple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) 
 /// fewest on elongated fields.
 ///
 /// Must only be called when [`quadruple_cross_fits`] holds.
-pub(crate) fn quadruple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
+pub fn quadruple_cross<R: Rng>(width: u32, height: u32, rng: &mut R) -> Vec<(u32, u32)> {
   debug_assert!(quadruple_cross_fits(width, height));
   loop {
     if let Some(result) = try_quadruple_cross(width, height, rng) {

@@ -153,13 +153,17 @@ fn run_app<M: Model<f32> + Clone + Send + 'static>(config: Config, model: M) -> 
         extended_field.field.width(),
         extended_field.field.height(),
         extended_field.player,
+        &mut rng,
       );
       put_points_grounded(&mut extended_field, moves.clone());
       let game = Game {
         config: config.clone(),
         rng,
         model: model.clone(),
-        moves: moves.map(|(pos, player)| (pos, player, Default::default())).collect(),
+        moves: moves
+          .into_iter()
+          .map(|(pos, player)| (pos, player, Default::default()))
+          .collect(),
         canvas_field: CanvasField {
           extended_field,
           field_cache: Default::default(),
@@ -392,10 +396,11 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
                 std::thread::spawn(move || {
                   let mut oppai = oppai.lock().unwrap();
                   let mut oppai = TimeLimitedAI(time, oppai.deref_mut());
-                  let best_move = futures::executor::block_on(oppai.analyze(&mut rng, &mut field, player, None, &|| {
-                    should_stop.load(Ordering::Relaxed)
-                  }))
-                  .best_move(&mut rng);
+                  let best_move =
+                    futures::executor::block_on(oppai.analyze(&mut rng, &mut field, player, None, &|| {
+                      should_stop.load(Ordering::Relaxed)
+                    }))
+                    .best_move(&mut rng);
                   let _ = tx.send(best_move);
                 });
                 rx.await.ok().flatten()
@@ -469,6 +474,7 @@ impl<M: Model<f32> + Clone + Send + 'static> Game<M> {
           self.canvas_field.extended_field.field.width(),
           self.canvas_field.extended_field.field.height(),
           self.canvas_field.extended_field.player,
+          &mut self.rng,
         );
         put_points_grounded(&mut self.canvas_field.extended_field, points);
         self.put_all_bot_points();

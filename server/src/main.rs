@@ -46,8 +46,8 @@ impl From<message::Opening> for db::Opening {
   fn from(opening: message::Opening) -> Self {
     match opening {
       message::Opening::Cross => db::Opening::Cross,
-      message::Opening::TwoCrosses => db::Opening::TwoCrosses,
       message::Opening::TripleCross => db::Opening::TripleCross,
+      message::Opening::QuadrupleCross => db::Opening::QuadrupleCross,
     }
   }
 }
@@ -56,17 +56,9 @@ impl From<db::Opening> for message::Opening {
   fn from(opening: db::Opening) -> Self {
     match opening {
       db::Opening::Cross => message::Opening::Cross,
-      db::Opening::TwoCrosses => message::Opening::TwoCrosses,
       db::Opening::TripleCross => message::Opening::TripleCross,
+      db::Opening::QuadrupleCross => message::Opening::QuadrupleCross,
     }
-  }
-}
-
-fn to_initial_position(opening: message::Opening) -> InitialPosition {
-  match opening {
-    message::Opening::Cross => InitialPosition::Cross,
-    message::Opening::TwoCrosses => InitialPosition::TwoCrosses,
-    message::Opening::TripleCross => InitialPosition::TripleCross,
   }
 }
 
@@ -712,22 +704,25 @@ impl<R: Rng> Session<R> {
 
     // Create the field and play opening moves.
     let mut field = Field::new_from_rng(open_game.config.size.width, open_game.config.size.height, &mut self.rng);
-    let initial_position = to_initial_position(open_game.config.opening);
     let mut opening_db_moves = Vec::new();
-    for (i, (pos, player)) in initial_position
-      .points(open_game.config.size.width, open_game.config.size.height, Player::Red)
+    let mut player = Player::Red;
+    for (i, (x, y)) in InitialPosition::from(open_game.config.opening)
+      .moves(open_game.config.size.width, open_game.config.size.height, &mut self.rng)
+      .into_iter()
       .enumerate()
     {
+      let pos = field.to_pos(x, y);
       if field.put_point(pos, player) {
         opening_db_moves.push(db::Move {
           game_id: game_id.0,
           player: player.into(),
           number: i as i16,
-          x: field.to_x(pos) as i16,
-          y: field.to_y(pos) as i16,
+          x: x as i16,
+          y: y as i16,
           timestamp: now_primitive,
         });
       }
+      player = player.next();
     }
 
     self
@@ -1014,7 +1009,8 @@ impl<R: Rng> Session<R> {
       // Opening moves are pre-placed before the clocks start; skip them.
       let opening_moves_count = match game_with_moves.game.opening {
         db::Opening::Cross => 4,
-        db::Opening::TwoCrosses | db::Opening::TripleCross => 8,
+        db::Opening::TripleCross => 8,
+        db::Opening::QuadrupleCross => 16,
       };
 
       for (i, m) in game_with_moves.moves.iter().enumerate() {

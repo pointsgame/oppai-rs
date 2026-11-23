@@ -1,6 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use oppai_field::player::Player as Color;
+use oppai_initial::initial::InitialPosition;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationMilliSeconds, DurationSeconds, serde_as};
 
@@ -57,8 +58,18 @@ impl GameTime {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Opening {
   Cross,
-  TwoCrosses,
   TripleCross,
+  QuadrupleCross,
+}
+
+impl From<Opening> for InitialPosition {
+  fn from(opening: Opening) -> Self {
+    match opening {
+      Opening::Cross => InitialPosition::Cross,
+      Opening::TripleCross => InitialPosition::TripleCross,
+      Opening::QuadrupleCross => InitialPosition::QuadrupleCross,
+    }
+  }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -71,7 +82,9 @@ pub struct GameConfig {
 
 impl GameConfig {
   pub fn is_valid(&self) -> bool {
-    self.size.is_valid() && self.time.is_valid()
+    self.size.is_valid()
+      && self.time.is_valid()
+      && InitialPosition::from(self.opening).fits(self.size.width, self.size.height)
   }
 }
 

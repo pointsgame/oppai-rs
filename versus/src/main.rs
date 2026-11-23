@@ -106,8 +106,8 @@ impl Game {
     }
   }
 
-  async fn place_initial_position(&mut self, player: Player, initial_position: InitialPosition) -> Result<()> {
-    for (pos, player) in initial_position.points(self.field.field.width(), self.field.field.height(), player) {
+  async fn place_points(&mut self, points: &[(Pos, Player)]) -> Result<()> {
+    for &(pos, player) in points {
       self.put_point(pos, player).await?;
     }
     Ok(())
@@ -224,9 +224,15 @@ fn main() -> Result<()> {
   #[cfg(not(feature = "term-render"))]
   let ascii = true;
   let future = async {
+    let mut initial_points = Vec::new();
     loop {
+      // Both games of a pair, with the colours swapped, start from the same
+      // position.
+      if !swap {
+        initial_points = INITIAL_POSITION.points(config.width, config.height, player, &mut rng);
+      }
       game.init().await?;
-      game.place_initial_position(player, INITIAL_POSITION).await?;
+      game.place_points(&initial_points).await?;
       game.play(player, swap, &mut stats, ascii).await?;
       swap = !swap;
     }

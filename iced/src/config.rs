@@ -255,7 +255,11 @@ pub fn cli_parse() -> Config {
   let extended_filling = matches.get_flag("no-extended-filling");
   let maximum_area_filling = matches.get_flag("no-maximum-area-filling");
   let last_point_mark = matches.get_flag("no-last-point-mark");
-  let initial_position = matches.get_one("initial-position").copied().unwrap();
+  let initial_position: InitialPosition = matches.get_one("initial-position").copied().unwrap();
+  assert!(
+    initial_position.fits(width, height),
+    "The initial position doesn't fit the field size."
+  );
   let patterns = matches
     .get_many("patterns-file")
     .map_or_else(Vec::new, |patterns| patterns.cloned().collect());
