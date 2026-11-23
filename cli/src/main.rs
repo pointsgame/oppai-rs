@@ -24,9 +24,14 @@ use rand::{make_rng, rngs::SmallRng};
 use std::{
   default::Default,
   fs::File,
-  io::{self, BufRead, BufReader, Read, Write},
+  io::{self, BufRead, Read, Write},
   path::Path,
-  sync::Arc,
+  sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+    mpsc,
+  },
+  thread,
 };
 
 type CliModel = Either<(), Predictor>;
@@ -48,14 +53,46 @@ fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
       .try_load_file(model_path)
       .expect("Failed to load model file.")
   });
-  let mut input = BufReader::new(io::stdin());
+  // Requests are read on a separate thread, so that `Stop` takes effect while
+  // an analysis is running rather than after it. Analyses are numbered in the
+  // order they are read, and `Stop` marks all of them up to the last one read
+  // as stopped - this way it's never lost or applied to a later analysis,
+  // however the requests and the responses interleave.
+  let stopped = Arc::new(AtomicU64::new(0));
+  let (sender, receiver) = mpsc::channel::<Result<(Request, u64)>>();
+  thread::spawn({
+    let stopped = stopped.clone();
+    move || {
+      let mut requested = 0;
+      for line in io::stdin().lock().lines() {
+        let request = line
+          .map_err(anyhow::Error::from)
+          .and_then(|line| serde_json::from_str::<Request>(&line).map_err(anyhow::Error::from));
+        match request {
+          Ok(Request::Stop) => stopped.store(requested, Ordering::Relaxed),
+          Ok(request) => {
+            if let Request::Analyze { .. } = request {
+              requested += 1;
+            }
+            if sender.send(Ok((request, requested))).is_err() {
+              return;
+            }
+          }
+          Err(error) => {
+            let _ = sender.send(Err(error));
+            return;
+          }
+        }
+      }
+      // Stdin is closed, so nobody is waiting for the running analysis.
+      stopped.store(u64::MAX, Ordering::Relaxed);
+    }
+  });
   let mut output = io::stdout();
   let mut state_option = None;
-  let mut s = String::new();
-  loop {
-    s.clear();
-    input.read_line(&mut s)?;
-    let request = serde_json::from_str(&s)?;
+  for request in receiver {
+    let (request, analysis_id) = request?;
+    let should_stop = || stopped.load(Ordering::Relaxed) >= analysis_id;
 
     let response = match request {
       Request::Init { width, height } => {
@@ -95,7 +132,7 @@ fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
         let state = state_option.as_mut().ok_or(anyhow::anyhow!("Not initialized"))?;
         let mut oppai = TimeLimitedAI(time, &mut state.oppai);
         let analysis =
-          futures::executor::block_on(oppai.analyze(&mut state.rng, &mut state.field, player, None, &|| false));
+          futures::executor::block_on(oppai.analyze(&mut state.rng, &mut state.field, player, None, &should_stop));
         let mut moves: Vec<Move> = analysis
           .moves()
           .map(|(pos, weight)| Move {
@@ -124,7 +161,7 @@ fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
           &mut state.field,
           player,
           Some(confidence),
-          &|| false,
+          &should_stop,
         ));
         let mut moves: Vec<Move> = analysis
           .moves()
@@ -139,11 +176,14 @@ fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
         moves.sort_unstable_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
         Response::Analyze { moves }
       }
+      // Handled by the stdin thread as soon as it's read.
+      Request::Stop => continue,
     };
 
     writeln!(&mut output, "{}", serde_json::to_string(&response)?)?;
     output.flush()?;
   }
+  Ok(())
 }
 
 fn main() -> Result<()> {

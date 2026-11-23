@@ -51,8 +51,8 @@ async fn handle(
   config: &ModelConfig,
   model_bytes: &[u8],
   device: &Device,
-) -> Result<Response> {
-  Ok(match request {
+) -> Result<Option<Response>> {
+  Ok(Some(match request {
     Request::Init { width, height } => {
       let predictor = load_predictor(device.clone(), config, model_bytes)?;
       let mut rng = make_rng::<SmallRng>();
@@ -131,7 +131,10 @@ async fn handle(
       moves.sort_unstable_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
       Response::Analyze { moves }
     }
-  })
+    // Requests are processed one at a time, so by the time this one is
+    // handled there is no analysis running to stop.
+    Request::Stop => return Ok(None),
+  }))
 }
 
 async fn process(
@@ -147,9 +150,15 @@ async fn process(
     Ok(request) => handle(state, patterns, request, config, model_bytes, device).await,
     Err(error) => Err(anyhow::Error::from(error)),
   };
-  let result = result.and_then(|response| serde_json::to_string(&response).map_err(anyhow::Error::from));
+  let result = result.and_then(|response| {
+    response
+      .map(|response| serde_json::to_string(&response))
+      .transpose()
+      .map_err(anyhow::Error::from)
+  });
   match result {
-    Ok(response) => scope.post_message(&JsValue::from_str(&response)).unwrap(),
+    Ok(Some(response)) => scope.post_message(&JsValue::from_str(&response)).unwrap(),
+    Ok(None) => {}
     Err(error) => web_sys::console::error_1(&error.to_string().into()),
   }
 }

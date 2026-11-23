@@ -20,10 +20,23 @@ pub enum Constraint {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "command")]
 pub enum Request {
-  Init { width: u32, height: u32 },
-  PutPoint { coords: Coords, player: Player },
+  Init {
+    width: u32,
+    height: u32,
+  },
+  PutPoint {
+    coords: Coords,
+    player: Player,
+  },
   Undo,
-  Analyze { player: Player, constraint: Constraint },
+  Analyze {
+    player: Player,
+    constraint: Constraint,
+  },
+  /// Stops all analyses requested before it as soon as possible, so that they
+  /// respond early with the best moves found so far. Has no response of its own
+  /// and does nothing if there is nothing to stop.
+  Stop,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -95,6 +108,8 @@ mod tests {
     },
     r#"{"command":"Analyze","player":"Red","constraint":{"type":"Complexity","value":1.0}}"#
   );
+
+  from_to_json_test!(stop_request, Request, Request::Stop, r#"{"command":"Stop"}"#);
 
   from_to_json_test!(init_response, Response, Response::Init, r#"{"command":"Init"}"#);
 

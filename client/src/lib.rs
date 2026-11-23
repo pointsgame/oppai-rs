@@ -1,9 +1,13 @@
-use std::io::{Error, Result};
+use std::{
+  io::{Error, Result},
+  sync::Arc,
+};
 
 use async_process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use futures::{
   AsyncBufReadExt,
   io::{AsyncWriteExt, BufReader},
+  lock::Mutex,
 };
 use log::debug;
 use oppai_field::player::Player;
@@ -12,8 +16,32 @@ use oppai_protocol::{Coords, Move, Request, Response};
 
 pub struct Client {
   _child: Child,
-  stdin: ChildStdin,
+  stdin: Arc<Mutex<ChildStdin>>,
   stdout: BufReader<ChildStdout>,
+}
+
+/// Stops the client's running analysis from outside of it, while the client
+/// itself is borrowed waiting for the result.
+#[derive(Clone)]
+pub struct Stopper {
+  stdin: Arc<Mutex<ChildStdin>>,
+}
+
+impl Stopper {
+  /// Makes all analyses requested before this call respond as soon as
+  /// possible with the best moves found so far.
+  pub async fn stop(&self) -> Result<()> {
+    send(&self.stdin, Request::Stop).await
+  }
+}
+
+async fn send(stdin: &Mutex<ChildStdin>, request: Request) -> Result<()> {
+  debug!("Request: {:?}", request);
+  let mut bytes = serde_json::to_vec(&request)?;
+  bytes.push(b'\n');
+  let mut stdin = stdin.lock().await;
+  stdin.write_all(bytes.as_slice()).await?;
+  stdin.flush().await
 }
 
 impl Client {
@@ -29,16 +57,19 @@ impl Client {
 
     Ok(Client {
       _child: child,
-      stdin,
+      stdin: Arc::new(Mutex::new(stdin)),
       stdout,
     })
   }
 
+  pub fn stopper(&self) -> Stopper {
+    Stopper {
+      stdin: self.stdin.clone(),
+    }
+  }
+
   async fn request(&mut self, request: Request) -> Result<()> {
-    debug!("Request: {:?}", request);
-    let mut bytes = serde_json::to_vec(&request)?;
-    bytes.push(b"\n"[0]);
-    self.stdin.write_all(bytes.as_slice()).await
+    send(&self.stdin, request).await
   }
 
   async fn response(&mut self) -> Result<Response> {
