@@ -1,0 +1,6 @@
+# Burn reads this from the working directory or any parent.
+# With the default of 5 blocks, the fusion search chunks the segments around
+# global pooling into a cycle and runs them unfused: 2 makes a forward pass
+# ~20% faster on ROCm. Training is unaffected either way.
+[fusion.beam_search]
+max_blocks = 2
