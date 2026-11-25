@@ -8,6 +8,7 @@
 
 use std::{
   fmt,
+  marker::PhantomData,
   str::FromStr,
   sync::{
     Arc,
@@ -18,8 +19,8 @@ use std::{
 use burn::{
   module::ParamGroup,
   optim::{
-    AdamWConfig, AdjustLrFn, LearningRate, ModuleOptimizer, Muon, MuonConfig, MuonState, Optimizer, RecordState,
-    SgdConfig, StateSink, StateSource, decay::WeightDecayConfig, join_path, momentum::MomentumConfig,
+    AdamW, AdamWConfig, AdjustLrFn, LearningRate, ModuleOptimizer, Muon, MuonConfig, MuonState, Optimizer,
+    RecordState, Sgd, SgdConfig, StateSink, StateSource, decay::WeightDecayConfig, join_path, momentum::MomentumConfig,
   },
   tensor::{Device, Tensor},
 };
@@ -324,7 +325,7 @@ impl OptimizerConfig {
     epsilon / self.batch_size as f32
   }
 
-  fn add<O: Optimizer>(
+  fn add<O: Optimizer + StateName + 'static>(
     &self,
     optimizer: Option<ModuleOptimizer>,
     group: Group,
@@ -390,22 +391,56 @@ struct Tuned<O> {
   clock: StepClock,
 }
 
-#[derive(Clone)]
-struct TunedState<S, const D: usize> {
+/// The name the state of an update rule is saved under. Every rule has its
+/// own, so that a training with another rule than the saved state's starts
+/// the rule's state afresh - keeping the lookahead's and the count of steps -
+/// rather than reading the other rule's momentum as its own.
+trait StateName {
+  const STATE_NAME: &'static str;
+}
+
+impl StateName for Sgd {
+  // The name every rule's state had before they had names of their own,
+  // so that SGD's saved states go on.
+  const STATE_NAME: &'static str = "inner";
+}
+
+impl StateName for AdamW {
+  const STATE_NAME: &'static str = "adamw";
+}
+
+impl StateName for MatrixMuon {
+  const STATE_NAME: &'static str = "muon";
+}
+
+/// The state of [`Tuned`] wrapping the optimizer `O`, whose state is `S`.
+struct TunedState<O, S, const D: usize> {
   inner: Option<S>,
   /// Where the weights move back toward at the end of the lookahead cycle.
   slow: Option<Tensor<D>>,
   /// Steps taken so far.
   steps: usize,
+  optimizer: PhantomData<fn() -> O>,
+}
+
+impl<O, S: Clone, const D: usize> Clone for TunedState<O, S, D> {
+  fn clone(&self) -> Self {
+    Self {
+      inner: self.inner.clone(),
+      slow: self.slow.clone(),
+      steps: self.steps,
+      optimizer: PhantomData,
+    }
+  }
 }
 
 // TODO: derive once burn's `RecordState` derive works outside of burn's
 // optimizer crate - it refers to `crate::RecordState` - and drop the direct
 // dependency on `burn_pack`, needed only for the scalar here.
-impl<S: RecordState, const D: usize> RecordState for TunedState<S, D> {
+impl<O: StateName + 'static, S: RecordState, const D: usize> RecordState for TunedState<O, S, D> {
   fn state_flatten(&self, prefix: &str, out: &mut StateSink) {
     if let Some(inner) = &self.inner {
-      inner.state_flatten(&join_path(prefix, "inner"), out);
+      inner.state_flatten(&join_path(prefix, O::STATE_NAME), out);
     }
     if let Some(slow) = &self.slow {
       out.push_tensor(prefix, "slow", slow.to_data());
@@ -415,7 +450,7 @@ impl<S: RecordState, const D: usize> RecordState for TunedState<S, D> {
 
   fn state_unflatten(prefix: &str, src: &mut StateSource, device: &Device) -> Option<Self> {
     let steps = usize::try_from(src.take_scalar(prefix, "steps")?).ok()?;
-    let inner_prefix = join_path(prefix, "inner");
+    let inner_prefix = join_path(prefix, O::STATE_NAME);
     let inner = if src.has_under(&inner_prefix) {
       Some(S::state_unflatten(&inner_prefix, src, device)?)
     } else {
@@ -424,12 +459,17 @@ impl<S: RecordState, const D: usize> RecordState for TunedState<S, D> {
     let slow = src
       .take_tensor(prefix, "slow")
       .map(|data| Tensor::from_data(data, device));
-    Some(Self { inner, slow, steps })
+    Some(Self {
+      inner,
+      slow,
+      steps,
+      optimizer: PhantomData,
+    })
   }
 }
 
-impl<O: Optimizer> Optimizer for Tuned<O> {
-  type State<const D: usize> = TunedState<O::State<D>, D>;
+impl<O: Optimizer + StateName + 'static> Optimizer for Tuned<O> {
+  type State<const D: usize> = TunedState<O, O::State<D>, D>;
 
   fn step<const D: usize>(
     &self,
@@ -453,7 +493,15 @@ impl<O: Optimizer> Optimizer for Tuned<O> {
       }
       (_, slow) => (tensor, slow),
     };
-    (tensor, Some(TunedState { inner, slow, steps }))
+    (
+      tensor,
+      Some(TunedState {
+        inner,
+        slow,
+        steps,
+        optimizer: PhantomData,
+      }),
+    )
   }
 
   fn to_device<const D: usize>(state: Self::State<D>, device: &Device) -> Self::State<D> {
@@ -461,6 +509,7 @@ impl<O: Optimizer> Optimizer for Tuned<O> {
       inner: state.inner.map(|inner| O::to_device(inner, device)),
       slow: state.slow.map(|slow| slow.to_device(device)),
       steps: state.steps,
+      optimizer: PhantomData,
     }
   }
 }
@@ -690,6 +739,34 @@ mod tests {
     assert_eq!(clock.steps(), 7);
     assert!(!config.is_synced(7));
     assert!(config.is_synced(12));
+  }
+
+  // A training with another update rule than the saved state's starts the
+  // rule's state afresh, and the count of steps goes on.
+  #[test]
+  fn the_update_rule_can_change() {
+    let device = Device::flex().autodiff();
+    let weight = |shape: [usize; 4]| Weight {
+      weight: Param::from_tensor(Tensor::random(shape, Distribution::Default, &device)),
+    };
+    for from in [OptimizerKind::Sgd, OptimizerKind::AdamW, OptimizerKind::Muon] {
+      for to in [OptimizerKind::Sgd, OptimizerKind::AdamW, OptimizerKind::Muon] {
+        let mut module = Tiny {
+          conv_spatial: weight([4, 2, 3, 3]),
+          residuals: vec![weight([5, 4, 3, 3])],
+        };
+        let mut optimizer = OptimizerConfig::new(from, 256).init();
+        for _ in 0..4 {
+          let grads = grads(&module);
+          module = optimizer.step(0.01, module, grads);
+        }
+        let (loaded, clock) = OptimizerConfig::new(to, 256).init_with_clock();
+        let mut loaded = loaded.load_record(optimizer.to_record());
+        let grads = grads(&module);
+        loaded.step(0.01, module, grads);
+        assert_eq!(clock.steps(), 5, "{from} to {to}");
+      }
+    }
   }
 
   #[test]
