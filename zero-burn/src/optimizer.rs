@@ -46,7 +46,8 @@ impl OptimizerKind {
   /// over the batch, so it does not depend on the batch size. AdamW and Muon
   /// decay the weights by `learning_rate * weight_decay` every step whatever
   /// the gradient's scale is, and since their learning rate grows with the
-  /// square root of the batch size, so does this.
+  /// square root of the batch size, so does this. A tenth or ten times of it
+  /// trained as well over six epochs of 10 self-play generations.
   pub fn default_weight_decay(self, batch_size: usize) -> f64 {
     match self {
       Self::Sgd => 0.000000004,
@@ -58,10 +59,14 @@ impl OptimizerKind {
   /// over the batch, so it is linear in the batch size: this is the one of a
   /// batch of 512. Adam's step does not depend on the gradient's scale, and
   /// its learning rate grows with the square root of the batch size instead.
+  /// Adam's and Muon's are the best of a sweep by factors of about 3 over six
+  /// epochs of 10 self-play generations at a batch of 64; Muon's trained as
+  /// well from 0.0004 to 0.0012 and Adam's was worse at twice its value.
   pub fn default_learning_rate(self, batch_size: usize) -> f64 {
     match self {
       Self::Sgd => 0.0001,
-      Self::AdamW | Self::Muon => 0.00004 * batch_scale(batch_size),
+      Self::AdamW => 0.0012 * batch_scale(batch_size),
+      Self::Muon => 0.0007 * batch_scale(batch_size),
     }
   }
 }
@@ -296,7 +301,10 @@ impl OptimizerConfig {
             .build(),
         ),
       ),
-      // Adam next to Muon averages over longer horizons than on its own.
+      // Adam next to Muon averages the gradients over as many steps as Muon's
+      // momentum of 0.95 does, some 20 rather than 10, and their squares over
+      // fewer, some 200 rather than 1000, so its step sizes follow a change of
+      // the gradients' scale sooner.
       OptimizerKind::Muon => self.add(
         optimizer,
         group,
