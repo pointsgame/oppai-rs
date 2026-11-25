@@ -484,8 +484,8 @@ pub fn cli_parse() -> (Config, Action) {
         .long("learning-rate-end")
         .short('e')
         .help(
-          "Learning rate at the last batch [default: 0.0001 for sgd, whose learning rate is that of a loss averaged \
-           over the batch and has to grow linearly with the batch size; 0.0012 * sqrt(batch size / 256) for adamw \
+          "Learning rate at the last batch [default: 0.09 * batch size / 256 for sgd, whose learning rate is that of a \
+           loss averaged over the batch and has to grow linearly with the batch size; 0.0012 * sqrt(batch size / 256) for adamw \
            and 0.0007 * sqrt(batch size / 256) for muon, whose steps do not depend on the scale of the gradient]",
         )
         .num_args(1)

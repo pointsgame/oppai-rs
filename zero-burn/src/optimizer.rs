@@ -56,16 +56,19 @@ impl OptimizerKind {
     }
   }
 
-  /// The learning rate of a trained network. SGD's is that of a loss averaged
-  /// over the batch, so it is linear in the batch size: this is the one of a
-  /// batch of 512. Adam's step does not depend on the gradient's scale, and
-  /// its learning rate grows with the square root of the batch size instead.
-  /// Adam's and Muon's are the best of a sweep by factors of about 3 over six
-  /// epochs of 10 self-play generations at a batch of 64; Muon's trained as
-  /// well from 0.0004 to 0.0012 and Adam's was worse at twice its value.
+  /// The learning rate after the warmup. SGD's is that of a loss averaged
+  /// over the batch, so it is linear in the batch size. Adam's step does not
+  /// depend on the gradient's scale, and its learning rate grows with the
+  /// square root of the batch size instead.
+  ///
+  /// All three are the best of a sweep by factors of about 3 over six epochs
+  /// of 10 self-play generations at a batch of 64. Muon's trained as well from
+  /// 0.0004 to 0.0012 and Adam's was worse at twice its value. SGD's trained
+  /// as well at three times its value but diverged at six times, so it keeps
+  /// clear of that.
   pub fn default_learning_rate(self, batch_size: usize) -> f64 {
     match self {
-      Self::Sgd => 0.0001,
+      Self::Sgd => 0.09 * batch_size as f64 / 256.0,
       Self::AdamW => 0.0012 * batch_scale(batch_size),
       Self::Muon => 0.0007 * batch_scale(batch_size),
     }

@@ -60,18 +60,18 @@ set -euo pipefail
 	# Parameters for the training run.
 
 	MODEL_CONFIG="$GITROOTDIR"/zero-burn/configs/b5c192nbt.json  # Path to a JSON file with the model architecture configuration; empty for the default one
-	WIDTHS="16 17 18 19 20 21 22 23 24"                          # Field widths to sample from during self-play, space separated
-	HEIGHTS="16 17 18 19 20 21 22 23 24"                         # Field heights to sample from during self-play, space separated
+	WIDTHS="20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40" # Field widths to sample from during self-play, space separated
+	HEIGHTS="20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40" # Field heights to sample from during self-play, space separated
 	KOMIS_X2="0 1 -1"                                            # Komi values multiplied by 2 to sample from during self-play, space separated
 	NUM_GAMES_PER_CYCLE=1024                                     # Every cycle, play this many games; random games are played in batches of this many until there are MIN_POSITIONS positions
 	PARALLEL_GAMES=192                                           # How many games to play concurrently, merging their positions into shared forward passes; about 20 MB of memory each
-	BATCH_GAMES=64                                               # How many games' positions are enough to dispatch a forward pass during self-play
+	BATCH_GAMES=32                                               # How many games' positions are enough to dispatch a forward pass during self-play
 	READOUTS=1                                                   # Paths a self-play search selects at once; more than 1 adds virtual losses that weaken the search, but fills the passes with fewer games
 	RECALC_PARALLEL_GAMES=32                                     # How many games to recalculate the surprise of concurrently
 	THREADS=                                                     # How many OS threads play games and recalculate surprise; empty for the default of one per physical core
 	HALF=1                                                       # 1 to evaluate the network in half precision in self-play, surprise recalculation and pitting, many times faster on GPUs
-	MIXED_PRECISION=1                                            # 1 to compute the convolutions and projections of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
-	GRADIENT_CHECKPOINTING=0                                     # 1 to recompute cheap activations in the backward pass instead of keeping them, cutting training memory by about a quarter, more for a transformer
+	MIXED_PRECISION=1                                            # 1 to compute the convolutions of training in brain floating point, keeping the weights and everything else in single precision; many times faster on GPUs and uses less memory
+	GRADIENT_CHECKPOINTING=1                                     # 1 to recompute cheap activations in the backward pass instead of keeping them, cutting training memory by about a quarter
 	MIN_POSITIONS=100000                                         # Positions of random games to play before the first training, and the smallest window trained on
 	MIN_NEW_POSITIONS=20000                                      # Every cycle plays more games until it has at least this many positions, so that the fixed costs of a cycle buy enough training when games are short
 	TRAININGS_PER_POSITION=8                                     # Every training trains on this many times the positions played since the last accepted model; larger numbers may overfit
@@ -82,7 +82,7 @@ set -euo pipefail
 	SWA_POSITIONS=80000                                          # Train on this many positions between two snapshots averaged into the weights self-play uses
 	BATCHSIZE=64                  # Training memory is mostly the activations kept for the backward pass, about 9 GB for a batch of 64 at 24x24 with mixed precision
 	OPTIMIZER=sgd                 # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
-	LEARNING_RATE=                # Learning rate after the warmup, stated for a batch of 256 and scaled to BATCHSIZE below; empty for 0.01 with sgd and 0.00004 with adamw and muon
+	LEARNING_RATE=                # Learning rate after the warmup, stated for a batch of 256 and scaled to BATCHSIZE below; empty for 0.09 with sgd, 0.0012 with adamw and 0.0007 with muon
 	LR_DECAY_START=10000000       # Trained positions after which the learning rate starts to decay, halving every time they double ...
 	LR_DECAY_MIN=0.125            # ... but to no less than this fraction of LEARNING_RATE
 	PIT_GAMES=50                  # Gating games per side, the total number of games is twice this
@@ -103,10 +103,14 @@ set -euo pipefail
 	# here, which is a mean over the batch rather than a sum.
 	if [[ "$OPTIMIZER" == sgd ]]; then
 		GRADIENT_CLIPPING_BOUND=2500
-		: "${LEARNING_RATE:=0.01}"
+		: "${LEARNING_RATE:=0.09}"
 	else
 		GRADIENT_CLIPPING_BOUND=11000
-		: "${LEARNING_RATE:=0.00004}"
+		if [[ "$OPTIMIZER" == adamw ]]; then
+			: "${LEARNING_RATE:=0.0012}"
+		else
+			: "${LEARNING_RATE:=0.0007}"
+		fi
 	fi
 	GRADIENT_CLIPPING=$(awk -v c="$GRADIENT_CLIPPING_BOUND" -v b="$BATCHSIZE" 'BEGIN { printf "%.9g", c * sqrt(b / 256) / b }')
 
