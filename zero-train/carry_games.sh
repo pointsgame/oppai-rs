@@ -15,8 +15,9 @@ set -euo pipefail
 # are merged into it as needed. Every other cycle must hold at least the loop's
 # NUM_GAMES_PER_CYCLE games and MIN_NEW_POSITIONS positions, or the loop would
 # top it up with games of the new network: files are merged into the next
-# cycle while it has too few positions, and the old run's latest file is left
-# out while it is still being played, the earlier ones are complete.
+# cycle while it has too few positions. The old run's latest file is carried
+# over as it is when this runs, even while it is still being played; the new
+# run then tops that cycle up with its own games like any other short one.
 #
 # Only the most recent games are worth carrying over: the oldest ones were
 # played by much weaker networks, and their targets lead away from good play.
@@ -95,16 +96,29 @@ done
 	echo "No games in $OLD_GAMESDIR" >&2
 	exit 1
 }
-GAMES=$("$BIN" count --games "$OLD_GAMESDIR"/games_"$LAST".sgf.gz | sed -n 's/^Games: \([0-9]*\);.*/\1/p')
-if ((GAMES < NUM_GAMES_PER_CYCLE)) || (($(positions "$OLD_GAMESDIR"/games_"$LAST".sgf.gz) < MIN_NEW_POSITIONS)); then
-	echo "Leaving out games_$LAST, which is still being played"
-	LAST=$((LAST - 1))
-fi
+# The latest file may still be being played, and grow while it is counted and
+# copied: it is carried over from a snapshot, so that the plan and the copy
+# agree on its games. Every game is appended as a gzip member of its own, so a
+# snapshot taken in the middle of a write misses only the end of the last
+# game, and fails to read: it is taken again until it reads in full.
+SNAPSHOT_DIR=$(mktemp -d)
+trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
+SNAPSHOT="$SNAPSHOT_DIR"/games_"$LAST".sgf.gz
+for ((try = 1; ; try++)); do
+	cp "$OLD_GAMESDIR"/games_"$LAST".sgf.gz "$SNAPSHOT"
+	"$BIN" count --games "$SNAPSHOT" >/dev/null 2>&1 && break
+	((try < 10)) || {
+		echo "Cannot take a snapshot of games_$LAST that reads in full" >&2
+		exit 1
+	}
+	sleep 1
+done
 FILES=()
 COUNTS=()
 TOTAL=0
 for ((i = LAST; i >= 0 && TOTAL < WANTED; i--)); do
 	f="$OLD_GAMESDIR"/games_"$i".sgf.gz
+	((i < LAST)) || f="$SNAPSHOT"
 	[[ -e "$f" ]] || continue
 	count=$(positions "$f")
 	FILES=("$f" "${FILES[@]}")
