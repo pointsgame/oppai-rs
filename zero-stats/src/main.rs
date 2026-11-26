@@ -5,6 +5,7 @@
 
 mod chains;
 mod common;
+mod dead;
 mod games;
 mod horizons;
 mod losses;
@@ -137,6 +138,18 @@ fn cli() -> Command {
         ),
     )
     .subcommand(
+      Command::new("dead")
+        .about("Dead and weak output channels of the networks' layers; no GPU needed")
+        .arg(files("models", "Model files"))
+        .arg(
+          Arg::new("weak")
+            .long("weak")
+            .help("A channel at or below this fraction of the root mean square channel norm of its tensor is weak")
+            .default_value("0.1")
+            .value_parser(value_parser!(f64)),
+        ),
+    )
+    .subcommand(
       Command::new("net")
         .about("Network predictions on the positions of recorded games: calibration, P(draw), reliance on inputs")
         .arg(files("models", "Model files, all of the config given"))
@@ -215,6 +228,7 @@ fn main() -> Result<()> {
       *m.get_one::<f64>("gap").unwrap(),
     ),
     Some(("weights", m)) => weights::run(&paths(m, "models"), m.get_flag("channels")),
+    Some(("dead", m)) => dead::run(&paths(m, "models"), *m.get_one::<f64>("weak").unwrap()),
     Some(("net", m)) => {
       let games_path = m.get_one::<PathBuf>("games").unwrap();
       let blanks = m

@@ -94,13 +94,25 @@ fn analyse(field: &Field, player: Player, labels: &mut [u32], acc: &mut Acc) {
   acc.chains += chains.len() as f64;
   acc.same += chains.iter().map(|c| (c.size as f64).powi(2)).sum::<f64>() / dots_f.powi(2);
   acc.largest += chains.iter().map(|c| c.size).max().unwrap() as f64 / dots_f;
-  acc.span4 += chains.iter().filter(|c| c.span() > 4).map(|c| c.size as f64).sum::<f64>();
-  acc.span8 += chains.iter().filter(|c| c.span() > 8).map(|c| c.size as f64).sum::<f64>();
+  acc.span4 += chains
+    .iter()
+    .filter(|c| c.span() > 4)
+    .map(|c| c.size as f64)
+    .sum::<f64>();
+  acc.span8 += chains
+    .iter()
+    .filter(|c| c.span() > 8)
+    .map(|c| c.size as f64)
+    .sum::<f64>();
   let ungrounded: Vec<&Chain> = chains.iter().filter(|c| !c.grounded).collect();
   let ungrounded_dots: u32 = ungrounded.iter().map(|c| c.size).sum();
   acc.ungrounded += ungrounded_dots as f64;
   acc.ungrounded_chains += ungrounded.len() as f64;
-  acc.ungrounded_span8 += ungrounded.iter().filter(|c| c.span() > 8).map(|c| c.size as f64).sum::<f64>();
+  acc.ungrounded_span8 += ungrounded
+    .iter()
+    .filter(|c| c.span() > 8)
+    .map(|c| c.size as f64)
+    .sum::<f64>();
   if ungrounded_dots > 0 {
     acc.ungrounded_sides += 1.0;
     acc.ungrounded_same +=

@@ -43,7 +43,7 @@ fn plane_groups() -> Vec<(String, std::ops::Range<usize>)> {
   groups
 }
 
-fn values(tensor: &burn_pack::Tensor) -> Result<Vec<f32>> {
+pub fn values(tensor: &burn_pack::Tensor) -> Result<Vec<f32>> {
   let bytes = tensor.to_bytes()?;
   Ok(match tensor.dtype {
     DType::F32 => bytes
