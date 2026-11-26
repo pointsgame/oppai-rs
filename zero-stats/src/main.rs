@@ -7,6 +7,7 @@ mod chains;
 mod common;
 mod dead;
 mod games;
+mod holdout;
 mod horizons;
 mod losses;
 mod net;
@@ -150,6 +151,58 @@ fn cli() -> Command {
         ),
     )
     .subcommand(
+      Command::new("holdout")
+        .about("Training losses of the networks on the positions of games they weren't trained on")
+        .arg(files("models", "Model files, all of the config given"))
+        .arg(
+          Arg::new("config")
+            .long("config")
+            .help("Model config")
+            .required(true)
+            .value_parser(value_parser!(PathBuf)),
+        )
+        .arg(
+          Arg::new("games")
+            .long("games")
+            .short('g')
+            .help("Games file to take the positions from: games_N for model_N and model_swa_N, played after they were trained")
+            .required(true)
+            .value_parser(value_parser!(PathBuf)),
+        )
+        .arg(Arg::new("device").long("device").short('d').help(DEVICE_HELP).default_value("auto"))
+        .arg(
+          Arg::new("count")
+            .long("count")
+            .short('c')
+            .help("Read at most this many games")
+            .value_parser(value_parser!(usize)),
+        )
+        .arg(
+          Arg::new("positions")
+            .long("positions")
+            .short('p')
+            .help("Stop reading games once they hold this many positions")
+            .value_parser(value_parser!(usize)),
+        )
+        .arg(
+          Arg::new("single")
+            .long("single")
+            .help(
+              "Compute the convolutions in single precision rather than in brain floating point, as training with \
+               mixed precision does; many times slower on GPUs whose matrix units take only half precision",
+            )
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("batch-size")
+            .long("batch-size")
+            .short('b')
+            .help("Positions per forward pass")
+            .default_value("32")
+            .value_parser(value_parser!(u64).range(1..)),
+        ),
+    )
+    .subcommand(
       Command::new("net")
         .about("Network predictions on the positions of recorded games: calibration, P(draw), reliance on inputs")
         .arg(files("models", "Model files, all of the config given"))
@@ -229,6 +282,16 @@ fn main() -> Result<()> {
     ),
     Some(("weights", m)) => weights::run(&paths(m, "models"), m.get_flag("channels")),
     Some(("dead", m)) => dead::run(&paths(m, "models"), *m.get_one::<f64>("weak").unwrap()),
+    Some(("holdout", m)) => holdout::run(holdout::HoldoutParams {
+      device: m.get_one::<String>("device").unwrap().clone(),
+      config: m.get_one::<PathBuf>("config").unwrap().clone(),
+      models: paths(m, "models"),
+      games: m.get_one::<PathBuf>("games").unwrap().clone(),
+      count: m.get_one::<usize>("count").copied(),
+      positions: m.get_one::<usize>("positions").copied(),
+      half: !m.get_flag("single"),
+      batch_size: *m.get_one::<u64>("batch-size").unwrap() as usize,
+    }),
     Some(("net", m)) => {
       let games_path = m.get_one::<PathBuf>("games").unwrap();
       let blanks = m

@@ -58,7 +58,7 @@ impl Game {
 }
 
 /// The komi recorded in a game, twice, or 0 when there is none.
-fn komi_x_2(node: &SgfNode<Prop>) -> i32 {
+pub fn komi_x_2(node: &SgfNode<Prop>) -> i32 {
   node
     .properties
     .iter()
@@ -92,7 +92,9 @@ fn to_game(node: &SgfNode<Prop>, rng: &mut SmallRng) -> Option<Game> {
 
 /// Reads up to `limit` games of a games file: concatenated gzip members, one
 /// game per line. Files that are not compressed are read as they are.
-pub fn read_games(path: &Path, limit: Option<usize>) -> Result<Vec<Game>> {
+/// Calls `f` with every game of a games file, gzip-compressed or not, until
+/// it returns `false`.
+pub fn for_each_game(path: &Path, mut f: impl FnMut(SgfNode<Prop>) -> bool) -> Result<()> {
   let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
   let gzip = path.extension().is_some_and(|e| e == "gz") || {
     let mut magic = [0u8; 2];
@@ -104,24 +106,34 @@ pub fn read_games(path: &Path, limit: Option<usize>) -> Result<Vec<Game>> {
   } else {
     Box::new(BufReader::new(file))
   };
-  let mut rng = SmallRng::seed_from_u64(1);
-  let mut games = Vec::new();
   for line in reader.lines() {
     let line = line?;
     if line.trim().is_empty() {
       continue;
     }
     for tree in sgf_parse::parse(&line).with_context(|| format!("parsing {}", path.display()))? {
-      if limit.is_some_and(|limit| games.len() >= limit) {
-        return Ok(games);
-      }
       if let GameTree::Unknown(node) = tree
-        && let Some(game) = to_game(&node, &mut rng)
+        && !f(node)
       {
-        games.push(game);
+        return Ok(());
       }
     }
   }
+  Ok(())
+}
+
+pub fn read_games(path: &Path, limit: Option<usize>) -> Result<Vec<Game>> {
+  let mut rng = SmallRng::seed_from_u64(1);
+  let mut games = Vec::new();
+  for_each_game(path, |node| {
+    if limit.is_some_and(|limit| games.len() >= limit) {
+      return false;
+    }
+    if let Some(game) = to_game(&node, &mut rng) {
+      games.push(game);
+    }
+    true
+  })?;
   Ok(games)
 }
 

@@ -80,11 +80,11 @@ set -euo pipefail
 	WINDOW_EXPONENT=0.65                                         # ... and as this power of the positions played in the long run, so that it covers an ever shorter stretch of the run
 	WINDOW_SCALE=50000                                           # Positions played beyond MIN_POSITIONS at which the window starts growing sublinearly
 	SWA_POSITIONS=80000                                          # Train on this many positions between two snapshots averaged into the weights self-play uses
-	BATCHSIZE=64                  # Training memory is mostly the activations kept for the backward pass, about 9 GB for a batch of 64 at 24x24 with mixed precision
-	OPTIMIZER=sgd                 # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
+	BATCHSIZE=32                  # Training memory is mostly the activations kept for the backward pass: b10c256 runs out of it with a batch of 64 at 40x40 even with mixed precision and gradient checkpointing, 32 fits
+	OPTIMIZER=muon                # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
 	LEARNING_RATE=                # Learning rate after the warmup, stated for a batch of 256 and scaled to BATCHSIZE below; empty for 0.09 with sgd, 0.0012 with adamw and 0.0007 with muon
-	LR_DECAY_START=10000000       # Trained positions after which the learning rate starts to decay, halving every time they double ...
-	LR_DECAY_MIN=0.125            # ... but to no less than this fraction of LEARNING_RATE
+	LR_DECAY_START=2000000        # Trained positions after which the learning rate starts to decay, halving every time they double ...
+	LR_DECAY_MIN=0.0625           # ... but to no less than this fraction of LEARNING_RATE
 	PIT_GAMES=50                  # Gating games per side, the total number of games is twice this
 	WIN_RATE_THRESHOLD=0.55       # Win rate the new model has to reach against the previous one to be accepted
 
@@ -133,18 +133,28 @@ set -euo pipefail
 	# The fraction of the learning rate a training gets after this many trained
 	# positions. A fresh network's gradients are large and erratic, and full
 	# steps on them can throw it somewhere it never recovers from; the steps
-	# grow as it settles. Later on, once the network improves little from one
-	# cycle to the next, full steps keep it bouncing around a noisy plateau
-	# instead of settling into it, and they shrink again: halving every time
-	# the trained positions double past LR_DECAY_START - one over the trained
-	# positions, so that the steps shrink as fast as the gains they chase -
-	# down to a floor that still lets the network follow its own improving
-	# games.
+	# grow as it settles, over the first million positions. Later on, once the
+	# network improves little from one cycle to the next, full steps keep it
+	# bouncing around a noisy plateau instead of settling into it, and they
+	# shrink again: halving every time the trained positions double past
+	# LR_DECAY_START - one over the trained positions, so that the steps shrink
+	# as fast as the gains they chase - down to a floor that still lets the
+	# network follow its own improving games.
+	#
+	# Where the steps start and stop paying comes from what the averaged
+	# weights gain over the trained ones on games neither was trained on
+	# (oppai-zero-stats holdout), against what a whole cycle of training gains:
+	# the former is the noise of the steps, the latter their progress. Over the
+	# first half million positions the trained weights beat the averaged ones
+	# and every cycle gains a lot, so the steps can grow sooner than they once
+	# did; from about two million positions on, the noise of full steps is
+	# twice the progress of a cycle, with Muon at its default learning rate as
+	# with SGD scaled up to its own, so that is where they start to shrink.
 	learning_rate_factor() {
 		awk -v t="$1" -v s="$LR_DECAY_START" -v m="$LR_DECAY_MIN" 'BEGIN {
-			split("20 14 10 7 5 3 2 1.4", d, " ")
+			split("10 5 3 2", d, " ")
 			i = int(t / 250000) + 1
-			if (i <= 8) { printf "%.9g", 1 / d[i]; exit }
+			if (i <= 4) { printf "%.9g", 1 / d[i]; exit }
 			f = t > s ? s / t : 1
 			printf "%.9g", f < m ? m : f
 		}'
