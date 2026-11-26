@@ -30,10 +30,11 @@ set -euo pipefail
 	# A run seeded with another run's games by carry_games.sh starts with no
 	# model and several cycles of games. Instead of going through them a cycle at
 	# a time, it first trains a fresh network on all of them at once, drawn at
-	# random, PRETRAIN_PASSES times over, with the same learning rate warmup and
-	# averaged weights as the cycles would have. Then it continues as if it had
-	# played them: the next cycle plays its own games, and the carried ones stay
-	# in the window until newer games push them out.
+	# random and not weighted by surprise, PRETRAIN_PASSES times over, with the
+	# same learning rate warmup and averaged weights as the cycles would have.
+	# Then it continues as if it had played them: the next cycle plays its own
+	# games, and the carried ones stay in the window until newer games push them
+	# out.
 	#
 	# An interrupted run resumes when started again: it continues from the latest
 	# model and only tops the current cycle's games up to the target count before
@@ -290,7 +291,11 @@ set -euo pipefail
 		# Pretrain on all of them at once. The training goes in steps of the
 		# learning rate warmup's, each one drawing from all the carried games at
 		# the learning rate and with the average the cycles would have had after
-		# as many trained positions. Every step's model and optimizer state are
+		# as many trained positions. The positions are drawn alike, without the
+		# weighting by surprise: the surprise stored with them was measured
+		# against the network that played them, while a fresh network is wrong
+		# everywhere. The cycles after recalculate it against the network
+		# trained, as always. Every step's model and optimizer state are
 		# kept apart from the cycles' until the last one becomes the model of
 		# the first cycle to play, so an interrupted pretraining resumes from its
 		# last finished step.
@@ -345,6 +350,7 @@ set -euo pipefail
 				"${SWA_ARGS[@]}" \
 				--games "${CARRIED_GAMES[@]}" \
 				--train-examples "$STEP_POSITIONS" \
+				--ignore-surprise \
 				--learning-rate-start "$STEP_LEARNING_RATE" --learning-rate-end "$STEP_LEARNING_RATE" \
 				--optimizer-kind "$OPTIMIZER" \
 				--gradient-clipping "$GRADIENT_CLIPPING" \
