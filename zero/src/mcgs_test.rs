@@ -757,7 +757,12 @@ fn uncertainty_weights_vary_with_the_predicted_error() {
     .....
     ",
   );
-  let mut search = Search::<f64>::new(PARAMS);
+  // Without the noise pruning, which discards weight and so would break the
+  // sum checked at the end.
+  let mut search = Search::<f64>::new(Params {
+    noise_prune_utility_scale: 0.0,
+    ..PARAMS
+  });
 
   for _ in 0..30 {
     futures::executor::block_on(search.mcgs(
@@ -2169,6 +2174,77 @@ fn transposing_paths_of_one_batch_are_evaluated_once() {
     expanded > 10,
     "expected a tree of some size, got {expanded} expanded nodes"
   );
+}
+
+// A playout reaching an edge into a node that already holds more visits than
+// the edge stops there instead of evaluating anything below it. So the playouts
+// outnumber the evaluations, and no edge ever claims more visits than its node
+// holds - also when other readouts of the batch are still pending through it.
+#[test]
+fn playouts_stop_at_transpositions_ahead_of_their_edge() {
+  for readouts in [1, 8] {
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+    let mut field = construct_field(
+      &mut rng,
+      "
+      ........
+      ........
+      ...aA...
+      ...Bb...
+      ........
+      ........
+      ",
+    );
+    let mut search = Search::<f64>::new(Params { readouts, ..PARAMS });
+
+    for _ in 0..200 {
+      futures::executor::block_on(search.mcgs(
+        &mut field,
+        Player::Red,
+        // Concentrating the policy on a few points makes the lines transpose.
+        &|inputs: Array4<f64>, _, _| {
+          let batch = inputs.len_of(Axis(0));
+          let height = inputs.len_of(Axis(2));
+          let width = inputs.len_of(Axis(3));
+          let mut policies = Array::from_elem((batch, height, width), 1e-4);
+          for b in 0..batch {
+            for y in 0..height {
+              for x in 0..width {
+                if x + y < 3 {
+                  policies[(b, y, x)] = 0.3;
+                }
+              }
+            }
+          }
+          let result: Result<_, ()> = Ok((policies, const_value(&inputs, array![0.6, 0.4, 0.1, 0.0, 0.0])));
+          result
+        },
+        0,
+        &mut rng,
+      ))
+      .unwrap();
+    }
+
+    for (idx, node) in search.nodes.iter().enumerate() {
+      for edge in &node.children {
+        if edge.visits > 0 {
+          let child = &search.nodes[search.map[&edge.hash]];
+          assert!(
+            edge.visits <= child.visits,
+            "with {readouts} readouts an edge of node {idx} claims {} visits of a node holding {}",
+            edge.visits,
+            child.visits
+          );
+        }
+      }
+    }
+    let evaluations = search.nodes.iter().map(|node| node.own_visits).sum::<u64>();
+    let playouts = search.nodes[search.root_idx].visits;
+    assert!(
+      playouts > evaluations,
+      "with {readouts} readouts {playouts} playouts took {evaluations} evaluations, so none stopped at a transposition"
+    );
+  }
 }
 
 // Forcing a root child ignores its PUCT score entirely, so the only thing that

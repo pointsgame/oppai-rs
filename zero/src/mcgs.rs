@@ -200,12 +200,32 @@ pub struct Edge<N: Float> {
   pub pos: Pos,
   /// Zobrist hash of the child state
   pub hash: Hash,
-  /// Number of times this specific edge was traversed (N(n, a))
+  /// Number of playouts this specific edge was traversed by (N(n, a)). Those
+  /// that stopped at it count, see [`PathEnd::CatchUp`], so it can fall behind
+  /// the visits of the child but never exceed them.
   pub visits: u64,
   /// The raw policy prediction P(a)
   pub prior: N,
   /// Virtual losses to reduce parallelization conflicts
   pub virtual_losses: u64,
+}
+
+/// How a path selected by [`Search::select_path`] ends.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum PathEnd {
+  /// At a node never evaluated, which goes to the net.
+  New,
+  /// At a childless node already evaluated - terminal, or with every move
+  /// forbidden - which has no edge to descend, so the playout evaluates it
+  /// again.
+  Evaluated,
+  /// At an edge into a node that already holds more visits than the edge, which
+  /// happens when the node is reached through a transposition. The edge's
+  /// value is the node's however many visits the edge has, and the node
+  /// already has enough of them behind it for one more edge visit, so the
+  /// playout stops there and adds the visit without a node visit, saving an
+  /// evaluation for a node that needs one.
+  CatchUp,
 }
 
 /// Represents a single state in the game graph.
@@ -1002,8 +1022,9 @@ impl<N: Float + Sum + Copy> Search<N> {
 
   /// The weight an edge contributes to its parent: the child's average weight
   /// per visit times the visits that came through this edge. A child reached
-  /// through several transpositions splits its weight across the edges in
-  /// proportion to their visits.
+  /// through several transpositions lends its weight to each of the edges in
+  /// proportion to their visits - more than its whole weight in total, once
+  /// playouts stop at an edge into it, see [`PathEnd::CatchUp`].
   fn child_weight(child: &Node<N>, edge_visits: u64) -> N {
     if child.visits == 0 {
       return N::zero();
@@ -1352,14 +1373,25 @@ impl<N: Float + Sum + Copy> Search<N> {
   }
 
   /// Selects a path from the root to a leaf, returning the traversed edges as
-  /// `(node_idx, edge_idx)` pairs and whether the leaf is terminal. The edge
-  /// references let later steps update the tree (and replay the moves) by direct
-  /// indexing instead of re-scanning each node's children by position.
-  fn select_path(&mut self) -> (Vec<(usize, usize)>, bool) {
+  /// `(node_idx, edge_idx)` pairs and how the path ends. The edge references
+  /// let later steps update the tree (and replay the moves) by direct indexing
+  /// instead of re-scanning each node's children by position.
+  ///
+  /// A path stops short of the leaf at an edge into a node that already holds
+  /// more visits than the edge, see [`PathEnd::CatchUp`]. The caller backs such
+  /// a path up before selecting the next one, so every other path of the batch
+  /// still pending through the edge descends into the node and adds a visit to
+  /// both or, abandoned, to neither: one more edge visit than now is all the
+  /// node has to hold for the edge never to claim more visits than it.
+  fn select_path(&mut self) -> (Vec<(usize, usize)>, PathEnd) {
     let mut idx = self.root_idx;
     let mut is_root = true;
     let mut path = Vec::new();
-    let mut terminal = self.nodes[idx].visits > 0;
+    let mut end = if self.nodes[idx].visits > 0 {
+      PathEnd::Evaluated
+    } else {
+      PathEnd::New
+    };
 
     while let Some(edge_idx) = self.select_edge(idx, is_root) {
       is_root = false;
@@ -1367,15 +1399,47 @@ impl<N: Float + Sum + Copy> Search<N> {
       edge.virtual_losses += 1;
       path.push((idx, edge_idx));
       let hash = edge.hash;
+      let edge_visits = edge.visits;
       if let Some(&child_idx) = self.map.get(&hash) {
+        if edge_visits < self.nodes[child_idx].visits {
+          end = PathEnd::CatchUp;
+          break;
+        }
         idx = child_idx;
       } else {
-        terminal = false;
+        end = PathEnd::New;
         break;
       }
     }
 
-    (path, terminal)
+    (path, end)
+  }
+
+  /// Backs up a path that stopped at a transposition, see
+  /// [`PathEnd::CatchUp`]: every edge on it gets a visit, the last one without
+  /// its node getting one, and the nodes above it are recomputed.
+  fn catch_up(&mut self, path: &[(usize, usize)]) {
+    for &(node_idx, edge_idx) in path {
+      self.nodes[node_idx].children[edge_idx].visits += 1;
+    }
+    self.backup(path);
+  }
+
+  /// Recomputes the nodes of a path from the leaf up, after its edges got
+  /// their visits.
+  fn backup(&mut self, path: &[(usize, usize)]) {
+    let params = self.params;
+    let mut children = Vec::new();
+    for &(node_idx, _) in path.iter().rev() {
+      Self::update_node(
+        &self.map,
+        &mut self.nodes,
+        &mut self.bias,
+        node_idx,
+        params,
+        &mut children,
+      );
+    }
   }
 
   fn revert_virtual_loss(&mut self, path: &[(usize, usize)]) {
@@ -1468,18 +1532,7 @@ impl<N: Float + Sum + Copy> Search<N> {
       leaf.weight_sum = new_weight_sum;
       leaf.weight_sq_sum = leaf.weight_sq_sum + weight * weight;
     }
-    let params = self.params;
-    let mut children = Vec::new();
-    for &(node_idx, _) in path.iter().rev() {
-      Self::update_node(
-        &self.map,
-        &mut self.nodes,
-        &mut self.bias,
-        node_idx,
-        params,
-        &mut children,
-      );
-    }
+    self.backup(path);
   }
 
   /// Computes the subtree value bias bucket for a leaf node from the field state
@@ -1768,9 +1821,24 @@ impl<N: Float + Sum + Copy> Search<N> {
     }
     let weigh = self.weigh_by_uncertainty(model);
     let readouts = self.params.readouts.max(1);
-    let mut leafs = iter::repeat_with(|| self.select_path())
-      .take(readouts)
-      .collect::<Vec<_>>();
+    // A path that stopped at a transposition is done without the net, so it is
+    // backed up as soon as it is selected: the next readouts see its visit
+    // rather than a virtual loss steering them away from a line whose result
+    // is already in, and the selection goes on until the batch holds as many
+    // readouts for the net as it is meant to, or the selections run out.
+    let mut leafs = Vec::with_capacity(readouts);
+    for _ in 0..readouts * Self::SELECTIONS_PER_READOUT {
+      if leafs.len() == readouts {
+        break;
+      }
+      let (path, end) = self.select_path();
+      if end == PathEnd::CatchUp {
+        self.revert_virtual_loss(&path);
+        self.catch_up(&path);
+      } else {
+        leafs.push((path, end));
+      }
+    }
     for (path, _) in &leafs {
       self.revert_virtual_loss(path);
     }
@@ -1812,7 +1880,7 @@ impl<N: Float + Sum + Copy> Search<N> {
     let mut leaf_rotations = Vec::with_capacity(leafs.len());
     let red_komi_x_2 = if player == Player::Red { komi_x_2 } else { -komi_x_2 };
 
-    leafs.retain(|(path, terminal)| {
+    leafs.retain(|(path, end)| {
       Self::make_moves(&self.nodes, field, path, player);
 
       let player = if path.len().is_multiple_of(2) {
@@ -1827,7 +1895,7 @@ impl<N: Float + Sum + Copy> Search<N> {
         -komi_x_2
       };
 
-      let result = if *terminal || field.is_game_over(red_komi_x_2) {
+      let result = if *end == PathEnd::Evaluated || field.is_game_over(red_komi_x_2) {
         // Terminal nodes get no bias correction. Their value is exact, so they
         // get the maximum weight. The score is the exact final score too.
         let weight = Self::terminal_weight(weigh);
@@ -1948,6 +2016,13 @@ impl<N: Float + Sum + Copy> Search<N> {
   /// How far an unvisited move's assumed utility sits below its parent's, scaled
   /// by the square root of the visited policy mass.
   const FPU_REDUCTION_MAX: f64 = 0.2;
+
+  /// How many paths one [`Self::mcgs`] call may select per readout it sends to
+  /// the net. Paths that stop at a transposition don't go to the net, see
+  /// [`PathEnd::CatchUp`], so the call selects more of them to fill its batch -
+  /// but only so many, so that a search whose paths keep stopping still gets
+  /// back to its caller, which checks its budget and its clock between calls.
+  const SELECTIONS_PER_READOUT: usize = 4;
 
   /// Children left below this much weight are dropped from the policy target
   /// entirely, capped at a 64th of the heaviest child's weight so that the
