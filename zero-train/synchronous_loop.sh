@@ -27,6 +27,14 @@ set -euo pipefail
 	# positions played so far, and the learning rate warms up over the first
 	# trained positions of the run and decays over the long run.
 	#
+	# A run seeded with another run's games by carry_games.sh starts with no
+	# model and several cycles of games. Instead of going through them a cycle at
+	# a time, it first trains a fresh network on all of them at once, drawn at
+	# random, PRETRAIN_PASSES times over, with the same learning rate warmup and
+	# averaged weights as the cycles would have. Then it continues as if it had
+	# played them: the next cycle plays its own games, and the carried ones stay
+	# in the window until newer games push them out.
+	#
 	# An interrupted run resumes when started again: it continues from the latest
 	# model and only tops the current cycle's games up to the target count before
 	# training.
@@ -81,10 +89,11 @@ set -euo pipefail
 	WINDOW_SCALE=50000                                           # Positions played beyond MIN_POSITIONS at which the window starts growing sublinearly
 	SWA_POSITIONS=80000                                          # Train on this many positions between two snapshots averaged into the weights self-play uses
 	BATCHSIZE=32                  # Training memory is mostly the activations kept for the backward pass: b10c256 runs out of it with a batch of 64 at 40x40 even with mixed precision and gradient checkpointing, 32 fits
-	OPTIMIZER=muon                # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
+	OPTIMIZER=sgd                 # sgd, adamw or muon, see 'oppai-zero-train train --help'; switching in the middle of a run starts the optimizer state afresh
 	LEARNING_RATE=                # Learning rate after the warmup, stated for a batch of 256 and scaled to BATCHSIZE below; empty for 0.09 with sgd, 0.0012 with adamw and 0.0007 with muon
 	LR_DECAY_START=2000000        # Trained positions after which the learning rate starts to decay, halving every time they double ...
 	LR_DECAY_MIN=0.0625           # ... but to no less than this fraction of LEARNING_RATE
+	PRETRAIN_PASSES=3             # A run seeded by carry_games.sh first trains on this many times the carried positions; they stay in the window afterwards and get trained on more there
 	PIT_GAMES=50                  # Gating games per side, the total number of games is twice this
 	WIN_RATE_THRESHOLD=0.55       # Win rate the new model has to reach against the previous one to be accepted
 
@@ -270,6 +279,95 @@ set -euo pipefail
 		((n > N)) && N=$n
 	done
 	[[ -e "$TRAINED_FILE" ]] || echo 0 >"$TRAINED_FILE"
+
+	# Cycles of games carried over from another run: a run of its own only has a
+	# second cycle once it has a model.
+	CARRIED=0
+	while [[ -e "$GAMESDIR"/games_"$CARRIED".sgf.gz ]]; do
+		CARRIED=$((CARRIED + 1))
+	done
+	if ((N == 0 && CARRIED > 1)) && [[ ! -e "$MODELSDIR"/model_0.bpk ]]; then
+		# Pretrain on all of them at once. The training goes in steps of the
+		# learning rate warmup's, each one drawing from all the carried games at
+		# the learning rate and with the average the cycles would have had after
+		# as many trained positions. Every step's model and optimizer state are
+		# kept apart from the cycles' until the last one becomes the model of
+		# the first cycle to play, so an interrupted pretraining resumes from its
+		# last finished step.
+		PRETRAINDIR="$MODELSDIR"/pretrain
+		mkdir -p "$PRETRAINDIR"
+		CARRIED_GAMES=()
+		CARRIED_POSITIONS=0
+		for ((i = 0; i < CARRIED; i++)); do
+			CARRIED_GAMES+=("$GAMESDIR"/games_"$i".sgf.gz)
+			CARRIED_POSITIONS=$((CARRIED_POSITIONS + $(positions "$GAMESDIR"/games_"$i".sgf.gz)))
+		done
+		PRETRAIN_POSITIONS=$(awk -v p="$CARRIED_POSITIONS" -v k="$PRETRAIN_PASSES" 'BEGIN { printf "%d", p * k }')
+		# The optimizer state is saved last, so a step whose optimizer state is
+		# there has finished.
+		STEP=-1
+		for f in "$PRETRAINDIR"/optimizer_*.bpk; do
+			[[ -e "$f" ]] || continue
+			n="${f##*/optimizer_}"
+			n="${n%.bpk}"
+			[[ "$n" =~ ^[0-9]+$ ]] || continue
+			((n > STEP)) && STEP=$n
+		done
+		if ((STEP < 0)); then
+			echo "Init"
+			time "$BIN" --device "$DEVICE" init "${CONFIG_ARGS[@]}" \
+				--model "$PRETRAINDIR"/model_0.bpk \
+				--optimizer "$PRETRAINDIR"/optimizer_0.bpk \
+				--optimizer-kind "$OPTIMIZER" \
+				--batch-size "$BATCHSIZE" 2>&1 | tee -a "$LOGSDIR"/init.log
+			STEP=0
+			echo 0 >"$TRAINED_FILE"
+		fi
+		while true; do
+			# Trainings come in whole batches, so less than one left is done.
+			TRAINED=$(<"$TRAINED_FILE")
+			((TRAINED + BATCHSIZE <= PRETRAIN_POSITIONS)) || break
+			STEP_POSITIONS=$((PRETRAIN_POSITIONS - TRAINED))
+			((STEP_POSITIONS <= 250000)) || STEP_POSITIONS=250000
+			STEP_LEARNING_RATE=$(awk -v r="$LEARNING_RATE" -v w="$(learning_rate_factor "$TRAINED")" 'BEGIN { printf "%.9g", r * w }')
+			STEP_SWA_SCALE=$(swa_scale "$TRAINED")
+			SWA_ARGS=(--model-swa-new "$PRETRAINDIR"/model_swa_"$((STEP + 1))".bpk --swa-period "$SWA_PERIOD" --swa-scale "$STEP_SWA_SCALE")
+			if [[ -e "$PRETRAINDIR"/model_swa_"$STEP".bpk ]]; then
+				SWA_ARGS+=(--model-swa "$PRETRAINDIR"/model_swa_"$STEP".bpk)
+			fi
+			echo "Pretrain on $STEP_POSITIONS of $CARRIED_POSITIONS carried positions, $TRAINED of $PRETRAIN_POSITIONS trained so far, learning rate $STEP_LEARNING_RATE, average of $STEP_SWA_SCALE snapshots"
+			time "$BIN" --device "$DEVICE" train "${CONFIG_ARGS[@]}" \
+				--width "$TRAIN_WIDTH" --height "$TRAIN_HEIGHT" \
+				--model "$PRETRAINDIR"/model_"$STEP".bpk \
+				--optimizer "$PRETRAINDIR"/optimizer_"$STEP".bpk \
+				--model-new "$PRETRAINDIR"/model_"$((STEP + 1))".bpk \
+				--optimizer-new "$PRETRAINDIR"/optimizer_"$((STEP + 1))".bpk \
+				"${SWA_ARGS[@]}" \
+				--games "${CARRIED_GAMES[@]}" \
+				--train-examples "$STEP_POSITIONS" \
+				--learning-rate-start "$STEP_LEARNING_RATE" --learning-rate-end "$STEP_LEARNING_RATE" \
+				--optimizer-kind "$OPTIMIZER" \
+				--gradient-clipping "$GRADIENT_CLIPPING" \
+				"${MIXED_PRECISION_ARGS[@]}" \
+				"${GRADIENT_CHECKPOINTING_ARGS[@]}" \
+				--batch-size "$BATCHSIZE" 2>&1 | tee -a "$LOGSDIR"/train.log
+			BATCHES=$(sed -n 's/.*Training on \([0-9]*\) batches of.*/\1/p' "$LOGSDIR"/train.log | tail -1)
+			if ((${BATCHES:-0} == 0)); then
+				echo "Pretraining trained on nothing" >&2
+				exit 1
+			fi
+			echo $((TRAINED + BATCHES * BATCHSIZE)) >"$TRAINED_FILE"
+			rm -f "$PRETRAINDIR"/model_"$STEP".bpk "$PRETRAINDIR"/optimizer_"$STEP".bpk "$PRETRAINDIR"/model_swa_"$STEP".bpk
+			STEP=$((STEP + 1))
+		done
+		mv "$PRETRAINDIR"/model_"$STEP".bpk "$MODELSDIR"/model_"$CARRIED".bpk
+		if [[ -e "$PRETRAINDIR"/model_swa_"$STEP".bpk ]]; then
+			mv "$PRETRAINDIR"/model_swa_"$STEP".bpk "$MODELSDIR"/model_swa_"$CARRIED".bpk
+		fi
+		mv "$PRETRAINDIR"/optimizer_"$STEP".bpk "$MODELSDIR"/optimizer_"$CARRIED".bpk
+		rmdir "$PRETRAINDIR"
+		N=$CARRIED
+	fi
 
 	# Begin cycling forever, running each step in order.
 	REJECTED=0

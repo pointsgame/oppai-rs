@@ -6,32 +6,25 @@ set -euo pipefail
 # run, so that a new network - a bigger one, say - catches up on them instead of
 # starting from random games.
 #
-# The games are copied as the new run's first cycles, oldest first, and the loop
-# then goes through them as if it had played them: a cycle that already has its
-# games only trains, with the learning rate warming up and the weights averaged
-# from the new run's start. Once the copied cycles are used up, the network
-# plays its own games. The first cycle has to hold MIN_POSITIONS positions, or
-# the loop would top it up with random games, so the oldest of the copied files
-# are merged into it as needed. Every other cycle must hold at least the loop's
-# NUM_GAMES_PER_CYCLE games and MIN_NEW_POSITIONS positions, or the loop would
-# top it up with games of the new network: files are merged into the next
-# cycle while it has too few positions. The old run's latest file is carried
-# over as it is when this runs, even while it is still being played; the new
-# run then tops that cycle up with its own games like any other short one.
+# The games files are copied as they are, oldest first, as the new run's first
+# cycles. Started on them, the loop first pretrains a fresh network on all of
+# them at once, PRETRAIN_PASSES times over, and then plays its own games; the
+# carried ones stay in its window until newer games push them out. The old
+# run's latest file is carried over as it is when this runs, even while it is
+# still being played.
 #
 # Only the most recent games are worth carrying over: the oldest ones were
 # played by much weaker networks, and their targets lead away from good play.
-# But a fresh network needs its whole learning rate warmup - 2M trained
+# But a fresh network needs its whole learning rate warmup - 1M trained
 # positions - and more, and training that much on too few positions repeats
-# them often enough to memorize them. The plan printed tells how much the loop
-# will train on what is carried over; a few passes over each position is about
-# right.
+# them often enough to memorize them. The plan printed tells how much the
+# pretraining will train on what is carried over.
 
 usage() {
 	echo "Usage: $0 [-n] OLD_BASEDIR NEW_BASEDIR POSITIONS"
 	echo "Copies the games of OLD_BASEDIR's most recent cycles, back until they hold POSITIONS positions, as the first cycles of NEW_BASEDIR"
 	echo "-n only prints the plan"
-	echo "The loop's NUM_GAMES_PER_CYCLE, MIN_POSITIONS, MIN_NEW_POSITIONS, TRAININGS_PER_POSITION, MAX_TRAINING_POSITIONS, WINDOW_EXPAND, WINDOW_EXPONENT and WINDOW_SCALE can be overridden from the environment, and should be when the loop's differ"
+	echo "PRETRAIN_PASSES can be overridden from the environment, and should be when the loop's differs"
 	exit 1
 }
 
@@ -46,15 +39,8 @@ NEW_BASEDIR="$2"
 NEW_GAMESDIR="$NEW_BASEDIR"/games
 WANTED="$3"
 
-# As in synchronous_loop.sh, which the plan follows.
-NUM_GAMES_PER_CYCLE="${NUM_GAMES_PER_CYCLE:-1024}"
-MIN_POSITIONS="${MIN_POSITIONS:-100000}"
-MIN_NEW_POSITIONS="${MIN_NEW_POSITIONS:-20000}"
-TRAININGS_PER_POSITION="${TRAININGS_PER_POSITION:-8}"
-MAX_TRAINING_POSITIONS="${MAX_TRAINING_POSITIONS:-500000}"
-WINDOW_EXPAND="${WINDOW_EXPAND:-0.4}"
-WINDOW_EXPONENT="${WINDOW_EXPONENT:-0.65}"
-WINDOW_SCALE="${WINDOW_SCALE:-50000}"
+# As in synchronous_loop.sh.
+PRETRAIN_PASSES="${PRETRAIN_PASSES:-3}"
 
 GITROOTDIR="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 BIN="${BIN:-"$GITROOTDIR"/target/release/oppai-zero-train}"
@@ -69,15 +55,6 @@ positions() {
 	else
 		"$BIN" count --games "$file" | sed -n 's/^Games: [0-9]*; examples: \([0-9]*\).*/\1/p'
 	fi
-}
-
-# The same as in synchronous_loop.sh.
-window_positions() {
-	awk -v n="$1" -v m="$MIN_POSITIONS" -v e="$WINDOW_EXPAND" -v p="$WINDOW_EXPONENT" -v s="$WINDOW_SCALE" 'BEGIN {
-		if (n <= m) { printf "%d", m; exit }
-		x = n - m + s
-		printf "%d", m + e * (x ^ p - s ^ p) / (p * s ^ (p - 1))
-	}'
 }
 
 if [[ "$DRY_RUN" == 0 ]] && [[ -e "$NEW_GAMESDIR" ]] && [[ -n "$(ls -A "$NEW_GAMESDIR")" ]]; then
@@ -125,73 +102,26 @@ for ((i = LAST; i >= 0 && TOTAL < WANTED; i--)); do
 	COUNTS=("$count" "${COUNTS[@]}")
 	TOTAL=$((TOTAL + count))
 done
-
-# The new run's cycles: files merged, oldest first, into each cycle until it has
-# MIN_POSITIONS positions for the first one and MIN_NEW_POSITIONS for the
-# others. A last cycle that falls short joins the one before.
-CYCLE_FILES=("${FILES[0]}")
-CYCLE_COUNTS=("${COUNTS[0]}")
-for ((i = 1; i < ${#FILES[@]}; i++)); do
-	last=$((${#CYCLE_FILES[@]} - 1))
-	min=$MIN_NEW_POSITIONS
-	((last > 0)) || min=$MIN_POSITIONS
-	if ((CYCLE_COUNTS[last] < min)); then
-		CYCLE_FILES[last]+=" ${FILES[i]}"
-		CYCLE_COUNTS[last]=$((CYCLE_COUNTS[last] + COUNTS[i]))
-	else
-		CYCLE_FILES+=("${FILES[i]}")
-		CYCLE_COUNTS+=("${COUNTS[i]}")
-	fi
-done
-if ((CYCLE_COUNTS[0] < MIN_POSITIONS)); then
-	echo "Only $TOTAL positions in $OLD_GAMESDIR, fewer than MIN_POSITIONS" >&2
+# The loop tells a carried run from one of its own by its having more than one
+# cycle of games and no model.
+if ((${#FILES[@]} < 2)); then
+	echo "Only one cycle to carry over; carry over more positions" >&2
 	exit 1
 fi
-last=$((${#CYCLE_FILES[@]} - 1))
-if ((last > 0 && CYCLE_COUNTS[last] < MIN_NEW_POSITIONS)); then
-	CYCLE_FILES[last - 1]+=" ${CYCLE_FILES[last]}"
-	CYCLE_COUNTS[last - 1]=$((CYCLE_COUNTS[last - 1] + CYCLE_COUNTS[last]))
-	unset 'CYCLE_FILES[last]' 'CYCLE_COUNTS[last]'
-fi
 
-# What the loop will train on each of them, the way it decides it.
-printf '%-6s %-40s %10s %10s %10s %12s\n' cycle from positions window trained "trained sum"
-TRAINED=0
-for ((n = 0; n < ${#CYCLE_FILES[@]}; n++)); do
-	PLAYED=0
-	for ((i = 0; i <= n; i++)); do
-		PLAYED=$((PLAYED + CYCLE_COUNTS[i]))
-	done
-	WINDOW=$(window_positions "$PLAYED")
-	IN_WINDOW=${CYCLE_COUNTS[n]}
-	for ((i = n - 1; i >= 0 && IN_WINDOW < WINDOW; i--)); do
-		IN_WINDOW=$((IN_WINDOW + CYCLE_COUNTS[i]))
-	done
-	TRAIN=$((CYCLE_COUNTS[n] * TRAININGS_PER_POSITION))
-	((TRAIN <= MAX_TRAINING_POSITIONS)) || TRAIN=$MAX_TRAINING_POSITIONS
-	((TRAIN <= IN_WINDOW)) || TRAIN=$IN_WINDOW
-	TRAINED=$((TRAINED + TRAIN))
-	FROM=""
-	for f in ${CYCLE_FILES[n]}; do
-		FROM+="${f##*/games_}"
-		FROM="${FROM%.sgf.gz}+"
-	done
-	printf '%-6s %-40s %10d %10d %10d %12d\n' "$n" "games_${FROM%+}" "${CYCLE_COUNTS[n]}" "$IN_WINDOW" "$TRAIN" "$TRAINED"
+printf '%-6s %-12s %10s\n' cycle from positions
+for ((n = 0; n < ${#FILES[@]}; n++)); do
+	from="${FILES[n]##*/}"
+	printf '%-6s %-12s %10d\n' "$n" "${from%.sgf.gz}" "${COUNTS[n]}"
 done
-echo "$TOTAL positions carried over, each trained on $(awk -v t="$TRAINED" -v p="$TOTAL" 'BEGIN { printf "%.1f", t / p }') times on average"
+echo "$TOTAL positions carried over, pretrained on $(awk -v t="$TOTAL" -v k="$PRETRAIN_PASSES" 'BEGIN { printf "%d", t * k }') positions"
 
 [[ "$DRY_RUN" == 0 ]] || exit 0
 
 mkdir -p "$NEW_GAMESDIR"
-for ((n = 0; n < ${#CYCLE_FILES[@]}; n++)); do
+for ((n = 0; n < ${#FILES[@]}; n++)); do
 	dst="$NEW_GAMESDIR"/games_"$n".sgf.gz
-	read -ra parts <<<"${CYCLE_FILES[n]}"
-	if ((${#parts[@]} == 1)); then
-		cp --reflink=auto "${parts[0]}" "$dst"
-	else
-		# The files are concatenations of gzip members, so they concatenate.
-		cat "${parts[@]}" >"$dst"
-	fi
-	echo "$(stat -c %s "$dst") ${CYCLE_COUNTS[n]}" >"${dst%.sgf.gz}.positions"
+	cp --reflink=auto "${FILES[n]}" "$dst"
+	echo "$(stat -c %s "$dst") ${COUNTS[n]}" >"${dst%.sgf.gz}.positions"
 done
 echo "Copied into $NEW_GAMESDIR; start synchronous_loop.sh on $NEW_BASEDIR with the new network's MODEL_CONFIG"
