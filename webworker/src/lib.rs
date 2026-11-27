@@ -53,12 +53,17 @@ async fn handle(
   device: &Device,
 ) -> Result<Option<Response>> {
   Ok(Some(match request {
-    Request::Init { width, height } => {
+    Request::Init {
+      width,
+      height,
+      komi_x_2,
+    } => {
       let predictor = load_predictor(device.clone(), config, model_bytes)?;
       let mut rng = make_rng::<SmallRng>();
       let config = AIConfig {
         solver: Solver::Zero,
         ladders: false,
+        komi_x_2,
         ..AIConfig::default()
       };
       *state_option = Some(State {

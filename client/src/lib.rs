@@ -81,7 +81,13 @@ impl Client {
   }
 
   pub async fn init(&mut self, width: u32, height: u32) -> Result<()> {
-    self.request(Request::Init { width, height }).await?;
+    self
+      .request(Request::Init {
+        width,
+        height,
+        komi_x_2: 0,
+      })
+      .await?;
 
     let response = self.response().await?;
     if let Response::Init = response {

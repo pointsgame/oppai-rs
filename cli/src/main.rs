@@ -13,7 +13,7 @@ use burn::{
 use either::Either;
 use oppai_ai::{ai::AI, analysis::Analysis};
 use oppai_ais::{
-  oppai::{InConfidence, Oppai},
+  oppai::{Config as AIConfig, InConfidence, Oppai},
   time_limited_ai::TimeLimitedAI,
 };
 use oppai_field::field::Field;
@@ -95,7 +95,11 @@ fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
     let should_stop = || stopped.load(Ordering::Relaxed) >= analysis_id;
 
     let response = match request {
-      Request::Init { width, height } => {
+      Request::Init {
+        width,
+        height,
+        komi_x_2,
+      } => {
         let mut rng = make_rng::<SmallRng>();
         let model: CliModel = match &model {
           Some(model) => Either::Right(Predictor {
@@ -107,7 +111,16 @@ fn run(config: Config, patterns: Arc<Patterns>) -> Result<()> {
         state_option = Some(State {
           field: Field::new_from_rng(width, height, &mut rng),
           rng,
-          oppai: Oppai::new(width, height, config.ai.clone(), patterns.clone(), model),
+          oppai: Oppai::new(
+            width,
+            height,
+            AIConfig {
+              komi_x_2,
+              ..config.ai.clone()
+            },
+            patterns.clone(),
+            model,
+          ),
         });
         Response::Init
       }

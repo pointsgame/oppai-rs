@@ -23,6 +23,10 @@ pub enum Request {
   Init {
     width: u32,
     height: u32,
+    /// Komi multiplied by 2 (to allow half-integer values) from Red's
+    /// perspective, so positive values favor Red.
+    #[serde(default)]
+    komi_x_2: i32,
   },
   PutPoint {
     coords: Coords,
@@ -73,9 +77,37 @@ mod tests {
   from_to_json_test!(
     init_request,
     Request,
-    Request::Init { width: 39, height: 32 },
-    r#"{"command":"Init","width":39,"height":32}"#
+    Request::Init {
+      width: 39,
+      height: 32,
+      komi_x_2: 0
+    },
+    r#"{"command":"Init","width":39,"height":32,"komi_x_2":0}"#
   );
+
+  from_to_json_test!(
+    init_with_komi_request,
+    Request,
+    Request::Init {
+      width: 39,
+      height: 32,
+      komi_x_2: -1
+    },
+    r#"{"command":"Init","width":39,"height":32,"komi_x_2":-1}"#
+  );
+
+  #[test]
+  fn init_request_default_komi() {
+    let parsed: Request = serde_json::from_str(r#"{"command":"Init","width":39,"height":32}"#).unwrap();
+    assert_eq!(
+      parsed,
+      Request::Init {
+        width: 39,
+        height: 32,
+        komi_x_2: 0
+      }
+    );
+  }
 
   from_to_json_test!(
     put_point_request,
