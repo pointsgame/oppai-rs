@@ -19,8 +19,8 @@ use std::{
 use burn::{
   module::ParamGroup,
   optim::{
-    AdamW, AdamWConfig, AdjustLrFn, LearningRate, ModuleOptimizer, Muon, MuonConfig, MuonState, Optimizer,
-    RecordState, Sgd, SgdConfig, StateSink, StateSource, decay::WeightDecayConfig, join_path, momentum::MomentumConfig,
+    AdamW, AdamWConfig, AdjustLrFn, LearningRate, ModuleOptimizer, Muon, MuonConfig, MuonState, Optimizer, RecordState,
+    Sgd, SgdConfig, StateSink, StateSource, decay::WeightDecayConfig, join_path, momentum::MomentumConfig,
   },
   tensor::{Device, Tensor},
 };

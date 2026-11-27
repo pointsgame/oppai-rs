@@ -257,7 +257,10 @@ impl<N: Float + Sum + Display + Debug + 'static, M: Model<N> + 'static> Oppai<N,
         config.uct.clone(),
         length(width, height),
       )))),
-      Solver::Zero => Either::Right(Either::Right(Either::Left(Zero(InnerZero::new(model, config.komi_x_2))))),
+      Solver::Zero => Either::Right(Either::Right(Either::Left(Zero(InnerZero::new(
+        model,
+        config.komi_x_2,
+      ))))),
       Solver::ZeroPolicy => Either::Right(Either::Right(Either::Right(ZeroPolicy::new(model, config.komi_x_2)))),
     };
     Oppai {

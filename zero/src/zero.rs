@@ -3,6 +3,7 @@ use crate::{
   mcgs::{Params, PlaySelectionWeight, Search},
   model::Model,
 };
+use log::info;
 use ndarray::{Array1, Axis};
 use num_traits::Float;
 use oppai_field::{
@@ -124,6 +125,7 @@ where
       self.search.mcgs(&mut field, player, &self.model, komi_x_2, rng).await?;
       iterations += 1;
     }
+    info!("Iterations count: {}.", iterations);
 
     Ok((self.search.play_selection(), iterations, self.search.winloss()))
   }
