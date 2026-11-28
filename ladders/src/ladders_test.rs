@@ -682,3 +682,37 @@ fn ladders_unrelated_counter_capture() {
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
   assert_eq!(moves, HashSet::from([field.to_pos(3, 2)]));
 }
+
+// Black le threatens three captures, and red jf captures a black point
+// removing all of them. Then black kd threatens both md and a wide net at lh
+// around the whole red chain, so le starts a working ladder. The ring of the
+// wide net goes through kd but closes next to the black points mg and ki,
+// which the chase has already marked, and the search for the attacker's
+// threats only looks next to the unmarked part of its group, so it misses
+// the net. Searching the whole group would find it at the cost of walking
+// the whole wall at every step of long ladders.
+#[test]
+fn ladders_wide_net() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .............
+    .............
+    ...........A.
+    ...........a.
+    .........Aa.A
+    ........A.AaA
+    .........Aa.A
+    .........A...
+    ..........A..
+    .............
+    .............
+    .............
+    ",
+  );
+
+  // le, which is 11:4, is missing
+  let moves = ladder_moves(&mut field, Player::Black, &|| false);
+  assert_eq!(moves, HashSet::from([field.to_pos(10, 3), field.to_pos(11, 7)]));
+}

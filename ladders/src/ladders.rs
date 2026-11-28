@@ -314,6 +314,9 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     let marks_len = self.marks.len();
     mark_group(field, last, player, &mut self.empty_board, &mut self.marks);
 
+    // A point can belong to several trajectories, but its evaluation doesn't
+    // depend on the trajectory, so it's evaluated once.
+    let mut tried = SmallVec::<[Pos; 8]>::new();
     // The value of a line never exceeds the cap. A trajectory score doesn't
     // limit it since the move can create other threats as well.
     'outer: for trajectory in trajectories {
@@ -329,6 +332,10 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
         }
         [pos1, pos2] => {
           for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
+            if tried.contains(&our_pos) {
+              continue;
+            }
+            tried.push(our_pos);
             if !self.put_attacker_point(field, our_pos) {
               continue;
             }
@@ -381,7 +388,10 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     // The attacker's immediate captures: the known ones and the new ones whose
     // rings go through its last move. The other point of the trajectory
     // captures with the trajectory score, so it's not put again, which is
-    // costly with a long chased chain.
+    // costly with a long chased chain. The new ones are searched only next to
+    // the part of the group the chase hasn't marked yet, so that long ladders
+    // don't walk their whole wall at every step. That misses a wide net whose
+    // ring closes next to the marked part, see `ladders_wide_net` in the tests.
     let mut threats = threats.clone();
     threats.retain(|&mut pos| pos != other);
     let mut best_threat = other_score;
@@ -389,10 +399,10 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
       best_threat = best_threat.max(score)
     });
     threats.push(other);
-    self.captures_board[other] += 1;
+    self.empty_board[other] += 1;
     let new_threats: SmallVec<[Trajectory<1>; 4]> =
-      build_trajectories_from(field, last, player, 1, &mut self.captures_board, self.should_stop);
-    self.captures_board[other] -= 1;
+      build_trajectories_from(field, last, player, 1, &mut self.empty_board, self.should_stop);
+    self.empty_board[other] -= 1;
     for trajectory in new_threats {
       let pos = trajectory.points[0];
       if !threats.contains(&pos) {
@@ -504,6 +514,8 @@ pub fn ladders<SS: Fn() -> bool>(
   let mut search = Search::new(field, player, should_stop);
   let trajectories = search.root_trajectories(field);
   let counters = search.root_counters(field);
+  // a point is evaluated once even if it belongs to several trajectories
+  let mut tried = HashSet::new();
 
   info!("Solving ladders for {} trajectories.", trajectories.len());
 
@@ -524,7 +536,7 @@ pub fn ladders<SS: Fn() -> bool>(
       }
       [pos1, pos2] => {
         for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
-          if !search.put_attacker_point(field, our_pos) {
+          if !tried.insert(our_pos) || !search.put_attacker_point(field, our_pos) {
             continue;
           }
           let outcome = search.evaluate(
@@ -557,6 +569,8 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
   let mut search = Search::new(field, player, should_stop);
   let trajectories = search.root_trajectories(field);
   let counters = search.root_counters(field);
+  // a point is evaluated once even if it belongs to several trajectories
+  let mut tried = HashSet::new();
 
   let current = field.score(player);
 
@@ -573,7 +587,7 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
       }
       [pos1, pos2] => {
         for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
-          if moves.contains(&our_pos) || !search.put_attacker_point(field, our_pos) {
+          if moves.contains(&our_pos) || !tried.insert(our_pos) || !search.put_attacker_point(field, our_pos) {
             continue;
           }
           let outcome = search.evaluate(
