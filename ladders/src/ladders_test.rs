@@ -167,7 +167,8 @@ fn ladders_side_capture_1() {
 
   assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 6)));
   assert_eq!(score, 2);
-  assert_eq!(depth, 7);
+  // the longest line the defender can force for the same score
+  assert_eq!(depth, 9);
 
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
   assert_eq!(moves, HashSet::from([field.to_pos(2, 6)]));
@@ -257,6 +258,8 @@ fn ladders_rotate() {
   assert_eq!(moves, HashSet::from([field.to_pos(2, 3)]));
 }
 
+// The ladder rotates around the black group, but near the end black 5:4
+// captures the red point at 5:3 which is a part of the red ring.
 #[test]
 fn ladders_fake_rotate() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
@@ -277,12 +280,12 @@ fn ladders_fake_rotate() {
 
   let (pos, score, depth) = ladders(&mut field, Player::Red, &|| false);
 
-  assert_eq!(pos, NonZeroPos::new(field.to_pos(2, 3)));
-  assert_eq!(score, 2);
-  assert_eq!(depth, 11);
+  assert_eq!(pos, None);
+  assert_eq!(score, 0);
+  assert_eq!(depth, 0);
 
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
-  assert_eq!(moves, HashSet::from([field.to_pos(2, 3)]));
+  assert_eq!(moves, HashSet::new());
 }
 
 #[test]
@@ -408,8 +411,10 @@ fn ladders_not_viable_1() {
   assert_eq!(moves, HashSet::new());
 }
 
+// After red 5:5 black 1:6 captures the red point at 2:6 which is a part of
+// the red ring instead of blocking.
 #[test]
-fn ladders_viable() {
+fn ladders_not_viable_3() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
@@ -427,12 +432,12 @@ fn ladders_viable() {
   );
 
   let (pos, score, depth) = ladders(&mut field, Player::Red, &|| false);
-  assert_eq!(pos, NonZeroPos::new(field.to_pos(5, 5)));
-  assert_eq!(score, 7);
-  assert_eq!(depth, 5);
+  assert_eq!(pos, None);
+  assert_eq!(score, 0);
+  assert_eq!(depth, 0);
 
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
-  assert_eq!(moves, HashSet::from([field.to_pos(5, 5)]));
+  assert_eq!(moves, HashSet::new());
 }
 
 #[test]
@@ -462,8 +467,10 @@ fn ladders_not_viable_2() {
   assert_eq!(moves, HashSet::new());
 }
 
+// After red 4:4 black 12:4 captures the red point at 13:4 which is a part of
+// the big red ring instead of blocking.
 #[test]
-fn ladders_viable_multi() {
+fn ladders_not_viable_multi() {
   let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
   let mut field = construct_field(
     &mut rng,
@@ -482,12 +489,12 @@ fn ladders_viable_multi() {
 
   let (pos, score, depth) = ladders(&mut field, Player::Red, &|| false);
 
-  assert_eq!(pos, NonZeroPos::new(field.to_pos(4, 4)));
-  assert_eq!(score, 5);
-  assert_eq!(depth, 5);
+  assert_eq!(pos, None);
+  assert_eq!(score, 0);
+  assert_eq!(depth, 0);
 
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
-  assert_eq!(moves, HashSet::from([field.to_pos(4, 4)]));
+  assert_eq!(moves, HashSet::new());
 }
 
 #[test]
@@ -512,16 +519,10 @@ fn ladders_viable_complex() {
   let (_, score, _) = ladders(&mut field, Player::Red, &|| false);
   assert_eq!(score, 7);
 
+  // 4:4, 4:6 and 6:6 also start capturing trajectories, but black 4:5
+  // captures the red point at 5:5 which is a part of the red ring
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
-  assert_eq!(
-    moves,
-    HashSet::from([
-      field.to_pos(5, 3),
-      field.to_pos(4, 4),
-      field.to_pos(4, 6),
-      field.to_pos(6, 6)
-    ])
-  );
+  assert_eq!(moves, HashSet::from([field.to_pos(5, 3)]));
 }
 
 #[test]
@@ -576,4 +577,80 @@ fn ladders_two() {
 
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
   assert_eq!(moves, HashSet::from([field.to_pos(3, 3), field.to_pos(12, 3)]));
+}
+
+// Red threatens 6:9 or 7:9 capturing 5:9 and 5:10. Black 3:9 captures 4:9 and
+// 4:10 right away and removes the threat since they are a part of the red
+// ring. Black 2:9 starts a ladder that needs red to block at 2:8, but red
+// captures with 6:9 instead, breaking the black ring.
+#[test]
+fn ladders_counter_capture() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    ............
+    ............
+    ....b.......
+    ..bbbB......
+    ..BbBB......
+    ...Ba.B.....
+    ...BaBaB....
+    ...BBbBbb...
+    ....Bbbb.b..
+    ....bB..b...
+    ...BbBbBB...
+    ....Bb......
+    ............
+    ............
+    ",
+  );
+  let current = field.score(Player::Black);
+
+  let (pos, score, depth) = ladders(&mut field, Player::Black, &|| false);
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 9)));
+  assert_eq!(score, current + 2);
+  assert_eq!(depth, 0);
+
+  let moves = ladder_moves(&mut field, Player::Black, &|| false);
+  assert_eq!(moves, HashSet::from([field.to_pos(3, 9)]));
+}
+
+// Black chases the red chain 6:13, 7:14, 8:13 with 5:13, 6:14 and 7:13, and
+// 8:14 would threaten 7:15 capturing 7:14. But red 7:12 captures 7:13 which
+// is a part of the black ring, so the ladder loses a point instead.
+#[test]
+fn ladders_counter_capture_deep() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .................
+    .................
+    ....BBBBBB.......
+    ...bbbBbbB..b....
+    ..bbAbBbbBbbB.b..
+    ....bbBbbbbAbb...
+    ..B..BbBBbBb.....
+    ....BBb.BBBBB....
+    ....Bbb..........
+    ....BbAbB........
+    ....Bbb..B.......
+    ....BbAb.........
+    ....Bbb..........
+    .....BbBb........
+    ......Bb.........
+    .................
+    .................
+    ",
+  );
+  let current = field.score(Player::Black);
+
+  let (pos, score, depth) = ladders(&mut field, Player::Black, &|| false);
+  assert_eq!(pos, None);
+  assert_eq!(score, current);
+  assert_eq!(depth, 0);
+
+  let moves = ladder_moves(&mut field, Player::Black, &|| false);
+  assert_eq!(moves, HashSet::new());
 }

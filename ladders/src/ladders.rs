@@ -1,3 +1,16 @@
+//! Ladders solver.
+//!
+//! A ladder is a sequence of moves where every move of the attacker threatens
+//! an immediate capture: the attacker puts one point of a two-point capturing
+//! trajectory, so the other point captures with the next move. The attacker is
+//! restricted to trajectories continuing from its last move, so the solver can
+//! miss some ladders, but the defender is not restricted to blocking the other
+//! point. A pending capture can be prevented either by occupying the cell
+//! that closes the ring or by capturing a point of the ring, so the defender
+//! tries every move that captures something as well. Blocking any other cell
+//! doesn't help the defender since the attacker can capture with the other
+//! point anyway.
+
 use oppai_common::common::is_last_move_stupid;
 use oppai_common::trajectory::{Trajectory, build_trajectories, build_trajectories_from};
 use oppai_field::field::wave_diag;
@@ -6,6 +19,38 @@ use oppai_field::player::Player;
 use smallvec::SmallVec;
 use std::collections::HashSet;
 use std::iter;
+
+/// The score reached by a line together with the number of the attacker's
+/// moves before the capture. The search compares only scores, the depth is
+/// kept for reporting: the attacker keeps the first line found with the best
+/// score, the defender prefers longer lines among equal scores.
+#[derive(Clone, Copy, Debug)]
+struct Outcome {
+  score: i32,
+  depth: u32,
+}
+
+impl Outcome {
+  fn new(score: i32, depth: u32) -> Self {
+    Outcome { score, depth }
+  }
+
+  fn max(self, other: Outcome) -> Outcome {
+    if other.score > self.score { other } else { self }
+  }
+
+  fn min(self, other: Outcome) -> Outcome {
+    if other.score < self.score || other.score == self.score && other.depth > self.depth {
+      other
+    } else {
+      self
+    }
+  }
+}
+
+/// Positions where a player captures with the next move. They are checked
+/// again before use since later moves can spoil them.
+type Captures = SmallVec<[Pos; 8]>;
 
 fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &mut [u32], marks: &mut Vec<Pos>) {
   wave_diag(&mut field.q, field.stride, start_pos, |pos| {
@@ -23,236 +68,394 @@ fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &m
   });
 }
 
-fn collect_near_moves(field: &Field, player: Player, empty_board: &mut [u32]) -> Vec<Pos> {
-  let mut moves = Vec::new();
-  for &pos in &field.moves {
-    if field.points[pos].is_players_point(player) {
-      for &near_pos in field.directions_diag(pos).iter() {
-        if empty_board[near_pos] == 0 && field.is_putting_allowed(near_pos) {
-          moves.push(near_pos);
-          empty_board[near_pos] = 1;
-        }
-      }
+/// Keeps the positions where the player still captures, calling `f` with the
+/// score after each capture.
+fn check_captures<F: FnMut(i32)>(field: &mut Field, player: Player, captures: &mut Captures, mut f: F) {
+  captures.retain(|&mut pos| {
+    if !field.put_point(pos, player) {
+      return false;
     }
-  }
-  for &pos in &moves {
-    empty_board[pos] = 0;
-  }
-  moves
-}
-
-fn is_trajectoty_alive<SS: Fn() -> bool>(
-  field: &mut Field,
-  trajectory: &Trajectory<2>,
-  player: Player,
-  empty_board: &mut [u32],
-  should_stop: &SS,
-) -> bool {
-  if should_stop() {
-    return false;
-  }
-
-  let mut put = 0;
-  for &pos in &trajectory.points {
-    if field.put_point(pos, player) {
-      put += 1;
+    let result = field.get_delta_score(player) > 0;
+    if result {
+      f(field.score(player));
     }
-  }
-
-  if put == 0 {
-    return false;
-  }
-
-  let result = field.get_delta_score(player) > 0 || {
-    let moves = collect_near_moves(field, player, empty_board);
-    moves.into_iter().any(|pos| {
-      field.put_point(pos, player);
-      if field.get_delta_score(player) <= 0
-        || trajectory
-          .points
-          .iter()
-          .any(|&trajectory_pos| !field.cell(trajectory_pos).is_bound())
-      {
-        field.undo();
-        return false;
-      }
-      for _ in 0..trajectory.points.len() + 1 {
-        field.undo();
-      }
-      field.put_point(pos, player);
-      let result = is_trajectoty_viable(field, trajectory, player, empty_board, should_stop);
-      field.undo();
-      for &pos in &trajectory.points {
-        field.put_point(pos, player);
-      }
-      result
-    })
-  };
-
-  for _ in 0..put {
     field.undo();
-  }
-
-  result
-}
-
-fn is_trajectoty_viable<SS: Fn() -> bool>(
-  field: &mut Field,
-  trajectory: &Trajectory<2>,
-  player: Player,
-  empty_board: &mut [u32],
-  should_stop: &SS,
-) -> bool {
-  if trajectory.points.len() == 1 {
-    return true;
-  }
-
-  if should_stop() {
-    return false;
-  }
-
-  let enemy = player.next();
-  let moves = collect_near_moves(field, enemy, empty_board);
-  moves.into_iter().all(|enemy_pos| {
-    if trajectory.points.contains(&enemy_pos) {
-      return true;
-    }
-
-    field.put_point(enemy_pos, enemy);
-
-    if field.get_delta_score(enemy) <= 0 {
-      field.undo();
-      return true;
-    }
-
-    let result = is_trajectoty_alive(field, trajectory, player, empty_board, should_stop);
-
-    field.undo();
-
     result
-  })
+  });
 }
 
-fn ladders_rec<SS: Fn() -> bool>(
-  field: &mut Field,
+struct Search<'a, SS: Fn() -> bool> {
   player: Player,
-  trajectory: &Trajectory<2>,
-  mut alpha: i32,
-  beta: i32,
-  empty_board: &mut Vec<u32>,
-  should_stop: &SS,
-  depth: u32,
-  marks: &mut Vec<Pos>,
-) -> (Option<NonZeroPos>, i32, u32, bool) {
-  match *trajectory.points.as_slice() {
-    [pos] => (NonZeroPos::new(pos), trajectory.score, depth, true),
-    [pos1, pos2] => {
-      let mut best_move = None;
-      let mut capture_depth = 0;
-      let mut viable = false;
+  /// Marks groups the chase has already passed so that trajectories are
+  /// searched only around the new points.
+  empty_board: Vec<u32>,
+  marks: Vec<Pos>,
+  /// A clean board for searching captures at the root.
+  captures_board: Vec<u32>,
+  /// Marks the defender's points whose neighbors are in the frontier.
+  defender_board: Vec<u32>,
+  defender_marks: Vec<Pos>,
+  /// Empty cells next to the marked defender's points: a new point of the
+  /// defender can close a ring at any of them, not only next to itself.
+  /// `frontier_board` is 1 for cells in the frontier and 2 for candidates.
+  frontier: Vec<Pos>,
+  frontier_board: Vec<u8>,
+  /// Cells of the frontier that can close a ring of the defender, see
+  /// `is_candidate`. Only new points of the defender change that.
+  candidates: Vec<Pos>,
+  should_stop: &'a SS,
+}
 
-      for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
-        if trajectory.score <= alpha || alpha >= beta || should_stop() {
-          break;
-        }
-
-        if field.cell(our_pos).is_players_empty_base(player.next()) {
-          continue;
-        }
-
-        if !field.put_point(our_pos, player) {
-          panic!(
-            "Failed to put a point to ({}, {}) on the field:\n{}",
-            field.to_x(our_pos),
-            field.to_y(our_pos),
-            field,
-          );
-        }
-
-        if is_last_move_stupid(field, our_pos, player) {
-          field.undo();
-          continue;
-        }
-
-        if field.get_delta_score(player) > 0 {
-          let cur_score = field.score(player);
-          field.undo();
-          if cur_score > alpha {
-            alpha = cur_score;
-            best_move = NonZeroPos::new(our_pos);
-            capture_depth = depth;
-          }
-          continue;
-        }
-
-        if !field.put_point(enemy_pos, player.next()) {
-          panic!(
-            "Failed to put a point to ({}, {}) on the field:\n{}",
-            field.to_x(enemy_pos),
-            field.to_y(enemy_pos),
-            field,
-          );
-        }
-
-        let trajectories: SmallVec<[_; 2]> =
-          build_trajectories_from(field, our_pos, player, 2, empty_board, should_stop);
-
-        if should_stop() {
-          field.undo();
-          field.undo();
-          break;
-        }
-
-        let marks_len = marks.len();
-        mark_group(field, our_pos, player, empty_board, marks);
-
-        for trajectory in trajectories {
-          if alpha >= beta || should_stop() {
-            break;
-          }
-
-          if trajectory.score <= alpha {
-            continue;
-          }
-
-          let (_, cur_score, cur_capture_depth, cur_viable) = ladders_rec(
-            field,
-            player,
-            &trajectory,
-            alpha,
-            beta.min(trajectory.score),
-            empty_board,
-            should_stop,
-            depth + 1,
-            marks,
-          );
-          let cur_score = cur_score.min(trajectory.score);
-
-          if cur_score > alpha && cur_viable {
-            viable = trajectory.points.len() > 1;
-            alpha = cur_score;
-            best_move = NonZeroPos::new(our_pos);
-            capture_depth = cur_capture_depth;
-          }
-        }
-
-        for &pos in &marks[marks_len..] {
-          empty_board[pos] = 0;
-        }
-        marks.truncate(marks_len);
-
-        field.undo();
-        field.undo();
-      }
-
-      (
-        best_move,
-        alpha,
-        capture_depth,
-        best_move.is_some() && (viable || is_trajectoty_viable(field, trajectory, player, empty_board, should_stop)),
-      )
+impl<'a, SS: Fn() -> bool> Search<'a, SS> {
+  fn new(field: &Field, player: Player, should_stop: &'a SS) -> Self {
+    Search {
+      player,
+      empty_board: iter::repeat_n(0, field.length()).collect(),
+      marks: Vec::with_capacity(field.length()),
+      captures_board: iter::repeat_n(0, field.length()).collect(),
+      defender_board: iter::repeat_n(0, field.length()).collect(),
+      defender_marks: Vec::new(),
+      frontier: Vec::new(),
+      frontier_board: iter::repeat_n(0, field.length()).collect(),
+      candidates: Vec::new(),
+      should_stop,
     }
-    _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
+  }
+
+  fn clear_marks(&mut self, len: usize) {
+    for &pos in &self.marks[len..] {
+      self.empty_board[pos] = 0;
+    }
+    self.marks.truncate(len);
+  }
+
+  /// Marks one of the groups near the first point of a root trajectory to not
+  /// search trajectories from it.
+  fn mark_near_group(&mut self, field: &mut Field, pos: Pos) {
+    if let Some(&near_pos) = field
+      .directions_diag(pos)
+      .iter()
+      .find(|&&near_pos| field.cell(near_pos).is_players_point(self.player))
+    {
+      mark_group(field, near_pos, self.player, &mut self.empty_board, &mut self.marks);
+    }
+  }
+
+  fn root_trajectories(&mut self, field: &mut Field) -> SmallVec<[Trajectory<2>; 8]> {
+    let mut trajectories: SmallVec<[Trajectory<2>; 8]> =
+      build_trajectories(field, self.player, 2, &mut self.empty_board, self.should_stop);
+    trajectories.sort_unstable_by_key(|trajectory| -trajectory.score);
+    trajectories
+  }
+
+  /// Immediate captures of the defender at the root.
+  fn root_counters(&mut self, field: &mut Field) -> Captures {
+    build_trajectories::<1, _, SmallVec<[_; 8]>>(
+      field,
+      self.player.next(),
+      1,
+      &mut self.captures_board,
+      self.should_stop,
+    )
+    .into_iter()
+    .map(|trajectory| trajectory.points[0])
+    .collect()
+  }
+
+  /// Whether putting a point of the player at the empty `pos` can capture:
+  /// it has to join two separate runs of the player's points around it unless
+  /// captured points inside the ring come back to life.
+  fn is_candidate(field: &Field, pos: Pos, player: Player) -> bool {
+    field.number_near_groups(pos, player) >= 2
+      || field.captured_count(player.next()) != 0 && field.captured_ring(pos, player) != 0
+  }
+
+  /// Marks the defender's groups containing `starts` and extends the frontier
+  /// with the empty cells next to them.
+  fn extend_frontier(&mut self, field: &mut Field, starts: &[Pos]) {
+    let enemy = self.player.next();
+    let board = &mut self.defender_board;
+    let marks = &mut self.defender_marks;
+    let mut cells = SmallVec::<[Pos; 16]>::new();
+    for &start in starts {
+      wave_diag(&mut field.q, field.stride, start, |pos| {
+        if board[pos] != 0 {
+          return false;
+        }
+        let cell = field.points[pos];
+        if cell.is_live_players_point(enemy) {
+          board[pos] = 1;
+          marks.push(pos);
+          true
+        } else {
+          if cell.is_putting_allowed() && !cell.is_players_empty_base(enemy) {
+            cells.push(pos);
+          }
+          false
+        }
+      });
+    }
+    for pos in cells {
+      if self.frontier_board[pos] == 0 {
+        self.frontier_board[pos] = 1;
+        self.frontier.push(pos);
+      }
+      if self.frontier_board[pos] == 1 && Search::<SS>::is_candidate(field, pos, enemy) {
+        self.frontier_board[pos] = 2;
+        self.candidates.push(pos);
+      }
+    }
+  }
+
+  fn truncate_frontier(&mut self, marks_len: usize, frontier_len: usize, candidates_len: usize) {
+    for &pos in &self.candidates[candidates_len..] {
+      self.frontier_board[pos] = 1;
+    }
+    self.candidates.truncate(candidates_len);
+    for &pos in &self.frontier[frontier_len..] {
+      self.frontier_board[pos] = 0;
+    }
+    self.frontier.truncate(frontier_len);
+    for &pos in &self.defender_marks[marks_len..] {
+      self.defender_board[pos] = 0;
+    }
+    self.defender_marks.truncate(marks_len);
+  }
+
+  /// Adds the candidates where the defender might capture now.
+  fn add_candidates(&self, field: &Field, captures: &mut Captures) {
+    let enemy = self.player.next();
+    for &pos in &self.candidates {
+      if !captures.contains(&pos)
+        && field.cell(pos).is_putting_allowed()
+        && Search::<SS>::is_candidate(field, pos, enemy)
+      {
+        captures.push(pos);
+      }
+    }
+  }
+
+  /// Puts the attacker's point that starts or continues a ladder, returning
+  /// false if it's not worth it.
+  fn put_attacker_point(&self, field: &mut Field, pos: Pos) -> bool {
+    if field.cell(pos).is_players_empty_base(self.player.next()) || !field.put_point(pos, self.player) {
+      return false;
+    }
+    if is_last_move_stupid(field, pos, self.player) {
+      field.undo();
+      return false;
+    }
+    true
+  }
+
+  /// Evaluates the attacker's move `pos` that was just put at `depth` as a
+  /// part of a trajectory with the other point `other`. `cap` is the minimal
+  /// score of the trajectories along the line: the score never exceeds it
+  /// since the defender could concede the capture of any of them. `threats`
+  /// and `counters` are the known immediate captures of the attacker and the
+  /// defender. Alpha-beta on scores: the result is exact if it's strictly
+  /// between `alpha` and `beta`.
+  fn evaluate(
+    &mut self,
+    field: &mut Field,
+    pos: Pos,
+    other: Pos,
+    threats: &Captures,
+    counters: &Captures,
+    cap: i32,
+    depth: u32,
+    alpha: i32,
+    beta: i32,
+  ) -> Outcome {
+    if field.get_delta_score(self.player) > 0 {
+      Outcome::new(field.score(self.player).min(cap), depth)
+    } else {
+      self.defend(field, pos, other, threats, counters, cap, depth, alpha, beta)
+    }
+  }
+
+  /// The attacker's turn after its move `last` at `depth - 1` and the
+  /// defender's reply, see `evaluate` for the rest.
+  fn attack(
+    &mut self,
+    field: &mut Field,
+    last: Pos,
+    threats: &Captures,
+    counters: &Captures,
+    cap: i32,
+    depth: u32,
+    alpha: i32,
+    beta: i32,
+  ) -> Outcome {
+    let player = self.player;
+
+    let mut best = Outcome::new(field.score(player).min(cap), depth);
+    let mut threats = threats.clone();
+    check_captures(field, player, &mut threats, |score| {
+      best = best.max(Outcome::new(score.min(cap), depth));
+    });
+    if best.score >= beta || (self.should_stop)() {
+      return best;
+    }
+
+    let mut trajectories: SmallVec<[Trajectory<2>; 4]> =
+      build_trajectories_from(field, last, player, 2, &mut self.empty_board, self.should_stop);
+    trajectories.sort_unstable_by_key(|trajectory| -trajectory.score);
+
+    let marks_len = self.marks.len();
+    mark_group(field, last, player, &mut self.empty_board, &mut self.marks);
+
+    'outer: for trajectory in trajectories {
+      let cap = cap.min(trajectory.score);
+      if cap <= best.score.max(alpha) {
+        continue;
+      }
+      match *trajectory.points.as_slice() {
+        [pos] => {
+          if self.put_attacker_point(field, pos) {
+            best = best.max(Outcome::new(field.score(player).min(cap), depth));
+            field.undo();
+          }
+        }
+        [pos1, pos2] => {
+          for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
+            if !self.put_attacker_point(field, our_pos) {
+              continue;
+            }
+            let outcome = self.evaluate(
+              field,
+              our_pos,
+              other_pos,
+              &threats,
+              counters,
+              cap,
+              depth,
+              best.score.max(alpha),
+              beta,
+            );
+            field.undo();
+            best = best.max(outcome);
+            if best.score >= beta || (self.should_stop)() {
+              break 'outer;
+            }
+          }
+        }
+        _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
+      }
+    }
+
+    self.clear_marks(marks_len);
+
+    best
+  }
+
+  /// The defender's turn after the attacker's move `last` at `depth`, see
+  /// `evaluate`.
+  fn defend(
+    &mut self,
+    field: &mut Field,
+    last: Pos,
+    other: Pos,
+    threats: &Captures,
+    counters: &Captures,
+    cap: i32,
+    depth: u32,
+    alpha: i32,
+    beta: i32,
+  ) -> Outcome {
+    let player = self.player;
+    let enemy = player.next();
+
+    // any move other than blocking or capturing lets the attacker capture with
+    // the other point with the trajectory score which is not less than `cap`
+    let mut worst = Outcome::new(cap, depth + 1);
+    if worst.score <= alpha || (self.should_stop)() {
+      return worst;
+    }
+
+    // a new capture of the defender goes through its last move or encloses
+    // the attacker's last move, and its closing cell can be next to any part
+    // of the ring, so the whole groups are added to the frontier
+    let (marks_len, frontier_len, candidates_len) =
+      (self.defender_marks.len(), self.frontier.len(), self.candidates.len());
+    let mut starts = SmallVec::<[Pos; 9]>::new();
+    if let Some(&prev) = field.moves.get(field.moves_count().wrapping_sub(2))
+      && field.cell(prev).is_live_players_point(enemy)
+    {
+      starts.push(prev);
+    }
+    for pos in field.directions_diag(last) {
+      if field.cell(pos).is_live_players_point(enemy) {
+        starts.push(pos);
+      }
+    }
+    self.extend_frontier(field, &starts);
+    let mut candidates = counters.clone();
+    self.add_candidates(field, &mut candidates);
+
+    // If the other point still captures after a counter capture, capturing
+    // with it right away is one of the attacker's options. Taking it as the
+    // value of the counter capture without searching further can only
+    // underestimate the attacker, and it avoids trying the defender's
+    // unrelated captures in every order. Only the counter captures that
+    // spoil the threat are searched.
+    let mut counters = Captures::new();
+    let mut spoiling = Captures::new();
+    for pos in candidates {
+      if pos == other || !field.put_point(pos, enemy) {
+        continue;
+      }
+      if field.get_delta_score(enemy) > 0 {
+        counters.push(pos);
+        let mut captured = false;
+        if field.put_point(other, player) {
+          if field.get_delta_score(player) > 0 {
+            captured = true;
+            worst = worst.min(Outcome::new(field.score(player).min(cap), depth + 1));
+          }
+          field.undo();
+        }
+        if !captured {
+          spoiling.push(pos);
+        }
+      }
+      field.undo();
+    }
+
+    let mut threats = threats.clone();
+    if !threats.contains(&other) {
+      threats.push(other);
+    }
+
+    // the spoiling counter captures first since they are the most likely
+    // refutations, then blocking the other point
+    spoiling.push(other);
+    if worst.score > alpha && !(self.should_stop)() {
+      for pos in spoiling {
+        if !field.put_point(pos, enemy) {
+          continue;
+        }
+        let outcome = self.attack(
+          field,
+          last,
+          &threats,
+          &counters,
+          cap,
+          depth + 1,
+          alpha,
+          worst.score.min(beta),
+        );
+        field.undo();
+        worst = worst.min(outcome);
+        if worst.score <= alpha || (self.should_stop)() {
+          break;
+        }
+      }
+    }
+
+    self.truncate_frontier(marks_len, frontier_len, candidates_len);
+
+    worst
   }
 }
 
@@ -261,73 +464,69 @@ pub fn ladders<SS: Fn() -> bool>(
   player: Player,
   should_stop: &SS,
 ) -> (Option<NonZeroPos>, i32, u32) {
-  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
-
-  let mut trajectories: SmallVec<[_; 8]> = build_trajectories(field, player, 2, &mut empty_board, should_stop);
-  trajectories.sort_unstable_by_key(|trajectory| -trajectory.score);
+  let mut search = Search::new(field, player, should_stop);
+  let trajectories = search.root_trajectories(field);
+  let counters = search.root_counters(field);
 
   info!("Solving ladders for {} trajectories.", trajectories.len());
 
-  let mut alpha = field.score(player);
-  let mut capture_depth = 0;
+  let mut best = Outcome::new(field.score(player), 0);
   let mut best_move = None;
-  let mut marks = Vec::with_capacity(field.length());
 
   for trajectory in trajectories {
     if should_stop() {
       break;
     }
 
-    if trajectory.score <= alpha {
+    if trajectory.score <= best.score {
       continue;
     }
 
-    if let [pos1, _] = *trajectory.points.as_slice()
-      && let Some(&pos) = field
-        .directions_diag(pos1)
-        .iter()
-        .find(|&&pos| field.cell(pos).is_players_point(player))
-    {
-      // mark one of near groups to not search trajectories from it
-      mark_group(field, pos, player, &mut empty_board, &mut marks);
-    };
-
-    let (cur_pos, cur_score, cur_capture_depth, cur_viable) = ladders_rec(
-      field,
-      player,
-      &trajectory,
-      alpha,
-      trajectory.score,
-      &mut empty_board,
-      should_stop,
-      0,
-      &mut marks,
-    );
-    let cur_score = cur_score.min(trajectory.score);
-    if cur_score > alpha && cur_viable {
-      alpha = cur_score;
-      capture_depth = cur_capture_depth;
-      best_move = cur_pos;
+    match *trajectory.points.as_slice() {
+      [pos] => {
+        best = Outcome::new(trajectory.score, 0);
+        best_move = NonZeroPos::new(pos);
+      }
+      [pos1, pos2] => {
+        search.mark_near_group(field, pos1);
+        for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
+          if !search.put_attacker_point(field, our_pos) {
+            continue;
+          }
+          let outcome = search.evaluate(
+            field,
+            our_pos,
+            other_pos,
+            &Captures::new(),
+            &counters,
+            trajectory.score,
+            0,
+            best.score,
+            i32::MAX,
+          );
+          field.undo();
+          if outcome.score > best.score && !should_stop() {
+            best = outcome;
+            best_move = NonZeroPos::new(our_pos);
+          }
+        }
+        search.clear_marks(0);
+      }
+      _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
     }
-
-    for &pos in &marks {
-      empty_board[pos] = 0;
-    }
-    marks.clear();
   }
 
-  (best_move, alpha, capture_depth)
+  (best_move, best.score, best.depth)
 }
 
 pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_stop: &SS) -> HashSet<Pos> {
-  let mut empty_board = iter::repeat_n(0u32, field.length()).collect::<Vec<_>>();
+  let mut search = Search::new(field, player, should_stop);
+  let trajectories = search.root_trajectories(field);
+  let counters = search.root_counters(field);
 
-  let trajectories: SmallVec<[Trajectory<2>; 8]> = build_trajectories(field, player, 2, &mut empty_board, should_stop);
-
-  let alpha = field.score(player);
+  let current = field.score(player);
 
   let mut moves = HashSet::new();
-  let mut marks = Vec::with_capacity(field.length());
 
   for trajectory in trajectories {
     if should_stop() {
@@ -337,109 +536,30 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
     match *trajectory.points.as_slice() {
       [pos] => {
         moves.insert(pos);
-        continue;
       }
       [pos1, pos2] => {
-        if let Some(&pos) = field
-          .directions_diag(pos1)
-          .iter()
-          .find(|&&pos| field.cell(pos).is_players_point(player))
-        {
-          // mark one of near groups to not search trajectories from it
-          mark_group(field, pos, player, &mut empty_board, &mut marks);
-        };
-
-        for &(our_pos, enemy_pos) in &[(pos1, pos2), (pos2, pos1)] {
-          if should_stop() {
-            break;
-          }
-
-          if field.cell(our_pos).is_players_empty_base(player.next()) {
+        search.mark_near_group(field, pos1);
+        for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
+          if moves.contains(&our_pos) || !search.put_attacker_point(field, our_pos) {
             continue;
           }
-
-          if !field.put_point(our_pos, player) {
-            panic!(
-              "Failed to put a point to ({}, {}) on the field:\n{}",
-              field.to_x(our_pos),
-              field.to_y(our_pos),
-              field,
-            );
-          }
-
-          if is_last_move_stupid(field, our_pos, player) {
-            field.undo();
-            continue;
-          }
-
-          if field.get_delta_score(player) > 0 {
-            field.undo();
+          let outcome = search.evaluate(
+            field,
+            our_pos,
+            other_pos,
+            &Captures::new(),
+            &counters,
+            trajectory.score,
+            0,
+            current,
+            current + 1,
+          );
+          field.undo();
+          if outcome.score > current && !should_stop() {
             moves.insert(our_pos);
-            continue;
           }
-
-          if !field.put_point(enemy_pos, player.next()) {
-            panic!(
-              "Failed to put a point to ({}, {}) on the field:\n{}",
-              field.to_x(enemy_pos),
-              field.to_y(enemy_pos),
-              field,
-            );
-          }
-
-          let trajectories: SmallVec<[_; 2]> =
-            build_trajectories_from(field, our_pos, player, 2, &mut empty_board, should_stop);
-
-          if should_stop() {
-            field.undo();
-            field.undo();
-            break;
-          }
-
-          let marks_len = marks.len();
-          mark_group(field, our_pos, player, &mut empty_board, &mut marks);
-
-          for next_trajectory in trajectories {
-            if should_stop() {
-              break;
-            }
-
-            let (_, cur_score, _, cur_viable) = ladders_rec(
-              field,
-              player,
-              &next_trajectory,
-              alpha,
-              trajectory.score.min(next_trajectory.score),
-              &mut empty_board,
-              should_stop,
-              0,
-              &mut marks,
-            );
-            let cur_score = cur_score.min(next_trajectory.score);
-
-            if cur_score > alpha
-              && cur_viable
-              && (next_trajectory.points.len() > 1
-                || is_trajectoty_viable(field, &trajectory, player, &mut empty_board, should_stop))
-            {
-              moves.insert(our_pos);
-              break;
-            }
-          }
-
-          for &pos in &marks[marks_len..] {
-            empty_board[pos] = 0;
-          }
-          marks.truncate(marks_len);
-
-          field.undo();
-          field.undo();
         }
-
-        for &pos in &marks {
-          empty_board[pos] = 0;
-        }
-        marks.clear();
+        search.clear_marks(0);
       }
       _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
     }

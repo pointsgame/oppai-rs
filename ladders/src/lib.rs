@@ -6,3 +6,5 @@ extern crate log;
 pub mod ladders;
 #[cfg(test)]
 mod ladders_test;
+#[cfg(test)]
+mod ladders_timing_test;
