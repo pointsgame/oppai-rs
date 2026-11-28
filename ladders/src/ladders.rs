@@ -4,12 +4,16 @@
 //! an immediate capture: the attacker puts one point of a two-point capturing
 //! trajectory, so the other point captures with the next move. The attacker is
 //! restricted to trajectories continuing from its last move, so the solver can
-//! miss some ladders, but the defender is not restricted to blocking the other
-//! point. A pending capture can be prevented either by occupying the cell
-//! that closes the ring or by capturing a point of the ring, so the defender
-//! tries every move that captures something as well. Blocking any other cell
-//! doesn't help the defender since the attacker can capture with the other
-//! point anyway.
+//! miss some ladders, but the defender is not restricted. A pending capture
+//! can be prevented either by occupying the cell that closes the ring or by
+//! capturing a point of the ring, so the defender tries blocking every
+//! immediate capture of the attacker and every move that captures something.
+//! Any other move lets the attacker capture the best of its immediate captures.
+//!
+//! A ladder has to capture regardless of the defender capturing something
+//! else, so the defender's captures don't count: a counter capture matters
+//! only if it disturbs the attacker's captures. The returned scores are the
+//! current score plus what the ladder captures.
 
 use oppai_common::common::is_last_move_stupid;
 use oppai_common::trajectory::{Trajectory, build_trajectories, build_trajectories_from};
@@ -66,6 +70,14 @@ fn mark_group(field: &mut Field, start_pos: Pos, player: Player, empty_board: &m
       false
     }
   });
+}
+
+/// The number of the opponent's points the player has captured.
+fn own_captures(field: &Field, player: Player) -> i32 {
+  match player {
+    Player::Red => field.score_red,
+    Player::Black => field.score_black,
+  }
 }
 
 /// Keeps the positions where the player still captures, calling `f` with the
@@ -224,9 +236,11 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
   }
 
   /// Puts the attacker's point that starts or continues a ladder, returning
-  /// false if it's not worth it.
+  /// false if it's not worth it. A point in the defender's empty base is
+  /// worth it only if it captures, otherwise it's captured itself, which
+  /// `is_last_move_stupid` rules out.
   fn put_attacker_point(&self, field: &mut Field, pos: Pos) -> bool {
-    if field.cell(pos).is_players_empty_base(self.player.next()) || !field.put_point(pos, self.player) {
+    if !field.put_point(pos, self.player) {
       return false;
     }
     if is_last_move_stupid(field, pos, self.player) {
@@ -237,28 +251,34 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
   }
 
   /// Evaluates the attacker's move `pos` that was just put at `depth` as a
-  /// part of a trajectory with the other point `other`. `cap` is the minimal
-  /// score of the trajectories along the line: the score never exceeds it
-  /// since the defender could concede the capture of any of them. `threats`
-  /// and `counters` are the known immediate captures of the attacker and the
+  /// part of a trajectory with the other point `other` and the score after
+  /// capturing with it. A ladder has to
+  /// capture regardless of the defender capturing something else, so scores
+  /// ignore the defender's captures: `ignored` is what it captured along the
+  /// line, added back to the field score. `cap` is the minimum of the best
+  /// immediate captures of the attacker at the defender's turns along the
+  /// line: the score never exceeds it since the defender could concede any of
+  /// them. `threats` and
+  /// `counters` are the known immediate captures of the attacker and the
   /// defender. Alpha-beta on scores: the result is exact if it's strictly
   /// between `alpha` and `beta`.
   fn evaluate(
     &mut self,
     field: &mut Field,
     pos: Pos,
-    other: Pos,
+    other: (Pos, i32),
     threats: &Captures,
     counters: &Captures,
     cap: i32,
+    ignored: i32,
     depth: u32,
     alpha: i32,
     beta: i32,
   ) -> Outcome {
     if field.get_delta_score(self.player) > 0 {
-      Outcome::new(field.score(self.player).min(cap), depth)
+      Outcome::new((field.score(self.player) + ignored).min(cap), depth)
     } else {
-      self.defend(field, pos, other, threats, counters, cap, depth, alpha, beta)
+      self.defend(field, pos, other, threats, counters, cap, ignored, depth, alpha, beta)
     }
   }
 
@@ -271,16 +291,17 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     threats: &Captures,
     counters: &Captures,
     cap: i32,
+    ignored: i32,
     depth: u32,
     alpha: i32,
     beta: i32,
   ) -> Outcome {
     let player = self.player;
 
-    let mut best = Outcome::new(field.score(player).min(cap), depth);
+    let mut best = Outcome::new((field.score(player) + ignored).min(cap), depth);
     let mut threats = threats.clone();
     check_captures(field, player, &mut threats, |score| {
-      best = best.max(Outcome::new(score.min(cap), depth));
+      best = best.max(Outcome::new((score + ignored).min(cap), depth));
     });
     if best.score >= beta || (self.should_stop)() {
       return best;
@@ -293,15 +314,16 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     let marks_len = self.marks.len();
     mark_group(field, last, player, &mut self.empty_board, &mut self.marks);
 
+    // The value of a line never exceeds the cap. A trajectory score doesn't
+    // limit it since the move can create other threats as well.
     'outer: for trajectory in trajectories {
-      let cap = cap.min(trajectory.score);
-      if cap <= best.score.max(alpha) {
-        continue;
+      if cap <= best.score.max(alpha) || (self.should_stop)() {
+        break;
       }
       match *trajectory.points.as_slice() {
         [pos] => {
           if self.put_attacker_point(field, pos) {
-            best = best.max(Outcome::new(field.score(player).min(cap), depth));
+            best = best.max(Outcome::new((field.score(player) + ignored).min(cap), depth));
             field.undo();
           }
         }
@@ -313,10 +335,11 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
             let outcome = self.evaluate(
               field,
               our_pos,
-              other_pos,
+              (other_pos, trajectory.score),
               &threats,
               counters,
               cap,
+              ignored,
               depth,
               best.score.max(alpha),
               beta,
@@ -343,10 +366,11 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     &mut self,
     field: &mut Field,
     last: Pos,
-    other: Pos,
+    (other, other_score): (Pos, i32),
     threats: &Captures,
     counters: &Captures,
     cap: i32,
+    ignored: i32,
     depth: u32,
     alpha: i32,
     beta: i32,
@@ -354,8 +378,32 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     let player = self.player;
     let enemy = player.next();
 
-    // any move other than blocking or capturing lets the attacker capture with
-    // the other point with the trajectory score which is not less than `cap`
+    // The attacker's immediate captures: the known ones and the new ones whose
+    // rings go through its last move. The other point of the trajectory
+    // captures with the trajectory score, so it's not put again, which is
+    // costly with a long chased chain.
+    let mut threats = threats.clone();
+    threats.retain(|&mut pos| pos != other);
+    let mut best_threat = other_score;
+    check_captures(field, player, &mut threats, |score| {
+      best_threat = best_threat.max(score)
+    });
+    threats.push(other);
+    self.captures_board[other] += 1;
+    let new_threats: SmallVec<[Trajectory<1>; 4]> =
+      build_trajectories_from(field, last, player, 1, &mut self.captures_board, self.should_stop);
+    self.captures_board[other] -= 1;
+    for trajectory in new_threats {
+      let pos = trajectory.points[0];
+      if !threats.contains(&pos) {
+        threats.push(pos);
+        best_threat = best_threat.max(trajectory.score);
+      }
+    }
+    let cap = cap.min(best_threat + ignored);
+
+    // any move other than blocking a threat or capturing lets the attacker
+    // capture the best of them
     let mut worst = Outcome::new(cap, depth + 1);
     if worst.score <= alpha || (self.should_stop)() {
       return worst;
@@ -381,54 +429,55 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     let mut candidates = counters.clone();
     self.add_candidates(field, &mut candidates);
 
-    // If the other point still captures after a counter capture, capturing
-    // with it right away is one of the attacker's options. Taking it as the
-    // value of the counter capture without searching further can only
-    // underestimate the attacker, and it avoids trying the defender's
-    // unrelated captures in every order. Only the counter captures that
-    // spoil the threat are searched.
+    // A counter capture matters only if it disturbs the attacker's captures:
+    // if the attacker can still capture as much as the cap, nothing can be
+    // better for it, since the defender's captures are ignored. Only the
+    // disturbing counter captures are searched.
     let mut counters = Captures::new();
-    let mut spoiling = Captures::new();
+    let mut disturbing = Captures::new();
     for pos in candidates {
-      if pos == other || !field.put_point(pos, enemy) {
+      let before = own_captures(field, enemy);
+      if !field.put_point(pos, enemy) {
         continue;
       }
       if field.get_delta_score(enemy) > 0 {
         counters.push(pos);
-        let mut captured = false;
-        if field.put_point(other, player) {
-          if field.get_delta_score(player) > 0 {
-            captured = true;
-            worst = worst.min(Outcome::new(field.score(player).min(cap), depth + 1));
+        let gain = own_captures(field, enemy) - before;
+        let undisturbed = threats.iter().any(|&threat| {
+          field.put_point(threat, player) && {
+            let result = field.get_delta_score(player) > 0 && field.score(player) + ignored + gain >= cap;
+            field.undo();
+            result
           }
-          field.undo();
-        }
-        if !captured {
-          spoiling.push(pos);
+        });
+        if !undisturbed {
+          disturbing.push(pos);
         }
       }
       field.undo();
     }
 
-    let mut threats = threats.clone();
-    if !threats.contains(&other) {
-      threats.push(other);
+    // the disturbing counter captures first since they are the most likely
+    // refutations, then blocking the threats
+    for &pos in &threats {
+      if !disturbing.contains(&pos) {
+        disturbing.push(pos);
+      }
     }
-
-    // the spoiling counter captures first since they are the most likely
-    // refutations, then blocking the other point
-    spoiling.push(other);
     if worst.score > alpha && !(self.should_stop)() {
-      for pos in spoiling {
+      for pos in disturbing {
+        let before = own_captures(field, enemy);
         if !field.put_point(pos, enemy) {
           continue;
         }
+        let gain = own_captures(field, enemy) - before;
         let outcome = self.attack(
           field,
           last,
           &threats,
           &counters,
           cap,
+          ignored + gain,
           depth + 1,
           alpha,
           worst.score.min(beta),
@@ -466,14 +515,12 @@ pub fn ladders<SS: Fn() -> bool>(
       break;
     }
 
-    if trajectory.score <= best.score {
-      continue;
-    }
-
     match *trajectory.points.as_slice() {
       [pos] => {
-        best = Outcome::new(trajectory.score, 0);
-        best_move = NonZeroPos::new(pos);
+        if trajectory.score > best.score {
+          best = Outcome::new(trajectory.score, 0);
+          best_move = NonZeroPos::new(pos);
+        }
       }
       [pos1, pos2] => {
         for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
@@ -483,10 +530,11 @@ pub fn ladders<SS: Fn() -> bool>(
           let outcome = search.evaluate(
             field,
             our_pos,
-            other_pos,
+            (other_pos, trajectory.score),
             &Captures::new(),
             &counters,
-            trajectory.score,
+            i32::MAX,
+            0,
             0,
             best.score,
             i32::MAX,
@@ -531,10 +579,11 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
           let outcome = search.evaluate(
             field,
             our_pos,
-            other_pos,
+            (other_pos, trajectory.score),
             &Captures::new(),
             &counters,
-            trajectory.score,
+            i32::MAX,
+            0,
             0,
             current,
             current + 1,

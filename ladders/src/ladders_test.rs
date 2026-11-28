@@ -655,3 +655,30 @@ fn ladders_counter_capture_deep() {
   let moves = ladder_moves(&mut field, Player::Black, &|| false);
   assert_eq!(moves, HashSet::new());
 }
+
+// Red 3:2 threatens two captures at once. Black can capture the unrelated
+// red points at 9:2 and 10:2 with 10:3 instead of answering, but that doesn't
+// disturb the red capture, so the ladder still works.
+#[test]
+fn ladders_unrelated_counter_capture() {
+  let mut rng = Xoshiro256PlusPlus::seed_from_u64(SEED);
+  let mut field = construct_field(
+    &mut rng,
+    "
+    .............
+    .aa......AA..
+    .AA.....AaaA.
+    .aaAa....A...
+    .............
+    ",
+  );
+
+  let (pos, score, depth) = ladders(&mut field, Player::Red, &|| false);
+
+  assert_eq!(pos, NonZeroPos::new(field.to_pos(3, 2)));
+  assert_eq!(score, 1);
+  assert_eq!(depth, 1);
+
+  let moves = ladder_moves(&mut field, Player::Red, &|| false);
+  assert_eq!(moves, HashSet::from([field.to_pos(3, 2)]));
+}
