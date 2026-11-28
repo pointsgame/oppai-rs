@@ -129,18 +129,6 @@ impl<'a, SS: Fn() -> bool> Search<'a, SS> {
     self.marks.truncate(len);
   }
 
-  /// Marks one of the groups near the first point of a root trajectory to not
-  /// search trajectories from it.
-  fn mark_near_group(&mut self, field: &mut Field, pos: Pos) {
-    if let Some(&near_pos) = field
-      .directions_diag(pos)
-      .iter()
-      .find(|&&near_pos| field.cell(near_pos).is_players_point(self.player))
-    {
-      mark_group(field, near_pos, self.player, &mut self.empty_board, &mut self.marks);
-    }
-  }
-
   fn root_trajectories(&mut self, field: &mut Field) -> SmallVec<[Trajectory<2>; 8]> {
     let mut trajectories: SmallVec<[Trajectory<2>; 8]> =
       build_trajectories(field, self.player, 2, &mut self.empty_board, self.should_stop);
@@ -488,7 +476,6 @@ pub fn ladders<SS: Fn() -> bool>(
         best_move = NonZeroPos::new(pos);
       }
       [pos1, pos2] => {
-        search.mark_near_group(field, pos1);
         for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
           if !search.put_attacker_point(field, our_pos) {
             continue;
@@ -510,7 +497,6 @@ pub fn ladders<SS: Fn() -> bool>(
             best_move = NonZeroPos::new(our_pos);
           }
         }
-        search.clear_marks(0);
       }
       _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
     }
@@ -538,7 +524,6 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
         moves.insert(pos);
       }
       [pos1, pos2] => {
-        search.mark_near_group(field, pos1);
         for (our_pos, other_pos) in [(pos1, pos2), (pos2, pos1)] {
           if moves.contains(&our_pos) || !search.put_attacker_point(field, our_pos) {
             continue;
@@ -559,7 +544,6 @@ pub fn ladder_moves<SS: Fn() -> bool>(field: &mut Field, player: Player, should_
             moves.insert(our_pos);
           }
         }
-        search.clear_marks(0);
       }
       _ => unreachable!("Trajectory with {} points", trajectory.points.len()),
     }

@@ -520,9 +520,10 @@ fn ladders_viable_complex() {
   assert_eq!(score, 7);
 
   // 4:4, 4:6 and 6:6 also start capturing trajectories, but black 4:5
-  // captures the red point at 5:5 which is a part of the red ring
+  // captures the red point at 5:5 which is a part of the red ring; 7:5 wins a
+  // point on its own
   let moves = ladder_moves(&mut field, Player::Red, &|| false);
-  assert_eq!(moves, HashSet::from([field.to_pos(5, 3)]));
+  assert_eq!(moves, HashSet::from([field.to_pos(5, 3), field.to_pos(7, 5)]));
 }
 
 #[test]
