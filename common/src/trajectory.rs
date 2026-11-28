@@ -146,6 +146,58 @@ fn next_moves(
   moves
 }
 
+/// The ring directions of the neighbours in the order of `directions_diag`.
+const DIAG_DIRECTIONS: [u32; 8] = [0, 4, 6, 2, 7, 1, 5, 3];
+
+/// The moves `next_moves` finds from the just put `pos` when it's the dot
+/// before the last one and joins fewer than two runs of the player's dots,
+/// leaving out the ones that can't be the last dot. Such a dot needs the last
+/// one next to it as its second run, so only the neighbours giving it a second
+/// run are kept, in the order `next_moves` finds them. Its only run belongs to
+/// a group whose walk already marked it, so the walk from it ends at its
+/// neighbours unless an unmarked dot of the player is next to it, in which
+/// case `None` is returned.
+fn last_moves_of_weak(field: &Field, pos: Pos, player: Player, empty_board: &[u32]) -> Option<SmallVec<[Pos; 7]>> {
+  let ring = field.live_ring(pos, player);
+  if ring_runs_settled(field, pos, ring, player) >= 2 {
+    return None;
+  }
+  let neighbors = field.directions_diag(pos);
+  if neighbors
+    .iter()
+    .any(|&neighbor| field.cell(neighbor).is_players_point(player) && empty_board[neighbor] == 0)
+  {
+    return None;
+  }
+  let mut moves = SmallVec::new();
+  for (neighbor, direction) in neighbors.into_iter().zip(DIAG_DIRECTIONS) {
+    let cell = field.cell(neighbor);
+    if empty_board[neighbor] == 0
+      && cell.is_putting_allowed()
+      && !cell.is_players_empty_base(player)
+      && ring_groups(ring | 1 << direction) >= 2
+    {
+      moves.push(neighbor);
+    }
+  }
+  Some(moves)
+}
+
+/// Leaves the moves outside the 3x3 neighbourhood of `last_pos` if it's set.
+fn retain_far(field: &Field, last_pos: Pos, mut moves: SmallVec<[Pos; 7]>) -> SmallVec<[Pos; 7]> {
+  if last_pos != 0 {
+    // the same as euclidean(field.stride, last_pos, next_pos) > 2 which
+    // means being outside the 3x3 neighborhood, but without divisions;
+    // unambiguous since dx is at most stride - 2 by absolute value
+    let stride = field.stride as isize;
+    moves.retain(|&mut next_pos| {
+      let delta = (next_pos as isize - last_pos as isize).abs();
+      delta > 1 && (delta - stride).abs() > 1
+    });
+  }
+  moves
+}
+
 fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajectory<N>>>(
   field: &mut Field,
   trajectories: &mut C,
@@ -221,19 +273,25 @@ fn build_trajectories_rec<const N: usize, SS: Fn() -> bool, C: VecLike<Trajector
           .index(field.moves_count() - cur_depth as usize..field.moves_count()),
         player,
       );
+    } else if depth == 1
+      && let Some(next_moves) = last_moves_of_weak(field, pos, player, empty_board)
+    {
+      build_trajectories_rec(
+        field,
+        trajectories,
+        player,
+        cur_depth + 1,
+        depth - 1,
+        empty_board,
+        pos,
+        retain_far(field, last_pos, next_moves),
+        ensure_pos,
+        should_stop,
+      );
     } else if depth > 0 {
       let mut marks = SmallVec::new();
-      let mut next_moves = next_moves(field, pos, player, empty_board, &mut marks);
-      if last_pos != 0 {
-        // the same as euclidean(field.stride, last_pos, next_pos) > 2 which
-        // means being outside the 3x3 neighborhood, but without divisions;
-        // unambiguous since dx is at most stride - 2 by absolute value
-        let stride = field.stride as isize;
-        next_moves.retain(|&mut next_pos| {
-          let delta = (next_pos as isize - last_pos as isize).abs();
-          delta > 1 && (delta - stride).abs() > 1
-        });
-      }
+      let next_moves = next_moves(field, pos, player, empty_board, &mut marks);
+      let next_moves = retain_far(field, last_pos, next_moves);
       build_trajectories_rec(
         field,
         trajectories,
